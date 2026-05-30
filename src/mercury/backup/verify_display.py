@@ -1,7 +1,7 @@
 """Plain-text display for verification plan, backup list, and report preview."""
 
 from mercury import output
-from mercury.backup.list import DemoBackupList
+from mercury.backup.list import DemoBackupList, OnDiskBackupList
 from mercury.reporting.preview import BackupReportPreview, format_report_preview_markdown
 from mercury.backup.verification import BackupVerificationResult, VerificationPlan
 
@@ -42,6 +42,26 @@ def print_demo_backup_list(demo_list: DemoBackupList) -> None:
         if record.planned_schema_file:
             output.write(f"  schema: {record.planned_schema_file}")
         output.write(f"  verified: {record.verified} (preview_only={record.preview_only})")
+    output.write("")
+
+
+def print_on_disk_backup_list(backup_list: OnDiskBackupList) -> None:
+    output.write("BACKUP LIST (on-disk)")
+    output.write("-------------------")
+    output.write(f"backup_root: {backup_list.backup_root}")
+    output.write(f"Note: {backup_list.note}")
+    output.write("")
+    for record in backup_list.records:
+        output.write(f"- {record.database} [{record.backup_kind}]")
+        output.write(f"  backup_id: {record.backup_id}")
+        output.write(f"  directory: {record.directory}")
+        if record.dump_file:
+            output.write(f"  dump: {record.dump_file}")
+        if record.schema_file:
+            output.write(f"  schema: {record.schema_file}")
+        output.write(f"  verified: {record.verified}")
+        if record.created_at:
+            output.write(f"  created_at: {record.created_at}")
     output.write("")
 
 

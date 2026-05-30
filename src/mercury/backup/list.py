@@ -1,8 +1,14 @@
-"""Demo backup inventory from planned manifest previews (not real backups)."""
+"""Demo backup inventory and on-disk backup listing."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from mercury.backup.manifest import BackupKind
+from mercury.backup.layout import MANIFEST_FILENAME
+from mercury.backup.manifest import BackupKind, BackupManifest
 from mercury.backup.manifest_preview import ManifestPreview, build_manifest_preview
 from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
 
@@ -56,3 +62,64 @@ def _record_from_preview(preview: ManifestPreview) -> DemoBackupRecord:
         verified=False,
         preview_only=True,
     )
+
+
+class OnDiskBackupRecord(BaseModel):
+    database: str
+    backup_kind: BackupKind
+    backup_id: str
+    directory: str
+    dump_file: str | None = None
+    schema_file: str | None = None
+    verified: bool = False
+    created_at: str | None = None
+
+
+class OnDiskBackupList(BaseModel):
+    mode: str = "on-disk"
+    backup_root: str
+    records: list[OnDiskBackupRecord] = Field(default_factory=list)
+    note: str = "Backups discovered from manifest.json files under backup_root."
+
+
+def _load_manifest(path: Path) -> BackupManifest | None:
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return BackupManifest.model_validate(data)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+def build_on_disk_backup_list(backup_root: Path) -> OnDiskBackupList:
+    """Scan backup_root for manifest.json files and build a sorted inventory."""
+    records: list[OnDiskBackupRecord] = []
+    root = backup_root.expanduser()
+    if not root.is_dir():
+        return OnDiskBackupList(backup_root=str(root), records=[])
+
+    try:
+        manifest_paths = sorted(root.glob("*/*/manifest.json"))
+    except OSError:
+        return OnDiskBackupList(backup_root=str(root), records=[])
+
+    for manifest_path in manifest_paths:
+        manifest = _load_manifest(manifest_path)
+        if manifest is None:
+            continue
+        records.append(
+            OnDiskBackupRecord(
+                database=manifest.database,
+                backup_kind=manifest.backup_kind,
+                backup_id=manifest.backup_id,
+                directory=str(manifest_path.parent),
+                dump_file=manifest.dump_file,
+                schema_file=manifest.schema_file,
+                verified=manifest.verified,
+                created_at=manifest.created_at.isoformat(),
+            )
+        )
+
+    records.sort(key=lambda record: record.created_at or "", reverse=True)
+    return OnDiskBackupList(backup_root=str(root.resolve()), records=records)

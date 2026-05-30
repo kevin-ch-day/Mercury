@@ -13,7 +13,11 @@ def find_backup_directories(backup_root: Path, database: str) -> list[Path]:
         return []
 
     found: list[Path] = []
-    for day_dir in sorted(backup_root.iterdir()):
+    try:
+        day_dirs = sorted(backup_root.iterdir())
+    except OSError:
+        return []
+    for day_dir in day_dirs:
         if not day_dir.is_dir():
             continue
         db_dir = day_dir / database

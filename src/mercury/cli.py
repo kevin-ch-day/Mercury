@@ -127,15 +127,26 @@ def backup_plan(
     ),
 ) -> None:
     """Build a dry-run full backup plan (no execution)."""
-    if not demo:
-        if DRY_RUN_ONLY or not LIVE_ACTIONS_ENABLED:
-            typer.echo("Seed mode: use --demo for dry-run backup planning.")
-            raise typer.Exit(1)
-        from mercury.database import build_discovered_backup_plan
+    from mercury.database import (
+        MariaDbConfigError,
+        MariaDbLiveError,
+        build_discovered_backup_plan,
+        discover,
+        try_load_mariadb_config,
+    )
+    from mercury.database.planning import build_backup_plan_from_inventory
 
-        plan = build_discovered_backup_plan()
-    else:
+    if demo:
         plan = build_demo_backup_plan()
+    elif try_load_mariadb_config() is not None:
+        try:
+            plan = build_backup_plan_from_inventory(discover("live"))
+        except (MariaDbConfigError, MariaDbLiveError) as exc:
+            typer.echo(f"Live discovery failed: {exc}")
+            typer.echo("Falling back to config/catalog inventory.")
+            plan = build_discovered_backup_plan()
+    else:
+        plan = build_discovered_backup_plan()
 
     from mercury.backup_display import print_backup_plan
 
@@ -143,7 +154,7 @@ def backup_plan(
 
     if sample_manifest:
         if not demo:
-            typer.echo("--sample-manifest requires --demo in seed mode.")
+            typer.echo("--sample-manifest requires --demo.")
             raise typer.Exit(1)
         from mercury.sample_manifest import write_sample_manifests
 
@@ -262,6 +273,12 @@ def backup_verify_cmd(
             raise typer.Exit(1)
 
     result = verify_backup_directory(backup_dir, update_manifest=update_manifest)
+    if result.database != db:
+        typer.echo(
+            f"Backup directory is for '{result.database}', not '{db}'. "
+            "Use --path with the correct directory or fix --db."
+        )
+        raise typer.Exit(1)
     print_verification_result(result)
     if not result.verified:
         raise typer.Exit(1)
@@ -310,14 +327,27 @@ def backup_list_cmd(
         help="List demo planned backup records from manifest previews.",
     ),
 ) -> None:
-    """Preview backup history (demo planned records only)."""
-    if not demo:
-        typer.echo("Seed mode: use --demo for backup list preview.")
-        raise typer.Exit(1)
-    from mercury.backup_list import build_demo_backup_list
-    from mercury.verify_display import print_demo_backup_list
+    """List backup records (on-disk when available, else demo preview)."""
+    from mercury.core.execution_policy import load_execution_policy
 
-    print_demo_backup_list(build_demo_backup_list())
+    if demo:
+        from mercury.backup_list import build_demo_backup_list
+        from mercury.verify_display import print_demo_backup_list
+
+        print_demo_backup_list(build_demo_backup_list())
+        return
+
+    from mercury.backup.list import build_on_disk_backup_list
+    from mercury.verify_display import print_on_disk_backup_list
+
+    policy = load_execution_policy()
+    backup_list = build_on_disk_backup_list(policy.backup_root)
+    if not backup_list.records:
+        typer.echo("No on-disk backups found.")
+        typer.echo(f"  backup_root: {policy.backup_root}")
+        typer.echo("Use --demo for planned-record preview, or run: mercury backup run --db <prod> --kind full")
+        raise typer.Exit(1)
+    print_on_disk_backup_list(backup_list)
 
 
 @report_app.command("preview")

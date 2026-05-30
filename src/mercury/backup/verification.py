@@ -13,7 +13,8 @@ from mercury.backup.manifest import BackupKind, BackupManifest
 from mercury.backup.checksum import verify_checksums
 from mercury.database.core import classify_database
 from mercury.backup.manifest_preview import ManifestPreview, build_manifest_preview
-from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY, LIVE_ACTIONS_ENABLED
+from mercury.core.execution_policy import load_execution_policy
+from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
 
 VERIFICATION_FUTURE_CHECKS: list[str] = [
     "manifest.json exists",
@@ -52,7 +53,7 @@ class BackupVerificationResult(BaseModel):
     verified: bool = False
     issues: list[str] = Field(default_factory=list)
     preview_only: bool = True
-    live_actions_enabled: bool = LIVE_ACTIONS_ENABLED
+    live_actions_enabled: bool = False
 
 
 class VerificationPlan(BaseModel):
@@ -249,6 +250,14 @@ def verify_backup_artifacts(
     if not role_ok:
         issues.append(f"Database '{resolved_db}' is not an approved backup source")
 
+    if resolved_kind == BACKUP_KIND_FULL:
+        artifacts_ok = dump_exists
+        if schema_name:
+            if not schema_exists:
+                artifacts_ok = False
+    else:
+        artifacts_ok = schema_exists
+
     verified = (
         manifest_exists
         and checksum_exists
@@ -256,7 +265,7 @@ def verify_backup_artifacts(
         and size_ok
         and role_ok
         and resolved_kind in (BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY)
-        and (dump_exists or schema_exists)
+        and artifacts_ok
     )
 
     backup_id = manifest.backup_id if manifest else f"verify-{resolved_db}-{resolved_kind}"
@@ -277,7 +286,11 @@ def verify_backup_artifacts(
         verified=verified,
         issues=issues,
         preview_only=False,
-        live_actions_enabled=manifest.live_actions_enabled if manifest else LIVE_ACTIONS_ENABLED,
+        live_actions_enabled=(
+            manifest.live_actions_enabled
+            if manifest
+            else load_execution_policy().live_actions_enabled
+        ),
     )
 
 
