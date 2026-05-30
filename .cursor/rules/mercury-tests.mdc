@@ -26,11 +26,14 @@ Patch at the **use site** module, e.g. `mercury.paths.OUTPUT_DIR`, not only `mer
 
 ## Live MariaDB integration
 
-Guard with socket check or `@pytest.mark.skipif`; never assume credentials in CI.
+Guard with `_mariadb_socket_available()` — `Path.exists()` can raise `PermissionError` on CI.
 
 ```python
-@pytest.mark.skipif(not Path("/var/lib/mysql/mysql.sock").exists(), reason="no local MariaDB")
-def test_live_ping(): ...
+def _mariadb_socket_available(path: Path = Path("/var/lib/mysql/mysql.sock")) -> bool:
+    try:
+        return path.exists()
+    except OSError:
+        return False
 ```
 
 Preserve existing tests; add focused tests for new behavior only.

@@ -18,6 +18,14 @@ LOCAL_CONFIG = Path(__file__).resolve().parents[1] / "config" / "local.toml"
 SOCKET_PATH = Path("/var/lib/mysql/mysql.sock")
 
 
+def _mariadb_socket_available(path: Path = SOCKET_PATH) -> bool:
+    """True when socket exists and is accessible (CI may deny stat on /var/lib/mysql)."""
+    try:
+        return path.exists()
+    except OSError:
+        return False
+
+
 def _client_config() -> MariaDbConnectionConfig:
     return MariaDbConnectionConfig(
         host="127.0.0.1",
@@ -29,7 +37,7 @@ def _client_config() -> MariaDbConnectionConfig:
     )
 
 
-@pytest.mark.skipif(not SOCKET_PATH.exists(), reason="MariaDB socket not present")
+@pytest.mark.skipif(not _mariadb_socket_available(), reason="MariaDB socket not present")
 class TestMariaDbClientIntegration:
     def test_client_fetch_scalar_version(self) -> None:
         version = client_fetch_scalar(_client_config(), "SELECT VERSION()")
@@ -82,7 +90,7 @@ unix_socket = "/var/lib/mysql/mysql.sock"
 
 
 def test_cli_db_ping_with_local_config() -> None:
-    if not LOCAL_CONFIG.exists() or not SOCKET_PATH.exists():
+    if not LOCAL_CONFIG.exists() or not _mariadb_socket_available():
         pytest.skip("local config or MariaDB socket unavailable")
     result = subprocess.run(
         [sys.executable, "-m", "mercury.cli", "db", "ping"],
@@ -95,7 +103,7 @@ def test_cli_db_ping_with_local_config() -> None:
 
 
 def test_cli_db_discover_live() -> None:
-    if not LOCAL_CONFIG.exists() or not SOCKET_PATH.exists():
+    if not LOCAL_CONFIG.exists() or not _mariadb_socket_available():
         pytest.skip("local config or MariaDB socket unavailable")
     result = subprocess.run(
         [sys.executable, "-m", "mercury.cli", "db", "discover"],
@@ -108,7 +116,7 @@ def test_cli_db_discover_live() -> None:
 
 
 def test_cli_db_access() -> None:
-    if not LOCAL_CONFIG.exists() or not SOCKET_PATH.exists():
+    if not LOCAL_CONFIG.exists() or not _mariadb_socket_available():
         pytest.skip("local config or MariaDB socket unavailable")
     result = subprocess.run(
         [sys.executable, "-m", "mercury.cli", "db", "access"],
