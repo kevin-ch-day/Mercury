@@ -1,4 +1,4 @@
-# Mercury — Copilot / Codex instructions
+# Mercury — ChatGPT / Codex / Copilot instructions
 
 This repo is a **Fedora-first Python CLI** for MariaDB backup, DR, and prod→dev sync on a security research platform.
 

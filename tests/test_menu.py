@@ -23,6 +23,16 @@ def test_render_menu_text_contains_header_and_items() -> None:
     assert "Sync Production -> Development" in text
 
 
+def test_render_menu_text_shows_database_status_when_configured() -> None:
+    from mercury.core.runtime import should_probe_database_status
+
+    text = render_menu_text()
+    if should_probe_database_status():
+        assert "connected" in text.lower()
+    else:
+        assert "not connected" in text.lower()
+
+
 def test_menu_renders_without_crashing(capsys: pytest.CaptureFixture[str]) -> None:
     run_menu(interactive=False)
     captured = capsys.readouterr()

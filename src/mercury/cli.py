@@ -7,7 +7,8 @@ from mercury.database.cli import register_commands
 from mercury.env_probe import format_policy_summary, probe_environment
 from mercury.menu import run_menu
 from mercury import output
-from mercury.safety import DRY_RUN_ONLY, LIVE_ACTIONS_ENABLED
+from mercury.core.execution_policy import load_execution_policy
+from mercury.core.runtime import should_probe_database_status
 
 app = typer.Typer(
     name="mercury",
@@ -63,13 +64,14 @@ def env_probe(
     output.field("config_dir", result.config_dir)
     output.field("output_dir", result.output_dir)
     output.field("mode", result.mode)
-    output.field("dry_run", result.dry_run_only)
-    output.field("live_actions", LIVE_ACTIONS_ENABLED)
+    policy = load_execution_policy()
+    output.field("dry_run", policy.dry_run)
+    output.field("live_actions", policy.live_actions_enabled)
 
     output.heading("Operator status")
     from mercury.runtime import operator_status
 
-    for key, value in operator_status().items():
+    for key, value in operator_status(probe_database=should_probe_database_status()).items():
         output.field(key, value)
 
     output.heading("Config status")

@@ -1,10 +1,12 @@
 # AI extension points — Mercury
 
-Cookbook for AI agents (Cursor, Codex, ChatGPT) implementing features in this repo.
+Cookbook for AI agents (Cursor, ChatGPT, Codex) implementing features in this repo.
 
 **Read first:** [AGENTS.md](../AGENTS.md) (safety policy, layout, pitfalls).
 
 **Cursor:** rules in `.cursor/rules/*.mdc` load automatically.
+
+**ChatGPT / Codex:** read [AGENTS.md](../AGENTS.md) and [.github/copilot-instructions.md](../.github/copilot-instructions.md).
 
 ---
 

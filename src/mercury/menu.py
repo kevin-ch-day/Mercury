@@ -2,6 +2,7 @@
 
 from mercury.env_probe import probe_environment
 from mercury import output
+from mercury.core.runtime import should_probe_database_status
 from mercury.runtime import operator_status
 
 
@@ -41,7 +42,7 @@ def render_menu_text() -> str:
         MENU_TITLE,
         MENU_SUBTITLE,
         "",
-        render_status_block(),
+        render_status_block(probe_database=should_probe_database_status()),
         "",
         "Menu:",
     ]

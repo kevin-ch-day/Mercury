@@ -150,6 +150,27 @@ def readonly_scalars(config: MariaDbConnectionConfig, sql: str) -> list[str]:
         connection.close()
 
 
+def readonly_row(config: MariaDbConnectionConfig, sql: str) -> list[str]:
+    """Run a read-only query and return the first row as string columns."""
+    if config.use_client:
+        from mercury.database.mariadb.client import run_client_query
+
+        raw = run_client_query(config, sql).strip()
+        if not raw:
+            return []
+        return raw.split("\t")
+    connection = connect_mariadb(config)
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(sql)
+            row = cursor.fetchone()
+        if not row:
+            return []
+        return [str(value) for value in row]
+    finally:
+        connection.close()
+
+
 def fetch_user_database_names(
     config: MariaDbConnectionConfig,
     *,

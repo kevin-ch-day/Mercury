@@ -127,7 +127,7 @@ See [AGENTS.md](AGENTS.md) for contributor/agent guidance. See [CONTRIBUTING.md]
 | [AGENTS.md](AGENTS.md) | Safety policy, layout, workflow |
 | [docs/ai_extension_points.md](docs/ai_extension_points.md) | Recipes: add CLI, backup, DB features, tests |
 | [.cursor/rules/](.cursor/rules/) | Cursor rules (safety always on) |
-| [CLAUDE.md](CLAUDE.md) / [.github/copilot-instructions.md](.github/copilot-instructions.md) | Pointers for other agent tools |
+| [.github/copilot-instructions.md](.github/copilot-instructions.md) | ChatGPT, Codex, and Copilot pointer |
 
 ## Python API
 

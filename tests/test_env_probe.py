@@ -1,16 +1,19 @@
 """Tests for environment probe."""
 
 from mercury.env_probe import probe_environment
-from mercury.safety import DRY_RUN_ONLY, MODE_SEED
+from mercury.core.execution_policy import load_execution_policy
+from mercury.core.safety import MODE_SEED
 
 
 def test_probe_returns_expected_fields() -> None:
     result = probe_environment()
+    policy = load_execution_policy()
     assert result.python_version
     assert result.platform_system
     assert result.repo_root
-    assert result.mode == MODE_SEED
-    assert result.dry_run_only is DRY_RUN_ONLY
+    expected_mode = MODE_SEED if policy.dry_run or not policy.live_actions_enabled else "operational"
+    assert result.mode == expected_mode
+    assert result.dry_run_only is policy.dry_run
 
 
 def test_probe_config_status_keys() -> None:

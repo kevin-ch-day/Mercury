@@ -6,14 +6,29 @@ from pydantic import BaseModel, Field
 
 from mercury.database.core import classify_database, exclusion_reason
 from mercury.database.mariadb.config import MariaDbConnectionConfig
-from mercury.database.mariadb.session import (
-    MariaDbLiveError,
-    fetch_user_database_names,
-)
+from mercury.database.mariadb.session import MariaDbLiveError, readonly_row
 
 
 def _sql_escape_literal(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "''")
+
+
+def _inspect_stats_sql(schema: str) -> str:
+    return (
+        "SELECT "
+        "COALESCE(SUM(CASE WHEN table_type = 'BASE TABLE' THEN 1 ELSE 0 END), 0), "
+        "COALESCE(SUM(CASE WHEN table_type = 'VIEW' THEN 1 ELSE 0 END), 0), "
+        "COALESCE(SUM(data_length + index_length), 0) "
+        "FROM information_schema.tables "
+        f"WHERE table_schema = '{schema}'"
+    )
+
+
+def _schema_exists_sql(schema: str) -> str:
+    return (
+        "SELECT COUNT(*) FROM information_schema.schemata "
+        f"WHERE schema_name = '{schema}'"
+    )
 
 
 class DatabaseInspectResult(BaseModel):
@@ -34,13 +49,12 @@ def inspect_database_on_server(
     name: str,
     config: MariaDbConnectionConfig,
     *,
-    names_fn=None,
-    scalar_fn=None,
+    row_fn=None,
 ) -> DatabaseInspectResult:
     """
     Read-only inspect: confirm database exists and gather table/view/size stats.
 
-    Uses information_schema only — no writes.
+    Uses information_schema only — no writes. Two queries (existence + stats).
     """
     classification = classify_database(name)
     base = DatabaseInspectResult(
@@ -54,54 +68,30 @@ def inspect_database_on_server(
         reason = exclusion_reason(classification) or "Not a recognized platform database."
         base.notes.append(reason)
 
-    fetch_names = names_fn or fetch_user_database_names
-    fetch_scalar = scalar_fn
+    fetch_row = row_fn or readonly_row
 
+    escaped = _sql_escape_literal(name)
     try:
-        server_names = fetch_names(config)
-    except MariaDbLiveError as exc:
+        exists_row = fetch_row(config, _schema_exists_sql(escaped))
+        exists_count = int(exists_row[0] if exists_row else "0")
+    except (MariaDbLiveError, ValueError) as exc:
         base.error = str(exc)
         return base
 
-    if name not in server_names:
-        base.notes.append("Database not found on server (SHOW DATABASES).")
+    if exists_count == 0:
+        base.notes.append("Database not found on server (information_schema.schemata).")
         return base
 
     base.exists_on_server = True
     base.connected = True
 
-    if fetch_scalar is None:
-        from mercury.database.mariadb.session import readonly_scalar
-
-        fetch_scalar = readonly_scalar
-
-    escaped = _sql_escape_literal(name)
     try:
-        table_count = int(
-            fetch_scalar(
-                config,
-                "SELECT COUNT(*) FROM information_schema.tables "
-                f"WHERE table_schema = '{escaped}' AND table_type = 'BASE TABLE'",
-            )
-            or "0"
-        )
-        view_count = int(
-            fetch_scalar(
-                config,
-                "SELECT COUNT(*) FROM information_schema.tables "
-                f"WHERE table_schema = '{escaped}' AND table_type = 'VIEW'",
-            )
-            or "0"
-        )
-        total_bytes = int(
-            fetch_scalar(
-                config,
-                "SELECT COALESCE(SUM(data_length + index_length), 0) "
-                "FROM information_schema.tables "
-                f"WHERE table_schema = '{escaped}'",
-            )
-            or "0"
-        )
+        stats_row = fetch_row(config, _inspect_stats_sql(escaped))
+        if not stats_row or len(stats_row) < 3:
+            raise ValueError("Unexpected inspect stats row")
+        table_count = int(stats_row[0])
+        view_count = int(stats_row[1])
+        total_bytes = int(stats_row[2])
     except (MariaDbLiveError, ValueError) as exc:
         base.error = str(exc)
         return base

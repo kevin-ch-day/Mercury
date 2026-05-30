@@ -1,13 +1,13 @@
 # AGENTS.md — Mercury
 
-Guidance for AI coding agents (Cursor, Codex, ChatGPT, Claude) working in this repository.
+Guidance for AI coding agents (Cursor, ChatGPT, Codex) working in this repository.
 
 ## Start here (agents)
 
 1. Read **Non-negotiable safety policy** below before any code change.
 2. Use **[docs/ai_extension_points.md](docs/ai_extension_points.md)** for recipes (add CLI, backup step, DB feature, tests).
 3. **Cursor:** project rules live in [.cursor/rules/](.cursor/rules/) (`mercury-safety.mdc` always applies).
-4. **Copilot/Codex:** [.github/copilot-instructions.md](.github/copilot-instructions.md) points here.
+4. **ChatGPT / Codex:** [.github/copilot-instructions.md](.github/copilot-instructions.md) points here.
 5. Run tests before finishing: `.venv/bin/python -m pytest`
 
 | Task | Start in |
@@ -255,7 +255,7 @@ Full test file index: [docs/ai_extension_points.md](docs/ai_extension_points.md#
 - [docs/ai_extension_points.md](docs/ai_extension_points.md) — **agent cookbook** (CLI, backup, DB, tests)
 - [.cursor/rules/](.cursor/rules/) — Cursor project rules
 - [.github/copilot-instructions.md](.github/copilot-instructions.md) — Copilot/Codex pointer
-- [CLAUDE.md](CLAUDE.md) — Claude agent pointer
+- [.github/copilot-instructions.md](.github/copilot-instructions.md) — ChatGPT / Codex / Copilot pointer
 - [docs/platform_vision.md](docs/platform_vision.md) — roadmap
 - [docs/database_backup_policy.md](docs/database_backup_policy.md) — backup rules
 - [docs/prod_to_dev_sync_policy.md](docs/prod_to_dev_sync_policy.md) — sync order

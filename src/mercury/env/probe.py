@@ -6,8 +6,9 @@ import sys
 from pydantic import BaseModel, Field
 
 from mercury.config.settings import config_status
+from mercury.core.execution_policy import load_execution_policy
 from mercury.core.paths import CONFIG_DIR, OUTPUT_DIR, REPO_ROOT
-from mercury.core.safety import DRY_RUN_ONLY, MODE_SEED, POLICY_SUMMARY
+from mercury.core.safety import MODE_SEED, POLICY_SUMMARY
 
 
 class EnvProbeResult(BaseModel):
@@ -49,6 +50,9 @@ def probe_environment(*, check_database: bool = False) -> EnvProbeResult:
     if check_database:
         db_probe = {"status": "see probe output below"}
 
+    policy = load_execution_policy()
+    mode = MODE_SEED if policy.dry_run or not policy.live_actions_enabled else "operational"
+
     return EnvProbeResult(
         python_version=sys.version.split()[0],
         platform_system=platform.system(),
@@ -56,8 +60,8 @@ def probe_environment(*, check_database: bool = False) -> EnvProbeResult:
         repo_root=str(REPO_ROOT),
         config_dir=str(CONFIG_DIR),
         output_dir=str(OUTPUT_DIR),
-        mode=MODE_SEED,
-        dry_run_only=DRY_RUN_ONLY,
+        mode=mode,
+        dry_run_only=policy.dry_run,
         config_status=config_status(),
         notes=notes,
         database_probe=db_probe,

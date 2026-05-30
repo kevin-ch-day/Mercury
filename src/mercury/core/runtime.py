@@ -28,8 +28,15 @@ def _database_reachable() -> bool:
     try:
         readonly_scalar(cfg, "SELECT 1 AS ok")
         return True
-    except MariaDbLiveError:
+    except (MariaDbLiveError, OSError):
         return False
+
+
+def should_probe_database_status() -> bool:
+    """True when MariaDB config is present and a live probe is worthwhile."""
+    from mercury.database.mariadb.session import try_load_mariadb_config
+
+    return try_load_mariadb_config() is not None
 
 
 def operator_status(*, database_connected: bool | None = None, probe_database: bool = False) -> dict[str, str]:
