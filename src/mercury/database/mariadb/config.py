@@ -6,9 +6,10 @@ from pathlib import Path
 import tomllib
 from pydantic import BaseModel, Field
 
-from mercury.paths import LOCAL_CONFIG, LOCAL_EXAMPLE
+from mercury.core.paths import LOCAL_CONFIG, LOCAL_EXAMPLE
 
 DEFAULT_PASSWORD_ENV = "MERCURY_MARIADB_PASSWORD"
+DEFAULT_UNIX_SOCKET = "/var/lib/mysql/mysql.sock"
 
 
 class MariaDbConfigError(Exception):
@@ -19,21 +20,29 @@ class MariaDbConnectionConfig(BaseModel):
     host: str
     port: int = 3306
     user: str
-    password: str = Field(repr=False)
+    password: str = Field(default="", repr=False)
     password_env: str | None = None
     connect_timeout: int = 10
     ssl_disabled: bool = True
+    unix_socket: str | None = None
+    use_client: bool = False
+
+    @property
+    def uses_socket(self) -> bool:
+        return bool(self.unix_socket)
 
 
-def _resolve_password(mariadb: dict[str, object]) -> str:
+def _resolve_password(mariadb: dict[str, object], *, optional: bool = False) -> str:
     password_env = mariadb.get("password_env")
     if password_env is not None and str(password_env).strip():
         env_name = str(password_env).strip()
         value = os.environ.get(env_name)
         if not value:
+            if optional:
+                return ""
             raise MariaDbConfigError(
                 f"Password environment variable '{env_name}' is not set or empty. "
-                f"Export it before running: mercury db discover"
+                f"Export it before running live database commands."
             )
         return value
 
@@ -42,10 +51,14 @@ def _resolve_password(mariadb: dict[str, object]) -> str:
         if pwd is not None and str(pwd).strip():
             return str(pwd)
 
+    if optional:
+        return ""
+
     raise MariaDbConfigError(
         "MariaDB password not configured. Set password_env in config/local.toml "
         f"(recommended, e.g. '{DEFAULT_PASSWORD_ENV}') and export the variable, "
-        f"or copy {LOCAL_EXAMPLE.name} to {LOCAL_CONFIG.name}."
+        "or enable use_client + unix_socket for local Fedora socket auth. "
+        f"See {LOCAL_EXAMPLE.name}."
     )
 
 
@@ -66,15 +79,22 @@ def load_mariadb_config(path: Path | None = None) -> MariaDbConnectionConfig:
     if not isinstance(mariadb, dict):
         raise MariaDbConfigError(
             f"[mariadb] section missing in {config_path}. "
-            f"Add host, port, user, and password_env."
+            f"Add host, user, and connection settings."
         )
 
-    host = mariadb.get("host")
     user = mariadb.get("user")
-    if not host or not str(host).strip():
-        raise MariaDbConfigError(f"[mariadb].host is required in {config_path}")
     if not user or not str(user).strip():
         raise MariaDbConfigError(f"[mariadb].user is required in {config_path}")
+
+    use_client = bool(mariadb.get("use_client", False))
+    unix_socket_raw = mariadb.get("unix_socket")
+    unix_socket = str(unix_socket_raw).strip() if unix_socket_raw else None
+    password_optional = use_client and bool(unix_socket)
+
+    host_raw = mariadb.get("host")
+    host = str(host_raw).strip() if host_raw else "localhost"
+    if not host:
+        host = "localhost"
 
     port_raw = mariadb.get("port", 3306)
     try:
@@ -91,14 +111,16 @@ def load_mariadb_config(path: Path | None = None) -> MariaDbConnectionConfig:
         ) from exc
 
     password_env = mariadb.get("password_env")
-    password = _resolve_password(mariadb)
+    password = _resolve_password(mariadb, optional=password_optional)
 
     return MariaDbConnectionConfig(
-        host=str(host).strip(),
+        host=host,
         port=port,
         user=str(user).strip(),
         password=password,
         password_env=str(password_env).strip() if password_env else None,
         connect_timeout=connect_timeout,
         ssl_disabled=bool(mariadb.get("ssl_disabled", True)),
+        unix_socket=unix_socket,
+        use_client=use_client,
     )

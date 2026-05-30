@@ -9,14 +9,69 @@ from mercury.database import (
     MariaDbLiveError,
     discover,
     discover_demo,
+    inspect_database_on_server,
+    load_mariadb_config,
     print_classification,
     print_inventory,
     print_prod_dev_pairs,
+    probe_mariadb_server,
     validate_config_policy,
 )
+from mercury.database.mariadb.access import build_platform_access_report
+from mercury.database.display_access import print_platform_access
+from mercury.database.display_inspect import print_database_inspect
+from mercury.database.display_ping import print_server_probe
 from mercury.database.display_policy import print_policy_report
+
+
 def register_commands(app: typer.Typer) -> None:
     """Attach database commands to a Typer app."""
+
+    @app.command("ping")
+    def ping_cmd() -> None:
+        """Read-only server probe (connect, VERSION, SHOW DATABASES sample)."""
+        try:
+            print_server_probe(probe_mariadb_server())
+        except MariaDbConfigError as exc:
+            typer.echo(str(exc))
+            typer.echo("Run: mercury config init")
+            typer.echo(
+                "For local Fedora socket auth, set use_client=true and unix_socket in local.toml."
+            )
+            raise typer.Exit(1) from exc
+        except MariaDbDriverMissingError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(1) from exc
+        except MariaDbLiveError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(1) from exc
+
+    @app.command("inspect")
+    def inspect_cmd(
+        name: str = typer.Option(..., "--name", help="Database name to inspect on server."),
+    ) -> None:
+        """Read-only inspect one database (existence, tables, size)."""
+        try:
+            config = load_mariadb_config()
+            print_database_inspect(inspect_database_on_server(name, config))
+        except MariaDbConfigError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(1) from exc
+        except MariaDbLiveError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(1) from exc
+
+    @app.command("access")
+    def access_cmd() -> None:
+        """Compare platform catalog databases to live server (read-only)."""
+        try:
+            print_platform_access(build_platform_access_report())
+        except MariaDbConfigError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(1) from exc
+        except MariaDbLiveError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(1) from exc
 
     @app.command("discover")
     def discover_cmd(

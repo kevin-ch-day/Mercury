@@ -1,24 +1,33 @@
-# Live MariaDB discovery (M5)
+# Live MariaDB discovery and read-only access
 
-`mercury db discover` (without `--demo`) connects to MariaDB using **`config/local.toml`** and runs a single read-only statement:
+Mercury connects to MariaDB using **`config/local.toml`** for read-only operations. No backups, restores, sync, or schema changes are performed by these commands.
 
-```sql
-SHOW DATABASES;
+## Commands
+
+| Command | Purpose |
+|---------|---------|
+| `mercury db ping` | Connectivity probe (VERSION, CURRENT_USER, sample DBs) |
+| `mercury db discover` | `SHOW DATABASES` + classification |
+| `mercury db inspect --name <db>` | Table/view counts and size via `information_schema` |
+| `mercury db access` | Platform catalog vs server presence |
+| `mercury env probe --check-db` | Environment summary + optional probe |
+
+Demo/offline mode (no server):
+
+```bash
+mercury db discover --demo
 ```
 
-No `CREATE`, `DROP`, `ALTER`, backups, restores, or sync operations are performed.
-
 ## Configuration
-
-Copy and edit local config:
 
 ```bash
 mercury config init
 ```
 
-`config/local.toml`:
+### Option A — TCP + password (remote / password auth)
 
 ```toml
+# config/local.toml
 [mariadb]
 host = "127.0.0.1"
 port = 3306
@@ -26,35 +35,54 @@ user = "mercury_readonly"
 password_env = "MERCURY_MARIADB_PASSWORD"
 connect_timeout = 10
 ssl_disabled = true
+use_client = false
 ```
-
-## Password via environment
 
 ```bash
-export MERCURY_MARIADB_PASSWORD='your-readonly-password'
-mercury db discover
+export MERCURY_MARIADB_PASSWORD='your-password'
+mercury db ping
 ```
 
-Mercury fails clearly if `config/local.toml` is missing, `[mariadb]` is incomplete, or the password env var is unset.
+Requires **pymysql** (`pip install -e ".[mariadb]"`).
 
-## Install driver
+### Option B — Local Fedora unix socket (recommended for dev)
 
-```bash
-pip install -e ".[mariadb,dev]"
+Uses `mariadb`/`mysql` CLI on PATH with socket auth (e.g. `root@localhost`):
+
+```toml
+[mariadb]
+host = "127.0.0.1"
+port = 3306
+user = "root"
+use_client = true
+unix_socket = "/var/lib/mysql/mysql.sock"
+connect_timeout = 10
+ssl_disabled = true
 ```
 
-Requires **pymysql** for live discovery.
+Optional `password_env` when TCP fallback is needed.
 
-## Demo mode (unchanged)
+## Access modes
 
-```bash
-mercury db discover --demo
-```
+| `use_client` | Driver | Module |
+|--------------|--------|--------|
+| `true` | mariadb/mysql CLI | `database/mariadb/client.py` |
+| `false` | pymysql | `database/mariadb/session.py` |
 
-Uses platform catalog + `databases.toml` — no server connection.
+On Fedora, root over pymysql often fails (unix_socket plugin); prefer Option B for local dev.
 
 ## System databases
 
 Filtered out: `information_schema`, `mysql`, `performance_schema`, `sys`.
 
 Discovered names are classified with the same rules as demo mode (`*_prod`, `*_dev`, `android_permission_intel`, etc.).
+
+## SQL executed (read-only)
+
+- `SELECT 1`
+- `SELECT VERSION()`
+- `SELECT CURRENT_USER() AS mercury_current_user`
+- `SHOW DATABASES`
+- `information_schema` queries for inspect
+
+No DDL or DML.

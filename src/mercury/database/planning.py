@@ -11,7 +11,7 @@ from mercury.database.core import (
     exclusion_reason,
 )
 from mercury.database.discovery import discover_from_config
-from mercury.safety import SAFETY_NOTES
+from mercury.core.safety import SAFETY_NOTES
 
 DEMO_DATABASES: list[str] = PLATFORM_DATABASES
 

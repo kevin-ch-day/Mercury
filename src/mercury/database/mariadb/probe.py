@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from mercury.safety import LIVE_ACTIONS_ENABLED, MODE_SEED
+from mercury.core.safety import LIVE_ACTIONS_ENABLED, MODE_SEED
 
 MARIADB_CLIENT_TOOLS = (
     "mariadb",

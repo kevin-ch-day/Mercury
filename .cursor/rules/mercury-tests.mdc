@@ -1,0 +1,36 @@
+---
+description: Mercury pytest patterns and injection points
+globs: tests/**/*.py
+alwaysApply: false
+---
+
+# Mercury tests
+
+Run: `.venv/bin/python -m pytest` from repo root (`pythonpath = ["src"]`).
+
+## Fakes (prefer injection over monkeypatch)
+
+| Function | Inject | Purpose |
+|----------|--------|---------|
+| `execute_backup(..., dump_runner=...)` | fake writer | backup without mariadb-dump |
+| `probe_mariadb_server(..., probe_fn=...)` | fake probe | connectivity without socket |
+| `ExecutionPolicy` / `local_config=` | explicit policy | dry-run vs live gates |
+
+## When monkeypatching paths
+
+Patch at the **use site** module, e.g. `mercury.paths.OUTPUT_DIR`, not only `mercury.core.paths`.
+
+## CLI subprocess tests
+
+`subprocess.run([sys.executable, "-m", "mercury.cli", ...])` spawns a fresh interpreter — in-process monkeypatch does not apply.
+
+## Live MariaDB integration
+
+Guard with socket check or `@pytest.mark.skipif`; never assume credentials in CI.
+
+```python
+@pytest.mark.skipif(not Path("/var/lib/mysql/mysql.sock").exists(), reason="no local MariaDB")
+def test_live_ping(): ...
+```
+
+Preserve existing tests; add focused tests for new behavior only.

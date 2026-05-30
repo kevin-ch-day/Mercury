@@ -1,0 +1,34 @@
+---
+description: Mercury database module — discovery, MariaDB, classification
+globs: src/mercury/database/**/*.py
+alwaysApply: false
+---
+
+# Mercury database module
+
+Entry: `mercury.database.discover("live"|"demo")` → classified `DatabaseInventory`.
+
+## Layers
+
+- `core/` — catalog, classifier, models (`classify_database`, `PLATFORM_CATALOG`)
+- `discovery/` — demo/config/live inventory assembly
+- `mariadb/` — config, session (pymysql), client (CLI), inspect, access
+- `planning.py` — `build_backup_plan()` applies safety exclusions
+- `cli.py` — `register_commands()` for `mercury db *`
+
+## Access modes
+
+| `use_client` | Driver | File |
+|--------------|--------|------|
+| `true` | mariadb/mysql CLI + socket | `mariadb/client.py` |
+| `false` | pymysql TCP | `mariadb/session.py` |
+
+Use `readonly_scalar`, `readonly_scalars`, `fetch_user_database_names` — never ad-hoc write SQL.
+
+## Adding a platform database
+
+1. Add to `database/core/catalog.py`
+2. Classifier in `classifier.py` if non-standard naming
+3. Tests in `tests/test_db_classifier.py` or `test_database_module.py`
+
+Config loads from `config/local.toml` via `try_load_mariadb_config()` — tests needing offline mode must mock or pass explicit `MariaDbConnectionConfig`.

@@ -35,11 +35,24 @@ app.add_typer(report_app, name="report")
 
 
 @env_app.command("probe")
-def env_probe() -> None:
-    """Probe the local environment (no database connections)."""
+def env_probe(
+    check_db: bool = typer.Option(
+        False,
+        "--check-db",
+        help="Run read-only MariaDB probe when config/local.toml is configured.",
+    ),
+) -> None:
+    """Probe the local environment (optional read-only database check)."""
+    from mercury.database.display_ping import print_server_probe
+    from mercury.database import (
+        MariaDbConfigError,
+        MariaDbDriverMissingError,
+        MariaDbLiveError,
+        probe_mariadb_server,
+    )
     from mercury.database import build_readonly_discovery_plan, probe_client_tooling
 
-    result = probe_environment()
+    result = probe_environment(check_database=check_db)
     tooling = probe_client_tooling()
     readonly_plan = build_readonly_discovery_plan()
 
@@ -75,6 +88,24 @@ def env_probe() -> None:
     output.heading("Notes")
     for note in result.notes:
         output.bullet(note)
+
+    if check_db:
+        output.heading("Database probe")
+        if result.database_probe:
+            for key, value in result.database_probe.items():
+                output.field(key, value)
+        try:
+            print_server_probe(probe_mariadb_server())
+        except MariaDbConfigError as exc:
+            output.field("status", "config_error")
+            output.field("error", str(exc))
+        except MariaDbDriverMissingError as exc:
+            output.field("status", "driver_missing")
+            output.field("error", str(exc))
+        except MariaDbLiveError as exc:
+            output.field("status", "connection_failed")
+            output.field("error", str(exc))
+
     output.heading("Safety policy")
     for line in format_policy_summary().splitlines():
         output.write(line)
@@ -188,6 +219,87 @@ def backup_verify_plan(
     print_verification_plan(build_verification_plan_demo())
 
 
+@backup_app.command("verify")
+def backup_verify_cmd(
+    db: str = typer.Option(..., "--db", help="Database name to verify."),
+    path: str | None = typer.Option(
+        None,
+        "--path",
+        help="Explicit backup directory (contains manifest.json).",
+    ),
+    latest: bool = typer.Option(
+        True,
+        "--latest/--no-latest",
+        help="Use latest backup directory under backup_root (default).",
+    ),
+    update_manifest: bool = typer.Option(
+        False,
+        "--update-manifest",
+        help="Set manifest verified=true when verification passes.",
+    ),
+) -> None:
+    """Verify on-disk backup artifacts (manifest, dumps, checksums)."""
+    from pathlib import Path
+
+    from mercury.backup.locate import find_latest_backup_directory
+    from mercury.core.execution_policy import load_execution_policy
+    from mercury.verification import verify_backup_directory
+    from mercury.verify_display import print_verification_result
+
+    backup_dir: Path | None = Path(path).expanduser() if path else None
+    if backup_dir is None:
+        if not latest:
+            typer.echo("Provide --path or use --latest (default).")
+            raise typer.Exit(1)
+        policy = load_execution_policy()
+        backup_dir = find_latest_backup_directory(policy.backup_root, db)
+        if backup_dir is None:
+            typer.echo(
+                f"No backup directory with manifest.json found for '{db}' under {policy.backup_root}"
+            )
+            raise typer.Exit(1)
+
+    result = verify_backup_directory(backup_dir, update_manifest=update_manifest)
+    print_verification_result(result)
+    if not result.verified:
+        raise typer.Exit(1)
+
+
+@backup_app.command("run")
+def backup_run_cmd(
+    db: str = typer.Option(..., "--db", help="Database name (backup source only)."),
+    kind: str = typer.Option(
+        ...,
+        "--kind",
+        help="Backup kind: full or schema_only.",
+    ),
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Execute backup (requires live actions explicitly enabled).",
+    ),
+) -> None:
+    """Plan or execute a logical backup (dry-run by default)."""
+    from mercury.backup_execute import BackupExecutionError, execute_backup
+    from mercury.backup_execute_display import print_backup_execution
+    from mercury.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
+
+    normalized = kind.strip().lower().replace("-", "_")
+    if normalized not in (BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY):
+        typer.echo("Invalid --kind. Use: full or schema_only")
+        raise typer.Exit(1)
+
+    try:
+        result = execute_backup(db, normalized, execute=execute)  # type: ignore[arg-type]
+    except BackupExecutionError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+
+    print_backup_execution(result)
+    if result.refused and execute:
+        raise typer.Exit(1)
+
+
 @backup_app.command("list")
 def backup_list_cmd(
     demo: bool = typer.Option(
@@ -272,12 +384,26 @@ def status_cmd(
         "--save",
         help="Write report to output/protection_status.txt",
     ),
+    live: bool = typer.Option(
+        False,
+        "--live",
+        help="Use live read-only server inventory (requires config/local.toml).",
+    ),
 ) -> None:
     """Protection snapshot: backup sources, gaps, prod→dev pairs, action items."""
+    from mercury.database import MariaDbConfigError, MariaDbLiveError
     from mercury.paths import OUTPUT_DIR, PROTECTION_REPORT_FILE
     from mercury.protection_report import build_protection_report, format_protection_report
 
-    report = build_protection_report()
+    try:
+        report = build_protection_report(live=live, probe_database=live)
+    except MariaDbConfigError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+    except MariaDbLiveError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+
     text = format_protection_report(report)
     output.write(text)
 

@@ -16,10 +16,10 @@ def test_init_creates_files(tmp_path: Path, monkeypatch) -> None:
     local_db = config_dir / "databases.toml"
     local_local = config_dir / "local.toml"
 
-    monkeypatch.setattr("mercury.config_init.DATABASES_EXAMPLE", example_db)
-    monkeypatch.setattr("mercury.config_init.DATABASES_LOCAL", local_db)
-    monkeypatch.setattr("mercury.config_init.LOCAL_EXAMPLE", example_local)
-    monkeypatch.setattr("mercury.config_init.LOCAL_CONFIG", local_local)
+    monkeypatch.setattr("mercury.config.init.DATABASES_EXAMPLE", example_db)
+    monkeypatch.setattr("mercury.config.init.DATABASES_LOCAL", local_db)
+    monkeypatch.setattr("mercury.config.init.LOCAL_EXAMPLE", example_local)
+    monkeypatch.setattr("mercury.config.init.LOCAL_CONFIG", local_local)
 
     results = init_local_config()
     assert local_db.exists()

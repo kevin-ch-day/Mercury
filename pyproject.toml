@@ -5,6 +5,12 @@ description = "Fedora-first database backup, disaster recovery, and prod-to-dev 
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
+
+[project.urls]
+Homepage = "https://github.com/kevin-ch-day/Mercury"
+Repository = "https://github.com/kevin-ch-day/Mercury"
+Issues = "https://github.com/kevin-ch-day/Mercury/issues"
+
 dependencies = [
     "typer>=0.12",
     "rich>=13.7",

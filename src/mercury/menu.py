@@ -25,8 +25,8 @@ PLACEHOLDERS: dict[str, str] = {
 }
 
 
-def render_status_block() -> str:
-    status = operator_status()
+def render_status_block(*, probe_database: bool = False) -> str:
+    status = operator_status(probe_database=probe_database)
     return (
         "Status:\n"
         f"- Mode: {status['mode']}\n"
@@ -78,10 +78,41 @@ def run_discover_databases() -> None:
 
 
 def run_verify_plan() -> None:
-    from mercury.verification import build_verification_plan_demo
-    from mercury.verify_display import print_verification_plan
+    from mercury.backup.locate import find_latest_backup_directory
+    from mercury.core.execution_policy import load_execution_policy
+    from mercury.database.planning import build_demo_backup_plan
+    from mercury.verification import (
+        build_verification_plan_demo,
+        verify_backup_directory,
+    )
+    from mercury.verify_display import print_verification_plan, print_verification_result
 
-    output.write("Verify Backups — preview/dry-run only")
+    policy = load_execution_policy()
+    sources = build_demo_backup_plan().backup_sources
+    verified_any = False
+
+    for db in sources:
+        backup_dir = find_latest_backup_directory(policy.backup_root, db)
+        if backup_dir is None:
+            continue
+        output.write(f"Verifying on-disk backup: {db}")
+        output.write(f"  directory: {backup_dir}")
+        output.write("")
+        result = verify_backup_directory(backup_dir)
+        print_verification_result(result)
+        output.write("")
+        verified_any = True
+
+    if verified_any:
+        return
+
+    output.write("Verify Backups — no on-disk backups found under backup_root.")
+    output.write(f"  backup_root: {policy.backup_root}")
+    output.write("")
+    output.write("Run: mercury backup run --db <prod> --kind full [--execute]")
+    output.write("Then: mercury backup verify --db <prod> --update-manifest")
+    output.write("")
+    output.write("Preview / dry-run verification plan:")
     output.write("")
     print_verification_plan(build_verification_plan_demo())
 
@@ -134,14 +165,40 @@ def run_backup_plan_dry_run() -> None:
 
 
 def run_environment_check() -> None:
+    from mercury.database import (
+        MariaDbConfigError,
+        MariaDbDriverMissingError,
+        MariaDbLiveError,
+        probe_mariadb_server,
+        try_load_mariadb_config,
+    )
+    from mercury.database.display_ping import print_server_probe
+
     result = probe_environment()
-    output.write(render_status_block())
+    output.write(render_status_block(probe_database=True))
     output.write()
     output.field("python", result.python_version)
     output.field("platform", f"{result.platform_system} {result.platform_release}")
     output.field("repo_root", result.repo_root)
     for note in result.notes:
         output.bullet(note)
+
+    if try_load_mariadb_config() is not None:
+        output.write()
+        output.write("MariaDB config detected — running read-only server probe...")
+        output.write("")
+        try:
+            print_server_probe(probe_mariadb_server())
+        except MariaDbConfigError as exc:
+            output.write(f"Config error: {exc}")
+        except MariaDbDriverMissingError as exc:
+            output.write(str(exc))
+        except MariaDbLiveError as exc:
+            output.write(f"Connection failed: {exc}")
+    else:
+        output.write()
+        output.write("No MariaDB config — run: mercury config init")
+        output.write("For Fedora local dev, use use_client=true + unix_socket in local.toml.")
 
 
 def handle_menu_choice(choice: str) -> bool:

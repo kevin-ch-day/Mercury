@@ -80,4 +80,8 @@ def test_handle_discover_databases(capsys: pytest.CaptureFixture[str]) -> None:
     out = capsys.readouterr().out
     assert "Known databases" in out
     assert "erebus_threat_intel_prod" in out
-    assert "not_connected" in out.lower() or "No database server" in out
+    assert (
+        "not_connected" in out.lower()
+        or "connected" in out.lower()
+        or "No database server" in out
+    )

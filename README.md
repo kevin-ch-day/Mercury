@@ -14,57 +14,120 @@ Windows is for **seed development** only; production use targets **Fedora**.
 - Backup and verify prod before any prod→dev sync; dev sync will require typing `SYNC DEV`.
 - A database is not **protected** until backup verification passes (manifest + checksum).
 
-## Seed commands (safe — no DB server required)
+## Quick start
 
 ```bash
+python -m venv .venv && source .venv/bin/activate
 pip install -e ".[mariadb,dev]"
 
-mercury status              # what is protected, prod→dev pairs, action items
-mercury status --save       # also writes output/protection_status.txt
-mercury config init         # create config/*.toml from examples
-mercury config validate     # policy check on config (--demo for full catalog)
-mercury env probe
-mercury db discover              # live read-only SHOW DATABASES (needs config/local.toml)
-mercury db discover --demo       # catalog only, no server
-mercury database summary --demo  # same module; counts + backup sources
-mercury db pairs              # prod→dev mapping
-mercury db classify --name erebus_threat_intel_prod
-mercury db validate --demo    # policy check against catalog inventory
-mercury backup plan --demo
-mercury backup plan --demo --sample-manifest
-mercury backup schema-plan --demo
-mercury backup manifest-preview --db erebus_threat_intel_prod --kind schema_only
-mercury backup manifest-preview --db erebus_threat_intel_prod --kind full
-mercury backup verify-plan --demo
-mercury backup list --demo
-mercury report preview --db erebus_threat_intel_prod --kind full
-mercury report preview --db erebus_threat_intel_prod --kind schema_only
-mercury sync plan --demo
+mercury config init
+mercury db ping                    # read-only server probe
+mercury db discover                # live inventory (needs config/local.toml)
+mercury status --live              # protection snapshot from live server
+mercury backup run --db erebus_threat_intel_prod --kind full   # dry-run plan
+python -m pytest
+```
+
+## CLI commands
+
+### Environment and config
+
+```bash
+mercury env probe [--check-db]
+mercury config init
+mercury config validate [--demo]
+mercury status [--live] [--save]
 mercury menu
 ```
 
-Also: `python -m mercury.cli …` (same commands).
+### Database (read-only live access)
 
-Without `--demo`, `db discover` uses **`config/local.toml`** and `MERCURY_MARIADB_PASSWORD` for live read-only discovery. `backup plan` still requires `--demo` in seed mode.
+```bash
+mercury db ping
+mercury db discover [--demo]
+mercury db inspect --name erebus_threat_intel_prod
+mercury db access                    # catalog vs server presence
+mercury db pairs
+mercury db classify --name <db>
+mercury db validate [--demo]
+mercury database summary [--demo]
+```
+
+### Backup
+
+```bash
+mercury backup plan --demo
+mercury backup schema-plan --demo
+mercury backup run --db <prod> --kind full|schema_only [--execute]
+mercury backup verify --db <prod> [--path DIR] [--update-manifest]
+mercury backup verify-plan --demo
+mercury backup manifest-preview --db <prod> --kind full|schema_only
+mercury backup list --demo
+mercury report preview --db <prod> --kind full|schema_only
+```
+
+`backup run --execute` requires `[mercury] dry_run = false` and `live_actions_enabled = true` in `config/local.toml`.
+
+### Sync (planning only)
+
+```bash
+mercury sync plan --demo
+```
 
 ## Setup
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate   # Fedora
+### Local Fedora (unix socket — no password)
 
-pip install -e ".[mariadb,dev]"
-copy config\databases.example.toml config\databases.toml   # optional
-copy config\local.example.toml config\local.toml         # for live discover
-set MERCURY_MARIADB_PASSWORD=your_password             # Windows; use export on Linux
+```toml
+# config/local.toml
+[mariadb]
+user = "root"
+use_client = true
+unix_socket = "/var/lib/mysql/mysql.sock"
+
+[mercury]
+dry_run = true
+live_actions_enabled = false
 ```
 
-## Tests
+### Remote / password auth
+
+```toml
+[mariadb]
+host = "127.0.0.1"
+port = 3306
+user = "mercury_readonly"
+password_env = "MERCURY_MARIADB_PASSWORD"
+```
 
 ```bash
-python -m pytest
+export MERCURY_MARIADB_PASSWORD='your-password'
 ```
+
+## Project layout
+
+```
+src/mercury/
+  cli.py, menu.py
+  core/          paths, safety, runtime, execution policy
+  backup/        plan, execute, verify, manifests
+  config/        settings, init
+  database/      discovery, MariaDB, classification
+  env/           environment probe
+  reporting/     protection status, previews
+  sync/          prod→dev planning
+```
+
+See [AGENTS.md](AGENTS.md) for contributor/agent guidance. See [CONTRIBUTING.md](CONTRIBUTING.md) for pull request expectations.
+
+## For AI coding agents
+
+| Resource | Purpose |
+|----------|---------|
+| [AGENTS.md](AGENTS.md) | Safety policy, layout, workflow |
+| [docs/ai_extension_points.md](docs/ai_extension_points.md) | Recipes: add CLI, backup, DB features, tests |
+| [.cursor/rules/](.cursor/rules/) | Cursor rules (safety always on) |
+| [CLAUDE.md](CLAUDE.md) / [.github/copilot-instructions.md](.github/copilot-instructions.md) | Pointers for other agent tools |
 
 ## Python API
 

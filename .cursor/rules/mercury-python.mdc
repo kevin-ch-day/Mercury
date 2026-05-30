@@ -1,0 +1,32 @@
+---
+description: Mercury Python conventions and import paths
+globs: src/**/*.py
+alwaysApply: false
+---
+
+# Mercury Python
+
+- Python 3.12+, type hints, Pydantic for structured data.
+- **New code**: import subpackages (`mercury.backup.execute`, `mercury.core.safety`).
+- **Shims** at `src/mercury/*.py` are backward-compat only — do not add new shims.
+- CLI: Typer in `cli.py`; DB subcommands in `database/cli.py`. Lazy-import heavy deps inside command handlers.
+- Output: use `mercury.output` (Rich-backed), not raw `print` in library code.
+- Match surrounding style; small diffs; no drive-by refactors.
+
+## Where new code goes
+
+| Feature | Module |
+|---------|--------|
+| CLI command | `cli.py` or `database/cli.py` |
+| Backup logic | `backup/` |
+| Policy/paths | `core/` |
+| MariaDB access | `database/mariadb/` |
+| Classification | `database/core/classifier.py` |
+| Reports | `reporting/` |
+| Sync planning | `sync/` |
+
+## MariaDB pitfalls
+
+- Shared exceptions: `database/mariadb/errors.py` (avoid import cycles).
+- SQL alias for `CURRENT_USER()`: use `mercury_current_user`, not `current_user`.
+- Fedora local dev: prefer `use_client=true` + unix socket over pymysql root.

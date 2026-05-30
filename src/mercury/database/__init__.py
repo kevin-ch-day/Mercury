@@ -75,12 +75,18 @@ from mercury.database.mariadb import (
     MariaDbConnectionConfig,
     MariaDbDriverMissingError,
     MariaDbLiveError,
+    MariaDbServerProbe,
     discover_databases_live,
     fetch_database_names,
     load_mariadb_config,
     probe_client_tooling,
+    probe_mariadb_server,
+    resolve_mariadb_target,
+    try_load_mariadb_config,
     build_readonly_discovery_plan,
 )
+from mercury.database.mariadb.access import PlatformAccessReport, build_platform_access_report
+from mercury.database.mariadb.inspect import DatabaseInspectResult, inspect_database_on_server
 
 __all__ = [
     "DatabaseService",
@@ -113,6 +119,14 @@ __all__ = [
     "fetch_database_names",
     "MariaDbLiveError",
     "MariaDbDriverMissingError",
+    "MariaDbServerProbe",
+    "probe_mariadb_server",
+    "resolve_mariadb_target",
+    "try_load_mariadb_config",
+    "inspect_database_on_server",
+    "DatabaseInspectResult",
+    "build_platform_access_report",
+    "PlatformAccessReport",
     "probe_client_tooling",
     "build_readonly_discovery_plan",
     "print_inventory",

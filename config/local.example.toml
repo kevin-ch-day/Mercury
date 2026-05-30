@@ -2,16 +2,28 @@
 
 [mercury]
 mode = "seed"
-# Fedora example: /var/backups/mercury
-backup_root = ""
+# Fedora example: /var/backups/mercury (or repo-local "backups" for dev)
+backup_root = "backups"
 dry_run = true
+# Explicit gate for mariadb-dump execution and backup file writes
+live_actions_enabled = false
 
-# Live read-only discovery (M5): mercury db discover
+# --- Option A: TCP + password (production / remote server) ---
+# [mariadb]
+# host = "127.0.0.1"
+# port = 3306
+# user = "mercury_readonly"
+# password_env = "MERCURY_MARIADB_PASSWORD"
+# connect_timeout = 10
+# ssl_disabled = true
+
+# --- Option B: Local Fedora socket via mariadb CLI (no password) ---
+# Uses mariadb/mysql on PATH with unix_socket auth (e.g. root@localhost).
 [mariadb]
 host = "127.0.0.1"
 port = 3306
-user = "mercury_readonly"
-# Recommended: password via environment (never commit passwords)
-password_env = "MERCURY_MARIADB_PASSWORD"
+user = "root"
+use_client = true
+unix_socket = "/var/lib/mysql/mysql.sock"
 connect_timeout = 10
 ssl_disabled = true

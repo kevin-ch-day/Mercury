@@ -12,13 +12,15 @@ build/
 htmlcov/
 .venv/
 venv/
-env/
+/env/
 
 config/local.toml
 config/databases.toml
 output/*
 !output/.gitkeep
 !output/samples/
+
+backups/
 
 *.log
 .DS_Store

@@ -1,0 +1,30 @@
+---
+description: Mercury safety policy — never weaken production protection
+alwaysApply: true
+---
+
+# Mercury safety (non-negotiable)
+
+Before any DB or backup change, read `src/mercury/core/safety.py` and `execution_policy.py`.
+
+- Backup sources: `*_prod` and `android_permission_intel` only. Never `*_dev`.
+- Never drop, overwrite, or restore into `*_prod`.
+- `_restorecheck_*` and unknown-role DBs are not backup sources.
+- Dry-run is default. Live writes need `dry_run=false` AND `live_actions_enabled=true`.
+- Prod→dev sync (future) requires typing `SYNC DEV` after verified prod backup.
+- Live SQL must stay read-only (`SELECT`, `SHOW`, `information_schema`). No DDL/DML.
+- Never commit `config/local.toml` or passwords.
+
+When adding features: gate writes through `load_execution_policy()` / `ExecutionPolicy.live_execution_allowed()`.
+
+```python
+# ✅ Check before mariadb-dump or file writes
+policy = load_execution_policy()
+if not policy.live_execution_allowed():
+    return dry_run_result
+```
+
+```python
+# ✅ Validate backup source before planning
+assert_safe_backup_source(database_name)
+```
