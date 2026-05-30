@@ -35,6 +35,11 @@ class SyncPlanDryRun(BaseModel):
 def build_sync_plan_demo() -> SyncPlanDryRun:
     """Build prod→dev sync plan from demo inventory."""
     inventory = discover_demo()
+    return build_sync_plan_from_inventory(inventory)
+
+
+def build_sync_plan_from_inventory(inventory) -> SyncPlanDryRun:
+    """Build prod→dev sync plan from a discovered inventory."""
     names = [e.name for e in inventory.entries]
     projects = {e.name: e.project for e in inventory.entries if e.project}
     pairs = build_prod_dev_pairs(names, projects=projects)
@@ -45,6 +50,7 @@ def build_sync_plan_demo() -> SyncPlanDryRun:
         prereq = [
             f"Full backup of {pair.prod}",
             f"Verify backup manifest/checksum for {pair.prod}",
+            "Run: mercury sync readiness --live",
         ]
         blocked = None
         if not pair.dev_listed:
@@ -61,3 +67,10 @@ def build_sync_plan_demo() -> SyncPlanDryRun:
         plan.entries.append(entry)
 
     return plan
+
+
+def build_sync_plan_live() -> SyncPlanDryRun:
+    """Build prod→dev sync plan from live server inventory."""
+    from mercury.database.discovery import discover
+
+    return build_sync_plan_from_inventory(discover("live"))

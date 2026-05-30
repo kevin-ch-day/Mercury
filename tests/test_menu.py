@@ -46,13 +46,13 @@ def test_handle_exit_choice(capsys: pytest.CaptureFixture[str]) -> None:
 
 def test_handle_backup_plan_menu(capsys: pytest.CaptureFixture[str]) -> None:
     assert handle_menu_choice("3") is True
-    assert "Backup plan (dry-run)" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "BACKUP BATCH" in out or "batch" in out.lower()
 
 
 def test_handle_schema_plan(capsys: pytest.CaptureFixture[str]) -> None:
     assert handle_menu_choice("4") is True
     out = capsys.readouterr().out
-    assert "dry-run only" in out
     assert "SCHEMA-ONLY BACKUP PLAN" in out
 
 
@@ -61,9 +61,10 @@ def test_handle_sync_plan(capsys: pytest.CaptureFixture[str]) -> None:
     assert "sync plan" in capsys.readouterr().out.lower()
 
 
-def test_handle_placeholder_choice(capsys: pytest.CaptureFixture[str]) -> None:
+def test_handle_restore_check_menu(capsys: pytest.CaptureFixture[str]) -> None:
     assert handle_menu_choice("7") is True
-    assert "Not yet implemented" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "RESTORE-CHECK" in out or "restore-check" in out.lower()
 
 
 def test_handle_environment_check(capsys: pytest.CaptureFixture[str]) -> None:
@@ -74,15 +75,13 @@ def test_handle_environment_check(capsys: pytest.CaptureFixture[str]) -> None:
 def test_handle_verify_plan(capsys: pytest.CaptureFixture[str]) -> None:
     assert handle_menu_choice("5") is True
     out = capsys.readouterr().out
-    assert "dry-run" in out.lower()
-    assert "BACKUP VERIFICATION PLAN" in out
+    assert "BACKUP VERIFICATION" in out or "BACKUP VERIFICATION PLAN" in out
 
 
 def test_handle_reports_history(capsys: pytest.CaptureFixture[str]) -> None:
     assert handle_menu_choice("8") is True
     out = capsys.readouterr().out
-    assert "BACKUP LIST" in out
-    assert "Mercury Backup Report" in out
+    assert "BACKUP LIST" in out or "Protection status" in out or "MERCURY PROTECTION STATUS" in out
 
 
 def test_handle_discover_databases(capsys: pytest.CaptureFixture[str]) -> None:

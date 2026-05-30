@@ -56,22 +56,31 @@ mercury database summary [--demo]
 ### Backup
 
 ```bash
-mercury backup plan --demo
-mercury backup schema-plan --demo
+mercury backup plan [--demo]             # live inventory when configured
+mercury backup schema-plan [--demo]
 mercury backup run --db <prod> --kind full|schema_only [--execute]
+mercury backup batch [--kind full|schema_only] [--execute] [--demo]
 mercury backup verify --db <prod> [--path DIR] [--update-manifest]
+mercury backup verify-all [--update-manifest] [--demo]
 mercury backup verify-plan --demo
 mercury backup manifest-preview --db <prod> --kind full|schema_only
-mercury backup list --demo
+mercury backup list [--demo]
 mercury report preview --db <prod> --kind full|schema_only
 ```
 
-`backup run --execute` requires `[mercury] dry_run = false` and `live_actions_enabled = true` in `config/local.toml`.
+`backup run --execute` and `backup batch --execute` require `[mercury] dry_run = false` and `live_actions_enabled = true` in `config/local.toml`.
 
 ### Sync (planning only)
 
 ```bash
-mercury sync plan --demo
+mercury sync plan [--demo]
+mercury sync readiness [--live]
+```
+
+### Restore-check (planning only)
+
+```bash
+mercury restore-check plan --db <prod>
 ```
 
 ## Setup
@@ -115,7 +124,8 @@ src/mercury/
   database/      discovery, MariaDB, classification
   env/           environment probe
   reporting/     protection status, previews
-  sync/          prod→dev planning
+  sync/          prod→dev planning, readiness
+  restore/       restore-check planning
 ```
 
 See [AGENTS.md](AGENTS.md) for contributor/agent guidance. See [CONTRIBUTING.md](CONTRIBUTING.md) for pull request expectations.

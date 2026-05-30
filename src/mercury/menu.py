@@ -1,4 +1,4 @@
-"""Interactive menu shell (seed: placeholders or dry-run only)."""
+"""Interactive menu shell."""
 
 from mercury.env_probe import probe_environment
 from mercury import output
@@ -20,10 +20,6 @@ MENU_ITEMS: list[tuple[str, str]] = [
     ("8", "Reports / Backup History"),
     ("0", "Exit"),
 ]
-
-PLACEHOLDERS: dict[str, str] = {
-    "7": "Restore test / DR check not implemented. Future: restore to _restorecheck_* only.",
-}
 
 
 def render_status_block(*, probe_database: bool = False) -> str:
@@ -79,9 +75,9 @@ def run_discover_databases() -> None:
 
 
 def run_verify_plan() -> None:
+    from mercury.backup.batch import resolve_batch_sources
     from mercury.backup.locate import find_latest_backup_directory
     from mercury.core.execution_policy import load_execution_policy
-    from mercury.database.planning import build_demo_backup_plan
     from mercury.verification import (
         build_verification_plan_demo,
         verify_backup_directory,
@@ -89,7 +85,7 @@ def run_verify_plan() -> None:
     from mercury.verify_display import print_verification_plan, print_verification_result
 
     policy = load_execution_policy()
-    sources = build_demo_backup_plan().backup_sources
+    sources = resolve_batch_sources(live=should_probe_database_status())
     verified_any = False
 
     for db in sources:
@@ -105,13 +101,14 @@ def run_verify_plan() -> None:
         verified_any = True
 
     if verified_any:
+        output.write("Tip: mercury backup verify-all --update-manifest")
         return
 
     output.write("Verify Backups — no on-disk backups found under backup_root.")
     output.write(f"  backup_root: {policy.backup_root}")
     output.write("")
-    output.write("Run: mercury backup run --db <prod> --kind full [--execute]")
-    output.write("Then: mercury backup verify --db <prod> --update-manifest")
+    output.write("Run: mercury backup batch --kind full [--execute]")
+    output.write("Then: mercury backup verify-all --update-manifest")
     output.write("")
     output.write("Preview / dry-run verification plan:")
     output.write("")
@@ -119,50 +116,104 @@ def run_verify_plan() -> None:
 
 
 def run_reports_and_history() -> None:
-    from mercury.backup_list import build_demo_backup_list
-    from mercury.report_preview import build_report_preview
-    from mercury.safety import BACKUP_KIND_FULL
-    from mercury.verify_display import print_demo_backup_list, print_report_preview
-
-    output.write("Reports / Backup History — preview/dry-run only")
-    output.write("")
-    print_demo_backup_list(build_demo_backup_list())
-    output.write("")
-    output.write("Sample report (erebus_threat_intel_prod full):")
-    output.write("")
-    print_report_preview(
-        build_report_preview("erebus_threat_intel_prod", BACKUP_KIND_FULL)
-    )
-
-
-def run_protection_report() -> None:
+    from mercury.core.execution_policy import load_execution_policy
     from mercury.protection_report import build_protection_report, format_protection_report
 
-    output.write(format_protection_report(build_protection_report()))
+    from mercury.backup.list import build_on_disk_backup_list
+    from mercury.verify_display import print_on_disk_backup_list
+
+    policy = load_execution_policy()
+    backup_list = build_on_disk_backup_list(policy.backup_root)
+    if backup_list.records:
+        print_on_disk_backup_list(backup_list)
+    else:
+        output.write("No on-disk backups yet.")
+        output.write(f"  backup_root: {policy.backup_root}")
+        output.write("")
+
+    output.write("Protection status:")
+    output.write("")
+    live = should_probe_database_status()
+    try:
+        output.write(format_protection_report(build_protection_report(live=live, probe_database=live)))
+    except Exception as exc:
+        output.write(format_protection_report(build_protection_report()))
 
 
 def run_schema_backup_plan() -> None:
-    from mercury.schema_backup_plan import build_schema_backup_plan_demo
+    from mercury.database import MariaDbConfigError, MariaDbLiveError, try_load_mariadb_config
     from mercury.plan_display import print_schema_backup_plan
+    from mercury.schema_backup_plan import (
+        build_schema_backup_plan_demo,
+        build_schema_backup_plan_live,
+    )
 
-    output.write("Export Schema-Only Copies — dry-run only")
-    output.write("(no mariadb-dump, no live DB, no files written)")
+    output.write("Export Schema-Only Copies — planning")
     output.write("")
+    if try_load_mariadb_config() is not None:
+        try:
+            print_schema_backup_plan(build_schema_backup_plan_live())
+            output.write("")
+            output.write("Run one DB: mercury backup run --db <prod> --kind schema_only [--execute]")
+            return
+        except (MariaDbConfigError, MariaDbLiveError) as exc:
+            output.write(f"Live schema plan failed: {exc}")
+            output.write("")
     print_schema_backup_plan(build_schema_backup_plan_demo())
 
 
 def run_sync_plan() -> None:
-    from mercury.sync_plan import build_sync_plan_demo
+    from mercury.database import MariaDbConfigError, MariaDbLiveError, try_load_mariadb_config
     from mercury.plan_display import print_sync_plan
+    from mercury.sync.readiness import build_sync_readiness_report
+    from mercury.sync.readiness_display import print_sync_readiness_report
+    from mercury.sync_plan import build_sync_plan_demo, build_sync_plan_live
 
+    if try_load_mariadb_config() is not None:
+        try:
+            print_sync_plan(build_sync_plan_live())
+            output.write("")
+            print_sync_readiness_report(build_sync_readiness_report(live=True))
+            return
+        except (MariaDbConfigError, MariaDbLiveError) as exc:
+            output.write(f"Live sync plan failed: {exc}")
+            output.write("")
     print_sync_plan(build_sync_plan_demo())
 
 
-def run_backup_plan_dry_run() -> None:
-    from mercury.database.planning import build_demo_backup_plan
-    from mercury.backup_display import print_backup_plan
+def run_backup_batch_menu() -> None:
+    from mercury.backup.batch import run_backup_batch
+    from mercury.backup.batch_display import print_backup_batch_result
+    from mercury.core.safety import BACKUP_KIND_FULL
 
-    print_backup_plan(build_demo_backup_plan())
+    output.write("Backup Production Databases — batch dry-run plan")
+    output.write("(use CLI for live execution: mercury backup batch --execute)")
+    output.write("")
+    batch = run_backup_batch(
+        BACKUP_KIND_FULL,
+        execute=False,
+        live=should_probe_database_status(),
+    )
+    print_backup_batch_result(batch)
+
+
+def run_restore_check_menu() -> None:
+    from mercury.backup.batch import resolve_batch_sources
+    from mercury.restore.check import build_restore_check_plan
+    from mercury.restore.display import print_restore_check_plan
+
+    sources = resolve_batch_sources(live=should_probe_database_status())
+    if not sources:
+        output.write("No backup sources found.")
+        return
+
+    output.write("Restore Test / DR Check — dry-run plans")
+    output.write("")
+    for prod in sources[:3]:
+        print_restore_check_plan(build_restore_check_plan(prod))
+        output.write("")
+    if len(sources) > 3:
+        output.write(f"... and {len(sources) - 3} more. Use: mercury restore-check plan --db <prod>")
 
 
 def run_environment_check() -> None:
@@ -214,7 +265,7 @@ def handle_menu_choice(choice: str) -> bool:
         run_discover_databases()
         return True
     if choice == "3":
-        run_backup_plan_dry_run()
+        run_backup_batch_menu()
         return True
     if choice == "4":
         run_schema_backup_plan()
@@ -225,13 +276,11 @@ def handle_menu_choice(choice: str) -> bool:
     if choice == "6":
         run_sync_plan()
         return True
+    if choice == "7":
+        run_restore_check_menu()
+        return True
     if choice == "8":
         run_reports_and_history()
-        return True
-    placeholder = PLACEHOLDERS.get(choice)
-    if placeholder:
-        output.write()
-        output.write(f"Not yet implemented: {placeholder}")
         return True
     output.write("Invalid choice. Enter 0-8.")
     return True

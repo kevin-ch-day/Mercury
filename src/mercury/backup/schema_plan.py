@@ -24,10 +24,21 @@ class SchemaBackupPlanDryRun(BaseModel):
 def build_schema_backup_plan_demo() -> SchemaBackupPlanDryRun:
     """
     Schema-only plan from demo/catalog: *_prod + shared authority only.
-
-    Excludes *_dev, _restorecheck_*, and unknown/manual-review databases.
     """
     full_plan = build_demo_backup_plan()
+    return _schema_plan_from_backup_plan(full_plan)
+
+
+def build_schema_backup_plan_live() -> SchemaBackupPlanDryRun:
+    """Schema-only plan from live server inventory."""
+    from mercury.database.discovery import discover
+    from mercury.database.planning import build_backup_plan_from_inventory
+
+    full_plan = build_backup_plan_from_inventory(discover("live"))
+    return _schema_plan_from_backup_plan(full_plan)
+
+
+def _schema_plan_from_backup_plan(full_plan) -> SchemaBackupPlanDryRun:
     return SchemaBackupPlanDryRun(
         sources=list(full_plan.backup_sources),
         excluded=list(full_plan.excluded),

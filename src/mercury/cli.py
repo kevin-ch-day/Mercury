@@ -22,6 +22,7 @@ database_app = typer.Typer(help="Database module (same commands as db).")
 backup_app = typer.Typer(help="Backup commands.")
 config_app = typer.Typer(help="Configuration commands.")
 sync_app = typer.Typer(help="Prod to dev sync (dry-run in seed).")
+restore_app = typer.Typer(help="Restore-check and DR planning.")
 report_app = typer.Typer(help="Backup report previews (dry-run).")
 
 app.add_typer(env_app, name="env")
@@ -32,6 +33,7 @@ register_commands(database_app)
 app.add_typer(backup_app, name="backup")
 app.add_typer(config_app, name="config")
 app.add_typer(sync_app, name="sync")
+app.add_typer(restore_app, name="restore-check")
 app.add_typer(report_app, name="report")
 
 
@@ -174,13 +176,24 @@ def backup_schema_plan(
     ),
 ) -> None:
     """Dry-run schema-only export plan (mariadb-dump --no-data, not executed)."""
-    if not demo:
-        typer.echo("Seed mode: use --demo for schema-only planning.")
-        raise typer.Exit(1)
-    from mercury.schema_backup_plan import build_schema_backup_plan_demo
+    from mercury.database import MariaDbConfigError, MariaDbLiveError, try_load_mariadb_config
     from mercury.plan_display import print_schema_backup_plan
+    from mercury.schema_backup_plan import (
+        build_schema_backup_plan_demo,
+        build_schema_backup_plan_live,
+    )
 
-    print_schema_backup_plan(build_schema_backup_plan_demo())
+    if demo:
+        print_schema_backup_plan(build_schema_backup_plan_demo())
+        return
+    if try_load_mariadb_config() is None:
+        typer.echo("No MariaDB config — use --demo or run: mercury config init")
+        raise typer.Exit(1)
+    try:
+        print_schema_backup_plan(build_schema_backup_plan_live())
+    except (MariaDbConfigError, MariaDbLiveError) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
 
 
 @backup_app.command("manifest-preview")
@@ -319,6 +332,81 @@ def backup_run_cmd(
         raise typer.Exit(1)
 
 
+@backup_app.command("batch")
+def backup_batch_cmd(
+    kind: str = typer.Option("full", "--kind", help="Backup kind: full or schema_only."),
+    execute: bool = typer.Option(False, "--execute", help="Execute all backup sources."),
+    demo: bool = typer.Option(
+        False,
+        "--demo",
+        help="Use demo/catalog inventory instead of live server.",
+    ),
+) -> None:
+    """Plan or execute backups for all approved backup sources."""
+    from mercury.backup.batch import run_backup_batch
+    from mercury.backup.batch_display import print_backup_batch_result
+    from mercury.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
+
+    normalized = kind.strip().lower().replace("-", "_")
+    if normalized not in (BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY):
+        typer.echo("Invalid --kind. Use: full or schema_only")
+        raise typer.Exit(1)
+
+    batch = run_backup_batch(
+        normalized,  # type: ignore[arg-type]
+        execute=execute,
+        live=not demo,
+    )
+    print_backup_batch_result(batch)
+    if batch.errors or (execute and batch.refused_count and not batch.executed_count):
+        raise typer.Exit(1)
+
+
+@backup_app.command("verify-all")
+def backup_verify_all_cmd(
+    demo: bool = typer.Option(
+        False,
+        "--demo",
+        help="Use demo/catalog backup sources instead of live inventory.",
+    ),
+    update_manifest: bool = typer.Option(
+        False,
+        "--update-manifest",
+        help="Set manifest verified=true when verification passes.",
+    ),
+) -> None:
+    """Verify latest on-disk backup for each backup source."""
+    from mercury.backup.batch import resolve_batch_sources
+    from mercury.backup.locate import find_latest_backup_directory
+    from mercury.core.execution_policy import load_execution_policy
+    from mercury.verification import verify_backup_directory
+    from mercury.verify_display import print_verification_result
+
+    policy = load_execution_policy()
+    sources = resolve_batch_sources(live=not demo)
+    any_failed = False
+    any_found = False
+
+    for db in sources:
+        backup_dir = find_latest_backup_directory(policy.backup_root, db)
+        if backup_dir is None:
+            output.write(f"SKIP {db}: no backup directory under {policy.backup_root}")
+            any_failed = True
+            continue
+        any_found = True
+        result = verify_backup_directory(backup_dir, update_manifest=update_manifest)
+        print_verification_result(result)
+        output.write("")
+        if not result.verified:
+            any_failed = True
+
+    if not any_found:
+        typer.echo("No on-disk backups found for any backup source.")
+        raise typer.Exit(1)
+    if any_failed:
+        raise typer.Exit(1)
+
+
 @backup_app.command("list")
 def backup_list_cmd(
     demo: bool = typer.Option(
@@ -382,13 +470,55 @@ def sync_plan_cmd(
     ),
 ) -> None:
     """Dry-run prod→dev sync plan with prerequisites (not executed)."""
-    if not demo:
-        typer.echo("Seed mode: use --demo for sync planning.")
-        raise typer.Exit(1)
-    from mercury.sync_plan import build_sync_plan_demo
+    from mercury.database import MariaDbConfigError, MariaDbLiveError, try_load_mariadb_config
     from mercury.plan_display import print_sync_plan
+    from mercury.sync_plan import build_sync_plan_demo, build_sync_plan_live
 
-    print_sync_plan(build_sync_plan_demo())
+    if demo:
+        print_sync_plan(build_sync_plan_demo())
+        return
+    if try_load_mariadb_config() is None:
+        typer.echo("No MariaDB config — use --demo or run: mercury config init")
+        raise typer.Exit(1)
+    try:
+        print_sync_plan(build_sync_plan_live())
+    except (MariaDbConfigError, MariaDbLiveError) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+
+
+@sync_app.command("readiness")
+def sync_readiness_cmd(
+    live: bool = typer.Option(
+        False,
+        "--live",
+        help="Use live server inventory for prod→dev pairs.",
+    ),
+) -> None:
+    """Report which prod→dev pairs have verified full backups (sync planning only)."""
+    from mercury.database import MariaDbConfigError, MariaDbLiveError
+    from mercury.sync.readiness import build_sync_readiness_report
+    from mercury.sync.readiness_display import print_sync_readiness_report
+
+    try:
+        print_sync_readiness_report(build_sync_readiness_report(live=live))
+    except (MariaDbConfigError, MariaDbLiveError) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+
+
+@restore_app.command("plan")
+def restore_check_plan_cmd(
+    db: str = typer.Option(..., "--db", help="Production database to restore-check."),
+) -> None:
+    """Dry-run plan to restore latest verified backup into _restorecheck_* (not executed)."""
+    from mercury.restore.check import build_restore_check_plan
+    from mercury.restore.display import print_restore_check_plan
+
+    plan = build_restore_check_plan(db)
+    print_restore_check_plan(plan)
+    if not plan.allowed:
+        raise typer.Exit(1)
 
 
 @config_app.command("validate")
