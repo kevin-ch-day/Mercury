@@ -1,0 +1,17 @@
+# Copy to config/local.toml for local overrides (gitignored).
+
+[mercury]
+mode = "seed"
+# Fedora example: /var/backups/mercury
+backup_root = ""
+dry_run = true
+
+# Live read-only discovery (M5): mercury db discover
+[mariadb]
+host = "127.0.0.1"
+port = 3306
+user = "mercury_readonly"
+# Recommended: password via environment (never commit passwords)
+password_env = "MERCURY_MARIADB_PASSWORD"
+connect_timeout = 10
+ssl_disabled = true
