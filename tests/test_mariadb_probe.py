@@ -1,7 +1,7 @@
 """Tests for MariaDB tooling probe and read-only discovery plan."""
 
 from mercury.database import build_readonly_discovery_plan, probe_client_tooling
-from mercury.safety import LIVE_ACTIONS_ENABLED, MODE_SEED
+from mercury.core.safety import LIVE_ACTIONS_ENABLED, MODE_SEED
 
 
 def test_probe_client_tooling_returns_all_tools() -> None:

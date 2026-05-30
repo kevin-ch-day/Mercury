@@ -1,3 +1,3 @@
-"""Backward compatibility — use mercury.backup.list."""
+"""Backward compatibility — use mercury.backup.on_disk_index."""
 
-from mercury.backup.list import *  # noqa: F403
+from mercury.backup.on_disk_index import *  # noqa: F403

@@ -7,9 +7,10 @@ alwaysApply: false
 # Mercury Python
 
 - Python 3.12+, type hints, Pydantic for structured data.
-- **New code**: import subpackages (`mercury.backup.execute`, `mercury.core.safety`).
+- **New code**: import subpackages (`mercury.backup.backup_runner`, `mercury.core.safety`, `mercury.terminal.screen`, `mercury.menu.runners`).
 - **Shims** at `src/mercury/*.py` are backward-compat only — do not add new shims.
-- CLI: Typer in `cli.py`; DB subcommands in `database/cli.py`. Lazy-import heavy deps inside command handlers.
+- **File names**: `mercury.terminal` / `mercury.menu` packages for shared UI; domain CLI output in `<package>/terminal/`; execution uses `*_runner.py`; feature menus use `interactive_menu.py`.
+- CLI: Typer in `cli.py`; DB subcommands in `database/commands.py`. Lazy-import heavy deps inside command handlers.
 - Output: use `mercury.output` (Rich-backed), not raw `print` in library code.
 - Match surrounding style; small diffs; no drive-by refactors.
 
@@ -17,7 +18,7 @@ alwaysApply: false
 
 | Feature | Module |
 |---------|--------|
-| CLI command | `cli.py` or `database/cli.py` |
+| CLI command | `cli.py` or `database/commands.py` |
 | Backup logic | `backup/` |
 | Policy/paths | `core/` |
 | MariaDB access | `database/mariadb/` |

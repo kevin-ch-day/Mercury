@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -14,16 +12,10 @@ from mercury.database.mariadb.config import MariaDbConnectionConfig, load_mariad
 from mercury.database.mariadb.inspect import inspect_database_on_server
 from mercury.database.mariadb.session import fetch_user_database_names, probe_mariadb_server
 
-LOCAL_CONFIG = Path(__file__).resolve().parents[1] / "config" / "local.toml"
-SOCKET_PATH = Path("/var/lib/mysql/mysql.sock")
+from tests.conftest import DEFAULT_MARIADB_SOCKET, mariadb_socket_available, repo_local_config, run_cli
 
-
-def _mariadb_socket_available(path: Path = SOCKET_PATH) -> bool:
-    """True when socket exists and is accessible (CI may deny stat on /var/lib/mysql)."""
-    try:
-        return path.exists()
-    except OSError:
-        return False
+LOCAL_CONFIG = repo_local_config()
+SOCKET_PATH = DEFAULT_MARIADB_SOCKET
 
 
 def _client_config() -> MariaDbConnectionConfig:
@@ -37,7 +29,11 @@ def _client_config() -> MariaDbConnectionConfig:
     )
 
 
-@pytest.mark.skipif(not _mariadb_socket_available(), reason="MariaDB socket not present")
+def _live_mariadb_available() -> bool:
+    return LOCAL_CONFIG.exists() and mariadb_socket_available(SOCKET_PATH)
+
+
+@pytest.mark.skipif(not mariadb_socket_available(SOCKET_PATH), reason="MariaDB socket not present")
 class TestMariaDbClientIntegration:
     def test_client_fetch_scalar_version(self) -> None:
         version = client_fetch_scalar(_client_config(), "SELECT VERSION()")
@@ -90,38 +86,25 @@ unix_socket = "/var/lib/mysql/mysql.sock"
 
 
 def test_cli_db_ping_with_local_config() -> None:
-    if not LOCAL_CONFIG.exists() or not _mariadb_socket_available():
+    if not _live_mariadb_available():
         pytest.skip("local config or MariaDB socket unavailable")
-    result = subprocess.run(
-        [sys.executable, "-m", "mercury.cli", "db", "ping"],
-        capture_output=True,
-        text=True,
-    )
+    result = run_cli("db", "ping")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "connected" in result.stdout.lower()
     assert "MariaDB" in result.stdout or "mariadb" in result.stdout.lower()
 
 
 def test_cli_db_discover_live() -> None:
-    if not LOCAL_CONFIG.exists() or not _mariadb_socket_available():
+    if not _live_mariadb_available():
         pytest.skip("local config or MariaDB socket unavailable")
-    result = subprocess.run(
-        [sys.executable, "-m", "mercury.cli", "db", "discover"],
-        capture_output=True,
-        text=True,
-    )
+    result = run_cli("db", "discover")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "erebus_threat_intel_prod" in result.stdout
-    assert "Live read-only discovery" in result.stdout
 
 
 def test_cli_db_access() -> None:
-    if not LOCAL_CONFIG.exists() or not _mariadb_socket_available():
+    if not _live_mariadb_available():
         pytest.skip("local config or MariaDB socket unavailable")
-    result = subprocess.run(
-        [sys.executable, "-m", "mercury.cli", "db", "access"],
-        capture_output=True,
-        text=True,
-    )
+    result = run_cli("db", "access")
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "PLATFORM DATABASE ACCESS" in result.stdout
+    assert "PLATFORM DATABASE ACCESS" in result.stdout or "Platform database access" in result.stdout

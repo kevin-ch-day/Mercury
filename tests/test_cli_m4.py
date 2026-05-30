@@ -1,25 +1,16 @@
 """CLI smoke tests for M4 commands."""
 
-import subprocess
-import sys
-
-
-def _run(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, "-m", "mercury.cli", *args],
-        capture_output=True,
-        text=True,
-    )
+from tests.conftest import run_cli
 
 
 def test_cli_schema_plan_demo() -> None:
-    result = _run("backup", "schema-plan", "--demo")
+    result = run_cli("backup", "schema-plan", "--demo")
     assert result.returncode == 0
     assert "SCHEMA-ONLY BACKUP PLAN" in result.stdout
 
 
 def test_cli_manifest_preview_schema_only() -> None:
-    result = _run(
+    result = run_cli(
         "backup",
         "manifest-preview",
         "--db",
@@ -33,7 +24,7 @@ def test_cli_manifest_preview_schema_only() -> None:
 
 
 def test_cli_manifest_preview_full() -> None:
-    result = _run(
+    result = run_cli(
         "backup",
         "manifest-preview",
         "--db",
@@ -46,7 +37,7 @@ def test_cli_manifest_preview_full() -> None:
 
 
 def test_cli_manifest_preview_rejects_dev() -> None:
-    result = _run(
+    result = run_cli(
         "backup",
         "manifest-preview",
         "--db",

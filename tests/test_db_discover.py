@@ -6,7 +6,7 @@ import pytest
 
 from mercury.database.core import PLATFORM_DATABASES, inventory_summary, load_databases_from_file
 from mercury.database.discovery import discover_demo, discover_from_config
-from mercury.paths import DATABASES_EXAMPLE
+from mercury.core.paths import DATABASES_EXAMPLE
 
 
 def test_load_databases_example_toml() -> None:

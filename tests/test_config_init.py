@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from mercury.config_init import init_local_config
+from mercury.config.init import init_local_config
 
 
 def test_init_creates_files(tmp_path: Path, monkeypatch) -> None:

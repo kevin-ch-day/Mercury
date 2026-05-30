@@ -13,8 +13,10 @@ Entry: `mercury.database.discover("live"|"demo")` → classified `DatabaseInvent
 - `core/` — catalog, classifier, models (`classify_database`, `PLATFORM_CATALOG`)
 - `discovery/` — demo/config/live inventory assembly
 - `mariadb/` — config, session (pymysql), client (CLI), inspect, access
-- `planning.py` — `build_backup_plan()` applies safety exclusions
-- `cli.py` — `register_commands()` for `mercury db *`
+- `backup_planning.py` — `build_backup_plan()` applies safety exclusions
+- `terminal/` — CLI output (inventory, inspect, ping, policy, …)
+- `facade.py` — `DatabaseService` facade
+- `commands.py` — `register_commands()` for `mercury db *`
 
 ## Access modes
 

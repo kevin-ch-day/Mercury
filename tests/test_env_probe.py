@@ -1,6 +1,6 @@
 """Tests for environment probe."""
 
-from mercury.env_probe import probe_environment
+from mercury.env.probe import probe_environment
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.safety import MODE_SEED
 

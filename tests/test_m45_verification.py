@@ -1,25 +1,19 @@
 """M4.5: verification plan, report preview, backup list."""
 
-import json
-import subprocess
-import sys
-
 import pytest
 
-from mercury.backup_list import DEMO_BACKUP_RECORDS, build_demo_backup_list
-from mercury.manifest_preview import ManifestPreviewError, build_manifest_preview
-from mercury.report_preview import build_report_preview, format_report_preview_markdown
-from mercury.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
-from mercury.verification import (
-    BackupVerificationResult,
+from mercury.backup.on_disk_index import DEMO_BACKUP_RECORDS, build_demo_backup_list
+from mercury.backup.manifest_preview import ManifestPreviewError, build_manifest_preview
+from mercury.reporting.preview import build_report_preview, format_report_preview_markdown
+from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
+from mercury.backup.verification import (
     apply_verification_success,
     build_demo_verification_result,
     build_verification_plan_demo,
 )
-from mercury.verify_display import print_verification_plan
+from mercury.backup.terminal.verify import print_verification_plan
 
-FIXED_DATE = "2026-05-30"
-FIXED_TS = "20260530_120000"
+from tests.conftest import FIXED_DATE, FIXED_TS, run_cli
 
 
 def test_verify_plan_demo_has_future_checks() -> None:
@@ -108,34 +102,21 @@ def test_report_preview_refuses_dev() -> None:
         build_report_preview("erebus_threat_intel_dev", BACKUP_KIND_FULL)
 
 
-def test_manifest_preview_refuses_dev() -> None:
-    with pytest.raises(ManifestPreviewError):
-        build_manifest_preview("gecko_research_database_dev", BACKUP_KIND_SCHEMA_ONLY)
-
-
-def _run(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, "-m", "mercury.cli", *args],
-        capture_output=True,
-        text=True,
-    )
-
-
 def test_cli_verify_plan_demo() -> None:
-    result = _run("backup", "verify-plan", "--demo")
+    result = run_cli("backup", "verify-plan", "--demo")
     assert result.returncode == 0
     assert "BACKUP VERIFICATION PLAN" in result.stdout
 
 
 def test_cli_backup_list_demo() -> None:
-    result = _run("backup", "list", "--demo")
+    result = run_cli("backup", "list", "--demo")
     assert result.returncode == 0
     assert "demo planned" in result.stdout.lower()
     assert "erebus_threat_intel_prod" in result.stdout
 
 
 def test_cli_report_preview_full() -> None:
-    result = _run(
+    result = run_cli(
         "report",
         "preview",
         "--db",

@@ -15,14 +15,12 @@ mercury/database/
     inventory.py       Build records + role summaries
     inventory_ops.py   Backup sources, grouping, entry formatting
     sources.py         Provenance labels (config, catalog, live)
-  service.py           DatabaseService facade
-  cli.py               Commands for `mercury db` and `mercury database`
-  display.py           print_inventory(), print_classification()
-  display_pairs.py     print_prod_dev_pairs()
-  display_policy.py    print_policy_report()
-  planning.py          Dry-run backup plans
+  facade.py            DatabaseService facade
+  commands.py          Commands for `mercury db` and `mercury database`
+  terminal/            CLI output helpers (inventory, inspect, ping, policy, …)
+  backup_planning.py   Dry-run backup plans
   policy.py            Config/catalog policy validation
-  pairs.py             Prod → dev pair inference
+  prod_dev_pairs.py    Prod → dev pair inference
   discovery/
     __init__.py        discover(mode="demo"|"config"|"live")
     config.py          Config + catalog (offline)
@@ -32,6 +30,8 @@ mercury/database/
     live.py            SHOW DATABASES (read-only)
     probe.py           Client tooling on PATH
 ```
+
+Legacy shims (`service.py`, `cli.py`, `*_terminal.py` at package root) re-export from the paths above.
 
 ## Core API
 
@@ -67,7 +67,7 @@ CLI:
 ## Planning and policy
 
 ```python
-from mercury.database.planning import build_demo_backup_plan
+from mercury.database.backup_planning import build_demo_backup_plan
 from mercury.database.policy import validate_config_policy
 from mercury.database import backup_source_names
 ```
@@ -89,9 +89,9 @@ default_service.print_pairs(inv)
 | Classify / catalog / inventory models | `mercury.database.core` |
 | Discovery | `mercury.database` or `mercury.database.discovery` |
 | MariaDB live | `mercury.database.mariadb` |
-| Backup dry-run plans | `mercury.database.planning` |
+| Backup dry-run plans | `mercury.database.backup_planning` |
 | Policy validation | `mercury.database.policy` |
-| Prod→dev pairs | `mercury.database.pairs` |
-| CLI output helpers | `mercury.database.display` |
+| Prod→dev pairs | `mercury.database.prod_dev_pairs` |
+| CLI output helpers | `mercury.database.terminal` |
 
 Prefer `mercury.database` for the stable operator-facing API; use submodules when you want a narrow dependency boundary.

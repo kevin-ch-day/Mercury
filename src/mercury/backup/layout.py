@@ -55,7 +55,8 @@ def default_date(now: datetime | None = None) -> str:
 
 def default_timestamp(now: datetime | None = None) -> str:
     instant = now or datetime.now(timezone.utc)
-    return instant.strftime("%Y%m%d_%H%M%S")
+    # Include milliseconds so rapid batch backups do not collide on filenames.
+    return instant.strftime("%Y%m%d_%H%M%S") + f"_{instant.microsecond // 1000:03d}"
 
 
 def planned_backup_directory(database: str, date: str | None = None) -> str:

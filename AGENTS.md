@@ -12,13 +12,13 @@ Guidance for AI coding agents (Cursor, ChatGPT, Codex) working in this repositor
 
 | Task | Start in |
 |------|----------|
-| New backup feature | `backup/execute.py`, `core/execution_policy.py`, `tests/test_backup_execute.py` |
-| New DB command | `database/cli.py`, `database/mariadb/`, matching `tests/test_m*.py` |
-| New CLI (non-db) | `cli.py`, `menu.py`, `tests/test_cli_*.py` |
+| New backup feature | `backup/backup_runner.py`, `core/execution_policy.py`, `tests/test_backup_execute.py` |
+| New DB command | `database/commands.py`, `database/mariadb/`, matching `tests/test_m*.py` |
+| New CLI (non-db) | `cli.py`, `menu/runners.py`, `tests/test_cli_*.py` |
 | Policy/report | `reporting/protection.py`, `core/safety.py` |
 | Classification | `database/core/catalog.py`, `database/core/classifier.py` |
 
-**Imports:** prefer subpackages (`mercury.backup.execute`, `mercury.core.safety`). Top-level shims (`mercury.safety`, `mercury.verification`) are legacy — see shim table in [ai_extension_points.md](docs/ai_extension_points.md).
+**Imports:** prefer subpackages (`mercury.backup.backup_runner`, `mercury.core.safety`, `mercury.logging`). Top-level shims (`mercury.safety`, `mercury.verification`) remain for external compatibility only — do not use them in new `src/` or test code.
 
 ## What Mercury is
 
@@ -51,61 +51,43 @@ Policy constants live in `src/mercury/core/safety.py`. Execution gates live in `
 - Planning, discovery, manifests, and reports are implemented.
 - Live **read-only** server access works (`db ping`, `db discover`, `db inspect`, `db access`).
 - Backup **execution** exists but is gated (`backup run --execute` requires `dry_run=false` and `live_actions_enabled=true`).
-- Prod→dev sync execution is not implemented yet.
-
-When adding features, default to dry-run and explicit opt-in for destructive or write operations.
+- Prod→dev **sync execution** and restore-check execution exist but are gated the same way (`sync run --execute`, `restore-check run --execute`).
+- Menu and CLI default to dry-run; live writes require explicit policy in `config/local.toml` or env vars.
 
 ## Repository layout
 
 ```
 src/mercury/
-  cli.py                 # Typer entrypoint (`mercury` command)
-  menu.py                # Interactive menu
-  output.py              # Shim → mercury.core.output
-  paths.py, safety.py, … # Thin shims for backward-compatible imports
+  cli.py                   # Typer entrypoint (`mercury` command)
 
-  core/                  # Paths, policy, runtime, output, execution gates
-    paths.py
-    safety.py
-    runtime.py
-    output.py
-    execution_policy.py
+  menu/                    # Interactive menu loop, prompts, dashboard, runners
+    loop.py, runners.py, main_display.py, prompts.py, …
+  terminal/                # Shared CLI formatting (format, screen, table)
+  menu.py, menu_*.py       # Thin shims → menu.* (backward compat)
+  display_*.py, terminal_*.py  # Thin shims → terminal.* (backward compat)
+  paths.py, safety.py, …   # Thin shims → core.* (backward compat)
 
-  backup/                # Backup plan, execute, verify, manifests, checksums
-    layout.py
-    manifest.py
-    execute.py
-    verification.py
-    manifest_preview.py
-    schema_plan.py
-    display.py
-    …
-
-  config/                # Operator config (settings + init)
-    settings.py
-    init.py
-
-  env/                   # Environment probe
-    probe.py
-
-  reporting/             # Protection status and report previews
-    protection.py
-    preview.py
-    plan_display.py
-
-  sync/                  # Prod→dev sync planning
-    plan.py
-
-  database/              # Discovery, classification, MariaDB connectivity
-    core/
-    discovery/
-    mariadb/
-    …
+  core/                    # Paths, policy, runtime, output, execution gates
+  backup/                  # backup_runner.py, batch_runner.py, terminal/, …
+  config/
+  env/                     # terminal/, interactive_menu.py, probe.py
+  logging/                 # terminal/, engine.py, events.py, analysis.py
+  reporting/               # terminal/, protection.py, preview.py
+  restore/                 # check_plan.py, restore_runner.py, terminal/, …
+  sync/                    # sync_plan.py, sync_runner.py, terminal/, …
+  database/
+    core/                  # Models, catalog, classifier, inventory
+    terminal/              # CLI output (inventory, inspect, ping, policy, …)
+    facade.py              # DatabaseService entry point
+    commands.py            # `mercury db` / `mercury database` Typer commands
+    discovery/, mariadb/, prod_dev_pairs.py, backup_planning.py, …
 ```
 
-Prefer **new import paths** (`mercury.backup.execute`, `mercury.core.safety`) in new code. Top-level shims (`mercury.backup_execute`, `mercury.safety`) remain for compatibility.
+**Naming:** shared terminal helpers live in `mercury.terminal`; domain CLI output lives in `<package>/terminal/` (or legacy `*_terminal.py` shims); execution uses `*_runner.py`; feature menus use `interactive_menu.py`. Prefer canonical import paths (`mercury.backup.terminal.verify`, `mercury.database.terminal.inventory`). Top-level shims remain for compatibility.
 
 Policy constants: `src/mercury/core/safety.py`. Execution gates: `src/mercury/core/execution_policy.py`.
+
+**Terminal theme:** Mercury uses a liquid-silver / cyan-teal palette on dark terminals via `mercury.terminal.theme` and Rich-backed `mercury.core.output`. The main menu shows a ☿ header, bordered status panel, section groups, styled submenus, color-coded table cells, and status badges. Colors apply on TTY stdout only. Disable with `NO_COLOR` or `MERCURY_NO_COLOR=1`; force with `MERCURY_FORCE_COLOR=1` (overrides `NO_COLOR`).
 
 ```bash
 python -m venv .venv
@@ -120,6 +102,8 @@ python -m pytest
 ```
 
 Use the project venv (`.venv/bin/python`), not system Python, when validating CLI behavior.
+
+**Startup:** `./run.sh` skips `pip install` when `.venv/.mercury-sync-stamp` is newer than `pyproject.toml` and `src/` (set `MERCURY_SKIP_SYNC=1` to skip always). Database Typer commands live in `mercury.db_commands` (outside the heavy `mercury.database` package). `main()` calls `prepare_for_argv()` so `db`/`database` subcommands are wired only when argv needs them (~80ms import for `mercury menu`; full database stack loads on first command that uses it).
 
 ## Platform databases
 

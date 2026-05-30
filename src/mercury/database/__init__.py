@@ -41,20 +41,20 @@ from mercury.database.discovery import (
     discover_demo,
     discover_from_config,
 )
-from mercury.database.display import (
+from mercury.database.terminal import (
     print_classification,
     print_inventory,
     print_readonly_discovery_plan,
 )
-from mercury.database.display_pairs import print_prod_dev_pairs
-from mercury.database.display_policy import print_policy_report
-from mercury.database.pairs import (
+from mercury.database.terminal.pairs import print_prod_dev_pairs
+from mercury.database.terminal.policy import print_policy_report
+from mercury.database.prod_dev_pairs import (
     ProdDevPair,
     build_prod_dev_pairs,
     orphan_dev_databases,
     prod_to_dev_name,
 )
-from mercury.database.planning import (
+from mercury.database.backup_planning import (
     DEMO_DATABASES,
     BackupPlanDryRun,
     ExcludedDatabase,
@@ -69,7 +69,7 @@ from mercury.database.policy import (
     validate_config_policy,
     validate_configured_names_only,
 )
-from mercury.database.service import DatabaseService, default_service
+from mercury.database.facade import DatabaseService, default_service
 from mercury.database.mariadb import (
     MariaDbConfigError,
     MariaDbConnectionConfig,

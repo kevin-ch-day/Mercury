@@ -4,16 +4,16 @@ import json
 
 import pytest
 
-from mercury.backup_layout import build_backup_layout, planned_backup_directory
-from mercury.database.planning import build_demo_backup_plan
-from mercury.manifest_preview import (
+from mercury.backup.layout import build_backup_layout, planned_backup_directory
+from mercury.database.backup_planning import build_demo_backup_plan
+from mercury.backup.manifest_preview import (
     ManifestPreviewError,
     build_manifest_preview,
     format_manifest_preview_json,
 )
-from mercury.plan_display import print_schema_backup_plan
-from mercury.schema_backup_plan import build_schema_backup_plan_demo
-from mercury.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
+from mercury.reporting.terminal.plan import print_schema_backup_plan
+from mercury.backup.schema_plan import build_schema_backup_plan_demo
+from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
 
 
 FIXED_DATE = "2026-05-30"

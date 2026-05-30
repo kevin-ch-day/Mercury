@@ -10,19 +10,19 @@ from pathlib import Path
 
 import pytest
 
-from mercury.backup_execute import (
+from mercury.backup.backup_runner import (
     BackupExecutionError,
     assert_not_production_restore_target,
     assert_safe_backup_source,
     execute_backup,
     plan_backup_execution,
 )
-from mercury.backup_layout import build_backup_layout
-from mercury.backup_manifest import BackupManifest, build_backup_manifest
-from mercury.checksum import sha256_file, verify_checksums, write_checksum_file
-from mercury.execution_policy import ExecutionPolicy, load_execution_policy
-from mercury.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY, LIVE_ACTIONS_ENABLED
-from mercury.verification import verify_backup_artifacts
+from mercury.backup.layout import build_backup_layout
+from mercury.backup.manifest import BackupManifest, build_backup_manifest
+from mercury.backup.checksum import sha256_file, verify_checksums, write_checksum_file
+from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
+from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY, LIVE_ACTIONS_ENABLED
+from mercury.backup.verification import verify_backup_artifacts
 
 FIXED_DATE = "2026-05-30"
 FIXED_TS = "20260530_120000"

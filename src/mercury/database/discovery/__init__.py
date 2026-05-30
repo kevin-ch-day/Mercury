@@ -28,15 +28,21 @@ def discover(
         from mercury.database.mariadb import discover_databases_live, load_mariadb_config
 
         cfg = mariadb_config or load_mariadb_config()
-        return discover_databases_live(cfg, connect_fn=connect_fn)
+        inventory = discover_databases_live(cfg, connect_fn=connect_fn)
+    elif mode == "demo":
+        inventory = discover_demo()
+    else:
+        inventory = discover_from_config(
+            include_catalog=include_catalog,
+            prefer_local=prefer_local,
+        )
 
-    if mode == "demo":
-        return discover_demo()
+    from mercury.logging.events import log_inventory_discovered
+    from mercury.database.core.scope import filter_inventory
 
-    inventory = discover_from_config(
-        include_catalog=include_catalog,
-        prefer_local=prefer_local,
-    )
+    inventory = filter_inventory(inventory)
+
+    log_inventory_discovered(mode=inventory.mode, count=inventory.count, connection=inventory.connection)
     return inventory
 
 

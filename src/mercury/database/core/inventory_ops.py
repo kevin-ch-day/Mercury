@@ -45,8 +45,12 @@ def is_live_inventory(inventory: DatabaseInventory) -> bool:
     return inventory.mode == "mariadb_readonly" or inventory.connection.startswith("connected")
 
 
-def format_entry_line(entry: DatabaseRecord) -> str:
+def format_entry_line(entry: DatabaseRecord, *, compact: bool = False) -> str:
     """Single-line summary matching print_inventory style."""
+    if compact:
+        return format_entry_columns(entry)
+
+    project = f" [{entry.project}]" if entry.project else ""
     flags = []
     if entry.backup_source:
         flags.append("backup_source")
@@ -61,3 +65,55 @@ def format_entry_line(entry: DatabaseRecord) -> str:
         endpoint = f" @ {entry.host}:{port}"
     project = f" [{entry.project}]" if entry.project else ""
     return f"{entry.name}{project} <{entry.role}>{flag_text}{endpoint} — {entry.config_source}"
+
+
+ROLE_ENV_LABELS: dict[str, str] = {
+    "production": "PROD",
+    "development": "DEV",
+    "shared_authority": "SHARED",
+    "restore_check_temp": "TEMP",
+    "unknown": "OTHER",
+}
+
+ROLE_SORT_ORDER: dict[str, int] = {
+    "production": 0,
+    "shared_authority": 1,
+    "development": 2,
+    "unknown": 3,
+    "restore_check_temp": 4,
+}
+
+
+def role_env_label(role: str) -> str:
+    """Short PROD/DEV/SHARED label parsed from platform role."""
+    return ROLE_ENV_LABELS.get(role, role.upper())
+
+
+def format_entry_columns(entry: DatabaseRecord) -> str:
+    """Compact columnar line: name, ENV, backup, optional project."""
+    backup = "yes" if entry.backup_source else "no"
+    project = entry.project or ""
+    if project:
+        return f"{entry.name}  {role_env_label(entry.role):<6}  {backup:<3}  {project}"
+    return f"{entry.name}  {role_env_label(entry.role):<6}  {backup}"
+
+
+def inventory_role_summary(counts: dict[str, int]) -> str:
+    """Human summary like '3 prod, 3 dev, 1 shared'."""
+    labels = {
+        "production": "prod",
+        "development": "dev",
+        "shared_authority": "shared",
+        "unknown": "other",
+        "restore_check_temp": "temp",
+    }
+    ordered_roles = sorted(counts.keys(), key=lambda role: ROLE_SORT_ORDER.get(role, 99))
+    parts = [f"{counts[role]} {labels.get(role, role)}" for role in ordered_roles]
+    return ", ".join(parts)
+
+
+def sort_entries_for_display(entries: list[DatabaseRecord]) -> list[DatabaseRecord]:
+    return sorted(
+        entries,
+        key=lambda entry: (ROLE_SORT_ORDER.get(entry.role, 99), entry.name),
+    )

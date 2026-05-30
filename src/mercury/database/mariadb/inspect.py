@@ -13,21 +13,16 @@ def _sql_escape_literal(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "''")
 
 
-def _inspect_stats_sql(schema: str) -> str:
+def _inspect_sql(schema: str) -> str:
     return (
         "SELECT "
+        "(SELECT COUNT(*) FROM information_schema.schemata "
+        f"WHERE schema_name = '{schema}'), "
         "COALESCE(SUM(CASE WHEN table_type = 'BASE TABLE' THEN 1 ELSE 0 END), 0), "
         "COALESCE(SUM(CASE WHEN table_type = 'VIEW' THEN 1 ELSE 0 END), 0), "
         "COALESCE(SUM(data_length + index_length), 0) "
         "FROM information_schema.tables "
         f"WHERE table_schema = '{schema}'"
-    )
-
-
-def _schema_exists_sql(schema: str) -> str:
-    return (
-        "SELECT COUNT(*) FROM information_schema.schemata "
-        f"WHERE schema_name = '{schema}'"
     )
 
 
@@ -54,7 +49,7 @@ def inspect_database_on_server(
     """
     Read-only inspect: confirm database exists and gather table/view/size stats.
 
-    Uses information_schema only — no writes. Two queries (existence + stats).
+    Uses information_schema only — no writes. Single combined query.
     """
     classification = classify_database(name)
     base = DatabaseInspectResult(
@@ -72,8 +67,13 @@ def inspect_database_on_server(
 
     escaped = _sql_escape_literal(name)
     try:
-        exists_row = fetch_row(config, _schema_exists_sql(escaped))
-        exists_count = int(exists_row[0] if exists_row else "0")
+        inspect_row = fetch_row(config, _inspect_sql(escaped))
+        if not inspect_row or len(inspect_row) < 4:
+            raise ValueError("Unexpected inspect row")
+        exists_count = int(inspect_row[0])
+        table_count = int(inspect_row[1])
+        view_count = int(inspect_row[2])
+        total_bytes = int(inspect_row[3])
     except (MariaDbLiveError, ValueError) as exc:
         base.error = str(exc)
         return base
@@ -84,18 +84,6 @@ def inspect_database_on_server(
 
     base.exists_on_server = True
     base.connected = True
-
-    try:
-        stats_row = fetch_row(config, _inspect_stats_sql(escaped))
-        if not stats_row or len(stats_row) < 3:
-            raise ValueError("Unexpected inspect stats row")
-        table_count = int(stats_row[0])
-        view_count = int(stats_row[1])
-        total_bytes = int(stats_row[2])
-    except (MariaDbLiveError, ValueError) as exc:
-        base.error = str(exc)
-        return base
-
     base.table_count = table_count
     base.view_count = view_count
     base.total_bytes = total_bytes

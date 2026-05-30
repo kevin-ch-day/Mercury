@@ -8,7 +8,7 @@ from mercury.database.core import backup_source_names, classify_database
 from mercury.database.core.catalog import PLATFORM_CATALOG
 from mercury.database.discovery import discover
 from mercury.database.mariadb.config import MariaDbConnectionConfig
-from mercury.database.mariadb.session import MariaDbLiveError, fetch_user_database_names
+from mercury.database.mariadb.session import MariaDbLiveError
 
 
 class PlatformAccessRecord(BaseModel):
@@ -39,9 +39,8 @@ def build_platform_access_report(
     """
     Check which platform/catalog databases exist on the live server.
 
-    Read-only: SHOW DATABASES only for server side.
+    Read-only: reuses live discovery inventory (one SHOW DATABASES round-trip).
     """
-    fetch_names = names_fn or fetch_user_database_names
     inventory = discover("live", mariadb_config=config)
     cfg = config
     if cfg is None:
@@ -49,10 +48,13 @@ def build_platform_access_report(
 
         cfg = load_mariadb_config()
 
-    try:
-        server_names = set(fetch_names(cfg))
-    except MariaDbLiveError as exc:
-        raise exc
+    if names_fn is not None:
+        try:
+            server_names = set(names_fn(cfg))
+        except MariaDbLiveError as exc:
+            raise exc
+    else:
+        server_names = {entry.name for entry in inventory.entries}
 
     catalog_names = {entry.name for entry in PLATFORM_CATALOG}
     records: list[PlatformAccessRecord] = []
@@ -87,7 +89,7 @@ def build_platform_access_report(
     unexpected = sorted(server_names - catalog_names)
 
     notes = [
-        "Read-only check: SHOW DATABASES compared to platform catalog.",
+        "Read-only check: live discovery compared to platform catalog.",
         "Missing prod/shared authority databases should be investigated.",
     ]
     if unexpected:

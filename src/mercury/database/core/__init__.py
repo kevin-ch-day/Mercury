@@ -36,10 +36,20 @@ from mercury.database.core.inventory_ops import (
     entries_by_role,
     entry_by_name,
     format_entry_line,
+    format_entry_columns,
+    inventory_role_summary,
     is_live_inventory,
     projects_map,
+    role_env_label,
+    sort_entries_for_display,
 )
 from mercury.database.core.models import DatabaseInventory, DatabaseRecord
+from mercury.database.core.scope import (
+    OUT_OF_SCOPE_DATABASES,
+    filter_inventory,
+    filter_in_scope_names,
+    is_in_scope,
+)
 from mercury.database.core.sources import (
     SOURCE_CATALOG,
     SOURCE_EXAMPLE,
@@ -76,6 +86,14 @@ __all__ = [
     "classify_inventory",
     "is_live_inventory",
     "format_entry_line",
+    "format_entry_columns",
+    "inventory_role_summary",
+    "role_env_label",
+    "sort_entries_for_display",
+    "OUT_OF_SCOPE_DATABASES",
+    "filter_inventory",
+    "filter_in_scope_names",
+    "is_in_scope",
     "SOURCE_LOCAL",
     "SOURCE_EXAMPLE",
     "SOURCE_CATALOG",

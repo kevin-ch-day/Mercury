@@ -25,26 +25,31 @@ class EnvProbeResult(BaseModel):
     database_probe: dict[str, object] | None = None
 
 
-def probe_environment(*, check_database: bool = False) -> EnvProbeResult:
+def probe_environment(*, check_database: bool = False, menu: bool = False) -> EnvProbeResult:
     """Collect environment facts; optionally run read-only MariaDB probe."""
     from mercury.database import discover_from_config, try_load_mariadb_config
 
     inventory = discover_from_config()
     mariadb_ready = try_load_mariadb_config() is not None
 
-    notes = [
-        f"Known databases (config/catalog): {inventory.count} — use: mercury db discover [--demo]",
-        "Windows may be used for development; Fedora is the production target.",
-    ]
-    if mariadb_ready:
-        notes.insert(0, "MariaDB config present — use: mercury db ping (read-only probe)")
+    notes: list[str] = []
+    if menu:
+        if not mariadb_ready:
+            notes.append("No MariaDB config — run: mercury config init")
     else:
-        notes.insert(0, "Mercury seed: no live database connections (config/local.toml not ready).")
+        notes = [
+            f"Known databases (config/catalog): {inventory.count} — use: mercury db discover [--demo]",
+            "Windows may be used for development; Fedora is the production target.",
+        ]
+        if mariadb_ready:
+            notes.insert(0, "MariaDB config present — use: mercury db ping (read-only probe)")
+        else:
+            notes.insert(0, "Mercury seed: no live database connections (config/local.toml not ready).")
 
-    if platform.system() == "Windows":
-        notes.append("Running on Windows — expect path and tooling differences on Fedora.")
-    elif platform.system() == "Linux":
-        notes.append("Linux detected — closer to Fedora production target.")
+        if platform.system() == "Windows":
+            notes.append("Running on Windows — expect path and tooling differences on Fedora.")
+        elif platform.system() == "Linux":
+            notes.append("Linux detected — closer to Fedora production target.")
 
     db_probe: dict[str, object] | None = None
     if check_database:

@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from mercury.backup.batch import resolve_batch_sources, run_backup_batch
+from mercury.backup.batch_runner import resolve_batch_sources, run_backup_batch
 from mercury.core.execution_policy import ExecutionPolicy
 from mercury.core.safety import BACKUP_KIND_FULL
-from mercury.restore.check import build_restore_check_plan, planned_restore_check_name
+from mercury.restore.check_plan import build_restore_check_plan, planned_restore_check_name
 from mercury.sync.readiness import build_sync_readiness_report
 
 

@@ -8,6 +8,15 @@ dry_run = true
 # Explicit gate for mariadb-dump execution and backup file writes
 live_actions_enabled = false
 
+# File logging under logs/
+#   mercury-YYYY-MM-DD.log  — general session/operation log
+#   error.log               — errors and failed sessions (ERROR+)
+#   database.log            — mercury.database events (discovery, probe, etc.)
+#   backup.log              — mercury.backup events (backup, verify, restore-check)
+logging_enabled = true
+log_level = "INFO"
+log_dir = "logs"
+
 # --- Option A: TCP + password (production / remote server) ---
 # [mariadb]
 # host = "127.0.0.1"

@@ -10,7 +10,7 @@ from mercury.database.core import (
     load_databases_from_file,
 )
 from mercury.database.discovery import discover_from_config
-from mercury.database.pairs import build_prod_dev_pairs
+from mercury.database.prod_dev_pairs import build_prod_dev_pairs
 
 
 class PolicyFinding(BaseModel):

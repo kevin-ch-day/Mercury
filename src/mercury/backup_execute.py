@@ -1,3 +1,3 @@
-"""Backward compatibility — use mercury.backup.execute."""
+"""Backward compatibility — use mercury.backup.backup_runner."""
 
-from mercury.backup.execute import *  # noqa: F403
+from mercury.backup.backup_runner import *  # noqa: F403

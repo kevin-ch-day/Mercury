@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field
 
-from mercury.database.planning import ExcludedDatabase, build_demo_backup_plan
+from mercury.database.backup_planning import ExcludedDatabase, build_demo_backup_plan
 from mercury.core.safety import BACKUP_KIND_SCHEMA_ONLY
 
 SCHEMA_PLAN_NOTES = [
@@ -32,7 +32,7 @@ def build_schema_backup_plan_demo() -> SchemaBackupPlanDryRun:
 def build_schema_backup_plan_live() -> SchemaBackupPlanDryRun:
     """Schema-only plan from live server inventory."""
     from mercury.database.discovery import discover
-    from mercury.database.planning import build_backup_plan_from_inventory
+    from mercury.database.backup_planning import build_backup_plan_from_inventory
 
     full_plan = build_backup_plan_from_inventory(discover("live"))
     return _schema_plan_from_backup_plan(full_plan)

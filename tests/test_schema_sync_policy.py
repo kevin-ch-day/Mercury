@@ -3,11 +3,11 @@
 import json
 from pathlib import Path
 
-from mercury.dump_planner import build_planned_dump
+from mercury.backup.dump_planner import build_planned_dump
 from mercury.database.policy import validate_config_policy
-from mercury.schema_backup_plan import build_schema_backup_plan_demo
-from mercury.sync_plan import build_sync_plan_demo
-from mercury.safety import BACKUP_KIND_SCHEMA_ONLY, SYNC_DEV_CONFIRMATION_PHRASE
+from mercury.backup.schema_plan import build_schema_backup_plan_demo
+from mercury.sync.sync_plan import build_sync_plan_demo
+from mercury.core.safety import BACKUP_KIND_SCHEMA_ONLY, SYNC_DEV_CONFIRMATION_PHRASE
 
 
 def test_schema_plan_sources_only_backup_sources() -> None:
@@ -43,9 +43,9 @@ def test_policy_validate_demo_ok() -> None:
 
 
 def test_sample_manifest_writes_json(tmp_path: Path, monkeypatch) -> None:
-    from mercury.sample_manifest import write_sample_manifests
+    from mercury.backup.sample_manifest import write_sample_manifests
 
-    monkeypatch.setattr("mercury.sample_manifest.OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr("mercury.backup.sample_manifest.OUTPUT_DIR", tmp_path)
     paths = write_sample_manifests(tmp_path)
     assert len(paths) == 2
     data = json.loads(paths[0].read_text(encoding="utf-8"))

@@ -45,6 +45,40 @@ def run_client_query(
         return runner(config, sql)
 
     argv = build_client_argv(config, sql)
+    return _run_client_argv(config, argv)
+
+
+def run_client_script(
+    config: MariaDbConnectionConfig,
+    sql_script: str,
+    *,
+    runner=None,
+) -> str:
+    """
+    Run multiple read-only SQL statements in one mariadb/mysql process.
+
+    Uses stdin to avoid spawning a subprocess per query (faster on Fedora socket auth).
+    """
+    if runner is not None:
+        return runner(config, sql_script)
+
+    tool = select_client_tool()
+    argv = [tool, "-N", "-B", "-u", config.user]
+    if config.unix_socket:
+        argv[1:1] = [f"--socket={config.unix_socket}", "--protocol=SOCKET"]
+    else:
+        argv[1:1] = ["-h", config.host, "-P", str(config.port)]
+        if config.ssl_disabled:
+            argv[1:1] = ["--skip-ssl"]
+    return _run_client_argv(config, argv, input_text=sql_script)
+
+
+def _run_client_argv(
+    config: MariaDbConnectionConfig,
+    argv: list[str],
+    *,
+    input_text: str | None = None,
+) -> str:
     env = os.environ.copy()
     if config.password:
         env["MYSQL_PWD"] = config.password
@@ -52,6 +86,7 @@ def run_client_query(
     try:
         result = subprocess.run(
             argv,
+            input=input_text,
             capture_output=True,
             text=True,
             env=env,
@@ -70,6 +105,12 @@ def run_client_query(
             f"MariaDB CLI query failed ({target}): {detail or 'unknown error'}"
         )
     return result.stdout
+
+
+def run_client_sql(config: MariaDbConnectionConfig, sql: str) -> None:
+    """Execute one SQL statement via mariadb/mysql CLI (DDL/DML)."""
+    argv = build_client_argv(config, sql)
+    _run_client_argv(config, argv)
 
 
 def client_fetch_scalars(config: MariaDbConnectionConfig, sql: str) -> list[str]:

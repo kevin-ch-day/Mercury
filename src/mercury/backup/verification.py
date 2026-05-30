@@ -129,7 +129,7 @@ def build_verification_plan_demo(
     timestamp: str | None = None,
 ) -> VerificationPlan:
     """Demo verification plan with preview results for sample backup records."""
-    from mercury.backup.list import DEMO_BACKUP_RECORDS
+    from mercury.backup.on_disk_index import DEMO_BACKUP_RECORDS
 
     results: list[BackupVerificationResult] = []
     for database, kind in DEMO_BACKUP_RECORDS:
@@ -204,6 +204,10 @@ def verify_backup_artifacts(
     dump_name: str | None = None
     schema_name: str | None = None
     if manifest:
+        if database and manifest.database != database:
+            issues.append(
+                f"manifest database '{manifest.database}' does not match requested '{database}'"
+            )
         dump_name = manifest.dump_file
         schema_name = manifest.schema_file
         if manifest.live_actions_enabled is False and manifest.dry_run is False:
@@ -266,6 +270,7 @@ def verify_backup_artifacts(
         and role_ok
         and resolved_kind in (BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY)
         and artifacts_ok
+        and not any("does not match requested" in issue for issue in issues)
     )
 
     backup_id = manifest.backup_id if manifest else f"verify-{resolved_db}-{resolved_kind}"
@@ -297,23 +302,32 @@ def verify_backup_artifacts(
 def verify_backup_directory(
     backup_dir: Path,
     *,
+    database: str | None = None,
     update_manifest: bool = False,
 ) -> BackupVerificationResult:
     """
     Verify a backup directory on disk; optionally mark manifest verified=true when passing.
     """
-    result = verify_backup_artifacts(backup_dir)
-    if not update_manifest or not result.verified:
-        return result
+    result = verify_backup_artifacts(backup_dir, database=database)
+    updated_manifest = False
+    if update_manifest and result.verified:
+        manifest_path = Path(result.manifest_path)
+        manifest = _load_manifest(manifest_path)
+        if manifest is not None:
+            updated = manifest.model_copy(update={"verified": True})
+            manifest_path.write_text(
+                json.dumps(updated.model_dump(mode="json"), indent=2, default=str) + "\n",
+                encoding="utf-8",
+            )
+            updated_manifest = True
 
-    manifest_path = Path(result.manifest_path)
-    manifest = _load_manifest(manifest_path)
-    if manifest is None:
-        return result
+    from mercury.logging.events import log_verification_result
 
-    updated = manifest.model_copy(update={"verified": True})
-    manifest_path.write_text(
-        json.dumps(updated.model_dump(mode="json"), indent=2, default=str) + "\n",
-        encoding="utf-8",
+    log_verification_result(
+        database=result.database,
+        verified=result.verified,
+        issue_count=len(result.issues),
+        backup_id=result.backup_id,
+        updated_manifest=updated_manifest,
     )
     return result

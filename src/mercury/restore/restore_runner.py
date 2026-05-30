@@ -1,0 +1,183 @@
+"""Restore verified logical backups into dev or restore-check targets."""
+
+from __future__ import annotations
+
+import os
+import subprocess
+from collections.abc import Callable
+from pathlib import Path
+
+from pydantic import BaseModel, Field
+
+from mercury.backup.backup_runner import BackupExecutionError, assert_not_production_restore_target
+from mercury.database.core import DatabaseRole, classify_database
+from mercury.database.mariadb.client import run_client_sql, select_client_tool
+from mercury.database.mariadb.config import MariaDbConnectionConfig, load_mariadb_config
+from mercury.database.mariadb.errors import MariaDbLiveError
+from mercury.database.mariadb.session import try_load_mariadb_config
+from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
+
+ImportRunner = Callable[
+    [list[str], dict[str, str], Path, MariaDbConnectionConfig, str],
+    None,
+]
+
+
+class RestoreExecutionResult(BaseModel):
+    source_database: str
+    target_database: str
+    dump_path: str
+    dry_run: bool = True
+    executed: bool = False
+    refused: bool = False
+    message: str = ""
+    commands: list[str] = Field(default_factory=list)
+
+
+def assert_safe_restore_target(database: str) -> None:
+    """Only disposable dev targets and _restorecheck_* temp databases."""
+    assert_not_production_restore_target(database, operation="restore")
+    role = classify_database(database).role
+    if role in {DatabaseRole.DEVELOPMENT, DatabaseRole.RESTORE_CHECK_TEMP}:
+        return
+    raise BackupExecutionError(
+        f"Refusing restore into '{database}': only *_dev and _restorecheck_* targets are allowed."
+    )
+
+
+def build_import_argv(config: MariaDbConnectionConfig, database: str) -> list[str]:
+    tool = select_client_tool()
+    argv = [tool, "-u", config.user, database]
+    if config.unix_socket:
+        argv[1:1] = [f"--socket={config.unix_socket}", "--protocol=SOCKET"]
+    else:
+        argv[1:1] = ["-h", config.host, "-P", str(config.port)]
+        if config.ssl_disabled:
+            argv[1:1] = ["--skip-ssl"]
+    return argv
+
+
+def _client_env(config: MariaDbConnectionConfig) -> dict[str, str]:
+    env = os.environ.copy()
+    if config.password:
+        env["MYSQL_PWD"] = config.password
+    return env
+
+
+def _execute_client_sql(config: MariaDbConnectionConfig, sql: str) -> None:
+    try:
+        run_client_sql(config, sql)
+    except MariaDbLiveError as exc:
+        raise BackupExecutionError(str(exc)) from exc
+
+
+def _default_import_runner(
+    argv: list[str],
+    env: dict[str, str],
+    dump_path: Path,
+    _config: MariaDbConnectionConfig,
+    _target: str,
+) -> None:
+    if not dump_path.is_file():
+        raise BackupExecutionError(f"Dump file not found: {dump_path}")
+    with subprocess.Popen(
+        ["gzip", "-dc", str(dump_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    ) as gzip_proc:
+        assert gzip_proc.stdout is not None
+        import_proc = subprocess.Popen(
+            argv,
+            stdin=gzip_proc.stdout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+        )
+        gzip_proc.stdout.close()
+        _, import_err = import_proc.communicate()
+        gzip_returncode = gzip_proc.wait()
+        import_returncode = import_proc.returncode
+
+    if gzip_returncode != 0:
+        raise BackupExecutionError("gunzip failed while reading backup dump")
+    if import_returncode != 0:
+        detail = (import_err or b"").decode().strip()
+        raise BackupExecutionError(detail or "mariadb import failed")
+
+
+def execute_restore_into_database(
+    *,
+    target_database: str,
+    dump_path: Path,
+    source_database: str,
+    execute: bool = False,
+    policy: ExecutionPolicy | None = None,
+    recreate_target: bool = True,
+    config: MariaDbConnectionConfig | None = None,
+    import_runner: ImportRunner | None = None,
+) -> RestoreExecutionResult:
+    """Plan or run ``gunzip -c dump | mariadb target`` for verified backups."""
+    assert_safe_restore_target(target_database)
+    resolved = policy or load_execution_policy()
+    dump_path = dump_path.resolve()
+    commands: list[str] = []
+
+    if recreate_target:
+        commands.append(f"DROP DATABASE IF EXISTS `{target_database}`")
+        commands.append(f"CREATE DATABASE `{target_database}`")
+    else:
+        commands.append(f"CREATE DATABASE IF NOT EXISTS `{target_database}`")
+    commands.append(f"gunzip -c {dump_path} | mariadb {target_database}")
+
+    if not execute:
+        return RestoreExecutionResult(
+            source_database=source_database,
+            target_database=target_database,
+            dump_path=str(dump_path),
+            dry_run=True,
+            message=f"Would restore {source_database} backup into {target_database}.",
+            commands=commands,
+        )
+
+    if not resolved.live_execution_allowed():
+        reason = resolved.refusal_reason() or "Live restore is not permitted."
+        return RestoreExecutionResult(
+            source_database=source_database,
+            target_database=target_database,
+            dump_path=str(dump_path),
+            refused=True,
+            message=reason,
+            commands=commands,
+        )
+
+    cfg = config or try_load_mariadb_config()
+    if cfg is None:
+        cfg = load_mariadb_config()
+
+    import_argv = build_import_argv(cfg, target_database)
+    runner = import_runner or _default_import_runner
+
+    try:
+        if recreate_target:
+            _execute_client_sql(cfg, f"DROP DATABASE IF EXISTS `{target_database}`")
+        _execute_client_sql(cfg, f"CREATE DATABASE `{target_database}`")
+        runner(import_argv, _client_env(cfg), dump_path, cfg, target_database)
+    except BackupExecutionError as exc:
+        return RestoreExecutionResult(
+            source_database=source_database,
+            target_database=target_database,
+            dump_path=str(dump_path),
+            refused=True,
+            message=str(exc),
+            commands=commands,
+        )
+
+    return RestoreExecutionResult(
+        source_database=source_database,
+        target_database=target_database,
+        dump_path=str(dump_path),
+        dry_run=False,
+        executed=True,
+        message=f"Restored {source_database} into {target_database}.",
+        commands=commands,
+    )

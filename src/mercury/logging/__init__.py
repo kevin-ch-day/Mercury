@@ -1,0 +1,137 @@
+"""
+Mercury logging package.
+
+Modules:
+  config   — constants, paths, settings resolution
+  engine   — handler setup, logger access, runtime state
+  utils    — sessions, operations, file tail/search helpers
+  analysis — log file stats and session parsing
+  events   — domain-specific structured log hooks
+  display  — CLI presentation for log status
+"""
+
+from mercury.logging.analysis import (
+    LogFileInfo,
+    LogSession,
+    LogStatusReport,
+    analyze_log_file,
+    build_log_status,
+    parse_recent_sessions,
+    resolve_named_log_file,
+)
+from mercury.logging.config import (
+    BACKUP_LOG_FILENAME,
+    BACKUP_LOGGER_NAME,
+    DATABASE_LOG_FILENAME,
+    DATABASE_LOGGER_NAME,
+    ENV_LOG_DIR,
+    ENV_LOG_LEVEL,
+    ENV_LOGGING_ENABLED,
+    ERROR_LOG_FILENAME,
+    ERROR_LOGGER_NAME,
+    LOGGER_NAME,
+    backup_log_path,
+    daily_log_path,
+    database_log_path,
+    error_log_path,
+    logging_enabled,
+    normalize_logger_name,
+    resolve_log_dir,
+    resolve_log_level,
+)
+from mercury.logging.terminal.status import print_log_status
+from mercury.logging.engine import (
+    configure_logging,
+    current_backup_log_file,
+    current_database_log_file,
+    current_error_log_file,
+    current_log_file,
+    get_logger,
+    is_configured,
+    reset_logging,
+    session_id,
+)
+from mercury.logging.events import (
+    log_batch_backup,
+    log_database_error,
+    log_env_probe,
+    log_inventory_discovered,
+    log_inventory_fallback,
+    log_mariadb_probe,
+    log_menu_action,
+    log_restore_check,
+    log_sync_readiness,
+    log_verification_result,
+    log_verify_all_summary,
+)
+from mercury.logging.utils import (
+    format_fields,
+    list_all_log_files,
+    list_log_files,
+    log_fields,
+    log_operation,
+    log_session_end,
+    log_session_start,
+    log_uncaught_exception,
+    read_log_tail,
+    search_log_files,
+)
+
+__all__ = [
+    "BACKUP_LOG_FILENAME",
+    "BACKUP_LOGGER_NAME",
+    "DATABASE_LOG_FILENAME",
+    "DATABASE_LOGGER_NAME",
+    "ENV_LOG_DIR",
+    "ENV_LOG_LEVEL",
+    "ENV_LOGGING_ENABLED",
+    "ERROR_LOG_FILENAME",
+    "ERROR_LOGGER_NAME",
+    "LOGGER_NAME",
+    "LogFileInfo",
+    "LogSession",
+    "LogStatusReport",
+    "analyze_log_file",
+    "backup_log_path",
+    "build_log_status",
+    "configure_logging",
+    "current_backup_log_file",
+    "current_database_log_file",
+    "current_error_log_file",
+    "current_log_file",
+    "daily_log_path",
+    "database_log_path",
+    "error_log_path",
+    "format_fields",
+    "get_logger",
+    "is_configured",
+    "list_all_log_files",
+    "list_log_files",
+    "log_batch_backup",
+    "log_database_error",
+    "log_env_probe",
+    "log_fields",
+    "log_inventory_discovered",
+    "log_inventory_fallback",
+    "log_mariadb_probe",
+    "log_menu_action",
+    "log_operation",
+    "log_restore_check",
+    "log_session_end",
+    "log_session_start",
+    "log_sync_readiness",
+    "log_uncaught_exception",
+    "log_verification_result",
+    "log_verify_all_summary",
+    "logging_enabled",
+    "normalize_logger_name",
+    "parse_recent_sessions",
+    "print_log_status",
+    "read_log_tail",
+    "reset_logging",
+    "resolve_log_dir",
+    "resolve_log_level",
+    "resolve_named_log_file",
+    "search_log_files",
+    "session_id",
+]

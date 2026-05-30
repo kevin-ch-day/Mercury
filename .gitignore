@@ -22,6 +22,9 @@ output/*
 
 backups/
 
+logs/*
+!logs/.gitkeep
+
 *.log
 .DS_Store
 Thumbs.db

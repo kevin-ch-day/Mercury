@@ -180,8 +180,9 @@ def fetch_user_database_names(
     if connect_fn is not None:
         return _filter_user_databases(connect_fn(config))
 
-    names = readonly_scalars(config, "SHOW DATABASES")
-    return _filter_user_databases(names)
+    from mercury.database.mariadb.readonly_session import fetch_user_database_names_session
+
+    return fetch_user_database_names_session(config)
 
 
 def _filter_user_databases(names: list[str]) -> list[str]:
@@ -224,25 +225,11 @@ def probe_mariadb_server(
         return probe_fn(cfg)
 
     started = time.perf_counter()
-    executed: list[str] = []
+    from mercury.database.mariadb.readonly_session import probe_server_facts
 
-    ping_sql = "SELECT 1 AS ok"
-    readonly_scalar(cfg, ping_sql)
-    executed.append(ping_sql)
-
-    version_sql = "SELECT VERSION() AS version"
-    version = readonly_scalar(cfg, version_sql)
-    executed.append(version_sql)
-
-    user_sql = "SELECT CURRENT_USER() AS mercury_current_user"
-    current_user = readonly_scalar(cfg, user_sql)
-    executed.append(user_sql)
-
-    show_sql = "SHOW DATABASES"
-    database_names = readonly_scalars(cfg, show_sql)
-    executed.append(show_sql)
-
-    user_databases = _filter_user_databases(database_names)
+    facts = probe_server_facts(cfg)
+    executed = list(facts["sql_executed"])
+    user_databases = _filter_user_databases(list(facts["database_names"]))
     sample = user_databases[:sample_limit] if include_database_sample else []
     latency_ms = round((time.perf_counter() - started) * 1000, 2)
 
@@ -250,8 +237,8 @@ def probe_mariadb_server(
         update={
             "connected": True,
             "latency_ms": latency_ms,
-            "server_version": version or None,
-            "current_user": current_user or None,
+            "server_version": str(facts["version"]) or None,
+            "current_user": str(facts["current_user"]) or None,
             "user_database_count": len(user_databases),
             "sample_databases": sample,
             "sql_executed": executed,

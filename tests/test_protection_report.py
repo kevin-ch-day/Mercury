@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from mercury.protection_report import build_protection_report, format_protection_report
+from mercury.reporting.protection import build_protection_report, format_protection_report
 
 
 def test_report_lists_protected_prod_databases() -> None:
@@ -34,7 +34,7 @@ def test_format_report_contains_sections() -> None:
 
 def test_status_save_writes_file(tmp_path: Path, monkeypatch) -> None:
     from mercury import protection_report as pr_mod
-    from mercury.paths import OUTPUT_DIR, PROTECTION_REPORT_FILE
+    from mercury.core.paths import OUTPUT_DIR, PROTECTION_REPORT_FILE
 
     out = tmp_path / "output"
     report_file = out / "protection_status.txt"

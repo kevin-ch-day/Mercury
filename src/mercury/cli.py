@@ -1,19 +1,18 @@
 """Mercury command-line interface."""
 
+import sys
+from pathlib import Path
+from typing import Optional
+
 import typer
 
-from mercury.database import build_demo_backup_plan
-from mercury.database.cli import register_commands
-from mercury.env_probe import format_policy_summary, probe_environment
-from mercury.menu import run_menu
 from mercury import output
-from mercury.core.execution_policy import load_execution_policy
-from mercury.core.runtime import should_probe_database_status
 
 app = typer.Typer(
     name="mercury",
     help="Mercury — database backup, DR, and prod-to-dev sync (seed / dry-run).",
     no_args_is_help=True,
+    invoke_without_command=True,
 )
 
 env_app = typer.Typer(help="Environment commands.")
@@ -21,20 +20,52 @@ db_app = typer.Typer(help="Database commands.")
 database_app = typer.Typer(help="Database module (same commands as db).")
 backup_app = typer.Typer(help="Backup commands.")
 config_app = typer.Typer(help="Configuration commands.")
-sync_app = typer.Typer(help="Prod to dev sync (dry-run in seed).")
-restore_app = typer.Typer(help="Restore-check and DR planning.")
+sync_app = typer.Typer(help="Prod to dev sync planning and execution.")
+restore_app = typer.Typer(help="Restore-check and DR execution.")
 report_app = typer.Typer(help="Backup report previews (dry-run).")
+logs_app = typer.Typer(help="Mercury log files under logs/.")
 
 app.add_typer(env_app, name="env")
 app.add_typer(db_app, name="db")
 app.add_typer(database_app, name="database")
-register_commands(db_app)
-register_commands(database_app)
 app.add_typer(backup_app, name="backup")
 app.add_typer(config_app, name="config")
 app.add_typer(sync_app, name="sync")
 app.add_typer(restore_app, name="restore-check")
 app.add_typer(report_app, name="report")
+app.add_typer(logs_app, name="logs")
+
+
+@app.callback()
+def mercury_main(
+    ctx: typer.Context,
+    log_level: Optional[str] = typer.Option(
+        None,
+        "--log-level",
+        help="File log level: DEBUG, INFO, WARNING, ERROR.",
+        envvar="MERCURY_LOG_LEVEL",
+    ),
+    log_dir: Optional[str] = typer.Option(
+        None,
+        "--log-dir",
+        help="Directory for log files (default: logs/).",
+        envvar="MERCURY_LOG_DIR",
+    ),
+    logging_enabled: Optional[bool] = typer.Option(
+        None,
+        "--logging/--no-logging",
+        help="Enable or disable file logging.",
+    ),
+) -> None:
+    """Mercury CLI — file logs written to logs/mercury-YYYY-MM-DD.log by default."""
+    from mercury.bootstrap import init_command_logging
+
+    init_command_logging(
+        invoked_subcommand=ctx.invoked_subcommand,
+        log_level=log_level,
+        log_dir=log_dir,
+        logging_enabled=logging_enabled,
+    )
 
 
 @env_app.command("probe")
@@ -44,75 +75,76 @@ def env_probe(
         "--check-db",
         help="Run read-only MariaDB probe when config/local.toml is configured.",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        help="Include tooling paths, config details, and safety policy text.",
+    ),
 ) -> None:
     """Probe the local environment (optional read-only database check)."""
-    from mercury.database.display_ping import print_server_probe
+    from mercury.core.execution_policy import load_execution_policy
+    from mercury.core.runtime import operator_status, should_probe_database_status
+    from mercury.database.terminal.ping import print_server_probe
     from mercury.database import (
         MariaDbConfigError,
         MariaDbDriverMissingError,
         MariaDbLiveError,
         probe_mariadb_server,
     )
-    from mercury.database import build_readonly_discovery_plan, probe_client_tooling
+    from mercury.env.probe import format_policy_summary, probe_environment
 
     result = probe_environment(check_database=check_db)
-    tooling = probe_client_tooling()
-    readonly_plan = build_readonly_discovery_plan()
+    policy = load_execution_policy()
 
-    output.heading("Mercury environment probe")
+    output.heading("Environment")
     output.field("python", result.python_version)
     output.field("platform", f"{result.platform_system} ({result.platform_release})")
-    output.field("repo_root", result.repo_root)
-    output.field("config_dir", result.config_dir)
-    output.field("output_dir", result.output_dir)
     output.field("mode", result.mode)
-    policy = load_execution_policy()
     output.field("dry_run", policy.dry_run)
     output.field("live_actions", policy.live_actions_enabled)
 
-    output.heading("Operator status")
-    from mercury.runtime import operator_status
+    from mercury.core.runtime import operator_status
 
-    for key, value in operator_status(probe_database=should_probe_database_status()).items():
-        output.field(key, value)
+    status = operator_status(probe_database=should_probe_database_status())
+    output.field("database", status["database"])
+    output.field("backup_root", status["backup_root"])
 
-    output.heading("Config status")
-    for key, value in result.config_status.items():
-        output.field(key, value)
+    if verbose:
+        output.field("repo_root", result.repo_root)
+        from mercury.database import probe_client_tooling
 
-    output.heading("MariaDB client tools (PATH)")
-    for name, path in tooling.tools.items():
-        output.field(name, path)
-
-    output.heading("Read-only discovery (next on Fedora)")
-    output.field("plan_status", readonly_plan.status)
-    for note in readonly_plan.notes[:3]:
-        output.bullet(note)
-
-    output.heading("Notes")
-    for note in result.notes:
-        output.bullet(note)
+        tooling = probe_client_tooling()
+        output.heading("MariaDB client tools")
+        for name, path in tooling.tools.items():
+            output.field(name, path)
+        output.heading("Config status")
+        for key, value in result.config_status.items():
+            output.field(key, value)
+        for note in result.notes:
+            output.bullet(note)
 
     if check_db:
-        output.heading("Database probe")
-        if result.database_probe:
-            for key, value in result.database_probe.items():
-                output.field(key, value)
         try:
-            print_server_probe(probe_mariadb_server())
+            print_server_probe(probe_mariadb_server(), compact=not verbose)
         except MariaDbConfigError as exc:
-            output.field("status", "config_error")
-            output.field("error", str(exc))
+            output.field("config_error", str(exc))
         except MariaDbDriverMissingError as exc:
-            output.field("status", "driver_missing")
-            output.field("error", str(exc))
+            output.field("driver_error", str(exc))
         except MariaDbLiveError as exc:
-            output.field("status", "connection_failed")
-            output.field("error", str(exc))
+            output.field("connection_error", str(exc))
+    elif verbose:
+        for note in result.notes:
+            output.bullet(note)
 
-    output.heading("Safety policy")
-    for line in format_policy_summary().splitlines():
-        output.write(line)
+    from mercury.logging.events import log_env_probe
+
+    connected = "connected" in status["database"].lower() and "not connected" not in status["database"].lower()
+    log_env_probe(connected=connected, database_status=status["database"])
+
+    if verbose:
+        output.heading("Safety policy")
+        for line in format_policy_summary().splitlines():
+            output.write(line)
 
 
 @backup_app.command("plan")
@@ -136,9 +168,11 @@ def backup_plan(
         discover,
         try_load_mariadb_config,
     )
-    from mercury.database.planning import build_backup_plan_from_inventory
+    from mercury.database.backup_planning import build_backup_plan_from_inventory
 
     if demo:
+        from mercury.database import build_demo_backup_plan
+
         plan = build_demo_backup_plan()
     elif try_load_mariadb_config() is not None:
         try:
@@ -150,7 +184,7 @@ def backup_plan(
     else:
         plan = build_discovered_backup_plan()
 
-    from mercury.backup_display import print_backup_plan
+    from mercury.backup.terminal.plan import print_backup_plan
 
     print_backup_plan(plan)
 
@@ -158,7 +192,7 @@ def backup_plan(
         if not demo:
             typer.echo("--sample-manifest requires --demo.")
             raise typer.Exit(1)
-        from mercury.sample_manifest import write_sample_manifests
+        from mercury.backup.sample_manifest import write_sample_manifests
 
         paths = write_sample_manifests()
         output.write()
@@ -177,8 +211,8 @@ def backup_schema_plan(
 ) -> None:
     """Dry-run schema-only export plan (mariadb-dump --no-data, not executed)."""
     from mercury.database import MariaDbConfigError, MariaDbLiveError, try_load_mariadb_config
-    from mercury.plan_display import print_schema_backup_plan
-    from mercury.schema_backup_plan import (
+    from mercury.reporting.terminal.plan import print_schema_backup_plan
+    from mercury.backup.schema_plan import (
         build_schema_backup_plan_demo,
         build_schema_backup_plan_live,
     )
@@ -206,12 +240,12 @@ def backup_manifest_preview(
     ),
 ) -> None:
     """Print JSON manifest preview (dry-run; does not write files)."""
-    from mercury.manifest_preview import (
+    from mercury.backup.manifest_preview import (
         ManifestPreviewError,
         build_manifest_preview,
         format_manifest_preview_json,
     )
-    from mercury.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
+    from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
 
     normalized = kind.strip().lower().replace("-", "_")
     if normalized not in (BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY):
@@ -239,8 +273,8 @@ def backup_verify_plan(
     if not demo:
         typer.echo("Seed mode: use --demo for verification planning.")
         raise typer.Exit(1)
-    from mercury.verification import build_verification_plan_demo
-    from mercury.verify_display import print_verification_plan
+    from mercury.backup.verification import build_verification_plan_demo
+    from mercury.backup.terminal.verify import print_verification_plan
 
     print_verification_plan(build_verification_plan_demo())
 
@@ -267,10 +301,10 @@ def backup_verify_cmd(
     """Verify on-disk backup artifacts (manifest, dumps, checksums)."""
     from pathlib import Path
 
-    from mercury.backup.locate import find_latest_backup_directory
+    from mercury.backup.find_latest_backup import find_latest_backup_directory
     from mercury.core.execution_policy import load_execution_policy
-    from mercury.verification import verify_backup_directory
-    from mercury.verify_display import print_verification_result
+    from mercury.backup.verification import verify_backup_directory
+    from mercury.backup.terminal.verify import print_verification_result
 
     backup_dir: Path | None = Path(path).expanduser() if path else None
     if backup_dir is None:
@@ -285,7 +319,7 @@ def backup_verify_cmd(
             )
             raise typer.Exit(1)
 
-    result = verify_backup_directory(backup_dir, update_manifest=update_manifest)
+    result = verify_backup_directory(backup_dir, database=db, update_manifest=update_manifest)
     if result.database != db:
         typer.echo(
             f"Backup directory is for '{result.database}', not '{db}'. "
@@ -312,9 +346,9 @@ def backup_run_cmd(
     ),
 ) -> None:
     """Plan or execute a logical backup (dry-run by default)."""
-    from mercury.backup_execute import BackupExecutionError, execute_backup
-    from mercury.backup_execute_display import print_backup_execution
-    from mercury.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
+    from mercury.backup.backup_runner import BackupExecutionError, execute_backup
+    from mercury.backup.terminal.runner import print_backup_execution
+    from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
 
     normalized = kind.strip().lower().replace("-", "_")
     if normalized not in (BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY):
@@ -343,9 +377,9 @@ def backup_batch_cmd(
     ),
 ) -> None:
     """Plan or execute backups for all approved backup sources."""
-    from mercury.backup.batch import run_backup_batch
-    from mercury.backup.batch_display import print_backup_batch_result
-    from mercury.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
+    from mercury.backup.batch_runner import run_backup_batch
+    from mercury.backup.terminal.batch import print_backup_batch_result
+    from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
 
     normalized = kind.strip().lower().replace("-", "_")
     if normalized not in (BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY):
@@ -376,35 +410,63 @@ def backup_verify_all_cmd(
     ),
 ) -> None:
     """Verify latest on-disk backup for each backup source."""
-    from mercury.backup.batch import resolve_batch_sources
-    from mercury.backup.locate import find_latest_backup_directory
+    from mercury.backup.batch_runner import resolve_batch_sources
+    from mercury.backup.find_latest_backup import find_latest_backup_directory
     from mercury.core.execution_policy import load_execution_policy
-    from mercury.verification import verify_backup_directory
-    from mercury.verify_display import print_verification_result
+    from mercury.backup.verification import verify_backup_directory
+    from mercury.backup.terminal.verify import print_verification_result
 
     policy = load_execution_policy()
     sources = resolve_batch_sources(live=not demo)
-    any_failed = False
-    any_found = False
+    passed = 0
+    failed = 0
+    skipped = 0
 
     for db in sources:
         backup_dir = find_latest_backup_directory(policy.backup_root, db)
         if backup_dir is None:
             output.write(f"SKIP {db}: no backup directory under {policy.backup_root}")
-            any_failed = True
+            skipped += 1
             continue
-        any_found = True
-        result = verify_backup_directory(backup_dir, update_manifest=update_manifest)
-        print_verification_result(result)
+        result = verify_backup_directory(
+            backup_dir,
+            database=db,
+            update_manifest=update_manifest,
+        )
+        print_verification_result(result, compact=True)
         output.write("")
-        if not result.verified:
-            any_failed = True
+        if result.verified:
+            passed += 1
+        else:
+            failed += 1
 
-    if not any_found:
+    output.heading("Verify-all summary")
+    output.field("passed", passed)
+    output.field("failed", failed)
+    output.field("skipped", skipped)
+    output.field("sources_checked", len(sources))
+
+    if passed + failed + skipped == 0:
+        typer.echo("No backup sources to verify.")
+        raise typer.Exit(1)
+    if passed + failed == 0:
         typer.echo("No on-disk backups found for any backup source.")
         raise typer.Exit(1)
-    if any_failed:
+    if failed or skipped:
+        output.write()
+        output.write(
+            "Verify-all incomplete: "
+            f"{passed} passed, {failed} failed, {skipped} missing backup(s)."
+        )
+        from mercury.logging.events import log_verify_all_summary
+
+        log_verify_all_summary(passed=passed, failed=failed, skipped=skipped, sources=len(sources))
         raise typer.Exit(1)
+    from mercury.logging.events import log_verify_all_summary
+
+    log_verify_all_summary(passed=passed, failed=failed, skipped=skipped, sources=len(sources))
+    output.write()
+    output.write("Verify-all complete: all backup sources passed verification.")
 
 
 @backup_app.command("list")
@@ -419,14 +481,14 @@ def backup_list_cmd(
     from mercury.core.execution_policy import load_execution_policy
 
     if demo:
-        from mercury.backup_list import build_demo_backup_list
-        from mercury.verify_display import print_demo_backup_list
+        from mercury.backup.on_disk_index import build_demo_backup_list
+        from mercury.backup.terminal.verify import print_demo_backup_list
 
         print_demo_backup_list(build_demo_backup_list())
         return
 
-    from mercury.backup.list import build_on_disk_backup_list
-    from mercury.verify_display import print_on_disk_backup_list
+    from mercury.backup.on_disk_index import build_on_disk_backup_list
+    from mercury.backup.terminal.verify import print_on_disk_backup_list
 
     policy = load_execution_policy()
     backup_list = build_on_disk_backup_list(policy.backup_root)
@@ -444,9 +506,9 @@ def report_preview_cmd(
     kind: str = typer.Option(..., "--kind", help="full or schema_only"),
 ) -> None:
     """Markdown-style backup report preview (dry-run; no file write)."""
-    from mercury.manifest_preview import ManifestPreviewError
-    from mercury.report_preview import build_report_preview, format_report_preview_markdown
-    from mercury.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
+    from mercury.backup.manifest_preview import ManifestPreviewError
+    from mercury.reporting.preview import build_report_preview, format_report_preview_markdown
+    from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
 
     normalized = kind.strip().lower().replace("-", "_")
     if normalized not in (BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY):
@@ -471,8 +533,8 @@ def sync_plan_cmd(
 ) -> None:
     """Dry-run prod→dev sync plan with prerequisites (not executed)."""
     from mercury.database import MariaDbConfigError, MariaDbLiveError, try_load_mariadb_config
-    from mercury.plan_display import print_sync_plan
-    from mercury.sync_plan import build_sync_plan_demo, build_sync_plan_live
+    from mercury.reporting.terminal.plan import print_sync_plan
+    from mercury.sync.sync_plan import build_sync_plan_demo, build_sync_plan_live
 
     if demo:
         print_sync_plan(build_sync_plan_demo())
@@ -495,10 +557,10 @@ def sync_readiness_cmd(
         help="Use live server inventory for prod→dev pairs.",
     ),
 ) -> None:
-    """Report which prod→dev pairs have verified full backups (sync planning only)."""
+    """Report which prod→dev pairs have verified full backups."""
     from mercury.database import MariaDbConfigError, MariaDbLiveError
     from mercury.sync.readiness import build_sync_readiness_report
-    from mercury.sync.readiness_display import print_sync_readiness_report
+    from mercury.sync.terminal.readiness import print_sync_readiness_report
 
     try:
         print_sync_readiness_report(build_sync_readiness_report(live=live))
@@ -507,17 +569,134 @@ def sync_readiness_cmd(
         raise typer.Exit(1) from exc
 
 
+@sync_app.command("run")
+def sync_run_cmd(
+    live: bool = typer.Option(True, "--live/--demo", help="Use live inventory."),
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Restore verified backups into dev targets (requires live actions).",
+    ),
+    yes: bool = typer.Option(False, "--yes", help="Skip SYNC DEV confirmation prompt."),
+) -> None:
+    """Plan or execute prod→dev sync for ready pairs."""
+    from mercury.core.execution_policy import load_execution_policy
+    from mercury.core.safety import SYNC_DEV_CONFIRMATION_PHRASE
+    from mercury.sync.sync_runner import run_sync_batch
+    from mercury.sync.terminal.runner import print_sync_batch_result
+    from mercury.sync.readiness import build_sync_readiness_report
+
+    report = build_sync_readiness_report(live=live)
+    ready = [entry for entry in report.entries if entry.ready_for_sync_planning]
+    if not ready:
+        typer.echo("No ready prod→dev pairs. Run: mercury sync readiness --live")
+        raise typer.Exit(1)
+
+    policy = load_execution_policy()
+    if execute and policy.live_execution_allowed() and not yes:
+        typer.echo(f"Type {SYNC_DEV_CONFIRMATION_PHRASE!r} to sync into dev.")
+        typed = typer.prompt("Confirm")
+        if typed != SYNC_DEV_CONFIRMATION_PHRASE:
+            typer.echo("Cancelled.")
+            raise typer.Exit(1)
+
+    batch = run_sync_batch(ready, execute=execute, policy=policy)
+    print_sync_batch_result(batch, compact=True)
+    if execute and batch.executed_count == 0:
+        raise typer.Exit(1)
+
+
 @restore_app.command("plan")
 def restore_check_plan_cmd(
     db: str = typer.Option(..., "--db", help="Production database to restore-check."),
 ) -> None:
     """Dry-run plan to restore latest verified backup into _restorecheck_* (not executed)."""
-    from mercury.restore.check import build_restore_check_plan
-    from mercury.restore.display import print_restore_check_plan
+    from mercury.restore.check_plan import build_restore_check_plan
+    from mercury.restore.terminal.check import print_restore_check_plan
 
     plan = build_restore_check_plan(db)
     print_restore_check_plan(plan)
+    from mercury.logging.events import log_restore_check
+
+    log_restore_check(database=db, allowed=plan.allowed, blocker_count=len(plan.blockers))
     if not plan.allowed:
+        raise typer.Exit(1)
+
+
+@restore_app.command("run")
+def restore_check_run_cmd(
+    db: str = typer.Option(..., "--db", help="Production database to restore-check."),
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Execute restore into _restorecheck_* (requires live actions).",
+    ),
+) -> None:
+    """Plan or execute restore-check into a temporary _restorecheck_* database."""
+    from pathlib import Path
+
+    from mercury.backup.backup_runner import BackupExecutionError
+    from mercury.restore.check_plan import build_restore_check_plan
+    from mercury.restore.terminal.check import print_restore_check_plan
+    from mercury.restore.restore_runner import execute_restore_into_database
+    from mercury.restore.terminal.runner import print_restore_execution_result
+
+    plan = build_restore_check_plan(db)
+    if not execute:
+        print_restore_check_plan(plan)
+        if not plan.allowed:
+            raise typer.Exit(1)
+        return
+
+    if not plan.allowed or not plan.dump_file or not plan.backup_directory:
+        print_restore_check_plan(plan)
+        raise typer.Exit(1)
+
+    dump_path = Path(plan.backup_directory) / plan.dump_file
+    try:
+        result = execute_restore_into_database(
+            target_database=plan.restore_target,
+            dump_path=dump_path,
+            source_database=plan.source_prod,
+            execute=True,
+        )
+    except BackupExecutionError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+
+    print_restore_execution_result(result)
+    if not result.executed:
+        raise typer.Exit(1)
+
+
+@restore_app.command("cleanup")
+def restore_check_cleanup_cmd(
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Drop all _restorecheck_* databases (requires live actions).",
+    ),
+) -> None:
+    """List or drop temporary restore-check databases on the server."""
+    from mercury.core.runtime import should_probe_database_status
+    from mercury.database import MariaDbConfigError, MariaDbLiveError, discover
+    from mercury.restore.check_cleanup import cleanup_restorecheck_databases
+    from mercury.restore.terminal.check_cleanup import print_restorecheck_cleanup_batch
+
+    if not should_probe_database_status():
+        typer.echo("MariaDB not configured — run: mercury config init")
+        raise typer.Exit(1)
+
+    try:
+        inventory = discover("live")
+    except (MariaDbConfigError, MariaDbLiveError) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+
+    names = [entry.name for entry in inventory.entries]
+    batch = cleanup_restorecheck_databases(names, execute=execute)
+    print_restorecheck_cleanup_batch(batch, compact=True)
+    if execute and batch.databases and batch.dropped_count == 0:
         raise typer.Exit(1)
 
 
@@ -554,8 +733,8 @@ def status_cmd(
 ) -> None:
     """Protection snapshot: backup sources, gaps, prod→dev pairs, action items."""
     from mercury.database import MariaDbConfigError, MariaDbLiveError
-    from mercury.paths import OUTPUT_DIR, PROTECTION_REPORT_FILE
-    from mercury.protection_report import build_protection_report, format_protection_report
+    from mercury.core.paths import OUTPUT_DIR, PROTECTION_REPORT_FILE
+    from mercury.reporting.protection import build_protection_report, format_protection_report
 
     try:
         report = build_protection_report(live=live, probe_database=live)
@@ -566,7 +745,7 @@ def status_cmd(
         typer.echo(str(exc))
         raise typer.Exit(1) from exc
 
-    text = format_protection_report(report)
+    text = format_protection_report(report, compact=not save)
     output.write(text)
 
     if save:
@@ -581,7 +760,7 @@ def config_init_cmd(
     force: bool = typer.Option(False, "--force", help="Overwrite existing local config."),
 ) -> None:
     """Create config/databases.toml and config/local.toml from examples."""
-    from mercury.config_init import init_local_config
+    from mercury.config.init import init_local_config
 
     output.heading("Initialize local config")
     for line in init_local_config(force=force):
@@ -591,11 +770,210 @@ def config_init_cmd(
 @app.command("menu")
 def menu_cmd() -> None:
     """Open the Mercury interactive menu."""
+    from mercury.menu.runners import run_menu
+
     run_menu(interactive=True)
 
 
+@logs_app.command("path")
+def logs_path_cmd() -> None:
+    """Show active log file paths."""
+    from mercury.logging import (
+        configure_logging,
+        current_backup_log_file,
+        current_database_log_file,
+        current_error_log_file,
+        current_log_file,
+        resolve_log_dir,
+    )
+    from mercury.core.paths import LOGS_DIR
+    from mercury.terminal import screen as display_screen
+
+    configure_logging()
+    display_screen.write_fields(
+        {
+            "log_dir": resolve_log_dir(),
+            "default_log_dir": LOGS_DIR,
+            "main_log": current_log_file() or "(logging disabled)",
+            "error_log": current_error_log_file() or "(logging disabled)",
+            "database_log": current_database_log_file() or "(logging disabled)",
+            "backup_log": current_backup_log_file() or "(logging disabled)",
+        }
+    )
+
+
+@logs_app.command("status")
+def logs_status_cmd() -> None:
+    """Summary of log files, error counts, and recent sessions."""
+    from mercury.logging.analysis import build_log_status
+    from mercury.logging import configure_logging
+    from mercury.logging.terminal.status import print_log_status
+
+    configure_logging()
+    print_log_status(build_log_status())
+
+
+@logs_app.command("sessions")
+def logs_sessions_cmd(
+    limit: int = typer.Option(10, "--limit", "-n", min=1, max=50, help="Number of sessions to show."),
+) -> None:
+    """List recent Mercury CLI/menu sessions from log files."""
+    from mercury.logging.analysis import parse_recent_sessions
+    from mercury.logging import configure_logging, resolve_log_dir
+    from mercury.terminal import screen as display_screen
+
+    configure_logging()
+    sessions = parse_recent_sessions(max_sessions=limit)
+    display_screen.write_section("Recent sessions")
+    display_screen.write_fields({"log_dir": resolve_log_dir(), "count": len(sessions)})
+    if not sessions:
+        display_screen.write_status("warn", "No sessions found yet.")
+        return
+    rows = []
+    for session in sessions:
+        command = session.command or "(unknown)"
+        if len(command) > 52:
+            command = f"…{command[-51:]}"
+        rows.append([session.session_id, command, "" if session.exit_code is None else str(session.exit_code)])
+    display_screen.write_table(["SESSION", "COMMAND", "EXIT"], rows)
+
+
+@logs_app.command("errors")
+def logs_errors_cmd(
+    lines: int = typer.Option(30, "--lines", "-n", min=1, max=500, help="Lines to show from error.log."),
+) -> None:
+    """Show recent errors from error.log."""
+    from mercury.logging.analysis import analyze_log_file
+    from mercury.logging import configure_logging, current_error_log_file, read_log_tail, resolve_log_dir
+    from mercury.terminal import screen as display_screen
+
+    configure_logging()
+    error_file = current_error_log_file() or resolve_log_dir() / "error.log"
+    display_screen.write_section("Recent errors")
+    if error_file.is_file():
+        info = analyze_log_file(error_file)
+        display_screen.write_fields({"file": error_file, "errors": info.errors, "lines": info.lines})
+    else:
+        display_screen.write_fields({"file": error_file})
+    tail = read_log_tail(lines=lines, log_file=error_file if error_file.is_file() else None)
+    if not tail:
+        display_screen.write_status("ok", "No errors logged.")
+        return
+    for line in tail:
+        output.write(line)
+
+
+@logs_app.command("list")
+def logs_list_cmd() -> None:
+    """List Mercury log files newest first."""
+    from mercury.logging.analysis import analyze_log_file
+    from mercury.logging import list_all_log_files, resolve_log_dir
+    from mercury.terminal import format as display_format
+    from mercury.terminal import screen as display_screen
+
+    files = list_all_log_files()
+    display_screen.write_section("Mercury logs")
+    display_screen.write_fields({"log_dir": resolve_log_dir(), "count": len(files)})
+    if not files:
+        display_screen.write_status("warn", "No log files yet — run any mercury command.")
+        return
+    rows = []
+    for path in files:
+        info = analyze_log_file(path)
+        rows.append([path.name, display_format.format_bytes(info.size_bytes), str(info.errors)])
+    display_screen.write_table(["FILE", "SIZE", "ERRORS"], rows)
+
+
+@logs_app.command("tail")
+def logs_tail_cmd(
+    lines: int = typer.Option(50, "--lines", "-n", min=1, max=500, help="Lines to show."),
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="Log file name, path, or shorthand."),
+    errors: bool = typer.Option(False, "--errors", help="Tail error.log."),
+    database: bool = typer.Option(False, "--database", help="Tail database.log."),
+    backup: bool = typer.Option(False, "--backup", help="Tail backup.log."),
+    main: bool = typer.Option(False, "--main", help="Tail latest main daily log."),
+) -> None:
+    """Show the tail of a log file."""
+    from mercury.logging.analysis import resolve_named_log_file
+    from mercury.logging import list_all_log_files, read_log_tail, resolve_log_dir
+    from mercury.terminal import screen as display_screen
+
+    log_file: Path | None = None
+    if errors:
+        log_file = resolve_named_log_file("errors")
+    elif database:
+        log_file = resolve_named_log_file("database")
+    elif backup:
+        log_file = resolve_named_log_file("backup")
+    elif main:
+        log_file = resolve_named_log_file("main")
+    elif file:
+        log_file = resolve_named_log_file(file)
+
+    tail = read_log_tail(lines=lines, log_file=log_file)
+    display_screen.write_section("Log tail")
+    if log_file:
+        display_screen.write_fields({"file": log_file})
+    elif list_all_log_files():
+        display_screen.write_fields({"file": list_all_log_files()[0]})
+    if not tail:
+        display_screen.write_status("warn", "No log content available.")
+        return
+    for line in tail:
+        output.write(line)
+
+
+@logs_app.command("search")
+def logs_search_cmd(
+    pattern: str = typer.Argument(..., help="Text to search for in recent log files."),
+    max_matches: int = typer.Option(50, "--max", "-m", min=1, max=500, help="Maximum matches."),
+    ignore_case: bool = typer.Option(True, "--ignore-case/--case-sensitive", help="Case-insensitive search."),
+    in_file: Optional[str] = typer.Option(
+        None,
+        "--in",
+        help="Limit search to: errors, database, backup, main, or a filename.",
+    ),
+) -> None:
+    """Search Mercury log files for a pattern."""
+    from mercury.logging.analysis import resolve_named_log_file
+    from mercury.logging import list_all_log_files, resolve_log_dir, search_log_files
+    from mercury.terminal import screen as display_screen
+
+    log_dir = resolve_log_dir()
+    if in_file:
+        target = resolve_named_log_file(in_file, log_dir=log_dir)
+        paths = [target] if target and target.is_file() else []
+        matches = []
+        import re
+
+        flags = re.IGNORECASE if ignore_case else 0
+        regex = re.compile(re.escape(pattern), flags)
+        for path in paths:
+            for line_number, line in enumerate(
+                path.read_text(encoding="utf-8", errors="replace").splitlines(),
+                start=1,
+            ):
+                if regex.search(line):
+                    matches.append((path, line_number, line))
+                    if len(matches) >= max_matches:
+                        break
+    else:
+        matches = search_log_files(pattern, max_matches=max_matches, ignore_case=ignore_case, log_dir=log_dir)
+
+    display_screen.write_section("Log search")
+    display_screen.write_fields({"pattern": pattern, "matches": len(matches)})
+    if not matches:
+        display_screen.write_status("warn", "No matches found.")
+        return
+    rows = [[match[0].name, str(match[1]), match[2][:120]] for match in matches]
+    display_screen.write_table(["FILE", "LINE", "TEXT"], rows)
+
+
 def main() -> None:
-    app()
+    from mercury.bootstrap import prepare_for_argv, run_with_session_logging
+
+    prepare_for_argv(db_app, database_app)
+    run_with_session_logging(app)
 
 
 if __name__ == "__main__":

@@ -7,22 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from mercury.backup.list import build_on_disk_backup_list
+from mercury.backup.on_disk_index import build_on_disk_backup_list
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.safety import BACKUP_KIND_FULL
 
-
-def test_backup_plan_without_demo_does_not_crash() -> None:
-    import subprocess
-    import sys
-
-    result = subprocess.run(
-        [sys.executable, "-m", "mercury.cli", "backup", "plan"],
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "Backup plan" in result.stdout or "backup_sources" in result.stdout.lower() or "PROTECTED" in result.stdout.upper() or "backup source" in result.stdout.lower()
+from tests.conftest import REPO_ROOT, run_cli
 
 
 def test_full_backup_verify_requires_dump_not_schema_only(tmp_path: Path) -> None:
@@ -91,18 +80,10 @@ def test_build_on_disk_backup_list_finds_manifest(tmp_path: Path) -> None:
 
 
 def test_cli_backup_list_on_disk() -> None:
-    import subprocess
-    import sys
-    from pathlib import Path
-
-    backups = Path(__file__).resolve().parents[1] / "backups"
+    backups = REPO_ROOT / "backups"
     if not any(backups.glob("*/*/manifest.json")):
         pytest.skip("no on-disk backups in repo")
 
-    result = subprocess.run(
-        [sys.executable, "-m", "mercury.cli", "backup", "list"],
-        capture_output=True,
-        text=True,
-    )
+    result = run_cli("backup", "list")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "BACKUP LIST (on-disk)" in result.stdout

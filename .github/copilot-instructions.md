@@ -30,6 +30,7 @@ Use `.venv/bin/python`. Do not commit `config/local.toml`.
 ## Code location
 
 - Logic: `src/mercury/{core,backup,database,config,env,reporting,sync}/`
-- CLI: `src/mercury/cli.py`, `src/mercury/database/cli.py`
+- CLI: `src/mercury/cli.py`, `src/mercury/database/commands.py`
+- Menu / terminal: `src/mercury/menu/`, `src/mercury/terminal/`
 - Tests: `tests/test_*.py`
 - Top-level `src/mercury/*.py` shims (except cli/menu) — do not extend

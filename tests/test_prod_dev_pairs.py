@@ -1,6 +1,6 @@
 """Tests for prod→dev pair inference."""
 
-from mercury.database.pairs import build_prod_dev_pairs, orphan_dev_databases, prod_to_dev_name
+from mercury.database.prod_dev_pairs import build_prod_dev_pairs, orphan_dev_databases, prod_to_dev_name
 
 
 def test_prod_to_dev_name() -> None:

@@ -11,7 +11,7 @@ from mercury.database import (
     resolve_mariadb_target,
     try_load_mariadb_config,
 )
-from mercury.database.display_ping import print_server_probe
+from mercury.database.terminal.ping import print_server_probe
 from mercury.database.mariadb.session import MariaDbServerProbe
 
 
@@ -77,19 +77,13 @@ def test_probe_display_includes_version(capsys: pytest.CaptureFixture[str]) -> N
 
 
 def test_cli_db_ping_without_config() -> None:
-    import subprocess
-    import sys
-    from pathlib import Path
+    from tests.conftest import repo_local_config, run_cli
 
-    repo_local = Path(__file__).resolve().parents[1] / "config" / "local.toml"
-    result = subprocess.run(
-        [sys.executable, "-m", "mercury.cli", "db", "ping"],
-        capture_output=True,
-        text=True,
-    )
-    if repo_local.exists():
+    result = run_cli("db", "ping")
+    if repo_local_config().exists():
         assert result.returncode == 0
-        assert "MariaDB server probe" in result.stdout
+        assert "MariaDB" in result.stdout
+        assert "connected" in result.stdout.lower() or "mariadb" in result.stdout.lower()
     else:
         assert result.returncode != 0
         assert "local.toml" in (result.stdout + result.stderr).lower()

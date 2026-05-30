@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from mercury.backup.manifest import BackupManifest, planned_backup_files
-from mercury.database.planning import build_demo_backup_plan
+from mercury.database.backup_planning import build_demo_backup_plan
 from mercury.core.paths import OUTPUT_DIR
 from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
 

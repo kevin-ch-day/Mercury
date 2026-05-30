@@ -1,7 +1,7 @@
 """Tests for dry-run backup planning."""
 
 from mercury.database.core import classify_database
-from mercury.database.planning import DEMO_DATABASES, build_backup_plan, build_demo_backup_plan
+from mercury.database.backup_planning import DEMO_DATABASES, build_backup_plan, build_demo_backup_plan
 
 
 def test_backup_plan_excludes_dev_databases() -> None:

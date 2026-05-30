@@ -1,7 +1,7 @@
 """Backup planning, execution, verification, and display."""
 
-from mercury.backup.display import print_backup_plan
-from mercury.backup.execute import (
+from mercury.backup.terminal.plan import print_backup_plan
+from mercury.backup.backup_runner import (
     BackupExecutionError,
     BackupExecutionResult,
     assert_not_production_restore_target,
@@ -9,7 +9,7 @@ from mercury.backup.execute import (
     execute_backup,
     plan_backup_execution,
 )
-from mercury.backup.execute_display import print_backup_execution
+from mercury.backup.terminal.runner import print_backup_execution
 from mercury.backup.layout import (
     CHECKSUM_FILENAME,
     MANIFEST_FILENAME,
@@ -21,7 +21,7 @@ from mercury.backup.layout import (
     planned_backup_directory,
     planned_dump_filename,
 )
-from mercury.backup.list import DEMO_BACKUP_RECORDS, DemoBackupList, build_demo_backup_list
+from mercury.backup.on_disk_index import DEMO_BACKUP_RECORDS, DemoBackupList, build_demo_backup_list
 from mercury.backup.manifest import (
     BACKUP_KIND_LABELS,
     BackupKind,
@@ -47,7 +47,7 @@ from mercury.backup.verification import (
     verify_backup_artifacts,
     verify_backup_directory,
 )
-from mercury.backup.verify_display import (
+from mercury.backup.terminal.verify import (
     print_demo_backup_list,
     print_report_preview,
     print_verification_plan,

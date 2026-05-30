@@ -48,21 +48,6 @@ PLATFORM_CATALOG: list[CatalogEntry] = [
         description="Disposable dev target.",
     ),
     CatalogEntry(
-        name="droid_threat_intel_db_prod",
-        project="DroidThreatIntel",
-        description="Threat intel production database on dev server (manual review for catalog alignment).",
-    ),
-    CatalogEntry(
-        name="droid_threat_intel_db_dev",
-        project="DroidThreatIntel",
-        description="Disposable dev target for droid_threat_intel_db_prod.",
-    ),
-    CatalogEntry(
-        name="proofpoint_cti_db_dev",
-        project="ProofpointCTI",
-        description="Dev database without matching prod in inventory; manual review.",
-    ),
-    CatalogEntry(
         name="_restorecheck_erebus_threat_intel_prod_20260530",
         project="Mercury",
         description="Temporary restore-check database; not a backup source.",

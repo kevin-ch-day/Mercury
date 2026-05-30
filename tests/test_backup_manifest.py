@@ -1,12 +1,12 @@
 """Tests for backup manifest and planned paths."""
 
-from mercury.backup_layout import build_backup_layout
-from mercury.backup_manifest import (
+from mercury.backup.layout import build_backup_layout
+from mercury.backup.manifest import (
     BackupManifest,
     planned_backup_dir,
     planned_backup_files,
 )
-from mercury.safety import BACKUP_KIND_FULL
+from mercury.core.safety import BACKUP_KIND_FULL
 
 
 def test_planned_backup_dir_format() -> None:

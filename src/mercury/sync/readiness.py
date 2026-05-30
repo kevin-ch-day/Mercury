@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from mercury.backup.locate import find_latest_backup_directory
+from mercury.backup.find_latest_backup import find_latest_backup_directory
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.safety import BACKUP_KIND_FULL
+from mercury.database.core.scope import is_in_scope
 from mercury.database.discovery import discover, discover_demo
-from mercury.database.pairs import ProdDevPair, build_prod_dev_pairs
+from mercury.database.prod_dev_pairs import ProdDevPair, build_prod_dev_pairs
 
 
 class SyncReadinessEntry(BaseModel):
@@ -45,6 +46,8 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
     blocked_count = 0
 
     for pair in pairs:
+        if not is_in_scope(pair.expected_dev):
+            continue
         blockers: list[str] = []
         if not pair.dev_listed:
             blockers.append(f"Dev target missing: {pair.expected_dev}")
@@ -86,10 +89,14 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
             )
         )
 
-    return SyncReadinessReport(
+    report = SyncReadinessReport(
         mode="live" if live else "demo",
         backup_root=str(policy.backup_root),
         entries=entries,
         ready_count=ready_count,
         blocked_count=blocked_count,
     )
+    from mercury.logging.events import log_sync_readiness
+
+    log_sync_readiness(mode=report.mode, ready=report.ready_count, blocked=report.blocked_count)
+    return report

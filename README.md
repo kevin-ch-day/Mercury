@@ -17,6 +17,12 @@ Windows is for **seed development** only; production use targets **Fedora**.
 ## Quick start
 
 ```bash
+cd /path/to/Mercury
+./run.sh                         # interactive menu (creates .venv on first run)
+
+The menu groups actions by task, pauses after each screen, and accepts `q` to quit.
+
+# Or manual setup:
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[mariadb,dev]"
 
@@ -70,18 +76,25 @@ mercury report preview --db <prod> --kind full|schema_only
 
 `backup run --execute` and `backup batch --execute` require `[mercury] dry_run = false` and `live_actions_enabled = true` in `config/local.toml`.
 
-### Sync (planning only)
+### Sync
 
 ```bash
 mercury sync plan [--demo]
 mercury sync readiness [--live]
+mercury sync run [--live] [--execute] [--yes]
 ```
 
-### Restore-check (planning only)
+`sync run --execute` restores verified backups into dev targets. Requires live mode and typing `SYNC DEV` unless `--yes`.
+
+### Restore-check
 
 ```bash
 mercury restore-check plan --db <prod>
+mercury restore-check run --db <prod> [--execute]
+mercury restore-check cleanup [--execute]
 ```
+
+Restore-check runs into temporary `_restorecheck_*` databases only. Use `cleanup --execute` to drop them after validation.
 
 ## Setup
 
@@ -124,8 +137,8 @@ src/mercury/
   database/      discovery, MariaDB, classification
   env/           environment probe
   reporting/     protection status, previews
-  sync/          prod→dev planning, readiness
-  restore/       restore-check planning
+  sync/          prod→dev planning, readiness, execution
+  restore/       restore-check planning and execution
 ```
 
 See [AGENTS.md](AGENTS.md) for contributor/agent guidance. See [CONTRIBUTING.md](CONTRIBUTING.md) for pull request expectations.

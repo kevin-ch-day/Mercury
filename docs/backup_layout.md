@@ -1,6 +1,6 @@
 # Backup layout (planned)
 
-Mercury uses a single layout helper (`mercury.backup_layout`) for all dry-run planning:
+Mercury uses a single layout helper (`mercury.backup.layout`) for all dry-run planning:
 
 ```
 backups/YYYY-MM-DD/<database>/

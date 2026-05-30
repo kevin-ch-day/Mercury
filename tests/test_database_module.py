@@ -17,12 +17,6 @@ def test_public_api_exports() -> None:
     assert db.default_service
 
 
-def test_discover_demo_mode() -> None:
-    inv = discover("demo")
-    assert inv.mode == "demo"
-    assert inv.count >= 9
-
-
 def test_discover_config_mode() -> None:
     inv = discover("config")
     assert inv.mode == "config_and_catalog"

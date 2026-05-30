@@ -1,25 +1,31 @@
-"""Tests for menu shell."""
+"""Tests for menu shell and interactive loop."""
+
+from __future__ import annotations
 
 import pytest
 
-from mercury.menu import (
+from mercury import menu_display
+from mercury.menu.runners import (
     MENU_SUBTITLE,
     MENU_TITLE,
     handle_menu_choice,
     render_menu_text,
     run_menu,
 )
+from mercury.menu.loop import handle_menu_choice as interactive_handle_choice
 
 
 def test_render_menu_text_contains_header_and_items() -> None:
     text = render_menu_text()
     assert MENU_TITLE in text
     assert MENU_SUBTITLE in text
-    assert "Mode:" in text
-    assert "dry-run" in text
-    assert "dry-run only" in text
-    assert "[1] Environment Check" in text
-    assert "[0] Exit" in text
+    assert "Main menu" in text
+    assert "Database connection" in text
+    assert "Backups location" in text
+    assert "Backup coverage" in text
+    assert "Mode" in text
+    assert "      [1] Environment Check" in text
+    assert "      [0] Exit" in text
     assert "Sync Production -> Development" in text
 
 
@@ -28,9 +34,99 @@ def test_render_menu_text_shows_database_status_when_configured() -> None:
 
     text = render_menu_text()
     if should_probe_database_status():
-        assert "connected" in text.lower()
+        assert "Database connection" in text and "[ok]" in text
     else:
-        assert "not connected" in text.lower()
+        assert "Database connection" in text and "[!!]" in text
+
+
+def test_run_menu_redisplay_after_choice(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    inputs = iter(["1", "0"])
+    monkeypatch.setattr(
+        "mercury.menu.prompts.ask",
+        lambda _prompt="": next(inputs),
+    )
+    monkeypatch.setattr("mercury.env.interactive_menu.read_env_choice", lambda: "0")
+
+    run_menu(interactive=True)
+    out = capsys.readouterr().out
+    assert out.count("MERCURY") == 1
+    assert out.count("Main menu") >= 2
+    assert out.count("[1] Environment Check") >= 2
+    assert "Rescan" in out
+    assert "Live mode guide" in out
+    assert "Press any key to continue" not in out
+    assert "[0] Return" not in out
+    assert "Exiting Mercury" in out
+
+
+def test_run_menu_invalid_choice_does_not_redisplay(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    inputs = iter(["9", "0"])
+    monkeypatch.setattr(
+        "mercury.menu.prompts.ask",
+        lambda _prompt="": next(inputs),
+    )
+
+    run_menu(interactive=True)
+    out = capsys.readouterr().out
+    assert out.count("MERCURY") == 1
+    assert "Invalid choice" in out
+
+
+def test_run_menu_loop_with_injected_renderer(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    renders = iter(["MENU-A", "MENU-B"])
+    inputs = iter(["0"])
+    monkeypatch.setattr(
+        "mercury.menu.prompts.ask",
+        lambda _prompt="": next(inputs),
+    )
+
+    run_menu(interactive=True, render_menu_text=lambda: next(renders))
+    out = capsys.readouterr().out
+    assert "MENU-A" in out
+    assert "Exiting Mercury" in out
+
+
+def test_handle_exit_choice(capsys: pytest.CaptureFixture[str]) -> None:
+    assert handle_menu_choice("0") == "exit"
+    assert "Exiting Mercury" in capsys.readouterr().out
+
+
+def test_handle_quit_alias() -> None:
+    assert handle_menu_choice("q") == "exit"
+
+
+def test_handle_empty_choice() -> None:
+    assert handle_menu_choice("") == "empty"
+    assert handle_menu_choice("   ") == "empty"
+
+
+def test_handle_invalid_choice_includes_range(capsys: pytest.CaptureFixture[str]) -> None:
+    assert interactive_handle_choice("99") == "invalid"
+    out = capsys.readouterr().out
+    assert "Invalid choice" in out
+    assert "0-8" in out
+
+
+def test_handle_sync_plan_returns_to_menu_without_footer(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr("mercury.sync.interactive_menu.read_sync_choice", lambda: "0")
+    assert handle_menu_choice("6") == "continue"
+    out = capsys.readouterr().out
+    assert "ready" in out.lower() or "blocked" in out.lower()
+    assert "Rescan readiness" in out
+    assert "[0] Return" not in out
+    assert "CLI:" not in out
+
+
+def test_handle_help_choice(capsys: pytest.CaptureFixture[str]) -> None:
+    assert handle_menu_choice("?") == "empty"
+    out = capsys.readouterr().out
+    assert "Menu help" in out
 
 
 def test_menu_renders_without_crashing(capsys: pytest.CaptureFixture[str]) -> None:
@@ -39,58 +135,40 @@ def test_menu_renders_without_crashing(capsys: pytest.CaptureFixture[str]) -> No
     assert MENU_TITLE in captured.out
 
 
-def test_handle_exit_choice(capsys: pytest.CaptureFixture[str]) -> None:
-    assert handle_menu_choice("0") is False
-    assert "Exiting Mercury" in capsys.readouterr().out
-
-
-def test_handle_backup_plan_menu(capsys: pytest.CaptureFixture[str]) -> None:
-    assert handle_menu_choice("3") is True
-    out = capsys.readouterr().out
-    assert "BACKUP BATCH" in out or "batch" in out.lower()
-
-
-def test_handle_schema_plan(capsys: pytest.CaptureFixture[str]) -> None:
-    assert handle_menu_choice("4") is True
-    out = capsys.readouterr().out
-    assert "SCHEMA-ONLY BACKUP PLAN" in out
-
-
-def test_handle_sync_plan(capsys: pytest.CaptureFixture[str]) -> None:
-    assert handle_menu_choice("6") is True
-    assert "sync plan" in capsys.readouterr().out.lower()
-
-
-def test_handle_restore_check_menu(capsys: pytest.CaptureFixture[str]) -> None:
-    assert handle_menu_choice("7") is True
-    out = capsys.readouterr().out
-    assert "RESTORE-CHECK" in out or "restore-check" in out.lower()
-
-
-def test_handle_environment_check(capsys: pytest.CaptureFixture[str]) -> None:
-    assert handle_menu_choice("1") is True
-    assert "Mode: seed" in capsys.readouterr().out
-
-
-def test_handle_verify_plan(capsys: pytest.CaptureFixture[str]) -> None:
-    assert handle_menu_choice("5") is True
-    out = capsys.readouterr().out
-    assert "BACKUP VERIFICATION" in out or "BACKUP VERIFICATION PLAN" in out
-
-
-def test_handle_reports_history(capsys: pytest.CaptureFixture[str]) -> None:
-    assert handle_menu_choice("8") is True
-    out = capsys.readouterr().out
-    assert "BACKUP LIST" in out or "Protection status" in out or "MERCURY PROTECTION STATUS" in out
-
-
-def test_handle_discover_databases(capsys: pytest.CaptureFixture[str]) -> None:
-    assert handle_menu_choice("2") is True
-    out = capsys.readouterr().out
-    assert "Known databases" in out
-    assert "erebus_threat_intel_prod" in out
-    assert (
-        "not_connected" in out.lower()
-        or "connected" in out.lower()
-        or "No database server" in out
-    )
+@pytest.mark.parametrize(
+    ("choice", "snippets"),
+    [
+        ("1", ("Environment Check", "python:", "dry_run:", "Rescan", "Live mode guide")),
+        ("2", ("databases:", "roles:", "DATABASE", "ENV", "Rescan inventory")),
+        ("3", ("Rescan plan", "sources:", "DATABASE")),
+        ("4", ("sources:", "Rescan plan")),
+        ("5", ("verified", "Rescan")),
+        ("6", ("ready", "blocked", "Rescan readiness")),
+        ("7", ("ready", "blocked", "Rescan plans", "Run allowed")),
+        ("8", ("backup_root", "inventory")),
+    ],
+)
+def test_handle_menu_action(
+    choice: str,
+    snippets: tuple[str, ...],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    if choice == "1":
+        monkeypatch.setattr("mercury.env.interactive_menu.read_env_choice", lambda: "0")
+    if choice == "2":
+        monkeypatch.setattr("mercury.database.discovery_menu.read_discover_choice", lambda: "0")
+    if choice == "6":
+        monkeypatch.setattr("mercury.sync.interactive_menu.read_sync_choice", lambda: "0")
+    if choice == "3":
+        monkeypatch.setattr("mercury.backup.interactive_menu.read_backup_choice", lambda: "0")
+    if choice == "5":
+        monkeypatch.setattr("mercury.verify.interactive_menu.read_verify_choice", lambda: "0")
+    if choice == "4":
+        monkeypatch.setattr("mercury.schema.interactive_menu.read_schema_choice", lambda: "0")
+    if choice == "7":
+        monkeypatch.setattr("mercury.restore.interactive_menu.read_restore_choice", lambda: "0")
+    assert handle_menu_choice(choice) == "continue"
+    out = capsys.readouterr().out.lower()
+    matched = sum(1 for snippet in snippets if snippet.lower() in out)
+    assert matched >= 1, f"expected one of {snippets!r} in menu output"

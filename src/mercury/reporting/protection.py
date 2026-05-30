@@ -11,7 +11,7 @@ from mercury.database import (
     discover_demo,
 )
 from mercury.database.core import CATALOG_BY_NAME, DatabaseRole, classify_database
-from mercury.database.pairs import ProdDevPair, build_prod_dev_pairs, orphan_dev_databases
+from mercury.database.prod_dev_pairs import ProdDevPair, build_prod_dev_pairs, orphan_dev_databases
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.runtime import operator_status
 from mercury.core.safety import MODE_SEED
@@ -98,8 +98,11 @@ def build_protection_report(*, live: bool = False, probe_database: bool = False)
     )
 
 
-def format_protection_report(report: ProtectionReport) -> str:
+def format_protection_report(report: ProtectionReport, *, compact: bool = False) -> str:
     """Render report as plain text (for terminal or file)."""
+    if compact:
+        return _format_protection_report_compact(report)
+
     lines: list[str] = [
         "MERCURY PROTECTION STATUS",
         f"Generated: {report.generated_at}",
@@ -162,3 +165,60 @@ def format_protection_report(report: ProtectionReport) -> str:
     lines.append(f"Live actions enabled: {policy.live_actions_enabled}")
     lines.append(f"Dry-run: {policy.dry_run}")
     return "\n".join(lines)
+
+
+def _format_protection_report_compact(report: ProtectionReport) -> str:
+    lines: list[str] = [
+        "PROTECTION SUMMARY",
+        f"  inventory: {report.inventory_count} databases",
+        "",
+        "Backup sources:",
+    ]
+    for name in report.protected:
+        entry = CATALOG_BY_NAME.get(name)
+        project = f" [{entry.project}]" if entry else ""
+        lines.append(f"  + {name}{project}")
+    if not report.protected:
+        lines.append("  (none)")
+
+    missing_dev = [p for p in report.prod_dev_pairs if not p.dev_listed]
+    if missing_dev:
+        lines.append("")
+        lines.append("Missing dev targets:")
+        for pair in missing_dev:
+            lines.append(f"  - {pair.prod} -> {pair.expected_dev}")
+
+    if report.manual_review:
+        lines.append("")
+        lines.append("Manual review:")
+        for name in report.manual_review:
+            lines.append(f"  - {name}")
+
+    return "\n".join(lines)
+
+
+def print_protection_report(report: ProtectionReport, *, compact: bool = False) -> None:
+    """Render protection report to the terminal."""
+    from mercury.terminal import screen as display_screen
+
+    if not compact:
+        display_screen.write_summary(format_protection_report(report, compact=False))
+        return
+
+    display_screen.write_fields(
+        {
+            "inventory": report.inventory_count,
+            "protected": len(report.protected),
+            "unprotected": len(report.not_protected),
+        }
+    )
+    if report.protected:
+        rows = []
+        for name in report.protected:
+            entry = CATALOG_BY_NAME.get(name)
+            project = entry.project if entry and entry.project else "—"
+            rows.append([name, project])
+        display_screen.write_blank()
+        display_screen.write_table(["BACKUP SOURCE", "PROJECT"], rows, max_col_widths=[36, 16])
+    else:
+        display_screen.write_status("warn", "No protected backup sources yet")
