@@ -1,4 +1,4 @@
-"""Interactive backup verification menu (option 5)."""
+"""Interactive backup verification menu (option 2)."""
 
 from __future__ import annotations
 
@@ -25,13 +25,14 @@ def _render_verify_screen(summary, *, show_title: bool) -> None:
         [
             ("1", "Rescan"),
             ("2", "Verify all and update manifests"),
-        ]
+        ],
+        indent=0,
     )
 
 
 def run_verify_menu(*, interactive: bool = True) -> None:
     summary = run_verify_all_for_menu(update_manifest=False)
-    show_title = False
+    show_title = True
     while True:
         _render_verify_screen(summary, show_title=show_title)
         show_title = False
@@ -55,7 +56,10 @@ def run_verify_menu(*, interactive: bool = True) -> None:
 
         if choice == "2":
             summary = run_verify_all_for_menu(update_manifest=True)
-            print_verify_menu_summary(summary)
+            display_screen.write_summary(
+                f"Verified {summary.verified}, missing {summary.missing}, failed {summary.failed}. "
+                "Manifests updated where verification passed."
+            )
             show_title = pause_and_redraw()
             continue
 

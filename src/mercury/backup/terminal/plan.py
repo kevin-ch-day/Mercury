@@ -63,7 +63,7 @@ def print_backup_plan(plan: BackupPlanDryRun, *, show_layout_hint: bool = True) 
         )
 
     production_sources, shared_authority_sources = _group_backup_sources(plan)
-    excluded_dev, out_of_scope, other_excluded = _group_excluded(plan)
+    excluded_dev, _out_of_scope, other_excluded = _group_excluded(plan)
 
     output.heading("Production sources")
     if production_sources:
@@ -95,14 +95,6 @@ def print_backup_plan(plan: BackupPlanDryRun, *, show_layout_hint: bool = True) 
     output.heading("Excluded development targets")
     if excluded_dev:
         for item in excluded_dev:
-            output.item(f"{item.name} [{item.role}]")
-            output.item(item.reason, indent=4)
-    else:
-        output.item("(none)")
-
-    output.heading("Out of scope")
-    if out_of_scope:
-        for item in out_of_scope:
             output.item(f"{item.name} [{item.role}]")
             output.item(item.reason, indent=4)
     else:

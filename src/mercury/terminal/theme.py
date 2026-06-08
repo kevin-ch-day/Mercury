@@ -161,10 +161,7 @@ def rule_line(*, width: int = RULE_WIDTH, char: str = "─") -> str:
 
 
 def fancy_rule(*, width: int = RULE_WIDTH) -> str:
-    if not colors_enabled():
-        return "─" * width
-    inner = "─" * (width - 4)
-    return f"[{RULE}]╭[/][{RULE_GLOW}]{inner}[/][{RULE}]╯[/]"
+    return rule_line(width=width, char="─")
 
 
 def section_title(title: str) -> str:
@@ -182,11 +179,11 @@ def section_rule(title: str, *, max_width: int = 60) -> str:
 
 
 def report_header(title: str, *, max_width: int = 60) -> list[str]:
-    width = min(max(len(title), 16), max_width)
+    width = min(RULE_WIDTH, max_width if max_width > 0 else RULE_WIDTH)
     if not colors_enabled():
-        return [title, "-" * width]
+        return [title, "─" * width]
     return [
-        markup(title.upper(), SECTION),
+        markup(title, SECTION),
         markup("─" * width, TABLE_RULE),
     ]
 
@@ -401,21 +398,7 @@ def style_table_lines(lines: list[str]) -> list[str]:
     styled_header = prefix + "  ".join(markup(cell, TABLE_HEADER) for cell in cells)
     styled_rule = prefix + markup(rule[indent:], TABLE_RULE)
 
-    styled_body: list[str] = []
-    gap = "  "
-    for row in body:
-        row_indent = len(row) - len(row.lstrip())
-        row_prefix = row[:row_indent]
-        row_cells = re.split(r"  +", row[row_indent:].strip())
-        if len(row_cells) >= 2:
-            styled_cells = [row_cells[0]] + [style_table_cell(c) for c in row_cells[1:]]
-            styled_body.append(row_prefix + gap.join(styled_cells))
-        elif len(row_cells) == 1:
-            styled_body.append(row_prefix + style_table_cell(row_cells[0]))
-        else:
-            styled_body.append(row)
-
-    return [styled_header, styled_rule, *styled_body]
+    return [styled_header, styled_rule, *body]
 
 
 def table_header_line(prefix: str, header_cells: list[str]) -> str:
@@ -495,9 +478,6 @@ def submenu_block(
         lines.extend(open_screen_lines(title))
     else:
         lines.append("")
-        lines.append(rule_line(width=RULE_WIDTH - 2))
-    lines.append(submenu_intro())
-    lines.append("")
     for key, label in options:
         lines.append(menu_item_line(key, label, indent=indent))
     lines.append(menu_bottom_option(bottom_label, indent=indent))

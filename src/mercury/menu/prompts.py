@@ -71,7 +71,8 @@ def ask(prompt: str) -> str:
     normalized = normalize_input_prompt(prompt)
     if _reader is not None:
         return _reader(normalized)
-    return input(normalized)
+    print(normalized, end="", flush=True)
+    return input()
 
 
 def ask_safe(prompt: str) -> str | None:

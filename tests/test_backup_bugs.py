@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from mercury.backup.on_disk_index import build_on_disk_backup_list
+from mercury.backup.on_disk_index import build_on_disk_backup_list, latest_records_by_database
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.safety import BACKUP_KIND_FULL
 
@@ -78,6 +78,43 @@ def test_build_on_disk_backup_list_finds_manifest(tmp_path: Path) -> None:
     assert len(listing.records) == 1
     assert listing.records[0].database == "droid_threat_intel_db_prod"
     assert listing.records[0].verified is True
+
+
+def test_latest_records_by_database_keeps_newest_record_first(tmp_path: Path) -> None:
+    older = tmp_path / "2026-05-29" / "erebus_threat_intel_prod"
+    newer = tmp_path / "2026-05-30" / "erebus_threat_intel_prod"
+    older.mkdir(parents=True)
+    newer.mkdir(parents=True)
+    for path, backup_id, created_at in (
+        (older, "old", "2026-05-29T10:00:00+00:00"),
+        (newer, "new", "2026-05-30T10:00:00+00:00"),
+    ):
+        (path / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "backup_id": backup_id,
+                    "database": "erebus_threat_intel_prod",
+                    "backup_kind": "full",
+                    "created_at": created_at,
+                    "dump_file": "d.sql.gz",
+                    "schema_file": None,
+                    "sha256": "abc",
+                    "size_bytes": 1,
+                    "source_role": "production",
+                    "tool_used": "mariadb-dump",
+                    "verified": True,
+                    "live_actions_enabled": True,
+                    "dry_run": False,
+                    "notes": "",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    listing = build_on_disk_backup_list(tmp_path)
+    latest = latest_records_by_database(listing)
+    assert len(latest) == 1
+    assert latest[0].backup_id == "new"
 
 
 def test_cli_backup_list_on_disk() -> None:

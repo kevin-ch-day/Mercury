@@ -49,9 +49,10 @@ def test_render_main_menu_matches_simple_layout() -> None:
     assert "Source DBs" in text
     assert "Execution Safety" not in text
     assert "─" in text
-    assert "      [1] Environment check" in text
+    assert "      [1] Backup source databases" in text
     assert "      [0] Exit" in text
-    assert "Actions" in text
+    assert "Core workflows" not in text
+    assert "Diagnostics" not in text
 
 
 def test_render_main_menu_body_omits_title_block() -> None:
@@ -59,7 +60,7 @@ def test_render_main_menu_body_omits_title_block() -> None:
     assert menu_display.MENU_TITLE not in body
     assert "Status" in body
     assert "MariaDB" in body
-    assert "      [1] Environment check" in body
+    assert "      [1] Backup source databases" in body
 
 
 def test_render_menu_help_lists_shortcuts() -> None:

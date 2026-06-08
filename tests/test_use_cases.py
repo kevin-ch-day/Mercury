@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -36,7 +37,19 @@ def test_run_backup_batch_dry_run(tmp_path: Path) -> None:
 
 
 def test_sync_readiness_report_demo() -> None:
-    report = build_sync_readiness_report(live=False)
+    import mercury.sync.readiness as readiness
+
+    original = readiness.load_execution_policy
+    readiness.load_execution_policy = lambda: ExecutionPolicy(
+        dry_run=True,
+        live_actions_enabled=False,
+        backup_root=Path("/tmp/mercury-empty-sync-readiness"),
+        allow_unsafe_backup_root=True,
+    )
+    try:
+        report = build_sync_readiness_report(live=False)
+    finally:
+        readiness.load_execution_policy = original
     assert report.entries
     assert report.blocked_count >= 1
 
@@ -62,8 +75,19 @@ def test_sync_readiness_ignores_repo_local_backups_for_production(
 
 
 def test_restore_check_plan_requires_verified_backup(tmp_path: Path) -> None:
-    policy = ExecutionPolicy(dry_run=True, live_actions_enabled=False, backup_root=tmp_path)
-    plan = build_restore_check_plan("erebus_threat_intel_prod")
+    import mercury.restore.check_plan as restore_check_plan
+
+    original = restore_check_plan.load_execution_policy
+    restore_check_plan.load_execution_policy = lambda: ExecutionPolicy(
+        dry_run=True,
+        live_actions_enabled=False,
+        backup_root=tmp_path,
+        allow_unsafe_backup_root=True,
+    )
+    try:
+        plan = build_restore_check_plan("erebus_threat_intel_prod")
+    finally:
+        restore_check_plan.load_execution_policy = original
     assert plan.source_prod == "erebus_threat_intel_prod"
     assert plan.restore_target.startswith("_restorecheck_")
     assert plan.allowed is False
@@ -92,10 +116,15 @@ def test_cli_sync_readiness() -> None:
         text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "SYNC READINESS" in result.stdout
+    assert "Mode:" in result.stdout
+    assert "PAIR" in result.stdout
+    assert "STATUS" in result.stdout
 
 
 def test_cli_restore_check_plan() -> None:
+    env = os.environ.copy()
+    env["MERCURY_BACKUP_ROOT"] = "/tmp/mercury-empty-restore-check"
+    env["MERCURY_ALLOW_UNSAFE_BACKUP_ROOT"] = "1"
     result = subprocess.run(
         [
             sys.executable,
@@ -108,6 +137,7 @@ def test_cli_restore_check_plan() -> None:
         ],
         capture_output=True,
         text=True,
+        env=env,
     )
     assert result.returncode != 0
     assert "RESTORE-CHECK" in result.stdout

@@ -84,7 +84,7 @@ def build_protection_report(*, live: bool = False, probe_database: bool = False)
             actions.append(f"Add or discover dev target for prod: {pair.prod}")
         else:
             actions.append(
-                f"Before sync {pair.prod} -> {pair.expected_dev}: backup + verify prod first."
+                f"Before refreshing {pair.expected_dev} from {pair.prod}: protect the source with a full verified backup first."
             )
     for name in review:
         actions.append(f"Manual review required: {name}")
@@ -231,11 +231,13 @@ def print_protection_report(report: ProtectionReport, *, compact: bool = False) 
         display_screen.write_summary(format_protection_report(report, compact=False))
         return
 
+    production_sources = [name for name in report.protected if name not in report.shared_authority]
     display_screen.write_fields(
         {
             "Active scope": report.inventory_count,
-            "Source databases": len(report.protected),
-            "Excluded active scope": len(report.not_protected),
+            "Production sources": len(production_sources),
+            "Shared authority": len(report.shared_authority),
+            "Sync pairs": len(report.prod_dev_pairs),
         }
     )
     if report.ignored_out_of_scope_count:
@@ -248,10 +250,11 @@ def print_protection_report(report: ProtectionReport, *, compact: bool = False) 
             source_role = source_role_label(name)
             rows.append([name, source_role, project])
         display_screen.write_blank()
-        display_screen.write_table(
+        display_screen.write_compact_table(
             ["SOURCE DATABASE", "SOURCE ROLE", "PROJECT"],
             rows,
-            max_col_widths=[36, 20, 16],
+            min_col_widths=[28, 16, 12],
+            max_col_widths=[36, 24, 16],
         )
     else:
         display_screen.write_status("warn", "No protected backup sources yet")

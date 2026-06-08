@@ -18,7 +18,6 @@ from mercury.terminal.theme import (
     menu_bottom_option as theme_menu_bottom_option,
     menu_header_lines,
     menu_item_line,
-    menu_section_header,
     menu_status_row,
     rule_line,
 )
@@ -89,16 +88,21 @@ class MenuItem:
 
 MENU_SECTIONS: list[tuple[str, list[MenuItem]]] = [
     (
-        "Actions",
+        "Core workflows",
         [
-            MenuItem("1", "Environment check"),
-            MenuItem("2", "Discover databases"),
-            MenuItem("3", "Show backup plan"),
-            MenuItem("4", "Export schema-only copies"),
-            MenuItem("5", "Verify backups"),
-            MenuItem("6", "Sync readiness"),
-            MenuItem("7", "Restore-check backup"),
-            MenuItem("8", "Reports and backup history"),
+            MenuItem("1", "Backup source databases"),
+            MenuItem("2", "Verify backups"),
+            MenuItem("3", "Restore-check backup"),
+            MenuItem("4", "Sync production to development"),
+            MenuItem("5", "Reports and backup history"),
+        ],
+    ),
+    (
+        "Diagnostics",
+        [
+            MenuItem("6", "Environment details"),
+            MenuItem("7", "Database inventory"),
+            MenuItem("8", "Live mode guide"),
         ],
     ),
 ]
@@ -200,13 +204,8 @@ def render_option_menu(
 
 def _sectioned_menu_item_lines() -> list[str]:
     lines: list[str] = []
-    for index, (section_name, items) in enumerate(MENU_SECTIONS):
-        if index > 0:
-            lines.append("")
-        lines.append(menu_section_header(section_name))
-        for item in items:
-            lines.append(menu_item_line(item.key, item.title, indent=len(MENU_ITEM_INDENT)))
-    lines.append("")
+    for item in iter_menu_items():
+        lines.append(menu_item_line(item.key, item.title, indent=len(MENU_ITEM_INDENT)))
     lines.append(format_menu_bottom_option(MENU_EXIT_LABEL))
     return lines
 
@@ -234,7 +233,6 @@ def render_menu_help() -> str:
 def _main_menu_body_lines(*, probe_database: bool | None = None) -> list[str]:
     rule = rule_line()
     return [
-        rule,
         *dashboard_panel(dashboard_rows(probe_database=probe_database)),
         "",
         rule,

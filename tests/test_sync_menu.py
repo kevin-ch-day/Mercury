@@ -59,7 +59,7 @@ def test_prepare_dry_run_shows_live_mode_hint(
     )
     _prepare_production_backups(_sample_report())
     out = capsys.readouterr().out
-    assert "Dry-run only" in out
+    assert "Result: dry-run only; no files were written." in out
     assert "Live mode guide" in out
 
 
@@ -76,12 +76,20 @@ def test_run_sync_menu_non_interactive(
     monkeypatch.setattr("mercury.sync.interactive_menu._load_report", lambda: _sample_report())
     run_sync_menu(interactive=False)
     out = capsys.readouterr().out
+    assert "Mode: LIVE" in out
     assert "0 ready, 1 blocked" in out
+    assert "STATUS" in out
+    assert "REASON" in out
+    assert "PAIR" in out
+    assert "blocked" in out
+    assert "missing verified backup" in out
+    assert "erebus_threat_intel_prod -> erebus_threat_intel_dev" in out
     assert "Rescan readiness" in out
     assert "Prepare production backups" in out
     assert "CLI:" not in out
     assert "[0] Return" not in out
     assert "Choose an action below" not in out
     assert "Choice:" not in out
+    assert "Actions" not in out
     assert "backup-only and do not appear in prod-to-dev sync pairs" in out
     assert "╭" not in out

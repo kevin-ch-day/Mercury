@@ -1,4 +1,4 @@
-"""Interactive restore-check menu (option 7)."""
+"""Interactive restore-check menu (option 3)."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from mercury.restore.terminal.check import print_restore_check_plans
 from mercury.restore.restore_runner import execute_restore_into_database
 from mercury.restore.terminal.runner import print_restore_execution_result
 
-RESTORE_SCREEN_TITLE = "Restore Test / Disaster Recovery Check"
+RESTORE_SCREEN_TITLE = "Restore-check Backup"
 
 
 def read_restore_choice() -> str | None:
@@ -96,7 +96,7 @@ def _cleanup_restorecheck_databases() -> None:
 
 def run_restore_menu(*, interactive: bool = True) -> None:
     plans = _load_plans()
-    show_title = False
+    show_title = True
     while True:
         _render_restore_screen(plans, show_title=show_title)
         show_title = False

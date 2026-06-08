@@ -14,7 +14,7 @@ def test_run_env_menu_non_interactive(capsys: pytest.CaptureFixture[str]) -> Non
     assert "Runtime" in out
     assert "Python" in out
     assert "Rescan" in out
-    assert "Live mode guide" in out
+    assert "Live mode guide" not in out
     assert "CLI:" not in out
     assert "╭" not in out
     assert "Submenu choice" not in out

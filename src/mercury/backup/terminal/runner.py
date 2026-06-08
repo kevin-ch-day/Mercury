@@ -14,7 +14,7 @@ def print_backup_execution(result: BackupExecutionResult) -> None:
     output.field("live_actions_enabled", result.live_actions_enabled)
     if result.refusal_reason:
         output.field("refusal_reason", result.refusal_reason)
-    output.field("backup_directory", result.backup_directory)
+    output.field("backup_directory_relative", result.backup_directory)
     if result.backup_directory_path:
         output.field("backup_directory_path", result.backup_directory_path)
     if result.dump_file:

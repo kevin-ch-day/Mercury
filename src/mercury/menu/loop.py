@@ -36,7 +36,6 @@ def handle_menu_choice(choice: str) -> MenuResult:
         log_menu_action(choice=normalized, title="Invalid", result="invalid")
         return "invalid"
 
-    menu_display.open_screen(action.title)
     with log_operation(action.title, logger_name="mercury.menu", choice=normalized):
         action.runner()
     log_menu_action(choice=normalized, title=action.title, result="continue")

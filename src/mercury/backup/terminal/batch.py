@@ -5,6 +5,13 @@ from mercury.terminal import screen as display_screen
 from mercury.backup.batch_runner import BackupBatchResult
 
 
+def _write_refusal_line(refusal: str) -> None:
+    if refusal.startswith("Result:"):
+        display_screen.write_summary(refusal)
+        return
+    display_screen.write_status("warn", refusal)
+
+
 def print_backup_batch_result(
     batch: BackupBatchResult,
     *,
@@ -13,28 +20,28 @@ def print_backup_batch_result(
 ) -> None:
     if compact and menu:
         names = [result.database for result in batch.results]
-        mode = "live" if batch.execute else "dry-run"
+        mode = "LIVE" if batch.execute else "DRY RUN"
         display_screen.write_fields(
             {
-                "mode": mode,
-                "sources": len(names),
-                "databases": ", ".join(names) if names else "(none)",
+                "Execution mode": mode,
+                "Source databases": len(names),
+                "Databases": ", ".join(names) if names else "(none)",
             }
         )
         refusal = next((r.refusal_reason for r in batch.results if r.refusal_reason), None)
         if refusal:
-            display_screen.write_status("warn", refusal)
+            _write_refusal_line(refusal)
         for error in batch.errors:
             display_screen.write_status("fail", error)
         return
 
     if compact:
         names = [result.database for result in batch.results]
-        mode = "live" if batch.execute else "dry-run"
+        mode = "LIVE" if batch.execute else "DRY RUN"
         display_screen.write_fields(
             {
-                "mode": mode,
-                "sources": len(names),
+                "Execution mode": mode,
+                "Source databases": len(names),
             }
         )
         if names:
@@ -42,7 +49,7 @@ def print_backup_batch_result(
             display_screen.write_table(["DATABASE"], [[name] for name in names])
         refusal = next((r.refusal_reason for r in batch.results if r.refusal_reason), None)
         if refusal:
-            display_screen.write_status("warn", refusal)
+            _write_refusal_line(refusal)
         for error in batch.errors:
             display_screen.write_status("fail", error)
         if batch.executed_count:

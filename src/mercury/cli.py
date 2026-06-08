@@ -563,7 +563,7 @@ def sync_readiness_cmd(
     from mercury.sync.terminal.readiness import print_sync_readiness_report
 
     try:
-        print_sync_readiness_report(build_sync_readiness_report(live=live))
+        print_sync_readiness_report(build_sync_readiness_report(live=live), compact=True)
     except (MariaDbConfigError, MariaDbLiveError) as exc:
         typer.echo(str(exc))
         raise typer.Exit(1) from exc

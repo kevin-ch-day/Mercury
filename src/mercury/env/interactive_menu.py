@@ -56,7 +56,6 @@ def _render_env_screen(*, show_title: bool) -> None:
             title="Actions",
             options=[
                 ("1", "Rescan"),
-                ("2", "Live mode guide"),
             ],
             bottom_label="Back",
         )
@@ -120,9 +119,9 @@ def run_env_menu(*, interactive: bool = True) -> None:
             show_title = pause_and_redraw()
             continue
 
-        if choice == "2":
-            _print_live_mode_guide()
-            show_title = pause_and_redraw()
-            continue
-
         output.write(menu_prompts.invalid_choice_message(choice))
+
+
+def run_live_mode_guide() -> None:
+    _print_live_mode_guide()
+    menu_prompts.wait_for_continue()

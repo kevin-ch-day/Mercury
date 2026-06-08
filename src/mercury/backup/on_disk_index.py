@@ -82,6 +82,14 @@ class OnDiskBackupList(BaseModel):
     note: str = "Backups discovered from manifest.json files under backup_root."
 
 
+def latest_records_by_database(backup_list: OnDiskBackupList) -> list[OnDiskBackupRecord]:
+    """Return the latest tracked backup record for each database."""
+    latest: dict[str, OnDiskBackupRecord] = {}
+    for record in backup_list.records:
+        latest.setdefault(record.database, record)
+    return list(latest.values())
+
+
 def _load_manifest(path: Path) -> BackupManifest | None:
     if not path.is_file():
         return None

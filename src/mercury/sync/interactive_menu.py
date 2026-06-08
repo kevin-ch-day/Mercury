@@ -1,4 +1,4 @@
-"""Interactive prod→dev sync menu (option 6)."""
+"""Interactive prod→dev sync menu (option 4)."""
 
 from __future__ import annotations
 
@@ -58,8 +58,6 @@ def _sync_submenu_options(report: SyncReadinessReport) -> list[tuple[str, str]]:
     options: list[tuple[str, str]] = [("1", "Rescan readiness")]
     if _blocked_prod_sources(report):
         label = "Prepare production backups"
-        if report.ready_count == 0:
-            label = f"{label} (recommended)"
         if not live_allowed:
             label = f"{label} (live mode required)"
         options.append(("2", label))
@@ -74,17 +72,15 @@ def _sync_submenu_options(report: SyncReadinessReport) -> list[tuple[str, str]]:
 def _render_sync_screen(report: SyncReadinessReport, *, show_title: bool) -> None:
     if show_title:
         menu_display.open_screen(SYNC_SCREEN_TITLE)
-    policy = load_execution_policy()
-    live_allowed = policy.live_execution_allowed()
-    display_screen.write_fields({"policy": "live" if live_allowed else "dry-run"})
+    live_allowed = load_execution_policy().live_execution_allowed()
     if not live_allowed and report.blocked_count > 0:
         display_screen.write_status(
             "warn",
-            "Live mode is required for backup preparation and sync. Open Environment check -> Live mode guide.",
+            "Live mode is required for backup preparation and sync. Open [8] Live mode guide from the main menu.",
         )
     print_sync_readiness_report(report, compact=True, menu=True)
     display_screen.write_blank()
-    render_submenu(_sync_submenu_options(report))
+    render_submenu(_sync_submenu_options(report), indent=0)
 
 
 def _prepare_production_backups(report: SyncReadinessReport) -> None:
@@ -106,11 +102,11 @@ def _prepare_production_backups(report: SyncReadinessReport) -> None:
 
     if not execute:
         display_screen.write_blank()
-        display_screen.write_summary("Dry-run only — no backup files were written.")
+        display_screen.write_summary("Result: dry-run only; no files were written.")
         display_screen.write_bullets(
             [
-                "Enable live mode: main menu [1] Environment Check → [2] Live mode guide",
-                "Then run Prepare again here, verify with [5], and sync ready pairs",
+                "Enable live mode: main menu [8] Live mode guide",
+                "Then run Prepare again here, verify with [2], and sync ready pairs",
             ]
         )
         return
@@ -164,7 +160,7 @@ def run_sync_menu(*, interactive: bool = True) -> None:
         print_sync_plan(build_sync_plan_demo(), compact=True)
         return
 
-    show_title = False
+    show_title = True
     while True:
         _render_sync_screen(report, show_title=show_title)
         show_title = False

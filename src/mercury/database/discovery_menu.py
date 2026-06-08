@@ -1,4 +1,4 @@
-"""Interactive database discovery menu (option 2)."""
+"""Interactive database discovery menu (option 7)."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from mercury.database.mariadb.inspect import inspect_database_on_server
 from mercury.database.mariadb.stats import fetch_all_database_stats
 from mercury.menu.subscreen import pause_and_redraw, read_submenu_choice, render_submenu
 
-DISCOVER_SCREEN_TITLE = "Discover / Classify Databases"
+DISCOVER_SCREEN_TITLE = "DATABASE INVENTORY"
 
 
 def read_discover_choice() -> str | None:
@@ -99,7 +99,7 @@ def _inspect_database_prompt() -> None:
 
 def run_discover_menu(*, interactive: bool = True) -> None:
     inventory, size_by_name, note = _load_inventory()
-    show_title = False
+    show_title = True
     while True:
         _render_discover_screen(
             inventory,

@@ -15,3 +15,4 @@ def test_run_verify_menu_non_interactive(capsys: pytest.CaptureFixture[str]) -> 
     assert "Verify all" in out
     assert "SOURCE ROLE" in out
     assert "shared authority source" in out
+    assert "Actions" not in out

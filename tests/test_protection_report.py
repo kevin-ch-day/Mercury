@@ -85,3 +85,16 @@ def test_live_report_ignores_out_of_scope_databases(monkeypatch) -> None:
     assert report.ignored_out_of_scope_count == 2
     assert "droid_threat_intel_db_prod" not in report.not_protected
     assert "proofpoint_cti_db_dev" not in report.not_protected
+
+
+def test_compact_report_does_not_truncate_shared_authority_source(capsys) -> None:
+    from mercury.reporting.protection import print_protection_report
+
+    print_protection_report(build_protection_report(), compact=True)
+    out = capsys.readouterr().out
+    assert "SOURCE DATABASE               SOURCE ROLE              PROJECT" in out
+    assert "android_permission_intel      shared authority source  Platform" in out
+    assert "Production sources:" in out
+    assert "Shared authority:" in out
+    assert "Sync pairs:" in out
+    assert "shared authority source" in out

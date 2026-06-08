@@ -1,7 +1,9 @@
 """Tests for Mercury terminal theme."""
 
 from mercury.terminal.theme import (
+    fancy_rule,
     menu_title_line,
+    rule_line,
     set_color_enabled,
     strip_markup,
     tag,
@@ -64,3 +66,37 @@ def test_strip_markup_removes_rich_tags() -> None:
     assert "boom" in plain
     assert "#FF6B81" not in plain
     set_color_enabled(None)
+
+
+def test_fancy_rule_is_plain_rule_without_box_fragments() -> None:
+    set_color_enabled(True)
+    try:
+        plain = strip_markup(fancy_rule(width=20))
+        assert plain == strip_markup(rule_line(width=20))
+        assert "╭" not in plain
+        assert "╯" not in plain
+    finally:
+        set_color_enabled(None)
+
+
+def test_style_table_lines_preserve_body_alignment_when_colored() -> None:
+    from mercury.terminal.table import format_table
+    from mercury.terminal.theme import style_table_lines
+
+    lines = format_table(
+        ["DATABASE", "ROLE", "PLAN", "SYNC"],
+        [
+            ["android_permission_intel", "shared", "backup", "n/a"],
+            ["erebus_threat_intel_prod", "prod", "backup", "dev target"],
+        ],
+        indent=0,
+    )
+
+    set_color_enabled(True)
+    try:
+        styled = style_table_lines(lines)
+        plain = [strip_markup(line) for line in styled]
+        assert plain[2] == lines[2]
+        assert plain[3] == lines[3]
+    finally:
+        set_color_enabled(None)

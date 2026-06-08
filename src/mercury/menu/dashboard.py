@@ -29,12 +29,16 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     if policy.backup_root_state() != "usb-mounted":
         rows.append(dashboard_row("Storage status", backup_root_storage_status_label(policy, styled=True)))
 
-    verified_count, source_total = _verified_source_summary(live=probe and connected)
-    ready, blocked, blocker = _sync_readiness_summary(live=probe and connected)
+    verified_names, source_names = _verified_source_summary(live=probe and connected)
+    ready, blocked, blocker = _sync_readiness_summary(
+        live=probe and connected,
+        verified_names=verified_names,
+        source_names=source_names,
+    )
 
     rows.extend(
         [
-            dashboard_row("Source DBs", f"{verified_count} of {source_total} verified"),
+            dashboard_row("Source DBs", f"{len(verified_names)} of {len(source_names)} verified"),
             dashboard_row("Sync pairs", f"{ready} ready, {blocked} blocked"),
             dashboard_row("Blocker", blocker),
         ]
@@ -42,7 +46,7 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     return rows
 
 
-def _verified_source_summary(*, live: bool) -> tuple[int, int]:
+def _verified_source_summary(*, live: bool) -> tuple[set[str], set[str]]:
     try:
         from mercury.backup.batch_runner import resolve_batch_sources
         from mercury.backup.find_latest_backup import find_latest_backup_directory
@@ -50,8 +54,8 @@ def _verified_source_summary(*, live: bool) -> tuple[int, int]:
         from mercury.core.safety import BACKUP_KIND_FULL
 
         policy = load_execution_policy()
-        sources = resolve_batch_sources(live=live)
-        verified = 0
+        sources = set(resolve_batch_sources(live=live))
+        verified: set[str] = set()
         for name in sources:
             backup_dir = find_latest_backup_directory(policy.backup_root, name)
             if backup_dir is None:
@@ -60,13 +64,18 @@ def _verified_source_summary(*, live: bool) -> tuple[int, int]:
                 continue
             result = verify_backup_artifacts(backup_dir, database=name)
             if result.verified and result.backup_kind == BACKUP_KIND_FULL:
-                verified += 1
-        return verified, len(sources)
+                verified.add(name)
+        return verified, sources
     except Exception:
-        return 0, 0
+        return set(), set()
 
 
-def _sync_readiness_summary(*, live: bool) -> tuple[int, int, str]:
+def _sync_readiness_summary(
+    *,
+    live: bool,
+    verified_names: set[str],
+    source_names: set[str],
+) -> tuple[int, int, str]:
     try:
         from mercury.sync.readiness import build_sync_readiness_report
 
@@ -77,7 +86,16 @@ def _sync_readiness_summary(*, live: bool) -> tuple[int, int, str]:
             blocker_messages.extend(entry.blockers)
         if blocker_messages:
             if any("No on-disk backup found for production source." in msg for msg in blocker_messages):
-                blocker = "No verified full backups exist yet."
+                missing_sources = source_names - verified_names
+                sync_source_names = {entry.prod for entry in report.entries}
+                if not verified_names:
+                    blocker = "No verified full backups exist yet."
+                elif missing_sources and missing_sources.issubset(sync_source_names):
+                    blocker = "Verified backups missing for production sync sources."
+                elif missing_sources:
+                    blocker = "Verified backups still missing for source databases."
+                else:
+                    blocker = "Verified backups missing for production sync sources."
             else:
                 blocker = blocker_messages[0]
         return report.ready_count, report.blocked_count, blocker

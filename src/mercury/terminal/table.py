@@ -35,6 +35,7 @@ class TableColumn:
     """Column definition with optional width cap and alignment."""
 
     header: str
+    min_width: int = 0
     max_width: int | None = None
     align: Align = "left"
 
@@ -53,13 +54,16 @@ class Table:
         headers: list[str],
         rows: list[list[str]] | None = None,
         *,
+        min_col_widths: list[int] | None = None,
         max_col_widths: list[int] | None = None,
         style: TableStyle | None = None,
     ) -> Table:
+        min_widths = min_col_widths or []
         widths = max_col_widths or []
         columns = [
             TableColumn(
                 header=header,
+                min_width=min_widths[index] if index < len(min_widths) else 0,
                 max_width=widths[index] if index < len(widths) else None,
             )
             for index, header in enumerate(headers)
@@ -71,12 +75,14 @@ class Table:
 
     def lines(self) -> list[str]:
         headers = [column.header for column in self.columns]
+        min_widths = [column.min_width for column in self.columns]
         max_widths = [column.max_width for column in self.columns]
         align = [column.align for column in self.columns]
         return format_table(
             headers,
             self.rows,
             style=self.style,
+            min_col_widths=min_widths,
             max_col_widths=max_widths,
             align=align,
         )
@@ -125,6 +131,7 @@ def format_table(
     *,
     indent: int | None = None,
     gap: int | None = None,
+    min_col_widths: list[int] | None = None,
     max_col_widths: list[int] | None = None,
     align: list[Align] | None = None,
     style: TableStyle | None = None,
@@ -138,6 +145,8 @@ def format_table(
         Column titles.
     rows:
         Body rows; short rows are padded with empty strings.
+    min_col_widths:
+        Optional per-column minimum widths to keep compact operator tables aligned.
     max_col_widths:
         Optional per-column character limits (cells truncated with ``…``).
     align:
@@ -159,7 +168,11 @@ def format_table(
     alignments = align or ["left"] * len(headers)
     normalized_rows = _normalize_rows(headers, rows, max_col_widths=max_col_widths)
 
-    widths = [len(header) for header in headers]
+    min_widths = min_col_widths or []
+    widths = [
+        max(len(header), min_widths[index] if index < len(min_widths) else 0)
+        for index, header in enumerate(headers)
+    ]
     for cells in normalized_rows:
         for index, cell in enumerate(cells):
             widths[index] = max(widths[index], len(cell))

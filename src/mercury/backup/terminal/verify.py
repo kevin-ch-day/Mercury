@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from mercury import output
 from mercury.terminal import format as display_format
 from mercury.terminal import screen as display_screen
-from mercury.backup.on_disk_index import DemoBackupList, OnDiskBackupList
+from mercury.backup.on_disk_index import DemoBackupList, OnDiskBackupList, latest_records_by_database
 from mercury.database.core import shared_authority_note
 from mercury.reporting.preview import BackupReportPreview, format_report_preview_markdown
 from mercury.backup.verification import BackupVerificationResult, VerificationPlan
@@ -64,9 +64,10 @@ def print_verify_menu_summary(summary: VerifyMenuSummary) -> None:
     )
     if summary.rows:
         display_screen.write_blank()
-        display_screen.write_table(
+        display_screen.write_compact_table(
             ["DATABASE", "SOURCE ROLE", "STATUS"],
             summary.rows,
+            min_col_widths=[28, 12, 10],
             max_col_widths=[36, 24, 24],
         )
         display_screen.write_blank()
@@ -121,31 +122,53 @@ def print_on_disk_backup_list(
     menu: bool = False,
 ) -> None:
     if compact and menu:
+        latest_records = latest_records_by_database(backup_list)
         display_screen.write_fields(
-            {"Backup root": str(backup_list.backup_root), "USB backups": len(backup_list.records)}
+            {
+                "Backup root": str(backup_list.backup_root),
+                "Latest tracked": len(latest_records),
+            }
         )
-        if not backup_list.records:
+        if not latest_records:
             display_screen.write_status("warn", "No backups on disk yet.")
             return
         rows = []
-        for record in backup_list.records:
+        for record in latest_records:
             status = display_format.format_verification_status(verified=record.verified)
-            rows.append([record.database, record.backup_kind, status])
-        display_screen.write_table(["DATABASE", "KIND", "STATUS"], rows, max_col_widths=[36, 12, 12])
+            rows.append([record.database, record.backup_id, status])
+        display_screen.write_compact_table(
+            ["DATABASE", "LATEST BACKUP", "STATUS"],
+            rows,
+            min_col_widths=[28, 28, 10],
+            max_col_widths=[36, 40, 12],
+        )
+        display_screen.write_blank()
+        display_screen.write_summary(
+            "manifest.json and checksum.sha256 track the latest backup in each database directory; older dump files may remain."
+        )
         return
 
     if compact:
+        latest_records = latest_records_by_database(backup_list)
         display_screen.write_fields(
-            {"USB backups": len(backup_list.records), "Backup root": str(backup_list.backup_root)}
+            {"Latest tracked": len(latest_records), "Backup root": str(backup_list.backup_root)}
         )
-        if not backup_list.records:
+        if not latest_records:
             display_screen.write_status("warn", f"none under {backup_list.backup_root}")
             return
         rows = []
-        for record in backup_list.records:
+        for record in latest_records:
             status = display_format.format_verification_status(verified=record.verified)
-            rows.append([record.database, record.backup_kind, status])
-        display_screen.write_table(["DATABASE", "KIND", "STATUS"], rows)
+            rows.append([record.database, record.backup_id, status])
+        display_screen.write_compact_table(
+            ["DATABASE", "LATEST BACKUP", "STATUS"],
+            rows,
+            min_col_widths=[28, 28, 10],
+        )
+        display_screen.write_blank()
+        display_screen.write_summary(
+            "manifest.json and checksum.sha256 track the latest backup in each database directory; older dump files may remain."
+        )
         return
 
     for line in display_format.format_report_header("BACKUP LIST (on-disk)"):

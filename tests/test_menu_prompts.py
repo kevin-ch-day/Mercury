@@ -16,6 +16,11 @@ def test_menu_option_prompt_uses_enter_your_choice() -> None:
     assert prompt == "\nEnter your choice: "
 
 
+def test_submenu_option_prompt_uses_choice_with_space() -> None:
+    prompt = menu_prompts.submenu_option_prompt()
+    assert prompt == "\nChoice: "
+
+
 def test_ask_strips_markup_before_reader() -> None:
     seen: list[str] = []
 

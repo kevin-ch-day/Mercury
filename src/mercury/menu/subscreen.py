@@ -28,10 +28,16 @@ def pause_and_redraw(*, show_title: bool = True) -> bool:
     return show_title
 
 
-def render_submenu(options: list[tuple[str, str]], *, title: str | None = None) -> None:
+def render_submenu(
+    options: list[tuple[str, str]],
+    *,
+    title: str | None = None,
+    indent: int = 6,
+) -> None:
     for line in submenu_block(
         options,
         title=title,
         bottom_label="Back",
+        indent=indent,
     ):
         output.write(line)

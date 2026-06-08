@@ -47,6 +47,7 @@ def write_table(
     rows: list[list[str]],
     *,
     indent: int = 2,
+    min_col_widths: list[int] | None = None,
     max_col_widths: list[int] | None = None,
     align: list[str] | None = None,
 ) -> None:
@@ -57,12 +58,32 @@ def write_table(
         headers,
         rows,
         indent=indent,
+        min_col_widths=min_col_widths,
         max_col_widths=max_col_widths,
         align=align,
         style=TableStyle(indent=indent),
     )
     for line in style_table_lines(lines):
         output.write(line)
+
+
+def write_compact_table(
+    headers: list[str],
+    rows: list[list[str]],
+    *,
+    min_col_widths: list[int] | None = None,
+    max_col_widths: list[int] | None = None,
+    align: list[str] | None = None,
+) -> None:
+    """Shared zero-indent operator table with fixed-width columns."""
+    write_table(
+        headers,
+        rows,
+        indent=0,
+        min_col_widths=min_col_widths,
+        max_col_widths=max_col_widths,
+        align=align,
+    )
 
 
 def write_list(title: str, items: list[str]) -> None:

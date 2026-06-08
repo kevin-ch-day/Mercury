@@ -479,6 +479,45 @@ def test_cli_backup_run_refuses_dev() -> None:
     assert "not a backup source" in (result.stdout + result.stderr).lower()
 
 
+def test_cli_backup_run_labels_relative_backup_directory(tmp_path: Path) -> None:
+    policy = ExecutionPolicy(
+        dry_run=False,
+        live_actions_enabled=True,
+        backup_root=tmp_path,
+        config_path=tmp_path / "local.toml",
+        allow_unsafe_backup_root=True,
+    )
+
+    def fake_runner(argv, env, output_path, _config):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"backup-bytes\n")
+
+    result = execute_backup(
+        "erebus_threat_intel_prod",
+        BACKUP_KIND_FULL,
+        execute=True,
+        policy=policy,
+        date=FIXED_DATE,
+        timestamp=FIXED_TS,
+        now=FIXED_NOW,
+        mariadb_config=_fake_mariadb_config(),
+        dump_runner=fake_runner,
+    )
+
+    from mercury.backup.terminal.runner import print_backup_execution
+
+    from io import StringIO
+    import contextlib
+
+    buf = StringIO()
+    with contextlib.redirect_stdout(buf):
+        print_backup_execution(result)
+    out = buf.getvalue()
+    assert "backup_directory_relative" in out
+    assert "backup_directory_path" in out
+    assert "\n  backup_directory:" not in out
+
+
 def test_cli_backup_run_execute_refused_in_seed() -> None:
     result = _run_cli(
         "backup",

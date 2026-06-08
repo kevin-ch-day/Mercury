@@ -65,12 +65,6 @@ def run_reports_and_history() -> None:
     menu_prompts.wait_for_continue()
 
 
-def run_schema_backup_plan() -> None:
-    from mercury.schema.interactive_menu import run_schema_menu
-
-    run_schema_menu()
-
-
 def run_sync_plan() -> None:
     from mercury.sync.interactive_menu import run_sync_menu
 
@@ -93,6 +87,12 @@ def run_environment_check() -> None:
     from mercury.env.interactive_menu import run_env_menu
 
     run_env_menu()
+
+
+def run_live_mode_guide() -> None:
+    from mercury.env.interactive_menu import run_live_mode_guide
+
+    run_live_mode_guide()
 
 
 # Re-export interactive loop (implementation in menu.loop).

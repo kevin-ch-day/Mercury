@@ -1,4 +1,4 @@
-"""Interactive production backup menu (option 3)."""
+"""Interactive production backup menu (option 1)."""
 
 from __future__ import annotations
 
@@ -15,24 +15,47 @@ from mercury.database.backup_planning import BackupPlanDryRun, build_backup_plan
 from mercury.database.discovery import discover, discover_demo
 from mercury.database.core.classifier import DatabaseRole, classify_database
 from mercury.menu.subscreen import pause_and_redraw, read_submenu_choice, render_submenu
-from mercury.backup.terminal.verify import print_verify_menu_summary, run_verify_all_for_menu
 
 BACKUP_SCREEN_TITLE = "Backup Plan"
+
+
+def _backup_target_label(policy) -> str:
+    state = policy.backup_root_state()
+    if state == "usb-mounted":
+        return "USB mounted"
+    if state == "usb not mounted":
+        return "USB not mounted"
+    if state == "repo-local fallback":
+        return "repo-local fallback"
+    if state == "low free space":
+        return "USB mounted; low free space"
+    return state.replace("-", " ")
 
 
 def read_backup_choice() -> str | None:
     return read_submenu_choice()
 
 
-def _group_sources(plan: BackupPlanDryRun) -> tuple[list[str], list[str]]:
-    production: list[str] = []
-    shared: list[str] = []
-    for name in plan.backup_sources:
-        if classify_database(name).role == DatabaseRole.SHARED_AUTHORITY:
-            shared.append(name)
+def _plan_rows(plan: BackupPlanDryRun) -> list[list[str]]:
+    rows: list[list[str]] = []
+    dev_targets = {
+        item.name
+        for item in plan.excluded
+        if item.role == DatabaseRole.DEVELOPMENT.value
+        and "Out of active Mercury scope" not in item.reason
+    }
+
+    for name in sorted(plan.backup_sources):
+        classification = classify_database(name)
+        if classification.role == DatabaseRole.SHARED_AUTHORITY:
+            rows.append([name, "shared", "backup", "n/a"])
         else:
-            production.append(name)
-    return production, shared
+            rows.append([name, "prod", "backup", "dev target"])
+
+    for name in sorted(dev_targets):
+        rows.append([name, "dev", "skip", "refresh target"])
+
+    return rows
 
 
 def _load_plan() -> BackupPlanDryRun:
@@ -45,61 +68,29 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
         menu_display.open_screen(BACKUP_SCREEN_TITLE)
     policy = load_execution_policy()
     live_allowed = policy.live_execution_allowed()
-    production_sources, shared_authority_sources = _group_sources(plan)
-    out_of_scope = [item.name for item in plan.excluded if "Out of active Mercury scope" in item.reason]
-    excluded_dev = [
-        item.name
-        for item in plan.excluded
-        if item.role == DatabaseRole.DEVELOPMENT.value
-        and "Out of active Mercury scope" not in item.reason
-    ]
     display_screen.write_fields(
         {
-            "Backup root": str(policy.backup_root.resolve()),
-            "Backup root state": policy.backup_root_state(),
-            "Mode": "live" if live_allowed else "dry-run",
-            "Source databases": len(plan.backup_sources),
+            "Target": str(policy.backup_root.resolve()),
+            "Mode": "LIVE" if live_allowed else "DRY RUN",
+            "Action": "full backup",
         }
     )
     display_screen.write_blank()
-    display_screen.write_summary("Production sources")
-    if production_sources:
-        display_screen.write_table(["DATABASE"], [[name] for name in production_sources], max_col_widths=[40])
-    else:
-        display_screen.write_status("warn", "No production sources in scope.")
-    display_screen.write_blank()
-    display_screen.write_summary("Shared authority sources")
-    if shared_authority_sources:
-        display_screen.write_table(
-            ["DATABASE", "SYNC"],
-            [[name, "backup-only"] for name in shared_authority_sources],
-            max_col_widths=[36, 18],
+    rows = _plan_rows(plan)
+    if rows:
+        display_screen.write_compact_table(
+            ["DATABASE", "ROLE", "PLAN", "SYNC"],
+            rows,
+            min_col_widths=[28, 8, 8, 14],
         )
     else:
-        display_screen.write_status("warn", "No shared authority sources in scope.")
-    display_screen.write_blank()
-    display_screen.write_summary("Excluded development targets")
-    if excluded_dev:
-        display_screen.write_table(["DATABASE"], [[name] for name in excluded_dev], max_col_widths=[40])
-    else:
-        display_screen.write_summary("(none)")
-    if out_of_scope:
-        display_screen.write_blank()
-        display_screen.write_summary("Out of scope")
-        display_screen.write_table(["DATABASE"], [[name] for name in out_of_scope], max_col_widths=[40])
-    display_screen.write_blank()
-    display_screen.write_summary(
-        "android_permission_intel is backup-only. Sync is not applicable by design."
-    )
-    display_screen.write_blank()
-    options: list[tuple[str, str]] = [("1", "Rescan plan")]
+        display_screen.write_status("warn", "No databases in active backup scope.")
+    options: list[tuple[str, str]] = [("1", "Refresh")]
     if plan.backup_sources:
         run_label = "Run full backup" if live_allowed else "Run full backup (live mode required)"
-        if not live_allowed:
-            run_label = f"{run_label} (recommended)"
         options.append(("2", run_label))
-        options.append(("3", "Verify on-disk backups"))
-    render_submenu(options)
+    display_screen.write_blank()
+    render_submenu(options, indent=0)
 
 
 def _run_backup(plan: BackupPlanDryRun) -> None:
@@ -118,7 +109,7 @@ def _run_backup(plan: BackupPlanDryRun) -> None:
 
 def run_backup_menu(*, interactive: bool = True) -> None:
     plan = _load_plan()
-    show_title = False
+    show_title = True
     while True:
         _render_backup_screen(plan, show_title=show_title)
         show_title = False
@@ -140,12 +131,6 @@ def run_backup_menu(*, interactive: bool = True) -> None:
         if choice == "2":
             _run_backup(plan)
             plan = _load_plan()
-            show_title = pause_and_redraw()
-            continue
-
-        if choice == "3":
-            summary = run_verify_all_for_menu(update_manifest=True)
-            print_verify_menu_summary(summary)
             show_title = pause_and_redraw()
             continue
 

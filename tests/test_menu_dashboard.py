@@ -1,9 +1,10 @@
 """Tests for main menu dashboard."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from mercury.core.execution_policy import ExecutionPolicy
-from mercury.menu.dashboard import dashboard_rows
+from mercury.menu.dashboard import _sync_readiness_summary, dashboard_rows
 
 
 def test_dashboard_rows_include_core_fields() -> None:
@@ -42,3 +43,121 @@ def test_dashboard_rows_warn_on_repo_local_backup_root(monkeypatch) -> None:
     )
     rows = dashboard_rows(probe_database=False)
     assert any("repo-local fallback" in row for row in rows)
+
+
+def test_sync_readiness_summary_reports_none_verified() -> None:
+    report = SimpleNamespace(
+        entries=[
+            SimpleNamespace(
+                prod="erebus_threat_intel_prod",
+                blockers=["No on-disk backup found for production source."],
+            ),
+            SimpleNamespace(
+                prod="scytaledroid_core_prod",
+                blockers=["No on-disk backup found for production source."],
+            ),
+        ],
+        ready_count=0,
+        blocked_count=2,
+    )
+
+    def fake_build_sync_readiness_report(*, live: bool):
+        return report
+
+    import mercury.sync.readiness as readiness
+
+    original = readiness.build_sync_readiness_report
+    readiness.build_sync_readiness_report = fake_build_sync_readiness_report
+    try:
+        ready, blocked, blocker = _sync_readiness_summary(
+            live=True,
+            verified_names=set(),
+            source_names={
+                "android_permission_intel",
+                "erebus_threat_intel_prod",
+                "scytaledroid_core_prod",
+            },
+        )
+    finally:
+        readiness.build_sync_readiness_report = original
+
+    assert (ready, blocked) == (0, 2)
+    assert blocker == "No verified full backups exist yet."
+
+
+def test_sync_readiness_summary_reports_missing_sync_sources_when_shared_authority_verified() -> None:
+    report = SimpleNamespace(
+        entries=[
+            SimpleNamespace(
+                prod="erebus_threat_intel_prod",
+                blockers=["No on-disk backup found for production source."],
+            ),
+            SimpleNamespace(
+                prod="scytaledroid_core_prod",
+                blockers=["No on-disk backup found for production source."],
+            ),
+        ],
+        ready_count=0,
+        blocked_count=2,
+    )
+
+    def fake_build_sync_readiness_report(*, live: bool):
+        return report
+
+    import mercury.sync.readiness as readiness
+
+    original = readiness.build_sync_readiness_report
+    readiness.build_sync_readiness_report = fake_build_sync_readiness_report
+    try:
+        _ready, _blocked, blocker = _sync_readiness_summary(
+            live=True,
+            verified_names={"android_permission_intel"},
+            source_names={
+                "android_permission_intel",
+                "erebus_threat_intel_prod",
+                "scytaledroid_core_prod",
+            },
+        )
+    finally:
+        readiness.build_sync_readiness_report = original
+
+    assert blocker == "Verified backups missing for production sync sources."
+
+
+def test_sync_readiness_summary_reports_missing_source_databases_for_partial_general_coverage() -> None:
+    report = SimpleNamespace(
+        entries=[
+            SimpleNamespace(
+                prod="erebus_threat_intel_prod",
+                blockers=["No on-disk backup found for production source."],
+            ),
+            SimpleNamespace(
+                prod="scytaledroid_core_prod",
+                blockers=["No on-disk backup found for production source."],
+            ),
+        ],
+        ready_count=0,
+        blocked_count=2,
+    )
+
+    def fake_build_sync_readiness_report(*, live: bool):
+        return report
+
+    import mercury.sync.readiness as readiness
+
+    original = readiness.build_sync_readiness_report
+    readiness.build_sync_readiness_report = fake_build_sync_readiness_report
+    try:
+        _ready, _blocked, blocker = _sync_readiness_summary(
+            live=True,
+            verified_names={"erebus_threat_intel_prod"},
+            source_names={
+                "android_permission_intel",
+                "erebus_threat_intel_prod",
+                "scytaledroid_core_prod",
+            },
+        )
+    finally:
+        readiness.build_sync_readiness_report = original
+
+    assert blocker == "Verified backups still missing for source databases."

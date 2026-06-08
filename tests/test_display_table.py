@@ -38,12 +38,24 @@ def test_format_table_truncates_wide_cells() -> None:
 def test_table_builder() -> None:
     table = display_table.Table.from_headers(
         ["DATABASE", "ENV"],
+        min_col_widths=[24, 8],
         max_col_widths=[40, 8],
     )
     table.add_row("erebus_threat_intel_prod", "PROD")
     lines = table.lines()
     assert "DATABASE" in lines[0]
     assert "erebus_threat_intel_prod" in lines[2]
+
+
+def test_format_table_respects_min_column_widths() -> None:
+    lines = display_table.format_table(
+        ["ROLE", "PLAN"],
+        [["prod", "backup"]],
+        indent=0,
+        min_col_widths=[8, 10],
+    )
+    assert lines[0] == "ROLE      PLAN      "
+    assert lines[2] == "prod      backup    "
 
 
 def test_write_table_delegates_to_display_table(capsys) -> None:

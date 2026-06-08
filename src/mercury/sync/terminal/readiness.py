@@ -23,6 +23,12 @@ def _compact_readiness_status(*, ready: bool, blockers: list[str]) -> str:
     return "blocked"
 
 
+def _compact_readiness_reason(*, ready: bool, blockers: list[str]) -> str:
+    if ready:
+        return "verified source backup available"
+    return _compact_readiness_status(ready=ready, blockers=blockers)
+
+
 def print_sync_readiness_report(
     report: SyncReadinessReport,
     *,
@@ -30,23 +36,43 @@ def print_sync_readiness_report(
     menu: bool = False,
 ) -> None:
     if compact:
+        display_screen.write_fields(
+            {
+                "Mode": report.mode.upper(),
+                "Backup root": report.backup_root,
+                "Ready": report.ready_count,
+                "Blocked": report.blocked_count,
+            }
+        )
+        display_screen.write_blank()
         display_screen.write_summary(
             f"{report.ready_count} ready, {report.blocked_count} blocked"
         )
         rows: list[list[str]] = []
+        include_backup_id = (not menu) and any(entry.backup_id for entry in report.entries)
         for entry in report.entries:
             pair = display_format.format_pair(entry.prod, entry.expected_dev)
-            status = _compact_readiness_status(
+            status = "ready" if entry.ready_for_sync_planning else "blocked"
+            reason = _compact_readiness_reason(
                 ready=entry.ready_for_sync_planning,
                 blockers=entry.blockers,
             )
-            rows.append([pair, status])
+            row = [pair, status, reason]
+            if include_backup_id:
+                row.append(entry.backup_id or "—")
+            rows.append(row)
         display_screen.write_blank()
         pair_width = 54 if menu else 44
-        display_screen.write_table(
-            ["PAIR", "STATUS"],
+        headers = ["PAIR", "STATUS", "REASON"]
+        max_widths = [pair_width, 12, 32]
+        if include_backup_id:
+            headers.append("BACKUP ID")
+            max_widths.append(40)
+        display_screen.write_compact_table(
+            headers,
             rows,
-            max_col_widths=[pair_width, 24],
+            min_col_widths=[44 if menu else 40, 8, 24],
+            max_col_widths=max_widths,
         )
         display_screen.write_blank()
         display_screen.write_summary(shared_authority_note())

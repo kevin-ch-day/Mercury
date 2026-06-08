@@ -8,7 +8,6 @@ from mercury.database.core import (
     DatabaseInventory,
     filter_inventory,
     role_env_label,
-    shared_authority_note,
     sort_entries_for_display,
     sync_role_label,
 )
@@ -38,7 +37,7 @@ def build_discover_menu_fields(
     return fields
 
 def _discover_menu_table_rows(inventory: DatabaseInventory) -> tuple[list[str], list[list[str]]]:
-    headers = ["DATABASE", "ENV", "BACKUP", "SYNC ROLE"]
+    headers = ["DATABASE", "ROLE", "BACKUP", "SYNC ROLE"]
     rows: list[list[str]] = []
     for entry in sort_entries_for_display(filter_inventory(inventory).entries):
         rows.append(
@@ -65,12 +64,17 @@ def print_discover_menu(
     )
     display_screen.write_blank()
     headers, rows = _discover_menu_table_rows(inventory)
-    display_screen.write_table(headers, rows, max_col_widths=[36, 8, 8, 12])
+    display_screen.write_compact_table(
+        headers,
+        rows,
+        min_col_widths=[28, 8, 8, 12],
+        max_col_widths=[36, 8, 8, 12],
+    )
     display_screen.write_blank()
-    display_screen.write_summary("android_permission_intel is a shared authority source. It is backed up but has no dev sync pair by design.")
+    display_screen.write_summary("Shared authority: android_permission_intel (backup-only)")
     if out_of_scope_names:
         display_screen.write_blank()
         display_screen.write_summary(
-            "Out-of-scope databases discovered but excluded from backup/sync planning:"
+            f"Ignored databases: {len(out_of_scope_names)}"
         )
-        display_screen.write_bullets(out_of_scope_names)
+        display_screen.write_summary(", ".join(out_of_scope_names))

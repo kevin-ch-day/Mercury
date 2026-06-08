@@ -21,6 +21,8 @@ ACTIVE_DEV_TARGET_DATABASES: frozenset[str] = frozenset(
 
 OUT_OF_SCOPE_DATABASES: frozenset[str] = frozenset(
     {
+        "android_permission_intel_prod",
+        "android_permission_intel_dev",
         "gecko_research_database_prod",
         "gecko_research_database_dev",
         "proofpoint_cti_db_dev",

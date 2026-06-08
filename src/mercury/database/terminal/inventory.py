@@ -60,7 +60,12 @@ def print_inventory(
             display_screen.write_summary(f"Total size: {display_format.format_bytes(total)}")
         display_screen.write_blank()
         headers, rows = _inventory_table_rows(inventory.entries, size_by_name=size_by_name)
-        display_screen.write_table(headers, rows)
+        min_widths = [28, 8, 8]
+        if size_by_name:
+            min_widths.append(10)
+        if "PROJECT" in headers:
+            min_widths.append(12)
+        display_screen.write_compact_table(headers, rows, min_col_widths=min_widths)
         return
 
     output.heading("Known databases")

@@ -34,7 +34,7 @@ def test_write_report_header(capsys) -> None:
     display_screen.write_report_header("BACKUP LIST")
     out = capsys.readouterr().out
     assert "BACKUP LIST" in out
-    assert "---" in out
+    assert "─" in out
 
 
 def test_write_table_uses_shared_formatter(capsys) -> None:

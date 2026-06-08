@@ -14,7 +14,7 @@ Mercury safety policy:
 - Never back up *_dev databases by default (*_dev are disposable sync targets).
 - Never drop or overwrite *_prod.
 - Never restore into *_prod by default.
-- Always backup and verify production before syncing into dev.
+- Always backup and verify the source before syncing into dev.
 - Show source and target before destructive actions; require typing SYNC DEV for dev sync.
 - Seed mode: dry-run and discovery-only; no destructive actions; no live DB connections unless enabled.
 """.strip()
@@ -22,9 +22,9 @@ Mercury safety policy:
 SAFETY_NOTES = [
     "Seed mode: dry-run only — no backup execution, restore, or dev sync.",
     "Production (*_prod) and shared authority DBs are backup sources.",
-    "Development (*_dev) DBs are excluded from backup; rebuild from verified prod backups.",
+    "Development (*_dev) DBs are excluded from backup; they are disposable refresh targets rebuilt from verified source backups.",
     "Never drop or overwrite *_prod.",
-    "Verify production backups before any prod-to-dev sync.",
+    "Verify source backups before any prod-to-dev sync so dev refresh never runs without source protection.",
     "Restore-check temp DBs (_restorecheck_*) are never backup sources.",
     "Future backups: mariadb-dump/mysqldump logical full + schema-only (Fedora).",
 ]

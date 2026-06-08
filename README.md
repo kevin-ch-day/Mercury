@@ -2,16 +2,16 @@
 
 **Mercury** is a Fedora-first **operations utility** for database backup, disaster recovery, schema-only exports, and production-to-development sync on the Android security research platform.
 
-For the current Fedora milestone, it protects the active source databases `android_permission_intel`, `erebus_threat_intel_prod`, and `scytaledroid_core_prod`, plus the dev sync targets `erebus_threat_intel_dev` and `scytaledroid_core_dev`. It is not an AI tool, web app, or repo-status utility.
+For the current Fedora milestone, it protects the active source databases `android_permission_intel`, `erebus_threat_intel_prod`, and `scytaledroid_core_prod`, and manages the dev sync targets `erebus_threat_intel_dev` and `scytaledroid_core_dev` as disposable refresh targets. It is not an AI tool, web app, or repo-status utility.
 
 Windows is for **seed development** only; production use targets **Fedora**.
 
 ## Hard policy
 
 - Backup **production / source-of-truth** only (`*_prod`, `android_permission_intel`).
-- **Never** back up `*_dev` by default — dev DBs are rebuilt from verified prod backups.
+- **Never** back up `*_dev` by default — dev DBs are disposable refresh targets rebuilt from verified source backups when needed.
 - **Never** drop or overwrite `*_prod`; never restore into prod by default.
-- Backup and verify prod before any prod→dev sync; dev sync will require typing `SYNC DEV`.
+- Back up and verify the source before any prod→dev sync; the point is to protect the source state before refreshing dev, and dev sync will require typing `SYNC DEV`.
 - A database is not **protected** until backup verification passes (manifest + checksum).
 
 ## Quick start
@@ -103,7 +103,7 @@ mercury sync readiness [--live]
 mercury sync run [--live] [--execute] [--yes]
 ```
 
-`sync run --execute` restores verified backups into dev targets. For the current milestone, sync readiness only applies to `erebus_threat_intel_prod -> erebus_threat_intel_dev` and `scytaledroid_core_prod -> scytaledroid_core_dev`. Requires live mode and typing `SYNC DEV` unless `--yes`.
+`sync run --execute` restores verified backups into disposable dev targets. For the current milestone, sync readiness only applies to `erebus_threat_intel_prod -> erebus_threat_intel_dev` and `scytaledroid_core_prod -> scytaledroid_core_dev`. `android_permission_intel` is backup-only and does not participate in sync pairing. Requires live mode and typing `SYNC DEV` unless `--yes`.
 
 ### Restore-check
 

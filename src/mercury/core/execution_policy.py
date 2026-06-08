@@ -112,7 +112,7 @@ class ExecutionPolicy:
 
     def refusal_reason(self) -> str | None:
         if self.dry_run:
-            return "Dry-run mode is enabled; backup files will not be written."
+            return "Result: dry-run only; no files were written."
         if not self.live_actions_enabled:
             return (
                 "Live actions are disabled. Set [mercury].live_actions_enabled = true "

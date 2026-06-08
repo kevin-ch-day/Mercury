@@ -97,14 +97,8 @@ def rule(width: int = 60, char: str = "-") -> None:
 def section(title: str) -> None:
     """Visual section break for menu screens and reports."""
     write()
-    if colors_enabled(stream=_out()):
-        write(section_title(title))
-        from mercury.terminal.theme import fancy_rule
-
-        write(f"  {fancy_rule(width=min(60, max(len(title) + 16, 32)))}")
-    else:
-        write(title)
-        write("-" * min(max(len(title), 20), 60))
+    write(section_title(title) if colors_enabled(stream=_out()) else title)
+    write(section_rule(title, max_width=60))
 
 
 def action_banner(title: str) -> None:
@@ -138,12 +132,7 @@ def field(name: str, value: object) -> None:
 
 
 def bullet(text: str) -> None:
-    if colors_enabled(stream=_out()):
-        from mercury.terminal.theme import ACCENT, markup as theme_markup, VALUE
-
-        write(f"  {theme_markup('◆', ACCENT)} [{VALUE}]{text}[/{VALUE}]")
-    else:
-        write(f"  - {text}")
+    write(f"  - {text}")
 
 
 def item(text: str, indent: int = 2) -> None:

@@ -40,8 +40,10 @@ def test_print_discover_menu_compact_table(capsys: pytest.CaptureFixture[str]) -
     assert "Active scope:" in out
     assert "Backup sources:" in out
     assert "Sync targets:" in out
+    assert "DATABASE                      ROLE      BACKUP    SYNC ROLE" in out
+    assert "android_permission_intel      SHARED    yes       backup-only" in out
     assert "DATABASE" in out
-    assert "ENV" in out
+    assert "ROLE" in out
     assert "BACKUP" in out
     assert "SYNC ROLE" in out
     assert "PROD" in out
@@ -71,6 +73,8 @@ def test_out_of_scope_databases_are_excluded_from_primary_table(
     inventory = DatabaseInventory(
         connection="test",
         entries=[
+            record_from_name("android_permission_intel_prod", SOURCE_LIVE),
+            record_from_name("android_permission_intel_dev", SOURCE_LIVE),
             record_from_name("droid_threat_intel_db_prod", SOURCE_LIVE),
             record_from_name("proofpoint_cti_db_dev", SOURCE_LIVE),
             record_from_name("erebus_threat_intel_prod", SOURCE_LIVE),
@@ -81,15 +85,16 @@ def test_out_of_scope_databases_are_excluded_from_primary_table(
     assert "Active scope: 1" in out
     assert "Backup sources: 1" in out
     assert "Sync targets: 0" in out
-    assert "Out of scope: 2 ignored" in out
+    assert "Out of scope: 4 ignored" in out
     assert "erebus_threat_intel_prod" in out
+    assert "android_permission_intel_prod" in out
+    assert "android_permission_intel_dev" in out
     assert "droid_threat_intel_db_prod" in out
     assert "proofpoint_cti_db_dev" in out
-    assert "excluded from backup/sync planning" in out
+    assert "Ignored databases: 4" in out
 
 
 def test_discover_menu_explains_shared_authority_source(capsys: pytest.CaptureFixture[str]) -> None:
     print_discover_menu(discover_demo())
     out = capsys.readouterr().out
-    assert "shared authority source" in out
-    assert "no dev sync pair by design" in out
+    assert "Shared authority: android_permission_intel (backup-only)" in out

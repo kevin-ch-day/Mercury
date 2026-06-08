@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -153,8 +154,10 @@ def test_cli_backup_verify_missing_backup() -> None:
     assert "provide --path" in (result.stdout + result.stderr).lower()
 
 
-def test_cli_verify_all_summary_on_partial_backups() -> None:
-    result = run_cli("backup", "verify-all")
+def test_cli_verify_all_summary_on_partial_backups(tmp_path: Path) -> None:
+    env = os.environ.copy()
+    env["MERCURY_BACKUP_ROOT"] = str(tmp_path / "empty-backups")
+    result = run_cli("backup", "verify-all", env=env)
     assert "Verify-all summary" in result.stdout
     assert "skipped" in result.stdout.lower()
     assert result.returncode != 0

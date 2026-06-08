@@ -7,20 +7,22 @@ For the current Fedora milestone, Mercury plans sync only for:
 - `erebus_threat_intel_prod` -> `erebus_threat_intel_dev`
 - `scytaledroid_core_prod` -> `scytaledroid_core_dev`
 
-Dev databases are **not** backup sources and may be rebuilt or overwritten during sync.
+Dev databases are **not** backup sources. For this milestone they are disposable refresh targets and may be rebuilt or overwritten during sync.
+
+The reason Mercury requires verified source backups before sync is to protect the source state before using it to refresh dev, not because the `_dev` databases contain preservation-worthy data.
 
 ## Required order of operations
 
 1. **Classify** — Confirm prod and dev pair names and roles.
-2. **Backup production** — Full backup of the `*_prod` source.
+2. **Backup source** — Full backup of the `*_prod` source before any dev refresh.
 3. **Verify backup** — Confirm backup integrity before any sync.
 4. **Sync to dev** — Restore verified backup into `*_dev` only after steps 2–3 succeed.
 
 ## Prohibitions
 
 - Never drop or overwrite `*_prod` as part of a dev sync.
-- Never skip production backup/verify before syncing into dev.
-- Never treat `*_dev` as a backup source.
+- Never skip source backup/verify before syncing into dev.
+- Never treat `*_dev` as a backup source or preservation target for this milestone.
 
 ## Execution gates
 
