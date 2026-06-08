@@ -23,7 +23,7 @@ from mercury.reporting.terminal.plan import print_sync_plan
 from mercury.backup.verification import verify_backup_directory
 from mercury.backup.terminal.verify import print_verification_result
 
-SYNC_SCREEN_TITLE = "Sync Production -> Development"
+SYNC_SCREEN_TITLE = "Production sync readiness"
 
 
 def read_sync_choice() -> str | None:
@@ -61,12 +61,12 @@ def _sync_submenu_options(report: SyncReadinessReport) -> list[tuple[str, str]]:
         if report.ready_count == 0:
             label = f"{label} (recommended)"
         if not live_allowed:
-            label = f"{label} (needs live mode)"
+            label = f"{label} (live mode required)"
         options.append(("2", label))
     if _ready_entries(report):
         sync_label = f"Sync ready pairs ({report.ready_count})"
         if not live_allowed:
-            sync_label = f"{sync_label} (needs live mode)"
+            sync_label = f"{sync_label} (live mode required)"
         options.append(("3", sync_label))
     return options
 
@@ -80,7 +80,7 @@ def _render_sync_screen(report: SyncReadinessReport, *, show_title: bool) -> Non
     if not live_allowed and report.blocked_count > 0:
         display_screen.write_status(
             "warn",
-            "Prepare and sync require live mode — main menu [1] → Live mode guide.",
+            "Live mode is required for backup preparation and sync. Open Environment check -> Live mode guide.",
         )
     print_sync_readiness_report(report, compact=True, menu=True)
     display_screen.write_blank()

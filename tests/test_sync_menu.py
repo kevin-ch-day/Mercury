@@ -37,7 +37,7 @@ def test_sync_submenu_shows_prepare_when_blocked() -> None:
     report = _sample_report()
     labels = [label for _key, label in _sync_submenu_options(report)]
     assert any("Prepare production backups" in label for label in labels)
-    assert any("needs live mode" in label for label in labels)
+    assert any("live mode required" in label for label in labels)
     assert not any(label.startswith("Sync ready pairs") for label in labels)
 
 
@@ -81,3 +81,7 @@ def test_run_sync_menu_non_interactive(
     assert "Prepare production backups" in out
     assert "CLI:" not in out
     assert "[0] Return" not in out
+    assert "Choose an action below" not in out
+    assert "Choice:" not in out
+    assert "backup-only and do not appear in prod-to-dev sync pairs" in out
+    assert "╭" not in out

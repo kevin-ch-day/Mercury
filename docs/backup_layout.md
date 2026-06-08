@@ -11,7 +11,7 @@ backups/YYYY-MM-DD/<database>/
   backup_report.md
 ```
 
-On Fedora the backup root may be configured (e.g. `/var/backups/mercury`); paths above are relative to that root.
+For the current Fedora milestone, the live backup root is expected to be `/mnt/MERCURY_DATA_USB/mercury_backups`; paths above are relative to that root. Repo-local `backups/` may be used for dry-run or development simulation only and do not count as production protection in live/operator mode.
 
 ## Backup kinds
 

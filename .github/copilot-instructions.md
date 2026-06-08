@@ -12,6 +12,7 @@ This repo is a **Fedora-first Python CLI** for MariaDB backup, DR, and prod→de
 - Backup only `*_prod` and `android_permission_intel`. Never `*_dev`.
 - Never drop/overwrite/restore into `*_prod`.
 - Dry-run default; live writes need explicit config gates.
+- Live backup execution for the current Fedora milestone requires the mounted USB root under `/mnt/MERCURY_DATA_USB/mercury_backups`; repo-local backups do not count as production protection.
 - Live SQL: read-only only.
 
 ## Stack

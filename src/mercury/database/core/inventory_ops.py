@@ -1,6 +1,8 @@
 """Operations on a DatabaseInventory."""
 
+from mercury.database.core.classifier import DatabaseRole, classify_database
 from mercury.database.core.models import DatabaseInventory, DatabaseRecord
+from mercury.database.core.scope import is_active_backup_source, is_active_dev_target
 
 
 def backup_source_entries(inventory: DatabaseInventory) -> list[DatabaseRecord]:
@@ -87,6 +89,37 @@ ROLE_SORT_ORDER: dict[str, int] = {
 def role_env_label(role: str) -> str:
     """Short PROD/DEV/SHARED label parsed from platform role."""
     return ROLE_ENV_LABELS.get(role, role.upper())
+
+
+def source_role_label(name: str) -> str:
+    """Operator-facing source role label for an in-scope database name."""
+    role = classify_database(name).role
+    if role == DatabaseRole.SHARED_AUTHORITY:
+        return "shared authority source"
+    if role == DatabaseRole.PRODUCTION:
+        return "production source"
+    if role == DatabaseRole.DEVELOPMENT:
+        return "development target"
+    if role == DatabaseRole.RESTORE_CHECK_TEMP:
+        return "restore-check temp"
+    return "other"
+
+
+def sync_role_label(name: str) -> str:
+    """Operator-facing sync role label for active-scope discovery screens."""
+    if is_active_backup_source(name) and name.endswith("_prod"):
+        return "source+pair"
+    if is_active_backup_source(name):
+        return "backup-only"
+    if is_active_dev_target(name):
+        return "dev target"
+    return "n/a"
+
+
+def shared_authority_note() -> str:
+    return (
+        "Shared authority databases are backup-only and do not appear in prod-to-dev sync pairs."
+    )
 
 
 def format_entry_columns(entry: DatabaseRecord) -> str:

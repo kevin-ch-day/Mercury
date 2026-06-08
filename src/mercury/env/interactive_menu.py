@@ -16,9 +16,9 @@ from mercury.database import (
 )
 from mercury.env.terminal.check import print_environment_check
 from mercury.env.probe import probe_environment
-from mercury.menu.subscreen import pause_and_redraw, read_submenu_choice, render_submenu
+from mercury.menu.subscreen import pause_and_redraw, read_submenu_choice
 
-ENV_SCREEN_TITLE = "Environment Check"
+ENV_SCREEN_TITLE = "ENVIRONMENT CHECK"
 
 
 def read_env_choice() -> str | None:
@@ -46,43 +46,63 @@ def _probe_database():
 
 def _render_env_screen(*, show_title: bool) -> None:
     if show_title:
-        menu_display.open_screen(ENV_SCREEN_TITLE)
+        display_screen.write_report_header(ENV_SCREEN_TITLE)
     env = probe_environment(menu=True)
     probe, error = _probe_database()
     print_environment_check(env, probe, error=error)
     display_screen.write_blank()
-    render_submenu(
-        [
-            ("1", "Rescan"),
-            ("2", "Live mode guide"),
-        ]
+    output.write(
+        menu_display.render_option_menu(
+            title="Actions",
+            options=[
+                ("1", "Rescan"),
+                ("2", "Live mode guide"),
+            ],
+            bottom_label="Back",
+        )
     )
 
 
 def _print_live_mode_guide() -> None:
     policy = load_execution_policy()
     config_path = policy.config_path or "config/local.toml"
-    display_screen.write_fields(
-        {
-            "current_mode": "live" if policy.live_execution_allowed() else "dry-run",
-            "dry_run": policy.dry_run,
-            "live_actions": policy.live_actions_enabled,
-            "config_file": config_path,
-        }
-    )
-    display_screen.write_blank()
-    display_screen.write_summary("To enable backup, verify, sync, and restore execution:")
-    display_screen.write_bullets(
-        [
-            f"Edit {config_path} [mercury]: dry_run = false, live_actions_enabled = true",
-            f"Or export {ENV_DRY_RUN}=0 and {ENV_LIVE_ACTIONS}=1 for this shell only",
-            "Re-run Environment Check to confirm execution shows live actions enabled",
-        ]
-    )
+    display_screen.write_report_header("LIVE MODE GUIDE")
+    output.write("Current state")
+    output.write(_guide_field("Mode", "LIVE" if policy.live_execution_allowed() else "DRY RUN"))
+    output.write(_guide_field("Live actions", "enabled" if policy.live_actions_enabled else "disabled"))
+    output.write(_guide_field("Config file", config_path))
+    output.write("")
+    output.write("Before enabling live writes")
+    output.write("Show backup plan.")
+    output.write("Confirm the USB target is /mnt/MERCURY_DATA_USB/mercury_backups.")
+    output.write("Confirm the three source databases are correct.")
+    output.write("")
+    output.write("How to enable live writes")
+    output.write(f"Edit {config_path}:")
+    output.write("dry_run = false")
+    output.write("live_actions_enabled = true")
+    output.write("")
+    output.write("Or for this shell only:")
+    output.write(f"export {ENV_DRY_RUN}=0")
+    output.write(f"export {ENV_LIVE_ACTIONS}=1")
+    output.write("")
+    output.write("What live writes can do")
+    output.write("Backups write artifacts to the USB target.")
+    output.write("Restore-check may create temporary _restorecheck_* databases.")
+    output.write("Prod-to-dev sync is separately gated and only destructive to dev targets.")
+    output.write("Production restore is never allowed.")
+    output.write("")
+    output.write("After enabling")
+    output.write("Re-run Environment Check.")
+    output.write("Run one controlled backup first.")
+
+
+def _guide_field(name: str, value: object, *, label_width: int = 20) -> str:
+    return f"{name:<{label_width}}{value}"
 
 
 def run_env_menu(*, interactive: bool = True) -> None:
-    show_title = False
+    show_title = True
     while True:
         _render_env_screen(show_title=show_title)
         show_title = False

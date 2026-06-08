@@ -13,6 +13,10 @@ def test_run_backup_menu_non_interactive(
 ) -> None:
     run_backup_menu(interactive=False)
     out = capsys.readouterr().out
+    assert "Backup root:" in out
+    assert "Production sources" in out
+    assert "Shared authority sources" in out
+    assert "backup-only" in out
     assert "Rescan plan" in out
     assert "Run full backup" in out
     assert "Verify on-disk backups" in out

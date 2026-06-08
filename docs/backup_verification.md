@@ -57,3 +57,4 @@ mercury backup verify --db erebus_threat_intel_prod --update-manifest
 ```
 
 Live execution requires `[mercury] dry_run = false` and `live_actions_enabled = true` in `config/local.toml`.
+For the first live milestone, Mercury also requires a mounted USB-backed root under `/mnt/MERCURY_DATA_USB/mercury_backups`; repo-local artifacts do not count as production protection or sync readiness in live/operator mode.

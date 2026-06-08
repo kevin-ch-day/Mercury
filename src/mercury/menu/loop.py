@@ -8,38 +8,9 @@ from typing import Literal
 from mercury import output
 from mercury.menu import main_display as menu_display
 from mercury.menu import prompts as menu_prompts
+from mercury.menu.actions import resolve_menu_action
 
 MenuResult = Literal["exit", "continue", "invalid", "empty"]
-
-
-def _menu_actions() -> dict[str, tuple[str, Callable[[], None]]]:
-    """Lazy import so action runners can live in ``menu`` without import cycles."""
-    from mercury.menu.runners import (
-        run_backup_batch_menu,
-        run_discover_databases,
-        run_environment_check,
-        run_reports_and_history,
-        run_restore_check_menu,
-        run_schema_backup_plan,
-        run_sync_plan,
-        run_verify_plan,
-    )
-
-    runners: dict[str, Callable[[], None]] = {
-        "1": run_environment_check,
-        "2": run_discover_databases,
-        "3": run_backup_batch_menu,
-        "4": run_schema_backup_plan,
-        "5": run_verify_plan,
-        "6": run_sync_plan,
-        "7": run_restore_check_menu,
-        "8": run_reports_and_history,
-    }
-    return {
-        item.key: (item.title, runners[item.key])
-        for item in menu_display.menu_items_by_key().values()
-        if item.key in runners
-    }
 
 
 def handle_menu_choice(choice: str) -> MenuResult:
@@ -59,18 +30,16 @@ def handle_menu_choice(choice: str) -> MenuResult:
         log_menu_action(choice=normalized, title="Exit", result="exit")
         return "exit"
 
-    actions = _menu_actions()
-    action = actions.get(normalized)
+    action = resolve_menu_action(normalized)
     if action is None:
         menu_display.write_status("fail", menu_prompts.invalid_choice_message(choice))
         log_menu_action(choice=normalized, title="Invalid", result="invalid")
         return "invalid"
 
-    title, runner = action
-    menu_display.open_screen(title)
-    with log_operation(title, logger_name="mercury.menu", choice=normalized):
-        runner()
-    log_menu_action(choice=normalized, title=title, result="continue")
+    menu_display.open_screen(action.title)
+    with log_operation(action.title, logger_name="mercury.menu", choice=normalized):
+        action.runner()
+    log_menu_action(choice=normalized, title=action.title, result="continue")
     return "continue"
 
 

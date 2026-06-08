@@ -32,6 +32,6 @@ def render_submenu(options: list[tuple[str, str]], *, title: str | None = None) 
     for line in submenu_block(
         options,
         title=title,
-        bottom_label="Back to main menu",
+        bottom_label="Back",
     ):
         output.write(line)

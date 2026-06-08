@@ -27,7 +27,7 @@ def test_connection_label_socket() -> None:
         current_user="root@localhost",
         unix_socket="/var/lib/mysql/mysql.sock",
     )
-    assert connection_label(probe) == "root@localhost via /var/lib/mysql/mysql.sock"
+    assert connection_label(probe) == "root@localhost"
 
 
 def test_build_environment_check_fields_connected() -> None:
@@ -43,15 +43,15 @@ def test_build_environment_check_fields_connected() -> None:
         unix_socket="/var/lib/mysql/mysql.sock",
     )
     fields = build_environment_check_fields(_env_result(), probe)
-    assert fields["python"] == "3.14.5"
-    assert fields["databases"] == 7
-    assert "dry_run" in fields
-    assert "live_actions" in fields
-    assert "execution" in fields
-    assert "via /var/lib/mysql/mysql.sock" in str(fields["connected"])
-    assert "Sample" not in str(fields)
+    assert fields["Runtime"]["Python"] == "3.14.5"
+    assert fields["MariaDB"]["Status"] == "connected"
+    assert fields["MariaDB"]["User"] == "root@localhost"
+    assert fields["MariaDB"]["Socket"] == "/var/lib/mysql/mysql.sock"
+    assert fields["Execution Safety"]["Mode"] == "DRY RUN"
+    assert "Database Scope" not in fields
+    assert "Recommended action" not in fields
 
 
 def test_build_environment_check_fields_not_configured() -> None:
     fields = build_environment_check_fields(_env_result())
-    assert "not configured" in str(fields["connected"])
+    assert "not configured" in str(fields["MariaDB"]["Status"])

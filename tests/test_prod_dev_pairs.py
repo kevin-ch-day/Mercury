@@ -27,3 +27,15 @@ def test_orphan_dev() -> None:
     pairs = build_prod_dev_pairs(names)
     orphans = orphan_dev_databases(names, pairs)
     assert "random_dev_only_dev" in orphans or len(orphans) >= 0
+
+
+def test_shared_authority_database_is_not_a_sync_pair() -> None:
+    pairs = build_prod_dev_pairs(
+        [
+            "android_permission_intel",
+            "erebus_threat_intel_prod",
+            "erebus_threat_intel_dev",
+        ]
+    )
+    prod_names = {pair.prod for pair in pairs}
+    assert "android_permission_intel" not in prod_names

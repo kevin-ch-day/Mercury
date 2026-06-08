@@ -93,6 +93,7 @@ mercury report preview --db <prod> --kind full|schema_only
 ```
 
 `backup run --execute` and `backup batch --execute` require `[mercury] dry_run = false` and `live_actions_enabled = true` in `config/local.toml`.
+For the current Fedora milestone, live backup execution also requires the mounted USB-backed root under `/mnt/MERCURY_DATA_USB/mercury_backups`; repo-local `backups/` remains development-only and does not count as production protection in live/operator mode.
 
 ### Sync
 
@@ -113,6 +114,7 @@ mercury restore-check cleanup [--execute]
 ```
 
 Restore-check runs into temporary `_restorecheck_*` databases only. Use `cleanup --execute` to drop them after validation.
+Successful restore-check runs now auto-drop the temporary `_restorecheck_*` database. If import or validation fails, Mercury preserves the temp database for debugging and prints the cleanup command.
 
 ## Setup
 
@@ -160,6 +162,8 @@ src/mercury/
   sync/          prod→dev planning, readiness, execution
   restore/       restore-check planning and execution
 ```
+
+Top-level compatibility shims under `src/mercury/*.py` remain for external callers only. New code should use the canonical subpackages (`mercury.backup.*`, `mercury.core.*`, `mercury.database.*`, `mercury.menu.*`, `mercury.terminal.*`).
 
 See [AGENTS.md](AGENTS.md) for contributor/agent guidance. See [CONTRIBUTING.md](CONTRIBUTING.md) for pull request expectations.
 

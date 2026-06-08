@@ -39,7 +39,7 @@ def _render_schema_screen(plan, *, show_title: bool) -> None:
     print_schema_backup_plan(plan, compact=True, menu=True)
     display_screen.write_blank()
     live_allowed = policy.live_execution_allowed()
-    run_label = "Run schema export" if live_allowed else "Run schema export (needs live mode)"
+    run_label = "Run schema export" if live_allowed else "Run schema export (live mode required)"
     render_submenu([("1", "Rescan plan"), ("2", run_label)])
 
 

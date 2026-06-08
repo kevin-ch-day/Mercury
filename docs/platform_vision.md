@@ -9,7 +9,7 @@ Mercury is a **Fedora-first operations utility** for the Android security resear
 | **Erebus** | `erebus_threat_intel_prod` / `_dev` | VT enrichment, malware catalog, Permission Intel writes |
 | **Platform** | `android_permission_intel` | Shared permission authority (Erebus, ScytaleDroid, Iapetus) |
 | **ScytaleDroid** | `scytaledroid_core_prod` / `_dev` | APK static/dynamic analysis |
-| **ObsidianDroid** | `gecko_research_database_prod` / `_dev` | Malware ML/research (out of current Mercury milestone scope) |
+| **ObsidianDroid** | `gecko_research_database_prod` / `_dev` | Malware ML/research (out of current Mercury milestone scope; visible only for operator awareness if discovered live) |
 | **Iapetus** | (future) | Deep-learning kernel — seed repo only |
 
 ## Mercury priorities (in order)
@@ -28,7 +28,7 @@ Mercury is a **Fedora-first operations utility** for the Android security resear
 - Menu-driven CLI (`mercury menu`)  
 - Config + catalog discovery (`mercury db discover --demo`)  
 - Dry-run backup plans (`mercury backup plan --demo`)  
-- Read-only MariaDB discovery **planned**, not executed  
+- Read-only MariaDB discovery implemented; live writes still gated  
 - No destructive actions; no live connections by default  
 
 ## Current Fedora milestone

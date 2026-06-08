@@ -8,6 +8,7 @@ from mercury import output
 from mercury.terminal import format as display_format
 from mercury.terminal import screen as display_screen
 from mercury.backup.on_disk_index import DemoBackupList, OnDiskBackupList
+from mercury.database.core import shared_authority_note
 from mercury.reporting.preview import BackupReportPreview, format_report_preview_markdown
 from mercury.backup.verification import BackupVerificationResult, VerificationPlan
 
@@ -26,15 +27,17 @@ def run_verify_all_for_menu(*, update_manifest: bool = False) -> VerifyMenuSumma
     from mercury.core.execution_policy import load_execution_policy
     from mercury.core.runtime import should_probe_database_status
     from mercury.backup.verification import verify_backup_directory
+    from mercury.database.core import source_role_label
 
     policy = load_execution_policy()
     sources = resolve_batch_sources(live=should_probe_database_status())
     summary = VerifyMenuSummary()
     for database in sources:
+        source_role = source_role_label(database)
         backup_dir = find_latest_backup_directory(policy.backup_root, database)
         if backup_dir is None:
             summary.missing += 1
-            summary.rows.append([database, "missing"])
+            summary.rows.append([database, source_role, "missing"])
             continue
         result = verify_backup_directory(
             backup_dir,
@@ -43,11 +46,11 @@ def run_verify_all_for_menu(*, update_manifest: bool = False) -> VerifyMenuSumma
         )
         if result.verified:
             summary.verified += 1
-            summary.rows.append([database, "verified"])
+            summary.rows.append([database, source_role, "verified"])
         else:
             summary.failed += 1
             issue = result.issues[0] if result.issues else "failed"
-            summary.rows.append([database, issue[:40]])
+            summary.rows.append([database, source_role, issue[:40]])
     return summary
 
 
@@ -62,10 +65,12 @@ def print_verify_menu_summary(summary: VerifyMenuSummary) -> None:
     if summary.rows:
         display_screen.write_blank()
         display_screen.write_table(
-            ["DATABASE", "STATUS"],
+            ["DATABASE", "SOURCE ROLE", "STATUS"],
             summary.rows,
-            max_col_widths=[36, 24],
+            max_col_widths=[36, 24, 24],
         )
+        display_screen.write_blank()
+        display_screen.write_summary(shared_authority_note())
     elif summary.missing == 0 and summary.failed == 0 and summary.verified == 0:
         display_screen.write_status("warn", "No backup sources configured.")
 
@@ -116,7 +121,9 @@ def print_on_disk_backup_list(
     menu: bool = False,
 ) -> None:
     if compact and menu:
-        display_screen.write_fields({"backup_root": str(backup_list.backup_root), "count": len(backup_list.records)})
+        display_screen.write_fields(
+            {"Backup root": str(backup_list.backup_root), "USB backups": len(backup_list.records)}
+        )
         if not backup_list.records:
             display_screen.write_status("warn", "No backups on disk yet.")
             return
@@ -128,7 +135,9 @@ def print_on_disk_backup_list(
         return
 
     if compact:
-        display_screen.write_fields({"backups": len(backup_list.records), "root": str(backup_list.backup_root)})
+        display_screen.write_fields(
+            {"USB backups": len(backup_list.records), "Backup root": str(backup_list.backup_root)}
+        )
         if not backup_list.records:
             display_screen.write_status("warn", f"none under {backup_list.backup_root}")
             return

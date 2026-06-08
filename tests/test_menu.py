@@ -19,11 +19,9 @@ def test_render_menu_text_contains_header_and_items() -> None:
     text = render_menu_text()
     assert MENU_TITLE in text
     assert MENU_SUBTITLE in text
-    assert "Environment" in text
-    assert "Execution Safety" in text
-    assert "Backup Storage" in text
-    assert "Protection" in text
-    assert "Mode" in text
+    assert "Status" in text
+    assert "Execution mode" in text
+    assert "Backup target" in text
     assert "Blocker" in text
     assert "      [1] Environment check" in text
     assert "      [0] Exit" in text
@@ -139,13 +137,13 @@ def test_menu_renders_without_crashing(capsys: pytest.CaptureFixture[str]) -> No
     ("choice", "snippets"),
     [
         ("1", ("Environment check", "python:", "dry_run:", "Rescan", "Live mode guide")),
-        ("2", ("databases:", "roles:", "DATABASE", "ENV", "Rescan inventory")),
-        ("3", ("Rescan plan", "sources:", "DATABASE")),
+        ("2", ("Active scope:", "Backup sources:", "DATABASE", "ENV", "Rescan inventory")),
+        ("3", ("Rescan plan", "Source databases:", "DATABASE")),
         ("4", ("sources:", "Rescan plan")),
         ("5", ("verified", "Rescan")),
         ("6", ("ready", "blocked", "Rescan readiness")),
         ("7", ("ready", "blocked", "Rescan plans", "Run allowed")),
-        ("8", ("backup_root", "inventory")),
+        ("8", ("Backup root", "Active scope", "Source databases")),
     ],
 )
 def test_handle_menu_action(

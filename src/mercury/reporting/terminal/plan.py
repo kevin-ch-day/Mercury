@@ -78,7 +78,7 @@ def print_schema_backup_plan(
 
 def print_sync_plan(plan: SyncPlanDryRun, *, compact: bool = False) -> None:
     if compact:
-        display_screen.write_section("Prod → dev pairs")
+        display_screen.write_section("Production sync pairs")
         rows = []
         for entry in plan.entries:
             pair = display_format.format_pair(entry.source, entry.target)
@@ -87,11 +87,11 @@ def print_sync_plan(plan: SyncPlanDryRun, *, compact: bool = False) -> None:
         display_screen.write_table(["PAIR", "PROJECT", "STATUS"], rows)
         return
 
-    output.heading("Production to development sync plan (dry-run)")
+    output.heading("Production sync plan (dry-run)")
     output.field("enabled", plan.enabled)
     output.field("confirmation_phrase", plan.confirmation_phrase)
 
-    output.heading("Planned syncs")
+    output.heading("Planned sync pairs")
     if not plan.entries:
         output.item("(none)")
     for entry in plan.entries:

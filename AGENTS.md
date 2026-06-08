@@ -87,7 +87,7 @@ src/mercury/
 
 Policy constants: `src/mercury/core/safety.py`. Execution gates: `src/mercury/core/execution_policy.py`.
 
-**Terminal theme:** Mercury uses a liquid-silver / cyan-teal palette on dark terminals via `mercury.terminal.theme` and Rich-backed `mercury.core.output`. The main menu shows a ☿ header, bordered status panel, section groups, styled submenus, color-coded table cells, and status badges. Colors apply on TTY stdout only. Disable with `NO_COLOR` or `MERCURY_NO_COLOR=1`; force with `MERCURY_FORCE_COLOR=1` (overrides `NO_COLOR`).
+**Terminal theme:** Mercury uses a restrained semantic terminal theme via `mercury.terminal.theme` and Rich-backed `mercury.core.output`. The main menu is a cleaner operator console with explicit Environment, Execution Safety, Backup Storage, Protection, and Actions sections. Colors apply on TTY stdout only. Disable with `NO_COLOR` or `MERCURY_NO_COLOR=1`; force with `MERCURY_FORCE_COLOR=1` (overrides `NO_COLOR`).
 
 ```bash
 python -m venv .venv
@@ -112,7 +112,19 @@ Use the project venv (`.venv/bin/python`), not system Python, when validating CL
 | Erebus | `erebus_threat_intel_prod` / `_dev` |
 | Platform | `android_permission_intel` (shared authority) |
 | ScytaleDroid | `scytaledroid_core_prod` / `_dev` |
-| ObsidianDroid | `gecko_research_database_prod` / `_dev` |
+
+For the current Fedora milestone, Mercury actively protects only:
+
+- `android_permission_intel`
+- `erebus_threat_intel_prod`
+- `scytaledroid_core_prod`
+
+and plans prod→dev sync readiness only for:
+
+- `erebus_threat_intel_prod` -> `erebus_threat_intel_dev`
+- `scytaledroid_core_prod` -> `scytaledroid_core_dev`
+
+Out-of-scope databases such as `gecko_research_database_*`, `droid_threat_intel_db_prod`, and `proofpoint_cti_db_dev` may appear in live discovery for operator awareness, but they are excluded from backup/sync planning and do not count as blockers for this milestone.
 
 Catalog reference: `src/mercury/database/core/catalog.py`  
 Classification: `src/mercury/database/core/classifier.py`
@@ -151,8 +163,10 @@ Then: `export MERCURY_MARIADB_PASSWORD=...`
 [mercury]
 dry_run = false
 live_actions_enabled = true
-backup_root = "/var/backups/mercury"
+backup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"
 ```
+
+For the first live milestone, Mercury also requires the USB mount under `/mnt/MERCURY_DATA_USB` to be active. Repo-local `backups/` are development artifacts only and do not count as production protection in live/operator mode.
 
 Never commit passwords or `config/local.toml`.
 
@@ -209,6 +223,8 @@ backups/YYYY-MM-DD/<database>/
 Manifest builder: `build_backup_manifest()` in `backup/manifest.py`.  
 Checksum helpers: `backup/checksum.py`.  
 Verification: `verify_backup_artifacts()` in `backup/verification.py`.
+
+Restore-check behavior: successful restore-check imports auto-drop the `_restorecheck_*` database; failed runs preserve it for debugging and print the cleanup command.
 
 ## Suggested agent workflow
 

@@ -10,16 +10,15 @@ def test_dashboard_rows_include_core_fields() -> None:
     rows = dashboard_rows(probe_database=False)
     text = "\n".join(rows)
     assert "MariaDB" in text
-    assert "Target" in text
-    assert "Mode" in text
-    assert "DRY RUN" in text
+    assert "Execution mode" in text
+    assert "Backup target" in text
+    assert "Execution Safety" not in text
 
 
 def test_dashboard_rows_include_extended_stats() -> None:
     rows = dashboard_rows(probe_database=False)
     text = "\n".join(rows)
-    assert "Source DBs verified" in text
-    assert "USB backups" in text
+    assert "Source DBs" in text
     assert "Sync pairs" in text
     assert "Blocker" in text
 

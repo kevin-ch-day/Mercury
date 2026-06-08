@@ -13,7 +13,7 @@ def test_dashboard_rows_show_connection_and_backups() -> None:
     rows = menu_display.dashboard_rows(probe_database=False)
     text = "\n".join(rows)
     assert "MariaDB" in text
-    assert "Target" in text
+    assert "Backup target" in text
 
 
 def test_status_rows_include_operator_fields() -> None:
@@ -44,10 +44,10 @@ def test_render_main_menu_matches_simple_layout() -> None:
     text = menu_display.render_main_menu()
     assert menu_display.MENU_TITLE in text
     assert menu_display.MENU_SUBTITLE in text
-    assert "Environment" in text
-    assert "Backup Storage" in text
-    assert "Protection" in text
-    assert "Mode" in text
+    assert "Status" in text
+    assert "Backup target" in text
+    assert "Source DBs" in text
+    assert "Execution Safety" not in text
     assert "─" in text
     assert "      [1] Environment check" in text
     assert "      [0] Exit" in text
@@ -57,7 +57,7 @@ def test_render_main_menu_matches_simple_layout() -> None:
 def test_render_main_menu_body_omits_title_block() -> None:
     body = menu_display.render_main_menu_body()
     assert menu_display.MENU_TITLE not in body
-    assert "Environment" in body
+    assert "Status" in body
     assert "MariaDB" in body
     assert "      [1] Environment check" in body
 

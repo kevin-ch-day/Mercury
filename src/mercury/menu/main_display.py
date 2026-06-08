@@ -94,7 +94,7 @@ MENU_SECTIONS: list[tuple[str, list[MenuItem]]] = [
             MenuItem("1", "Environment check"),
             MenuItem("2", "Discover databases"),
             MenuItem("3", "Show backup plan"),
-            MenuItem("4", "Run source database backups"),
+            MenuItem("4", "Export schema-only copies"),
             MenuItem("5", "Verify backups"),
             MenuItem("6", "Sync readiness"),
             MenuItem("7", "Restore-check backup"),

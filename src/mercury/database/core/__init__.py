@@ -41,7 +41,10 @@ from mercury.database.core.inventory_ops import (
     is_live_inventory,
     projects_map,
     role_env_label,
+    shared_authority_note,
+    source_role_label,
     sort_entries_for_display,
+    sync_role_label,
 )
 from mercury.database.core.models import DatabaseInventory, DatabaseRecord
 from mercury.database.core.scope import (
@@ -94,6 +97,9 @@ __all__ = [
     "format_entry_columns",
     "inventory_role_summary",
     "role_env_label",
+    "source_role_label",
+    "sync_role_label",
+    "shared_authority_note",
     "sort_entries_for_display",
     "ACTIVE_BACKUP_SOURCE_DATABASES",
     "ACTIVE_DEV_TARGET_DATABASES",

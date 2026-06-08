@@ -10,7 +10,14 @@ from mercury.database import (
     build_backup_plan,
     discover_demo,
 )
-from mercury.database.core import CATALOG_BY_NAME, DatabaseRole, classify_database
+from mercury.database.core import (
+    CATALOG_BY_NAME,
+    DatabaseRole,
+    classify_database,
+    filter_inventory,
+    shared_authority_note,
+    source_role_label,
+)
 from mercury.database.prod_dev_pairs import ProdDevPair, build_prod_dev_pairs, orphan_dev_databases
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.runtime import operator_status
@@ -24,6 +31,7 @@ class ProtectionReport(BaseModel):
     operator: dict[str, str] = Field(default_factory=dict)
     backup_plan: BackupPlanDryRun
     inventory_count: int
+    ignored_out_of_scope_count: int = 0
     protected: list[str] = Field(default_factory=list)
     not_protected: list[str] = Field(default_factory=list)
     shared_authority: list[str] = Field(default_factory=list)
@@ -41,8 +49,10 @@ def build_protection_report(*, live: bool = False, probe_database: bool = False)
         inventory: DatabaseInventory = discover("live")
     else:
         inventory = discover_demo()
-    names = [e.name for e in inventory.entries]
-    projects = {e.name: e.project for e in inventory.entries if e.project}
+    scoped_inventory = filter_inventory(inventory)
+    ignored_out_of_scope_count = inventory.count - scoped_inventory.count
+    names = [e.name for e in scoped_inventory.entries]
+    projects = {e.name: e.project for e in scoped_inventory.entries if e.project}
 
     plan = build_backup_plan(names)
     pairs = build_prod_dev_pairs(names, projects=projects)
@@ -87,7 +97,8 @@ def build_protection_report(*, live: bool = False, probe_database: bool = False)
         connection=inventory.connection,
         operator=operator_status(probe_database=probe_database or live),
         backup_plan=plan,
-        inventory_count=inventory.count,
+        inventory_count=scoped_inventory.count,
+        ignored_out_of_scope_count=ignored_out_of_scope_count,
         protected=protected,
         not_protected=not_protected,
         shared_authority=shared,
@@ -112,42 +123,48 @@ def format_protection_report(report: ProtectionReport, *, compact: bool = False)
     ]
     for key, value in report.operator.items():
         lines.append(f"  {key}: {value}")
+    production_sources = [name for name in report.protected if name not in report.shared_authority]
     lines.extend(
         [
             "",
-            f"Inventory: {report.inventory_count} databases",
+            f"Active scope: {report.inventory_count} databases",
             "",
-            "PROTECTED (backup sources)",
+            "PRODUCTION SOURCES",
         ]
     )
-    for name in report.protected:
+    if report.ignored_out_of_scope_count:
+        lines.insert(len(lines) - 1, f"Ignored out of scope: {report.ignored_out_of_scope_count} databases")
+    for name in production_sources:
         entry = CATALOG_BY_NAME.get(name)
         project = f" [{entry.project}]" if entry else ""
         lines.append(f"  + {name}{project}")
-    if not report.protected:
+    if not production_sources:
         lines.append("  (none)")
 
     lines.append("")
-    lines.append("NOT PROTECTED (excluded from backup)")
+    lines.append("SHARED AUTHORITY SOURCES")
+    for name in report.shared_authority:
+        lines.append(f"  * {name}")
+        lines.append("    backup-only; no dev sync pair by design")
+    if not report.shared_authority:
+        lines.append("  (none)")
+
+    lines.append("")
+    lines.append("EXCLUDED FROM BACKUP")
     for name in report.not_protected:
         excluded = next((e for e in report.backup_plan.excluded if e.name == name), None)
         reason = excluded.reason if excluded else ""
         lines.append(f"  - {name}: {reason}")
 
-    if report.shared_authority:
-        lines.append("")
-        lines.append("SHARED AUTHORITY (backup source; typically no _dev pair)")
-        for name in report.shared_authority:
-            lines.append(f"  * {name}")
-
     lines.append("")
-    lines.append("PRODUCTION -> DEVELOPMENT PAIRS (sync planning)")
+    lines.append("PRODUCTION SYNC PAIRS")
     for pair in report.prod_dev_pairs:
         dev_status = pair.expected_dev if pair.dev_listed else f"MISSING ({pair.expected_dev})"
         project = f" [{pair.project}]" if pair.project else ""
         lines.append(f"  {pair.prod}{project}")
         lines.append(f"    -> {dev_status}")
         lines.append(f"    {pair.sync_notes}")
+    lines.append(f"  {shared_authority_note()}")
 
     if report.orphan_dev:
         lines.append("")
@@ -170,15 +187,24 @@ def format_protection_report(report: ProtectionReport, *, compact: bool = False)
 def _format_protection_report_compact(report: ProtectionReport) -> str:
     lines: list[str] = [
         "PROTECTION SUMMARY",
-        f"  inventory: {report.inventory_count} databases",
+        f"  active scope: {report.inventory_count} databases",
         "",
-        "Backup sources:",
+        "Production sources:",
     ]
-    for name in report.protected:
+    if report.ignored_out_of_scope_count:
+        lines.insert(2, f"  ignored out of scope: {report.ignored_out_of_scope_count} databases")
+    for name in [name for name in report.protected if name not in report.shared_authority]:
         entry = CATALOG_BY_NAME.get(name)
         project = f" [{entry.project}]" if entry else ""
         lines.append(f"  + {name}{project}")
-    if not report.protected:
+    if not [name for name in report.protected if name not in report.shared_authority]:
+        lines.append("  (none)")
+
+    lines.append("")
+    lines.append("Shared authority sources:")
+    for name in report.shared_authority:
+        lines.append(f"  * {name} (backup-only)")
+    if not report.shared_authority:
         lines.append("  (none)")
 
     missing_dev = [p for p in report.prod_dev_pairs if not p.dev_listed]
@@ -207,18 +233,25 @@ def print_protection_report(report: ProtectionReport, *, compact: bool = False) 
 
     display_screen.write_fields(
         {
-            "inventory": report.inventory_count,
-            "protected": len(report.protected),
-            "unprotected": len(report.not_protected),
+            "Active scope": report.inventory_count,
+            "Source databases": len(report.protected),
+            "Excluded active scope": len(report.not_protected),
         }
     )
+    if report.ignored_out_of_scope_count:
+        display_screen.write_fields({"Ignored out of scope": report.ignored_out_of_scope_count})
     if report.protected:
         rows = []
         for name in report.protected:
             entry = CATALOG_BY_NAME.get(name)
             project = entry.project if entry and entry.project else "—"
-            rows.append([name, project])
+            source_role = source_role_label(name)
+            rows.append([name, source_role, project])
         display_screen.write_blank()
-        display_screen.write_table(["BACKUP SOURCE", "PROJECT"], rows, max_col_widths=[36, 16])
+        display_screen.write_table(
+            ["SOURCE DATABASE", "SOURCE ROLE", "PROJECT"],
+            rows,
+            max_col_widths=[36, 20, 16],
+        )
     else:
         display_screen.write_status("warn", "No protected backup sources yet")

@@ -31,6 +31,7 @@ Schema-only uses planned `*.schema.sql.gz` files. Full verified backups are **re
 3. **Never drop or overwrite `*_prod`.**
 4. **Restore-check databases** are temporary; exclude from all backup plans.
 5. **Unknown names** require manual review.
+6. **Repo-local backups are development artifacts only** — they do not count as production protection in live/operator mode.
 
 ## Verification and protection
 
@@ -46,3 +47,9 @@ Schema-only uses planned `*.schema.sql.gz` files. Full verified backups are **re
 - `mercury backup list --demo` — demo planned records only
 - `mercury report preview --db <name> --kind full|schema_only` — Markdown report preview
 - No `mariadb-dump` execution, no live connections, `live_actions = false`
+
+For live execution, Mercury requires:
+
+- `[mercury] dry_run = false`
+- `[mercury] live_actions_enabled = true`
+- a mounted USB-backed root under `/mnt/MERCURY_DATA_USB/mercury_backups`

@@ -2,7 +2,7 @@
 
 from mercury import output
 from mercury.database.discovery import discover_demo
-from mercury.database.core import projects_map
+from mercury.database.core import projects_map, shared_authority_note
 from mercury.database.prod_dev_pairs import build_prod_dev_pairs, orphan_dev_databases
 
 
@@ -13,7 +13,7 @@ def print_prod_dev_pairs(*, inventory=None) -> None:
     pairs = build_prod_dev_pairs(names, projects=projects_map(inventory))
     orphans = orphan_dev_databases(names, pairs)
 
-    output.heading("Production to development pairs")
+    output.heading("Production sync pairs")
     for pair in pairs:
         project = f" [{pair.project}]" if pair.project else ""
         dev_label = pair.expected_dev if pair.dev_listed else f"MISSING ({pair.expected_dev})"
@@ -27,4 +27,6 @@ def print_prod_dev_pairs(*, inventory=None) -> None:
             output.item(name)
 
     output.write()
-    output.write("Seed mode: sync not executed. Backup and verify prod before any dev sync.")
+    output.write(shared_authority_note())
+    output.write()
+    output.write("Seed mode: sync not executed. Back up and verify source databases before any dev sync.")

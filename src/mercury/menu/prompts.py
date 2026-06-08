@@ -48,7 +48,7 @@ def menu_option_prompt() -> str:
 
 def submenu_option_prompt() -> str:
     """Prompt text for action submenus (distinct from the main menu)."""
-    return input_prompt("\nSubmenu choice (0 = back to main menu): ")
+    return input_prompt("\nChoice: ")
 
 
 MENU_RETURN_PROMPT = menu_option_prompt()

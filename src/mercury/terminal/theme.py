@@ -60,7 +60,7 @@ SEPARATOR = f"dim {RULE_LIGHT}"
 
 RULE_WIDTH = 62
 _READY_BLOCKED_RE = re.compile(r"^(\d+)\s+ready\s·\s+(\d+)\s+blocked$")
-_COVERAGE_RE = re.compile(r"^(\d+)/(\d+)\s+prod sources$")
+_COVERAGE_RE = re.compile(r"^(\d+)/(\d+)\s+source databases$")
 _STATUS_WORDS: dict[str, str] = {
     "ready": OK,
     "verified": OK,
@@ -323,7 +323,7 @@ def style_inline_value(text: str) -> str:
     if coverage_match:
         have, total = coverage_match.groups()
         style = OK if have == total and total != "0" else WARN if have != "0" else FAIL
-        return f"[{style}]{have}/{total}[/] [{VALUE_MUTED}]prod sources[/]"
+        return f"[{style}]{have}/{total}[/] [{VALUE_MUTED}]source databases[/]"
 
     lower = text.lower()
     for word, style in _STATUS_WORDS.items():
@@ -357,7 +357,7 @@ def open_screen_lines(title: str) -> list[str]:
     return [
         "",
         markup(title, SECTION),
-        fancy_rule(width=min(RULE_WIDTH, max(len(title) + 20, 40))),
+        markup("─" * RULE_WIDTH, RULE),
     ]
 
 
@@ -469,16 +469,16 @@ def count_summary_line(text: str) -> str:
 
 def submenu_intro() -> str:
     if not colors_enabled():
-        return "  Choose an action below, or 0 to return to the main menu."
-    return f"  [{HINT}]Choose an action below, or [/][{MENU_KEY}]0[/][{HINT}] to return to the main menu.[/]"
+        return "  Actions"
+    return f"  [{SECTION}]Actions[/]"
 
 
 def submenu_empty_hint() -> str:
     if not colors_enabled():
-        return "  Enter a submenu number, or 0 to return to the main menu."
+        return "  Enter a menu number, or 0 to go back."
     return (
-        f"  [{HINT}]Enter a submenu number, or [/]"
-        f"[{MENU_KEY}]0[/][{HINT}] to return to the main menu.[/]"
+        f"  [{HINT}]Enter a menu number, or [/]"
+        f"[{MENU_KEY}]0[/][{HINT}] to go back.[/]"
     )
 
 
@@ -486,7 +486,7 @@ def submenu_block(
     options: list[tuple[str, str]],
     *,
     title: str | None = None,
-    bottom_label: str = "Back to main menu",
+    bottom_label: str = "Back",
     indent: int = 6,
 ) -> list[str]:
     """Full styled submenu: optional title, rule, options, return row."""

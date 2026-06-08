@@ -9,7 +9,7 @@ from mercury.core.safety import SYNC_DEV_CONFIRMATION_PHRASE
 SYNC_PLAN_NOTES = [
     "Sync is disabled in seed mode.",
     f"Future dev sync will require typing: {SYNC_DEV_CONFIRMATION_PHRASE}",
-    "Prerequisite: verified full backup of production source before any sync.",
+    "Prerequisite: verified full backup of each production source before any sync.",
     "Never drop or overwrite *_prod; target is *_dev only.",
 ]
 
@@ -33,13 +33,13 @@ class SyncPlanDryRun(BaseModel):
 
 
 def build_sync_plan_demo() -> SyncPlanDryRun:
-    """Build prod→dev sync plan from demo inventory."""
+    """Build production sync-pair plan from demo inventory."""
     inventory = discover_demo()
     return build_sync_plan_from_inventory(inventory)
 
 
 def build_sync_plan_from_inventory(inventory) -> SyncPlanDryRun:
-    """Build prod→dev sync plan from a discovered inventory."""
+    """Build production sync-pair plan from a discovered inventory."""
     names = [e.name for e in inventory.entries]
     projects = {e.name: e.project for e in inventory.entries if e.project}
     pairs = build_prod_dev_pairs(names, projects=projects)
@@ -70,7 +70,7 @@ def build_sync_plan_from_inventory(inventory) -> SyncPlanDryRun:
 
 
 def build_sync_plan_live() -> SyncPlanDryRun:
-    """Build prod→dev sync plan from live server inventory."""
+    """Build production sync-pair plan from live server inventory."""
     from mercury.database.discovery import discover
 
     return build_sync_plan_from_inventory(discover("live"))

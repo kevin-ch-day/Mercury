@@ -52,7 +52,7 @@ def _render_restore_screen(plans, *, show_title: bool) -> None:
         policy = load_execution_policy()
         label = "Run allowed restore checks"
         if not policy.live_execution_allowed():
-            label = f"{label} (needs live mode)"
+            label = f"{label} (live mode required)"
         options.append(("2", label))
     restorecheck_count = len(_restorecheck_names_on_server())
     if restorecheck_count:

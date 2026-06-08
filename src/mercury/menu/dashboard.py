@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import socket
-from pathlib import Path
-
 from mercury.core.execution_policy import load_execution_policy
-from mercury.core.paths import LOCAL_CONFIG
+from mercury.core.storage_status import (
+    backup_root_summary_label,
+    backup_root_storage_status_label,
+)
 from mercury.core.runtime import should_probe_database_status
-from mercury.terminal.format import format_bytes
 from mercury.terminal.theme import body_label, dashboard_row
 from mercury.core.runtime import operator_status
 
@@ -19,56 +18,23 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     status = operator_status(probe_database=probe)
     connected = "connected" in status["database"].lower() and "not connected" not in status["database"].lower()
     policy = load_execution_policy()
-    probe_result = _server_probe(probe and connected)
 
     rows: list[str] = [
-        body_label("Environment"),
-        dashboard_row("Host", socket.gethostname()),
+        body_label("Status"),
         dashboard_row("MariaDB", "[ok] connected" if connected else "[!!] unavailable"),
+        dashboard_row("Execution mode", "LIVE" if policy.live_execution_allowed() else "DRY RUN"),
+        dashboard_row("Backup target", backup_root_summary_label(policy)),
     ]
-    if probe_result is not None and probe_result.connected and probe_result.server_version:
-        rows.append(dashboard_row("Server version", probe_result.server_version))
-    rows.append(dashboard_row("Config", "config/local.toml" if LOCAL_CONFIG.exists() else "fallback/default"))
 
-    rows.extend(
-        [
-            "",
-            body_label("Execution Safety"),
-            dashboard_row("Mode", "[--] DRY RUN" if policy.dry_run else "[ok] LIVE"),
-            dashboard_row("Live actions", "[--] disabled" if not policy.live_actions_enabled else "[ok] enabled"),
-            dashboard_row(
-                "Destructive sync",
-                "[--] blocked"
-                if policy.dry_run or not policy.live_actions_enabled
-                else "[ok] enabled for ready pairs only",
-            ),
-            "",
-            body_label("Backup Storage"),
-            dashboard_row("Target", str(policy.backup_root.resolve())),
-            dashboard_row("Mount", _mount_label(policy)),
-        ]
-    )
-
-    filesystem = _filesystem_label(policy)
-    if filesystem is not None:
-        rows.append(dashboard_row("Filesystem", filesystem))
-
-    free_space = _free_space_label(policy)
-    if free_space is not None:
-        rows.append(dashboard_row("Free space", free_space))
-
-    rows.append(dashboard_row("Storage status", _storage_status_label(policy)))
+    if policy.backup_root_state() != "usb-mounted":
+        rows.append(dashboard_row("Storage status", backup_root_storage_status_label(policy, styled=True)))
 
     verified_count, source_total = _verified_source_summary(live=probe and connected)
-    backup_count = _count_on_disk_backups(policy.backup_root) or 0
     ready, blocked, blocker = _sync_readiness_summary(live=probe and connected)
 
     rows.extend(
         [
-            "",
-            body_label("Protection"),
-            dashboard_row("Source DBs verified", f"{verified_count} of {source_total} verified"),
-            dashboard_row("USB backups", str(backup_count)),
+            dashboard_row("Source DBs", f"{verified_count} of {source_total} verified"),
             dashboard_row("Sync pairs", f"{ready} ready, {blocked} blocked"),
             dashboard_row("Blocker", blocker),
         ]
@@ -100,19 +66,6 @@ def _verified_source_summary(*, live: bool) -> tuple[int, int]:
         return 0, 0
 
 
-def _count_on_disk_backups(backup_root) -> int | None:
-    try:
-        from mercury.backup.on_disk_index import build_on_disk_backup_list
-
-        policy = load_execution_policy()
-        if policy.backup_root_is_within_repo() and not policy.allow_unsafe_backup_root:
-            return 0
-        listing = build_on_disk_backup_list(backup_root)
-        return len(listing.records)
-    except OSError:
-        return None
-
-
 def _sync_readiness_summary(*, live: bool) -> tuple[int, int, str]:
     try:
         from mercury.sync.readiness import build_sync_readiness_report
@@ -130,72 +83,3 @@ def _sync_readiness_summary(*, live: bool) -> tuple[int, int, str]:
         return report.ready_count, report.blocked_count, blocker
     except Exception:
         return 0, 0, "Readiness status unavailable."
-
-
-def _server_probe(enabled: bool):
-    if not enabled:
-        return None
-    try:
-        from mercury.database.mariadb.session import probe_mariadb_server
-
-        return probe_mariadb_server(include_database_sample=False)
-    except Exception:
-        return None
-
-
-def _mount_label(policy) -> str:
-    state = policy.backup_root_state()
-    if state == "usb-mounted":
-        return "[ok] mounted"
-    if state == "repo-local fallback":
-        return "[!!] repo-local fallback"
-    if state == "usb not mounted":
-        return "[!!] not mounted"
-    if state == "unsafe path":
-        return "[!!] unsafe path"
-    if state == "missing path":
-        return "[!!] missing path"
-    if state == "low free space":
-        return "[--] mounted"
-    return "[--] unknown"
-
-
-def _filesystem_label(policy) -> str | None:
-    mount_info = _mount_info(policy.backup_root)
-    if mount_info is None:
-        return None
-    return mount_info[1]
-
-
-def _free_space_label(policy) -> str | None:
-    free_bytes = policy.backup_root_free_bytes()
-    if free_bytes is None:
-        return None
-    return format_bytes(free_bytes)
-
-
-def _storage_status_label(policy) -> str:
-    state = policy.backup_root_state()
-    if state == "usb-mounted":
-        return "[ok] ready"
-    if state == "low free space":
-        return "[--] warning"
-    return "[!!] unsafe"
-
-
-def _mount_info(path: Path) -> tuple[Path, str] | None:
-    try:
-        with Path("/proc/mounts").open("r", encoding="utf-8") as handle:
-            mounts = []
-            for line in handle:
-                parts = line.split()
-                if len(parts) >= 3:
-                    mounts.append((Path(parts[1]), parts[2]))
-    except OSError:
-        return None
-
-    resolved = path.resolve()
-    matches = [(mount_path, fs_type) for mount_path, fs_type in mounts if str(resolved).startswith(str(mount_path))]
-    if not matches:
-        return None
-    return max(matches, key=lambda item: len(str(item[0])))

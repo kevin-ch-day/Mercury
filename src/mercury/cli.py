@@ -10,7 +10,7 @@ from mercury import output
 
 app = typer.Typer(
     name="mercury",
-    help="Mercury — database backup, DR, and prod-to-dev sync (seed / dry-run).",
+    help="Mercury — database backup, DR, and sync-readiness utility (seed / dry-run).",
     no_args_is_help=True,
     invoke_without_command=True,
 )
@@ -20,7 +20,7 @@ db_app = typer.Typer(help="Database commands.")
 database_app = typer.Typer(help="Database module (same commands as db).")
 backup_app = typer.Typer(help="Backup commands.")
 config_app = typer.Typer(help="Configuration commands.")
-sync_app = typer.Typer(help="Prod to dev sync planning and execution.")
+sync_app = typer.Typer(help="Production sync-pair planning and execution.")
 restore_app = typer.Typer(help="Restore-check and DR execution.")
 report_app = typer.Typer(help="Backup report previews (dry-run).")
 logs_app = typer.Typer(help="Mercury log files under logs/.")
@@ -444,7 +444,7 @@ def backup_verify_all_cmd(
     output.field("passed", passed)
     output.field("failed", failed)
     output.field("skipped", skipped)
-    output.field("sources_checked", len(sources))
+    output.field("source databases checked", len(sources))
 
     if passed + failed + skipped == 0:
         typer.echo("No backup sources to verify.")
@@ -528,10 +528,10 @@ def sync_plan_cmd(
     demo: bool = typer.Option(
         False,
         "--demo",
-        help="Prod→dev sync plan from platform catalog (required in seed).",
+        help="Production sync-pair plan from platform catalog (required in seed).",
     ),
 ) -> None:
-    """Dry-run prod→dev sync plan with prerequisites (not executed)."""
+    """Dry-run production sync-pair plan with prerequisites (not executed)."""
     from mercury.database import MariaDbConfigError, MariaDbLiveError, try_load_mariadb_config
     from mercury.reporting.terminal.plan import print_sync_plan
     from mercury.sync.sync_plan import build_sync_plan_demo, build_sync_plan_live
@@ -554,10 +554,10 @@ def sync_readiness_cmd(
     live: bool = typer.Option(
         False,
         "--live",
-        help="Use live server inventory for prod→dev pairs.",
+        help="Use live server inventory for production sync pairs.",
     ),
 ) -> None:
-    """Report which prod→dev pairs have verified full backups."""
+    """Report which production sync pairs have verified full backups."""
     from mercury.database import MariaDbConfigError, MariaDbLiveError
     from mercury.sync.readiness import build_sync_readiness_report
     from mercury.sync.terminal.readiness import print_sync_readiness_report
@@ -579,7 +579,7 @@ def sync_run_cmd(
     ),
     yes: bool = typer.Option(False, "--yes", help="Skip SYNC DEV confirmation prompt."),
 ) -> None:
-    """Plan or execute prod→dev sync for ready pairs."""
+    """Plan or execute development refresh for ready production sync pairs."""
     from mercury.core.execution_policy import load_execution_policy
     from mercury.core.safety import SYNC_DEV_CONFIRMATION_PHRASE
     from mercury.sync.sync_runner import run_sync_batch
@@ -589,7 +589,7 @@ def sync_run_cmd(
     report = build_sync_readiness_report(live=live)
     ready = [entry for entry in report.entries if entry.ready_for_sync_planning]
     if not ready:
-        typer.echo("No ready prod→dev pairs. Run: mercury sync readiness --live")
+        typer.echo("No ready production sync pairs. Run: mercury sync readiness --live")
         raise typer.Exit(1)
 
     policy = load_execution_policy()

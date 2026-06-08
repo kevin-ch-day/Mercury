@@ -6,6 +6,20 @@ from mercury.terminal import screen as display_screen
 from mercury.restore.check_plan import RestoreCheckPlan
 
 
+def _compact_restore_status(plan: RestoreCheckPlan) -> str:
+    if plan.allowed:
+        return "ready"
+    if "Backup root is repo-local fallback; configure USB-backed backups before restore-check." in plan.blockers:
+        return "USB root required"
+    if "No on-disk backup found for production source." in plan.blockers:
+        return "missing verified backup"
+    if "Latest backup is not verified." in plan.blockers:
+        return "backup not verified"
+    if plan.blockers:
+        return plan.blockers[0]
+    return "blocked"
+
+
 def print_restore_check_plans(
     plans: list[RestoreCheckPlan],
     *,
@@ -24,10 +38,10 @@ def print_restore_check_plans(
         )
         rows: list[list[str]] = []
         for plan in plans:
-            status = display_format.format_plan_status(ready=plan.allowed, blockers=plan.blockers)
+            status = _compact_restore_status(plan)
             rows.append([plan.source_prod, status])
         display_screen.write_blank()
-        display_screen.write_table(["DATABASE", "STATUS"], rows, max_col_widths=[36, 28])
+        display_screen.write_table(["DATABASE", "STATUS"], rows, max_col_widths=[36, 24])
         return
 
     for plan in plans:

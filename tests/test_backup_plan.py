@@ -83,9 +83,14 @@ def test_backup_plan_displays_resolved_root_and_warning(
     )
     print_backup_plan(build_demo_backup_plan())
     out = capsys.readouterr().out
-    assert "backup_root" in out
-    assert "backup_root_state" in out
+    assert "backup root" in out
+    assert "backup root state" in out
     assert "Repo-local fallback only" in out
+    assert "Production sources" in out
+    assert "Shared authority sources" in out
+    assert "Excluded development targets" in out
+    assert "android_permission_intel" in out
+    assert "backup-only; sync not applicable by design" in out
     assert f"future: {backup_root}/" in out
 
 
