@@ -12,5 +12,5 @@ def test_status_tags() -> None:
 def test_action_banner(capsys) -> None:
     output.action_banner("Environment Check")
     out = capsys.readouterr().out
-    assert ">> Environment Check" in out
+    assert "Environment Check" in out
     assert "---" in out

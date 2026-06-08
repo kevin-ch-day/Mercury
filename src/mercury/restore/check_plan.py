@@ -50,6 +50,10 @@ def build_restore_check_plan(prod_database: str) -> RestoreCheckPlan:
 
     if not classification.backup_source:
         blockers.append(f"'{prod_database}' is not an approved production backup source.")
+    if policy.backup_root_is_within_repo() and not policy.allow_unsafe_backup_root:
+        blockers.append(
+            "Backup root is repo-local fallback; configure USB-backed backups before restore-check."
+        )
 
     backup_dir = find_latest_backup_directory(policy.backup_root, prod_database)
     backup_verified = False

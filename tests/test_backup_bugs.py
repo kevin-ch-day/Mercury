@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -84,6 +85,10 @@ def test_cli_backup_list_on_disk() -> None:
     if not any(backups.glob("*/*/manifest.json")):
         pytest.skip("no on-disk backups in repo")
 
-    result = run_cli("backup", "list")
+    result = run_cli(
+        "backup",
+        "list",
+        env={**os.environ, "MERCURY_BACKUP_ROOT": str(backups)},
+    )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "BACKUP LIST (on-disk)" in result.stdout

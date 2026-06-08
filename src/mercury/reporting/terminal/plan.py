@@ -1,10 +1,14 @@
 """Plain-text display for schema, sync, and policy dry-run plans."""
 
+from datetime import datetime, timezone
+from pathlib import Path
+
 from mercury import output
 from mercury.terminal import format as display_format
 from mercury.terminal import screen as display_screen
 from mercury.backup.layout import build_backup_layout
 from mercury.backup.schema_plan import SchemaBackupPlanDryRun
+from mercury.core.execution_policy import load_execution_policy
 from mercury.sync.sync_plan import SyncPlanDryRun
 
 
@@ -17,6 +21,15 @@ def _format_excluded_line(name: str, reason: str) -> str:
     if "Unknown role" in reason or "manual review" in reason.lower():
         return f"{name} — unknown role; manual review required"
     return f"{name} — {reason}"
+
+
+def _display_backup_path(backup_root: Path, relative_path: str) -> str:
+    relative = Path(relative_path)
+    try:
+        relative = relative.relative_to("backups")
+    except ValueError:
+        pass
+    return str((backup_root / relative).resolve())
 
 
 def print_schema_backup_plan(
@@ -36,13 +49,19 @@ def print_schema_backup_plan(
     for line in display_format.format_report_header("SCHEMA-ONLY BACKUP PLAN"):
         output.write(line)
 
+    policy = load_execution_policy()
+    instant = datetime.now(timezone.utc)
+    plan_date = instant.strftime("%Y-%m-%d")
+    plan_timestamp = instant.strftime("%Y%m%d_%H%M%S") + f"_{instant.microsecond // 1000:03d}"
     output.write("Schema backup sources:")
     if not plan.sources:
         output.write("  (none)")
     for name in plan.sources:
-        layout = build_backup_layout(name)
+        layout = build_backup_layout(name, date=plan_date, timestamp=plan_timestamp)
         output.write(f"- {name}")
-        output.write(f"  future: {layout.future_schema_hint()}")
+        output.write(
+            f"  future: {_display_backup_path(policy.backup_root, layout.future_schema_hint())}"
+        )
 
     output.write("")
     output.write("Excluded:")

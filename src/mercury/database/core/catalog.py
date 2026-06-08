@@ -1,9 +1,6 @@
-"""Platform database catalog (reference names and project metadata)."""
+"""Platform database catalog for the current active Mercury milestone."""
 
 from pydantic import BaseModel
-
-# ObsidianDroid uses gecko_research_database_* in this platform.
-
 
 class CatalogEntry(BaseModel):
     name: str
@@ -36,26 +33,6 @@ PLATFORM_CATALOG: list[CatalogEntry] = [
         name="scytaledroid_core_dev",
         project="ScytaleDroid",
         description="Disposable dev target.",
-    ),
-    CatalogEntry(
-        name="gecko_research_database_prod",
-        project="ObsidianDroid",
-        description="Android malware ML/research pipeline database (production).",
-    ),
-    CatalogEntry(
-        name="gecko_research_database_dev",
-        project="ObsidianDroid",
-        description="Disposable dev target.",
-    ),
-    CatalogEntry(
-        name="_restorecheck_erebus_threat_intel_prod_20260530",
-        project="Mercury",
-        description="Temporary restore-check database; not a backup source.",
-    ),
-    CatalogEntry(
-        name="random_test_db",
-        project="Test",
-        description="Unknown naming pattern; manual review required.",
     ),
 ]
 

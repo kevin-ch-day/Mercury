@@ -13,7 +13,8 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from mercury import output
-from mercury.terminal.theme import continue_prompt, prompt_text
+from mercury.terminal.prompts import input_prompt, normalize_input_prompt
+from mercury.terminal.theme import continue_prompt
 from mercury.menu.main_display import MENU_SECTIONS
 
 PromptReader = Callable[[str], str]
@@ -42,12 +43,12 @@ def menu_option_range_label() -> str:
 
 def menu_option_prompt() -> str:
     """Prompt text for menu selection."""
-    return prompt_text("\nEnter your choice: ")
+    return input_prompt("\nEnter your choice: ")
 
 
 def submenu_option_prompt() -> str:
     """Prompt text for action submenus (distinct from the main menu)."""
-    return prompt_text("\nSubmenu choice (0 = back to main menu): ")
+    return input_prompt("\nSubmenu choice (0 = back to main menu): ")
 
 
 MENU_RETURN_PROMPT = menu_option_prompt()
@@ -67,9 +68,10 @@ def set_continue_reader(reader: ContinueReader | None) -> None:
 
 def ask(prompt: str) -> str:
     """Read one line of user input."""
+    normalized = normalize_input_prompt(prompt)
     if _reader is not None:
-        return _reader(prompt)
-    return input(prompt)
+        return _reader(normalized)
+    return input(normalized)
 
 
 def ask_safe(prompt: str) -> str | None:
@@ -129,7 +131,7 @@ def wait_for_continue(*, prompt: str = CONTINUE_PROMPT) -> None:
         ask_safe(prompt)
         return
 
-    shown = continue_prompt() if prompt == CONTINUE_PROMPT else prompt_text(prompt)
+    shown = continue_prompt() if prompt == CONTINUE_PROMPT else normalize_input_prompt(prompt)
     output.write(shown)
     try:
         import termios

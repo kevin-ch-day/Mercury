@@ -37,10 +37,11 @@ def discover(
             prefer_local=prefer_local,
         )
 
-    from mercury.logging.events import log_inventory_discovered
     from mercury.database.core.scope import filter_inventory
+    from mercury.logging.events import log_inventory_discovered
 
-    inventory = filter_inventory(inventory)
+    if mode != "live":
+        inventory = filter_inventory(inventory)
 
     log_inventory_discovered(mode=inventory.mode, count=inventory.count, connection=inventory.connection)
     return inventory

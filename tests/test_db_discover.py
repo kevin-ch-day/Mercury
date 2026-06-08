@@ -15,6 +15,7 @@ def test_load_databases_example_toml() -> None:
     assert "erebus_threat_intel_prod" in names
     assert "erebus_threat_intel_dev" in names
     assert names["erebus_threat_intel_prod"]["host"] == "localhost"
+    assert names["erebus_threat_intel_prod"]["port"] == 3306
 
 
 def test_discover_demo_mode() -> None:
@@ -72,5 +73,16 @@ def test_catalog_entries_have_project() -> None:
 def test_inventory_summary_counts_roles() -> None:
     inventory = discover_from_config(include_catalog=True)
     summary = inventory_summary(inventory)
-    assert summary.get("production", 0) >= 3
-    assert summary.get("development", 0) >= 3
+    assert summary.get("production", 0) >= 2
+    assert summary.get("development", 0) >= 2
+
+
+def test_demo_catalog_matches_real_platform_databases() -> None:
+    names = set(PLATFORM_DATABASES)
+    assert names == {
+        "erebus_threat_intel_prod",
+        "erebus_threat_intel_dev",
+        "android_permission_intel",
+        "scytaledroid_core_prod",
+        "scytaledroid_core_dev",
+    }

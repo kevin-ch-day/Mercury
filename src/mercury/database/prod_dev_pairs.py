@@ -3,7 +3,7 @@
 from pydantic import BaseModel
 
 from mercury.database.core import DEV_SUFFIX, PROD_SUFFIX, DatabaseRole, classify_database
-from mercury.database.core.scope import is_in_scope
+from mercury.database.core.scope import is_active_sync_pair, is_in_scope
 
 PROD_SUFFIX_LEN = len(PROD_SUFFIX)
 
@@ -36,7 +36,7 @@ def build_prod_dev_pairs(
         if not name.endswith(PROD_SUFFIX):
             continue
         expected_dev = prod_to_dev_name(name)
-        if expected_dev is None or not is_in_scope(expected_dev):
+        if expected_dev is None or not is_active_sync_pair(name, expected_dev):
             continue
         dev_listed = expected_dev in names
         notes = (

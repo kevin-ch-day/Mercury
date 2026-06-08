@@ -1,7 +1,7 @@
 """Runtime mode and operator status for menu/CLI."""
 
 from mercury.core.execution_policy import load_execution_policy
-from mercury.core.paths import LOCAL_CONFIG
+from mercury.core.paths import LOCAL_CONFIG, REPO_ROOT
 from mercury.core.safety import MODE_SEED
 
 try:
@@ -14,6 +14,25 @@ def _backup_root_from_config() -> str | None:
     policy = load_execution_policy()
     root = policy.backup_root
     if root and str(root).strip():
+        resolved = root.resolve()
+        if policy.backup_root_is_within_repo():
+            rel = resolved
+            try:
+                rel = resolved.relative_to(REPO_ROOT.resolve())
+            except ValueError:
+                pass
+            return f"repo-local fallback ({rel})"
+        state = policy.backup_root_state()
+        if state == "usb-mounted":
+            return f"{resolved} [usb-mounted]"
+        if state == "missing path":
+            return f"{resolved} [missing path]"
+        if state == "usb not mounted":
+            return f"{resolved} [usb not mounted]"
+        if state == "unsafe path":
+            return f"{resolved} [unsafe path]"
+        if state == "low free space":
+            return f"{resolved} [low free space]"
         return str(root)
     return None
 

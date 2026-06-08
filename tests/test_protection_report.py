@@ -7,9 +7,11 @@ from mercury.reporting.protection import build_protection_report, format_protect
 
 def test_report_lists_protected_prod_databases() -> None:
     report = build_protection_report()
+    assert report.inventory_count == 5
     assert "erebus_threat_intel_prod" in report.protected
     assert "android_permission_intel" in report.protected
     assert "erebus_threat_intel_dev" in report.not_protected
+    assert report.manual_review == []
 
 
 def test_report_includes_prod_dev_pairs() -> None:
@@ -23,6 +25,7 @@ def test_report_includes_prod_dev_pairs() -> None:
 def test_report_has_action_items() -> None:
     report = build_protection_report()
     assert any("backup" in item.lower() for item in report.action_items)
+    assert all("manual review required" not in item.lower() for item in report.action_items)
 
 
 def test_format_report_contains_sections() -> None:

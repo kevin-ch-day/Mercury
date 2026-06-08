@@ -135,6 +135,10 @@ def _command_display(argv: list[str]) -> str:
     return " ".join(argv)
 
 
+def _temp_artifact_path(path: Path) -> Path:
+    return path.with_name(f"{path.name}.tmp")
+
+
 def _artifact_filenames(
     layout,
     kind: BackupKind,
@@ -329,64 +333,94 @@ def execute_backup(
 
     primary_path: Path | None = None
     schema_path: Path | None = None
+    created_paths: list[Path] = []
 
-    if kind == BACKUP_KIND_SCHEMA_ONLY:
-        assert schema_name is not None
-        schema_path = backup_dir / schema_name
-        runner(argv, env, schema_path, config)
-        checksum_targets.append(schema_name)
-        primary_path = schema_path
-    else:
-        assert dump_name is not None
-        dump_path = backup_dir / dump_name
-        runner(argv, env, dump_path, config)
-        checksum_targets.append(dump_name)
-        primary_path = dump_path
-        if schema_name and schema_argv:
+    try:
+        if kind == BACKUP_KIND_SCHEMA_ONLY:
+            assert schema_name is not None
             schema_path = backup_dir / schema_name
-            runner(schema_argv, env, schema_path, config)
+            schema_temp = _temp_artifact_path(schema_path)
+            runner(argv, env, schema_temp, config)
+            schema_temp.replace(schema_path)
+            created_paths.append(schema_path)
             checksum_targets.append(schema_name)
+            primary_path = schema_path
+        else:
+            assert dump_name is not None
+            dump_path = backup_dir / dump_name
+            dump_temp = _temp_artifact_path(dump_path)
+            runner(argv, env, dump_temp, config)
+            dump_temp.replace(dump_path)
+            created_paths.append(dump_path)
+            checksum_targets.append(dump_name)
+            primary_path = dump_path
+            if schema_name and schema_argv:
+                schema_path = backup_dir / schema_name
+                schema_temp = _temp_artifact_path(schema_path)
+                runner(schema_argv, env, schema_temp, config)
+                schema_temp.replace(schema_path)
+                created_paths.append(schema_path)
+                checksum_targets.append(schema_name)
 
-    write_checksum_file(backup_dir, checksum_targets)
+        checksum_path = backup_dir / CHECKSUM_FILENAME
+        checksum_temp = backup_dir / f"{CHECKSUM_FILENAME}.tmp"
+        write_checksum_file(backup_dir, checksum_targets, output_path=checksum_temp)
+        checksum_temp.replace(checksum_path)
+        created_paths.append(checksum_path)
 
-    primary_sha = sha256_file(primary_path)
-    primary_size = primary_path.stat().st_size
-    schema_sha = sha256_file(schema_path) if schema_path else None
-    schema_size = schema_path.stat().st_size if schema_path else None
+        primary_sha = sha256_file(primary_path)
+        primary_size = primary_path.stat().st_size
+        schema_sha = sha256_file(schema_path) if schema_path else None
+        schema_size = schema_path.stat().st_size if schema_path else None
 
-    manifest_dump_file = schema_name if kind == BACKUP_KIND_SCHEMA_ONLY else dump_name
-    assert manifest_dump_file is not None
+        manifest_dump_file = schema_name if kind == BACKUP_KIND_SCHEMA_ONLY else dump_name
+        assert manifest_dump_file is not None
 
-    manifest = build_backup_manifest(
-        backup_id=f"{database}-{kind}-{layout.timestamp}",
-        database=database,
-        backup_kind=kind,
-        created_at=instant,
-        source_role=classification.role.value,
-        dump_file=manifest_dump_file,
-        dump_sha256=primary_sha if kind != BACKUP_KIND_FULL else primary_sha,
-        dump_size_bytes=primary_size,
-        schema_file=schema_name if kind == BACKUP_KIND_FULL else None,
-        schema_sha256=schema_sha if kind == BACKUP_KIND_FULL else None,
-        schema_size_bytes=schema_size if kind == BACKUP_KIND_FULL else None,
-        tool_used=tool,
-        live_actions_enabled=resolved.live_actions_enabled,
-        dry_run=False,
-        notes="Logical backup produced by Mercury.",
-        verified=False,
-    )
+        manifest = build_backup_manifest(
+            backup_id=f"{database}-{kind}-{layout.timestamp}",
+            database=database,
+            backup_kind=kind,
+            created_at=instant,
+            source_role=classification.role.value,
+            dump_file=manifest_dump_file,
+            dump_sha256=primary_sha if kind != BACKUP_KIND_FULL else primary_sha,
+            dump_size_bytes=primary_size,
+            schema_file=schema_name if kind == BACKUP_KIND_FULL else None,
+            schema_sha256=schema_sha if kind == BACKUP_KIND_FULL else None,
+            schema_size_bytes=schema_size if kind == BACKUP_KIND_FULL else None,
+            tool_used=tool,
+            live_actions_enabled=resolved.live_actions_enabled,
+            dry_run=False,
+            notes="Logical backup produced by Mercury.",
+            verified=False,
+        )
 
-    manifest_path = backup_dir / MANIFEST_FILENAME
-    manifest_path.write_text(
-        json.dumps(manifest.model_dump(mode="json"), indent=2, default=str) + "\n",
-        encoding="utf-8",
-    )
+        manifest_path = backup_dir / MANIFEST_FILENAME
+        manifest_temp = backup_dir / f"{MANIFEST_FILENAME}.tmp"
+        manifest_temp.write_text(
+            json.dumps(manifest.model_dump(mode="json"), indent=2, default=str) + "\n",
+            encoding="utf-8",
+        )
+        manifest_temp.replace(manifest_path)
+        created_paths.append(manifest_path)
 
-    report_path = backup_dir / REPORT_FILENAME
-    report_path.write_text(
-        _format_backup_report(manifest, relative_dir),
-        encoding="utf-8",
-    )
+        report_path = backup_dir / REPORT_FILENAME
+        report_temp = backup_dir / f"{REPORT_FILENAME}.tmp"
+        report_temp.write_text(
+            _format_backup_report(manifest, relative_dir),
+            encoding="utf-8",
+        )
+        report_temp.replace(report_path)
+        created_paths.append(report_path)
+    except Exception:
+        cleanup_candidates = created_paths + list(backup_dir.glob("*.tmp"))
+        for path in cleanup_candidates:
+            try:
+                if path.exists():
+                    path.unlink()
+            except OSError:
+                pass
+        raise
 
     result = base_result.model_copy(
         update={

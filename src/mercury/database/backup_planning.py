@@ -3,12 +3,14 @@
 from pydantic import BaseModel, Field
 
 from mercury.database.core import (
+    CATALOG_BY_NAME,
     PLATFORM_DATABASES,
     DatabaseClassification,
     DatabaseInventory,
-    backup_source_names,
     classify_database,
     exclusion_reason,
+    is_active_backup_source,
+    is_in_scope,
 )
 from mercury.database.discovery import discover_from_config
 from mercury.core.safety import SAFETY_NOTES
@@ -37,7 +39,16 @@ def build_backup_plan(database_names: list[str]) -> BackupPlanDryRun:
     for name in database_names:
         classification = classify_database(name)
         plan.classifications.append(classification)
-        reason = exclusion_reason(classification)
+        if not is_in_scope(name):
+            reason = "Out of active Mercury scope for this milestone."
+        elif (
+            classification.backup_source
+            and name in CATALOG_BY_NAME
+            and not is_active_backup_source(name)
+        ):
+            reason = "Not an active Mercury backup source for this milestone."
+        else:
+            reason = exclusion_reason(classification)
         if reason is None:
             plan.backup_sources.append(name)
         else:

@@ -2,7 +2,12 @@
 
 ## Overview
 
-Development databases (`*_dev`) receive data from their production counterparts (`*_prod`). Dev databases are **not** backup sources and may be rebuilt or overwritten during sync.
+For the current Fedora milestone, Mercury plans sync only for:
+
+- `erebus_threat_intel_prod` -> `erebus_threat_intel_dev`
+- `scytaledroid_core_prod` -> `scytaledroid_core_dev`
+
+Dev databases are **not** backup sources and may be rebuilt or overwritten during sync.
 
 ## Required order of operations
 
@@ -33,4 +38,4 @@ mercury sync run --live --execute --yes   # skips SYNC DEV prompt only with --ye
 
 Menu: **Sync Production -> Development** → Prepare → Sync ready pairs (requires typing `SYNC DEV`).
 
-Out-of-scope databases (e.g. `droid_threat_intel_db_*`, `proofpoint_cti_db_dev`) are excluded from inventory and sync planning.
+Out-of-scope databases (for example `gecko_research_database_*`, `droid_threat_intel_db_*`, and `proofpoint_cti_db_dev`) do not participate in sync planning for this milestone. Live discovery may still show them for operator awareness.

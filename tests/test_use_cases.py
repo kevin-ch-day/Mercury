@@ -13,6 +13,7 @@ from mercury.core.execution_policy import ExecutionPolicy
 from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.restore.check_plan import build_restore_check_plan, planned_restore_check_name
 from mercury.sync.readiness import build_sync_readiness_report
+from mercury.core.paths import REPO_ROOT
 
 
 def test_resolve_batch_sources_includes_prod() -> None:
@@ -38,6 +39,26 @@ def test_sync_readiness_report_demo() -> None:
     report = build_sync_readiness_report(live=False)
     assert report.entries
     assert report.blocked_count >= 1
+
+
+def test_sync_readiness_ignores_repo_local_backups_for_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "mercury.sync.readiness.load_execution_policy",
+        lambda: ExecutionPolicy(
+            dry_run=True,
+            live_actions_enabled=False,
+            backup_root=REPO_ROOT / "backups",
+            config_path=Path("/tmp/local.toml"),
+        ),
+    )
+    report = build_sync_readiness_report(live=False)
+    assert report.ready_count == 0
+    assert all(
+        any("repo-local fallback" in blocker for blocker in entry.blockers)
+        for entry in report.entries
+    )
 
 
 def test_restore_check_plan_requires_verified_backup(tmp_path: Path) -> None:

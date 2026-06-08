@@ -79,6 +79,7 @@ def _run_allowed_restore_checks(plans: list[RestoreCheckPlan]) -> None:
             execute=execute,
             policy=policy,
             recreate_target=True,
+            cleanup_after_success=True,
         )
         print_restore_execution_result(result, compact=True)
 

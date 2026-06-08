@@ -20,7 +20,8 @@ from mercury.backup.backup_runner import (
 from mercury.backup.layout import build_backup_layout
 from mercury.backup.manifest import BackupManifest, build_backup_manifest
 from mercury.backup.checksum import sha256_file, verify_checksums, write_checksum_file
-from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
+from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy, resolve_backup_root
+from mercury.core.paths import REPO_ROOT
 from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY, LIVE_ACTIONS_ENABLED
 from mercury.backup.verification import verify_backup_artifacts
 
@@ -42,6 +43,8 @@ def _live_policy(tmp_path: Path) -> ExecutionPolicy:
         dry_run=False,
         live_actions_enabled=True,
         backup_root=tmp_path / "backups",
+        config_path=tmp_path / "local.toml",
+        allow_unsafe_backup_root=True,
     )
 
 
@@ -64,6 +67,95 @@ def test_default_policy_is_dry_run_seed() -> None:
     assert policy.dry_run is True
     assert policy.live_actions_enabled is LIVE_ACTIONS_ENABLED
     assert policy.live_execution_allowed() is False
+
+
+def test_live_execution_requires_non_repo_backup_root() -> None:
+    policy = ExecutionPolicy(
+        dry_run=False,
+        live_actions_enabled=True,
+        backup_root=REPO_ROOT / "backups",
+        config_path=Path("/tmp/local.toml"),
+    )
+    reason = policy.refusal_reason()
+    assert reason is not None
+    assert "repo-local" in reason.lower()
+
+
+def test_resolve_backup_root_accepts_absolute_usb_path(tmp_path: Path) -> None:
+    usb_root = tmp_path / "run" / "media" / "secadmin" / "MERCURY_USB" / "mercury_backups"
+    config_path = tmp_path / "local.toml"
+    config_path.write_text(
+        "[mercury]\n"
+        f'backup_root = "{usb_root}"\n',
+        encoding="utf-8",
+    )
+
+    resolved = resolve_backup_root(local_config=config_path)
+    assert resolved == usb_root.resolve()
+
+
+def test_live_execution_refuses_unmounted_usb_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from mercury import core
+    from collections import namedtuple
+
+    usb_mount = tmp_path / "mnt" / "MERCURY_DATA_USB"
+    backup_root = usb_mount / "mercury_backups"
+    backup_root.mkdir(parents=True)
+    monkeypatch.setattr(core.execution_policy, "REQUIRED_BACKUP_MOUNT", usb_mount)
+    monkeypatch.setattr(core.execution_policy, "_path_is_mount", lambda path: False)
+    usage = namedtuple("usage", "total used free")(100, 10, 50 * 1024 * 1024 * 1024)
+    monkeypatch.setattr(core.execution_policy, "_disk_usage", lambda path: usage)
+    policy = ExecutionPolicy(
+        dry_run=False,
+        live_actions_enabled=True,
+        backup_root=backup_root,
+        config_path=tmp_path / "local.toml",
+    )
+    reason = policy.refusal_reason()
+    assert reason is not None
+    assert "not active" in reason.lower()
+
+
+def test_live_execution_accepts_mounted_usb_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from mercury import core
+    from collections import namedtuple
+
+    usb_mount = tmp_path / "mnt" / "MERCURY_DATA_USB"
+    backup_root = usb_mount / "mercury_backups"
+    backup_root.mkdir(parents=True)
+    monkeypatch.setattr(core.execution_policy, "REQUIRED_BACKUP_MOUNT", usb_mount)
+    monkeypatch.setattr(core.execution_policy, "_path_is_mount", lambda path: True)
+    usage = namedtuple("usage", "total used free")(100, 10, 50 * 1024 * 1024 * 1024)
+    monkeypatch.setattr(core.execution_policy, "_disk_usage", lambda path: usage)
+    policy = ExecutionPolicy(
+        dry_run=False,
+        live_actions_enabled=True,
+        backup_root=backup_root,
+        config_path=tmp_path / "local.toml",
+    )
+    assert policy.refusal_reason() is None
+
+
+def test_live_execution_refuses_low_free_space(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from mercury import core
+    from collections import namedtuple
+
+    usb_mount = tmp_path / "mnt" / "MERCURY_DATA_USB"
+    backup_root = usb_mount / "mercury_backups"
+    backup_root.mkdir(parents=True)
+    monkeypatch.setattr(core.execution_policy, "REQUIRED_BACKUP_MOUNT", usb_mount)
+    monkeypatch.setattr(core.execution_policy, "_path_is_mount", lambda path: True)
+    usage = namedtuple("usage", "total used free")(100, 10, 5 * 1024 * 1024 * 1024)
+    monkeypatch.setattr(core.execution_policy, "_disk_usage", lambda path: usage)
+    policy = ExecutionPolicy(
+        dry_run=False,
+        live_actions_enabled=True,
+        backup_root=backup_root,
+        config_path=tmp_path / "local.toml",
+    )
+    reason = policy.refusal_reason()
+    assert reason is not None
+    assert "20 gb" in reason.lower()
 
 
 def test_dry_run_does_not_write_backup_files(tmp_path: Path) -> None:
@@ -99,6 +191,52 @@ def test_live_execution_refused_without_enable(tmp_path: Path) -> None:
     assert result.refusal_reason is not None
     assert "dry-run" in result.refusal_reason.lower() or "live actions" in result.refusal_reason.lower()
     assert not list(tmp_path.rglob("*.sql.gz"))
+
+
+def test_live_execution_refused_when_backup_root_is_inside_repo(tmp_path: Path) -> None:
+    policy = ExecutionPolicy(
+        dry_run=False,
+        live_actions_enabled=True,
+        backup_root=REPO_ROOT / "backups",
+        config_path=tmp_path / "local.toml",
+    )
+    result = execute_backup(
+        "erebus_threat_intel_prod",
+        BACKUP_KIND_FULL,
+        execute=True,
+        policy=policy,
+        date=FIXED_DATE,
+        timestamp=FIXED_TS,
+        now=FIXED_NOW,
+        dump_runner=_fake_dump_runner,
+    )
+    assert result.refused is True
+    assert result.executed is False
+    assert result.refusal_reason is not None
+    assert "repo-local" in result.refusal_reason.lower()
+
+
+def test_failed_live_backup_cleans_up_temporary_files(tmp_path: Path) -> None:
+    policy = _live_policy(tmp_path)
+
+    def failing_runner(argv, env, output_path, _config):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"partial\n")
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        execute_backup(
+            "erebus_threat_intel_prod",
+            BACKUP_KIND_FULL,
+            execute=True,
+            policy=policy,
+            date=FIXED_DATE,
+            timestamp=FIXED_TS,
+            now=FIXED_NOW,
+            mariadb_config=_fake_mariadb_config(),
+            dump_runner=failing_runner,
+        )
+    assert not list((tmp_path / "backups").rglob("*.tmp"))
 
 
 def test_dev_database_excluded_from_backup() -> None:

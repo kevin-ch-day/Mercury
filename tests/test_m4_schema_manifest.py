@@ -1,18 +1,19 @@
 """M4: schema-only plan, manifest preview, backup layout."""
 
 import json
+from datetime import datetime, timezone
 
 import pytest
 
 from mercury.backup.layout import build_backup_layout, planned_backup_directory
-from mercury.database.backup_planning import build_demo_backup_plan
+from mercury.database.backup_planning import build_backup_plan, build_demo_backup_plan
 from mercury.backup.manifest_preview import (
     ManifestPreviewError,
     build_manifest_preview,
     format_manifest_preview_json,
 )
 from mercury.reporting.terminal.plan import print_schema_backup_plan
-from mercury.backup.schema_plan import build_schema_backup_plan_demo
+from mercury.backup.schema_plan import _schema_plan_from_backup_plan, build_schema_backup_plan_demo
 from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
 
 
@@ -24,7 +25,7 @@ def test_schema_plan_includes_prod_databases() -> None:
     plan = build_schema_backup_plan_demo()
     assert "erebus_threat_intel_prod" in plan.sources
     assert "scytaledroid_core_prod" in plan.sources
-    assert "gecko_research_database_prod" in plan.sources
+    assert "gecko_research_database_prod" not in plan.sources
 
 
 def test_schema_plan_includes_android_permission_intel() -> None:
@@ -40,13 +41,15 @@ def test_schema_plan_excludes_dev() -> None:
 
 
 def test_schema_plan_excludes_restorecheck() -> None:
-    plan = build_schema_backup_plan_demo()
+    plan = _schema_plan_from_backup_plan(
+        build_backup_plan(["_restorecheck_erebus_threat_intel_prod_20260530"])
+    )
     excluded_names = {e.name for e in plan.excluded}
     assert any(n.startswith("_restorecheck_") for n in excluded_names)
 
 
 def test_schema_plan_excludes_unknown_manual_review() -> None:
-    plan = build_schema_backup_plan_demo()
+    plan = _schema_plan_from_backup_plan(build_backup_plan(["random_test_db"]))
     excluded_names = {e.name for e in plan.excluded}
     assert "random_test_db" in excluded_names
 
@@ -56,10 +59,37 @@ def test_schema_plan_output_format(capsys: pytest.CaptureFixture[str]) -> None:
     out = capsys.readouterr().out
     assert "SCHEMA-ONLY BACKUP PLAN" in out
     assert "Schema backup sources:" in out
-    assert "future: backups/" in out
+    assert "future:" in out
+    assert "mercury_backups" in out or "/backups/" in out
     assert ".schema.sql.gz" in out
     assert "Excluded:" in out
     assert "Safety notes:" in out
+
+
+def test_schema_plan_uses_one_timestamp_per_render(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[tuple[str | None, str | None]] = []
+
+    original = __import__(
+        "mercury.reporting.terminal.plan", fromlist=["build_backup_layout"]
+    ).build_backup_layout
+
+    def fake_layout(name: str, *, date=None, timestamp=None, now=None):
+        seen.append((date, timestamp))
+        return original(name, date=date, timestamp=timestamp, now=now)
+
+    monkeypatch.setattr("mercury.reporting.terminal.plan.build_backup_layout", fake_layout)
+    monkeypatch.setattr(
+        "mercury.reporting.terminal.plan.datetime",
+        type(
+            "FixedDateTime",
+            (),
+            {"now": staticmethod(lambda tz=None: datetime(2026, 5, 30, 12, 0, 0, 123000, tzinfo=timezone.utc))},
+        ),
+    )
+    print_schema_backup_plan(build_schema_backup_plan_demo())
+    assert seen
+    assert all(date == "2026-05-30" for date, _ in seen)
+    assert all(timestamp == "20260530_120000_123" for _, timestamp in seen)
 
 
 def test_manifest_preview_schema_only_has_schema_gz() -> None:

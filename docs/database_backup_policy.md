@@ -1,6 +1,6 @@
 # Database backup policy
 
-Mercury protects platform MariaDB databases for **Erebus**, **ScytaleDroid**, **ObsidianDroid** (gecko), and shared **`android_permission_intel`**.
+For the current Fedora milestone, Mercury protects the active source MariaDB databases `erebus_threat_intel_prod`, `scytaledroid_core_prod`, and shared `android_permission_intel`.
 
 ## Full vs schema-only
 
@@ -15,15 +15,18 @@ Schema-only uses planned `*.schema.sql.gz` files. Full verified backups are **re
 
 | Pattern / name | Role | Backup source |
 |----------------|------|---------------|
-| `*_prod` | Production | Yes |
+| `erebus_threat_intel_prod` | Production | Yes |
+| `scytaledroid_core_prod` | Production | Yes |
 | `android_permission_intel` | Shared authority | Yes |
-| `*_dev` | Development | **No** — disposable sync targets |
+| `erebus_threat_intel_dev` | Development | **No** — disposable sync target |
+| `scytaledroid_core_dev` | Development | **No** — disposable sync target |
 | `_restorecheck_*` | Restore-check temp | **No** |
+| Other `*_prod` / `*_dev` | Out of current milestone scope | **No** (visible for review; excluded by default) |
 | Other | Unknown | **No** (manual review) |
 
 ## Rules
 
-1. **Back up only production and designated shared authority databases.**
+1. **Back up only the active production sources and designated shared authority database.**
 2. **Never back up `*_dev` databases** — rebuild from verified production backups.
 3. **Never drop or overwrite `*_prod`.**
 4. **Restore-check databases** are temporary; exclude from all backup plans.

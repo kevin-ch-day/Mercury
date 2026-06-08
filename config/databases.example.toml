@@ -2,21 +2,16 @@
 # Mercury reads names (and optional host/port) only — no live connection in seed mode.
 
 [databases]
-# Production (backup sources)
-erebus_threat_intel_prod = { host = "localhost", port = 5432 }
-scytaledroid_core_prod = { host = "localhost", port = 5432 }
-gecko_research_database_prod = { host = "localhost", port = 5432 }
+# Production (active backup sources for the current Mercury milestone)
+erebus_threat_intel_prod = { host = "localhost", port = 3306 }
+scytaledroid_core_prod = { host = "localhost", port = 3306 }
 
 # Development (never backup sources)
-erebus_threat_intel_dev = { host = "localhost", port = 5432 }
-scytaledroid_core_dev = { host = "localhost", port = 5432 }
-gecko_research_database_dev = { host = "localhost", port = 5432 }
+erebus_threat_intel_dev = { host = "localhost", port = 3306 }
+scytaledroid_core_dev = { host = "localhost", port = 3306 }
 
 # Shared authority
-android_permission_intel = { host = "localhost", port = 5432 }
+android_permission_intel = { host = "localhost", port = 3306 }
 
-# Restore-check temp (listed for visibility; not a backup source)
-_restorecheck_erebus_threat_intel_prod_20260530 = { host = "localhost", port = 5432 }
-
-# Unknown / manual review example
-random_test_db = { host = "localhost", port = 5432 }
+# Restore-check temp databases are created dynamically by Mercury.
+# Do not pre-list dated _restorecheck_* names here.

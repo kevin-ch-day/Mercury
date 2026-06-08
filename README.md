@@ -2,7 +2,7 @@
 
 **Mercury** is a Fedora-first **operations utility** for database backup, disaster recovery, schema-only exports, and production-to-development sync on the Android security research platform.
 
-It protects **Erebus**, **android_permission_intel**, **ScytaleDroid**, **ObsidianDroid** (gecko DBs), and related MariaDB databases. It is not an AI tool, web app, or repo-status utility.
+For the current Fedora milestone, it protects the active source databases `android_permission_intel`, `erebus_threat_intel_prod`, and `scytaledroid_core_prod`, plus the dev sync targets `erebus_threat_intel_dev` and `scytaledroid_core_dev`. It is not an AI tool, web app, or repo-status utility.
 
 Windows is for **seed development** only; production use targets **Fedora**.
 
@@ -19,9 +19,11 @@ Windows is for **seed development** only; production use targets **Fedora**.
 ```bash
 cd /path/to/Mercury
 ./run.sh                         # interactive menu (creates .venv on first run)
+```
 
 The menu groups actions by task, pauses after each screen, and accepts `q` to quit.
 
+```bash
 # Or manual setup:
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[mariadb,dev]"
@@ -32,6 +34,22 @@ mercury db discover                # live inventory (needs config/local.toml)
 mercury status --live              # protection snapshot from live server
 mercury backup run --db erebus_threat_intel_prod --kind full   # dry-run plan
 python -m pytest
+```
+
+If `./run.sh` cannot reach PyPI temporarily, Mercury should still be started
+from an already-synced virtualenv with:
+
+```bash
+MERCURY_SKIP_SYNC=1 ./run.sh
+```
+
+Fedora offline fallback:
+
+```bash
+sudo dnf install python3-hatchling python3-pydantic python3-rich python3-typer python3-pymysql python3-pytest mariadb
+rm -rf .venv
+python3 -m venv --system-site-packages .venv
+.venv/bin/pip install --no-build-isolation -e ".[mariadb,dev]"
 ```
 
 ## CLI commands
@@ -84,7 +102,7 @@ mercury sync readiness [--live]
 mercury sync run [--live] [--execute] [--yes]
 ```
 
-`sync run --execute` restores verified backups into dev targets. Requires live mode and typing `SYNC DEV` unless `--yes`.
+`sync run --execute` restores verified backups into dev targets. For the current milestone, sync readiness only applies to `erebus_threat_intel_prod -> erebus_threat_intel_dev` and `scytaledroid_core_prod -> scytaledroid_core_dev`. Requires live mode and typing `SYNC DEV` unless `--yes`.
 
 ### Restore-check
 
@@ -102,14 +120,16 @@ Restore-check runs into temporary `_restorecheck_*` databases only. Use `cleanup
 
 ```toml
 # config/local.toml
+[mercury]
+backup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"
+log_dir = "/mnt/MERCURY_DATA_USB/mercury_logs"
+dry_run = true
+live_actions_enabled = false
+
 [mariadb]
 user = "root"
 use_client = true
 unix_socket = "/var/lib/mysql/mysql.sock"
-
-[mercury]
-dry_run = true
-live_actions_enabled = false
 ```
 
 ### Remote / password auth

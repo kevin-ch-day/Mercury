@@ -16,6 +16,22 @@ def test_menu_option_prompt_uses_enter_your_choice() -> None:
     assert prompt == "\nEnter your choice: "
 
 
+def test_ask_strips_markup_before_reader() -> None:
+    seen: list[str] = []
+
+    def fake_reader(prompt: str) -> str:
+        seen.append(prompt)
+        return "3"
+
+    menu_prompts.set_prompt_reader(fake_reader)
+    try:
+        assert menu_prompts.ask("[bold #00D4FF]Enter your choice:[/bold #00D4FF]") == "3"
+    finally:
+        menu_prompts.set_prompt_reader(None)
+
+    assert seen == ["Enter your choice:"]
+
+
 def test_normalize_menu_choice_maps_quit_aliases() -> None:
     assert menu_prompts.normalize_menu_choice("q") == "0"
     assert menu_prompts.normalize_menu_choice("quit") == "0"

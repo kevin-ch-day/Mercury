@@ -49,6 +49,10 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
         if not is_in_scope(pair.expected_dev):
             continue
         blockers: list[str] = []
+        if policy.backup_root_is_within_repo() and not policy.allow_unsafe_backup_root:
+            blockers.append(
+                "Backup root is repo-local fallback; configure USB-backed backups before sync readiness."
+            )
         if not pair.dev_listed:
             blockers.append(f"Dev target missing: {pair.expected_dev}")
 
@@ -69,7 +73,7 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
             if verify.backup_kind != BACKUP_KIND_FULL:
                 blockers.append("Latest backup is not a verified full backup.")
 
-        ready = pair.dev_listed and backup_verified
+        ready = pair.dev_listed and backup_verified and not blockers
         if ready:
             ready_count += 1
         else:

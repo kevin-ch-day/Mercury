@@ -45,6 +45,11 @@ from mercury.database.core.inventory_ops import (
 )
 from mercury.database.core.models import DatabaseInventory, DatabaseRecord
 from mercury.database.core.scope import (
+    ACTIVE_BACKUP_SOURCE_DATABASES,
+    ACTIVE_DEV_TARGET_DATABASES,
+    is_active_backup_source,
+    is_active_dev_target,
+    is_active_sync_pair,
     OUT_OF_SCOPE_DATABASES,
     filter_inventory,
     filter_in_scope_names,
@@ -90,6 +95,11 @@ __all__ = [
     "inventory_role_summary",
     "role_env_label",
     "sort_entries_for_display",
+    "ACTIVE_BACKUP_SOURCE_DATABASES",
+    "ACTIVE_DEV_TARGET_DATABASES",
+    "is_active_backup_source",
+    "is_active_dev_target",
+    "is_active_sync_pair",
     "OUT_OF_SCOPE_DATABASES",
     "filter_inventory",
     "filter_in_scope_names",

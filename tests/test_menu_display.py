@@ -12,8 +12,8 @@ def test_status_line_includes_tags() -> None:
 def test_dashboard_rows_show_connection_and_backups() -> None:
     rows = menu_display.dashboard_rows(probe_database=False)
     text = "\n".join(rows)
-    assert "Database connection" in text
-    assert "Backups location" in text
+    assert "MariaDB" in text
+    assert "Target" in text
 
 
 def test_status_rows_include_operator_fields() -> None:
@@ -44,27 +44,25 @@ def test_render_main_menu_matches_simple_layout() -> None:
     text = menu_display.render_main_menu()
     assert menu_display.MENU_TITLE in text
     assert menu_display.MENU_SUBTITLE in text
-    assert "  Main menu" in text
-    assert "Database connection" in text
-    assert "Backups location" in text
-    assert "Backup coverage" in text
+    assert "Environment" in text
+    assert "Backup Storage" in text
+    assert "Protection" in text
     assert "Mode" in text
     assert "─" in text
-    assert "      [1] Environment Check" in text
+    assert "      [1] Environment check" in text
     assert "      [0] Exit" in text
-    assert "Setup" in text
-    assert "Backup & DR" in text
+    assert "Actions" in text
 
 
 def test_render_main_menu_body_omits_title_block() -> None:
     body = menu_display.render_main_menu_body()
     assert menu_display.MENU_TITLE not in body
-    assert "  Main menu" in body
-    assert "Database connection" in body
-    assert "      [1] Environment Check" in body
+    assert "Environment" in body
+    assert "MariaDB" in body
+    assert "      [1] Environment check" in body
 
 
 def test_render_menu_help_lists_shortcuts() -> None:
     help_text = menu_display.render_menu_help()
-    assert "Menu help" in help_text
+    assert "Operator console help" in help_text
     assert "0 or q to exit" in help_text

@@ -38,7 +38,7 @@ def test_planned_dump_schema_command() -> None:
 
 def test_policy_validate_demo_ok() -> None:
     report = validate_config_policy(use_demo_catalog=True)
-    assert report.databases_checked >= 9
+    assert report.databases_checked >= 5
     assert report.ok()
 
 

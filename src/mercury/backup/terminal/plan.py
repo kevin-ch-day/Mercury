@@ -1,21 +1,50 @@
 """Plain-text backup plan output including future layout hints."""
 
+from datetime import datetime, timezone
+from pathlib import Path
+
 from mercury import output
 from mercury.backup.layout import build_backup_layout, list_standard_filenames
 from mercury.backup.manifest import BACKUP_KIND_LABELS
+from mercury.core.execution_policy import load_execution_policy
 from mercury.database.backup_planning import BackupPlanDryRun
 
 
+def _display_backup_path(backup_root: Path, relative_path: str) -> str:
+    relative = Path(relative_path)
+    try:
+        relative = relative.relative_to("backups")
+    except ValueError:
+        pass
+    return str((backup_root / relative).resolve())
+
+
 def print_backup_plan(plan: BackupPlanDryRun, *, show_layout_hint: bool = True) -> None:
+    policy = load_execution_policy()
+    instant = datetime.now(timezone.utc)
+    plan_date = instant.strftime("%Y-%m-%d")
+    plan_timestamp = instant.strftime("%Y%m%d_%H%M%S") + f"_{instant.microsecond // 1000:03d}"
     output.heading("Backup plan (dry-run)")
+    output.field("backup_root", str(policy.backup_root.resolve()))
+    output.field("backup_root_state", policy.backup_root_state())
+    output.field("dry_run", policy.dry_run)
+    output.field("live_actions_enabled", policy.live_actions_enabled)
+    if policy.backup_root_is_within_repo() and not policy.allow_unsafe_backup_root:
+        output.field(
+            "warning",
+            "Repo-local fallback only; configure /mnt/MERCURY_DATA_USB before live backups.",
+        )
 
     output.heading("Backup sources (full logical backups)")
     if plan.backup_sources:
         for name in plan.backup_sources:
-            layout = build_backup_layout(name)
+            layout = build_backup_layout(name, date=plan_date, timestamp=plan_timestamp)
             output.item(name)
             if show_layout_hint:
-                output.item(f"future: {layout.future_full_hint()}", indent=2)
+                output.item(
+                    f"future: {_display_backup_path(policy.backup_root, layout.future_full_hint())}",
+                    indent=2,
+                )
     else:
         output.item("(none)")
 
@@ -29,9 +58,9 @@ def print_backup_plan(plan: BackupPlanDryRun, *, show_layout_hint: bool = True) 
 
     if show_layout_hint and plan.backup_sources:
         example = plan.backup_sources[0]
-        layout = build_backup_layout(example)
+        layout = build_backup_layout(example, date=plan_date, timestamp=plan_timestamp)
         output.heading("Future backup layout (not written in seed)")
-        output.item(layout.directory)
+        output.item(_display_backup_path(policy.backup_root, layout.directory))
         for fname in list_standard_filenames(example, layout.timestamp):
             output.item(fname, indent=2)
         output.heading("Backup kinds")

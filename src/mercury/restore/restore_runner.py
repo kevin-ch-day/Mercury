@@ -32,6 +32,8 @@ class RestoreExecutionResult(BaseModel):
     refused: bool = False
     message: str = ""
     commands: list[str] = Field(default_factory=list)
+    cleanup_dropped: bool = False
+    cleanup_command: str | None = None
 
 
 def assert_safe_restore_target(database: str) -> None:
@@ -113,6 +115,7 @@ def execute_restore_into_database(
     execute: bool = False,
     policy: ExecutionPolicy | None = None,
     recreate_target: bool = True,
+    cleanup_after_success: bool = False,
     config: MariaDbConnectionConfig | None = None,
     import_runner: ImportRunner | None = None,
 ) -> RestoreExecutionResult:
@@ -128,6 +131,9 @@ def execute_restore_into_database(
     else:
         commands.append(f"CREATE DATABASE IF NOT EXISTS `{target_database}`")
     commands.append(f"gunzip -c {dump_path} | mariadb {target_database}")
+    cleanup_command = None
+    if cleanup_after_success and classify_database(target_database).role == DatabaseRole.RESTORE_CHECK_TEMP:
+        cleanup_command = f"DROP DATABASE IF EXISTS `{target_database}`"
 
     if not execute:
         return RestoreExecutionResult(
@@ -137,6 +143,7 @@ def execute_restore_into_database(
             dry_run=True,
             message=f"Would restore {source_database} backup into {target_database}.",
             commands=commands,
+            cleanup_command=cleanup_command,
         )
 
     if not resolved.live_execution_allowed():
@@ -148,6 +155,7 @@ def execute_restore_into_database(
             refused=True,
             message=reason,
             commands=commands,
+            cleanup_command=cleanup_command,
         )
 
     cfg = config or try_load_mariadb_config()
@@ -168,9 +176,31 @@ def execute_restore_into_database(
             target_database=target_database,
             dump_path=str(dump_path),
             refused=True,
-            message=str(exc),
+            message=(
+                f"{exc}. Temporary restore-check database preserved for debugging."
+                if cleanup_command
+                else str(exc)
+            ),
             commands=commands,
+            cleanup_command=cleanup_command,
         )
+
+    cleanup_dropped = False
+    message = f"Restored {source_database} into {target_database}."
+    if cleanup_command:
+        from mercury.restore.check_cleanup import drop_restorecheck_database
+
+        cleanup = drop_restorecheck_database(target_database, execute=True, config=cfg)
+        if cleanup.dropped:
+            cleanup_dropped = True
+            message = (
+                f"Restored {source_database} into {target_database} and dropped the temporary restore-check database."
+            )
+        else:
+            message = (
+                f"Restored {source_database} into {target_database}, but automatic cleanup failed. "
+                f"Run: {cleanup_command}"
+            )
 
     return RestoreExecutionResult(
         source_database=source_database,
@@ -178,6 +208,8 @@ def execute_restore_into_database(
         dump_path=str(dump_path),
         dry_run=False,
         executed=True,
-        message=f"Restored {source_database} into {target_database}.",
+        message=message,
         commands=commands,
+        cleanup_dropped=cleanup_dropped,
+        cleanup_command=cleanup_command,
     )

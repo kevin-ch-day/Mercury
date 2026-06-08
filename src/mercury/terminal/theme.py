@@ -157,14 +157,7 @@ def rule_line(*, width: int = RULE_WIDTH, char: str = "─") -> str:
     line = char * width
     if not colors_enabled():
         return line
-    mid = width // 2
-    left = char * mid
-    right = char * (width - mid)
-    return (
-        f"[{RULE}]{left}[/]"
-        f"[{ACCENT}]◆[/]"
-        f"[{RULE}]{right}[/]"
-    )
+    return markup(line, RULE)
 
 
 def fancy_rule(*, width: int = RULE_WIDTH) -> str:
@@ -208,24 +201,18 @@ def field_line(name: str, value: object) -> str:
 def menu_title_line() -> str:
     """Single-line title (legacy callers)."""
     if not colors_enabled():
-        return "MERCURY"
-    return (
-        f"[{GLYPH}]☿[/] "
-        f"[{TITLE}]M[/][{TITLE_ACCENT}]ERCURY[/]"
-    )
+        return "MERCURY OPERATOR CONSOLE"
+    return f"[{TITLE}]MERCURY OPERATOR CONSOLE[/]"
 
 
 def menu_header_lines(subtitle: str) -> list[str]:
     """Branded menu header block."""
     if not colors_enabled():
-        return ["MERCURY", subtitle, "─" * RULE_WIDTH]
+        return ["MERCURY OPERATOR CONSOLE", subtitle, "─" * RULE_WIDTH]
     return [
-        (
-            f"  [{GLYPH}]☿[/]  "
-            f"[{TITLE}]M[/][{TITLE_ACCENT}]ERCURY[/]"
-        ),
-        f"  [{SUBTITLE}]{subtitle}[/]",
-        f"  {fancy_rule()}",
+        f"[{TITLE}]MERCURY OPERATOR CONSOLE[/]",
+        f"[{SUBTITLE}]{subtitle}[/]",
+        markup("─" * RULE_WIDTH, RULE),
     ]
 
 
@@ -239,7 +226,7 @@ def menu_section_header(name: str, *, indent: int = 2) -> str:
     prefix = " " * indent
     if not colors_enabled():
         return f"{prefix}{name}"
-    return f"{prefix}[{SEPARATOR}]▸[/] [{MENU_SECTION}]{name}[/]"
+    return f"{prefix}[{MENU_SECTION}]{name}[/]"
 
 
 def menu_item_line(
@@ -356,10 +343,10 @@ def dashboard_row(label: str, value: str, *, label_width: int = 22) -> str:
 def action_banner(title: str) -> list[str]:
     width = min(len(title) + 8, 60)
     if not colors_enabled():
-        return ["", f">> {title}", "-" * width]
+        return ["", title, "-" * width]
     return [
         "",
-        f"[{ACTION}]▸ {title}[/]",
+        f"[{ACTION}]{title}[/]",
         markup("─" * width, RULE),
     ]
 
@@ -477,7 +464,7 @@ def summary_line(text: str) -> str:
 def count_summary_line(text: str) -> str:
     if not colors_enabled():
         return text
-    return f"[{ACCENT}]▸[/] [{VALUE}]{text}[/]"
+    return f"[{VALUE}]{text}[/]"
 
 
 def submenu_intro() -> str:
@@ -518,17 +505,8 @@ def submenu_block(
 
 
 def dashboard_panel(rows: list[str]) -> list[str]:
-    """Light panel border around dashboard status rows."""
-    if not colors_enabled() or not rows:
-        return rows
-    inner_width = RULE_WIDTH - 4
-    top = f"  [{RULE}]╭─[/][{SECTION}] Status [/][{RULE}]{'─' * max(inner_width - 9, 8)}╮[/]"
-    bottom = f"  [{RULE}]╰{'─' * inner_width}╯[/]"
-    body: list[str] = []
-    for row in rows:
-        content = row[2:] if row.startswith("  ") else row
-        body.append(f"  [{RULE}]│[/]  {content}")
-    return [top, *body, bottom]
+    """Main-menu dashboard content."""
+    return rows
 
 
 def continue_prompt() -> str:

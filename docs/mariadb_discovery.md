@@ -24,6 +24,16 @@ mercury db discover --demo
 mercury config init
 ```
 
+USB backup root for the first Mercury transfer/backup run:
+
+```toml
+[mercury]
+backup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"
+log_dir = "/mnt/MERCURY_DATA_USB/mercury_logs"
+dry_run = true
+live_actions_enabled = false
+```
+
 ### Option A — TCP + password (remote / password auth)
 
 ```toml
@@ -61,6 +71,10 @@ ssl_disabled = true
 ```
 
 Optional `password_env` when TCP fallback is needed.
+
+If `./run.sh` cannot reach PyPI, keep using an existing synced virtualenv with
+`MERCURY_SKIP_SYNC=1 ./run.sh`, or rebuild with Fedora packages plus
+`python3 -m venv --system-site-packages .venv`.
 
 ## Access modes
 

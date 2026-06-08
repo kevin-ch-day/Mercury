@@ -107,7 +107,13 @@ def test_verify_rejects_manifest_database_mismatch(tmp_path: Path) -> None:
 
 
 def test_verify_backup_directory_updates_manifest(tmp_path: Path) -> None:
-    policy = ExecutionPolicy(dry_run=False, live_actions_enabled=True, backup_root=tmp_path)
+    policy = ExecutionPolicy(
+        dry_run=False,
+        live_actions_enabled=True,
+        backup_root=tmp_path,
+        config_path=tmp_path / "local.toml",
+        allow_unsafe_backup_root=True,
+    )
 
     def fake_runner(argv, env, output_path, _config):
         output_path.parent.mkdir(parents=True, exist_ok=True)

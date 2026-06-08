@@ -659,6 +659,7 @@ def restore_check_run_cmd(
             dump_path=dump_path,
             source_database=plan.source_prod,
             execute=True,
+            cleanup_after_success=True,
         )
     except BackupExecutionError as exc:
         typer.echo(str(exc))

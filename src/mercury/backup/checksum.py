@@ -21,16 +21,21 @@ def format_checksum_line(path: Path, hexdigest: str | None = None) -> str:
     return f"{digest}  {path.name}\n"
 
 
-def write_checksum_file(directory: Path, filenames: list[str]) -> Path:
-    """Write checksum.sha256 for the given filenames in directory."""
+def render_checksum_text(directory: Path, filenames: list[str]) -> str:
+    """Render checksum.sha256 contents for the given filenames in directory."""
     lines: list[str] = []
     for name in filenames:
         artifact = directory / name
         if not artifact.exists():
             raise FileNotFoundError(f"Cannot checksum missing artifact: {artifact}")
         lines.append(format_checksum_line(artifact))
-    checksum_path = directory / "checksum.sha256"
-    checksum_path.write_text("".join(lines), encoding="utf-8")
+    return "".join(lines)
+
+
+def write_checksum_file(directory: Path, filenames: list[str], *, output_path: Path | None = None) -> Path:
+    """Write checksum.sha256 for the given filenames in directory."""
+    checksum_path = output_path or (directory / "checksum.sha256")
+    checksum_path.write_text(render_checksum_text(directory, filenames), encoding="utf-8")
     return checksum_path
 
 

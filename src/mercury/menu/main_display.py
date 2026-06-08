@@ -72,7 +72,7 @@ __all__ = [
     "write_table",
 ]
 
-MENU_TITLE = "MERCURY"
+MENU_TITLE = "MERCURY OPERATOR CONSOLE"
 MENU_SUBTITLE = "Database Backup, Sync, and Disaster Recovery Utility"
 MENU_FOOTER = "[0] Exit"
 MENU_ITEM_INDENT = "      "
@@ -89,31 +89,16 @@ class MenuItem:
 
 MENU_SECTIONS: list[tuple[str, list[MenuItem]]] = [
     (
-        "Setup",
+        "Actions",
         [
-            MenuItem("1", "Environment Check"),
-            MenuItem("2", "Discover / Classify Databases"),
-        ],
-    ),
-    (
-        "Backup & DR",
-        [
-            MenuItem("3", "Backup Production Databases"),
-            MenuItem("4", "Export Schema-Only Copies"),
-            MenuItem("5", "Verify Backups"),
-        ],
-    ),
-    (
-        "Sync & testing",
-        [
-            MenuItem("6", "Sync Production -> Development"),
-            MenuItem("7", "Restore Test / Disaster Recovery Check"),
-        ],
-    ),
-    (
-        "Reports",
-        [
-            MenuItem("8", "Reports / Backup History"),
+            MenuItem("1", "Environment check"),
+            MenuItem("2", "Discover databases"),
+            MenuItem("3", "Show backup plan"),
+            MenuItem("4", "Run source database backups"),
+            MenuItem("5", "Verify backups"),
+            MenuItem("6", "Sync readiness"),
+            MenuItem("7", "Restore-check backup"),
+            MenuItem("8", "Reports and backup history"),
         ],
     ),
 ]
@@ -138,7 +123,11 @@ def _status_tags(*, probe_database: bool | None = None) -> tuple[str, str, str, 
     safety_tag = "[--]" if "dry-run" in status["safety"] else "[ok]"
     db_tag = "[ok]" if connected else "[!!]"
     backup_root = status["backup_root"]
-    backup_tag = "[ok]" if backup_root != "not configured" else "[!!]"
+    backup_tag = (
+        "[!!]"
+        if backup_root == "not configured" or backup_root.startswith("repo-local fallback")
+        else "[ok]"
+    )
     backup_detail = short_path(backup_root, max_len=40) if backup_root != "not configured" else "not configured"
     return (
         safety_tag,
@@ -233,7 +222,7 @@ def render_menu_help() -> str:
     key_label = f"{keys[0]}-{keys[-1]}" if keys else "1-8"
     lines = [
         rule,
-        body_label("Menu help"),
+        body_label("Operator console help"),
         help_line(f"Enter {key_label} for actions, 0 or q to exit."),
         "",
         help_line("For full detail, run the matching CLI command (e.g. ./run.sh db discover)."),
@@ -246,8 +235,6 @@ def _main_menu_body_lines(*, probe_database: bool | None = None) -> list[str]:
     rule = rule_line()
     return [
         rule,
-        body_label("Main menu"),
-        "",
         *dashboard_panel(dashboard_rows(probe_database=probe_database)),
         "",
         rule,

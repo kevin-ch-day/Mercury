@@ -19,14 +19,15 @@ def test_render_menu_text_contains_header_and_items() -> None:
     text = render_menu_text()
     assert MENU_TITLE in text
     assert MENU_SUBTITLE in text
-    assert "Main menu" in text
-    assert "Database connection" in text
-    assert "Backups location" in text
-    assert "Backup coverage" in text
+    assert "Environment" in text
+    assert "Execution Safety" in text
+    assert "Backup Storage" in text
+    assert "Protection" in text
     assert "Mode" in text
-    assert "      [1] Environment Check" in text
+    assert "Blocker" in text
+    assert "      [1] Environment check" in text
     assert "      [0] Exit" in text
-    assert "Sync Production -> Development" in text
+    assert "Sync readiness" in text
 
 
 def test_render_menu_text_shows_database_status_when_configured() -> None:
@@ -34,9 +35,9 @@ def test_render_menu_text_shows_database_status_when_configured() -> None:
 
     text = render_menu_text()
     if should_probe_database_status():
-        assert "Database connection" in text and "[ok]" in text
+        assert "MariaDB" in text and "[ok]" in text
     else:
-        assert "Database connection" in text and "[!!]" in text
+        assert "MariaDB" in text and "[!!]" in text
 
 
 def test_run_menu_redisplay_after_choice(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -49,9 +50,8 @@ def test_run_menu_redisplay_after_choice(monkeypatch: pytest.MonkeyPatch, capsys
 
     run_menu(interactive=True)
     out = capsys.readouterr().out
-    assert out.count("MERCURY") == 1
-    assert out.count("Main menu") >= 2
-    assert out.count("[1] Environment Check") >= 2
+    assert out.count("MERCURY OPERATOR CONSOLE") == 1
+    assert out.count("[1] Environment check") >= 2
     assert "Rescan" in out
     assert "Live mode guide" in out
     assert "Press any key to continue" not in out
@@ -68,7 +68,7 @@ def test_run_menu_invalid_choice_does_not_redisplay(monkeypatch: pytest.MonkeyPa
 
     run_menu(interactive=True)
     out = capsys.readouterr().out
-    assert out.count("MERCURY") == 1
+    assert out.count("MERCURY OPERATOR CONSOLE") == 1
     assert "Invalid choice" in out
 
 
@@ -126,7 +126,7 @@ def test_handle_sync_plan_returns_to_menu_without_footer(
 def test_handle_help_choice(capsys: pytest.CaptureFixture[str]) -> None:
     assert handle_menu_choice("?") == "empty"
     out = capsys.readouterr().out
-    assert "Menu help" in out
+    assert "Operator console help" in out
 
 
 def test_menu_renders_without_crashing(capsys: pytest.CaptureFixture[str]) -> None:
@@ -138,7 +138,7 @@ def test_menu_renders_without_crashing(capsys: pytest.CaptureFixture[str]) -> No
 @pytest.mark.parametrize(
     ("choice", "snippets"),
     [
-        ("1", ("Environment Check", "python:", "dry_run:", "Rescan", "Live mode guide")),
+        ("1", ("Environment check", "python:", "dry_run:", "Rescan", "Live mode guide")),
         ("2", ("databases:", "roles:", "DATABASE", "ENV", "Rescan inventory")),
         ("3", ("Rescan plan", "sources:", "DATABASE")),
         ("4", ("sources:", "Rescan plan")),

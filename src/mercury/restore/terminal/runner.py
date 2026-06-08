@@ -11,8 +11,12 @@ def print_restore_execution_result(result: RestoreExecutionResult, *, compact: b
             tag,
             f"{result.source_database} -> {result.target_database}: {result.message}",
         )
+        if result.cleanup_command and not result.cleanup_dropped:
+            display_screen.write_summary(f"Cleanup: {result.cleanup_command}")
         return
 
     display_screen.write_summary(
         f"{result.source_database} -> {result.target_database}: {result.message}"
     )
+    if result.cleanup_command and not result.cleanup_dropped:
+        display_screen.write_summary(f"Cleanup: {result.cleanup_command}")

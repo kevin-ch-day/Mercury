@@ -2,8 +2,10 @@
 
 [mercury]
 mode = "seed"
-# Fedora example: /var/backups/mercury (or repo-local "backups" for dev)
-backup_root = "backups"
+# Fedora example: /var/backups/mercury
+# Stable USB mount example: /mnt/MERCURY_DATA_USB/mercury_backups
+# Repo-local "backups" is fine for development only; live backups must use the USB mount.
+backup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"
 dry_run = true
 # Explicit gate for mariadb-dump execution and backup file writes
 live_actions_enabled = false
@@ -15,7 +17,8 @@ live_actions_enabled = false
 #   backup.log              — mercury.backup events (backup, verify, restore-check)
 logging_enabled = true
 log_level = "INFO"
-log_dir = "logs"
+# USB-mounted example: /mnt/MERCURY_DATA_USB/mercury_logs
+log_dir = "/mnt/MERCURY_DATA_USB/mercury_logs"
 
 # --- Option A: TCP + password (production / remote server) ---
 # [mariadb]
