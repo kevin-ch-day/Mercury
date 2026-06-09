@@ -233,10 +233,12 @@ def render_menu_help() -> str:
 def _main_menu_body_lines(*, probe_database: bool | None = None) -> list[str]:
     rule = rule_line()
     return [
+        "Main Menu",
+        rule,
         *dashboard_panel(dashboard_rows(probe_database=probe_database)),
-        "",
         rule,
         *_flat_menu_item_lines(),
+        "",
     ]
 
 
@@ -247,7 +249,8 @@ def render_main_menu_body(*, probe_database: bool | None = None) -> str:
 
 def render_main_menu(*, probe_database: bool | None = None) -> str:
     lines = [
-        *menu_header_lines(MENU_SUBTITLE),
+        MENU_TITLE,
+        MENU_SUBTITLE,
         "",
         *_main_menu_body_lines(probe_database=probe_database),
     ]

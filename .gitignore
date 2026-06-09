@@ -16,6 +16,7 @@ venv/
 
 config/local.toml
 config/databases.toml
+config/repos.toml
 output/*
 !output/.gitkeep
 !output/samples/

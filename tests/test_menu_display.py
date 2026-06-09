@@ -44,7 +44,7 @@ def test_render_main_menu_matches_simple_layout() -> None:
     text = menu_display.render_main_menu()
     assert menu_display.MENU_TITLE in text
     assert menu_display.MENU_SUBTITLE in text
-    assert "Status" in text
+    assert "\nMain Menu\n" in text
     assert "Backup target" in text
     assert "Source DBs" in text
     assert "Execution Safety" not in text
@@ -53,12 +53,13 @@ def test_render_main_menu_matches_simple_layout() -> None:
     assert "      [0] Exit" in text
     assert "Core workflows" not in text
     assert "Diagnostics" not in text
+    assert f"{menu_display.MENU_SUBTITLE}\n────────────────" not in text
 
 
 def test_render_main_menu_body_omits_title_block() -> None:
     body = menu_display.render_main_menu_body()
     assert menu_display.MENU_TITLE not in body
-    assert "Status" in body
+    assert "Main Menu" in body
     assert "MariaDB" in body
     assert "      [1] Backup source databases" in body
 

@@ -88,6 +88,28 @@ def register_commands(app: typer.Typer) -> None:
             typer.echo(str(exc))
             raise typer.Exit(1) from exc
 
+    @app.command("active")
+    def active_cmd(
+        compact: bool = typer.Option(
+            True,
+            "--compact/--verbose",
+            help="Compact operator table or include footer notes.",
+        ),
+    ) -> None:
+        """Read-only snapshot of the active Mercury database scope."""
+        from mercury.database import MariaDbConfigError, MariaDbLiveError, fetch_active_scope_report, load_mariadb_config
+        from mercury.database.terminal.active_scope import print_active_scope_report
+
+        try:
+            config = load_mariadb_config()
+            print_active_scope_report(fetch_active_scope_report(config), compact=compact)
+        except MariaDbConfigError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(1) from exc
+        except MariaDbLiveError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(1) from exc
+
     @app.command("discover")
     def discover_cmd(
         demo: bool = typer.Option(

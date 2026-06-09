@@ -1,0 +1,271 @@
+"""Git bundle planning and execution for Mercury repo transfer media."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+import subprocess
+
+from pydantic import BaseModel, Field
+
+from mercury.core.execution_policy import REQUIRED_BACKUP_MOUNT
+from mercury.repo.config import RepoBundleSettings
+from mercury.repo.status import RepoStatus
+
+
+class RepoBundleEntry(BaseModel):
+    key: str
+    display_name: str
+    repo_path: Path
+    branch: str
+    commit: str
+    remote_url: str
+    dirty: bool
+    untracked_count: int
+    ahead_count: int | None = None
+    behind_count: int | None = None
+    planned_bundle_path: Path
+    planned_manifest_path: Path
+    planned_runbook_path: Path
+    executed: bool = False
+    error: str | None = None
+
+
+class RepoBundlePlan(BaseModel):
+    generated_at: str
+    repo_backup_root: Path
+    manifest_dir: Path
+    runbook_dir: Path
+    planned_index_manifest_path: Path
+    planned_index_runbook_path: Path
+    entries: list[RepoBundleEntry] = Field(default_factory=list)
+
+
+def _slug(text: str) -> str:
+    lowered = text.strip().lower()
+    chars = [c if c.isalnum() else "_" for c in lowered]
+    while "__" in (value := "".join(chars)):
+        chars = list(value.replace("__", "_"))
+    return "".join(chars).strip("_") or "repo"
+
+
+def _bundle_dirs(settings: RepoBundleSettings, display_name: str, stamp_date: str, timestamp: str) -> tuple[Path, Path, Path]:
+    slug = _slug(display_name)
+    bundle_dir = settings.repo_backup_root / stamp_date / slug
+    manifest_dir = settings.manifest_dir / stamp_date
+    runbook_dir = settings.runbook_dir / stamp_date
+    return (
+        bundle_dir / f"{slug}_{timestamp}.bundle",
+        manifest_dir / f"{slug}_{timestamp}.repo_manifest.json",
+        runbook_dir / f"{slug}_{timestamp}.restore.md",
+    )
+
+
+def build_repo_bundle_plan(
+    statuses: list[RepoStatus],
+    settings: RepoBundleSettings,
+) -> RepoBundlePlan:
+    now = datetime.now(timezone.utc)
+    stamp_date = now.strftime("%Y-%m-%d")
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    index_manifest_path = settings.manifest_dir / stamp_date / f"repo_transfer_manifest_{timestamp}.json"
+    index_runbook_path = settings.runbook_dir / stamp_date / f"repo_transfer_runbook_{timestamp}.md"
+    entries: list[RepoBundleEntry] = []
+    for status in statuses:
+        bundle_path, manifest_path, runbook_path = _bundle_dirs(
+            settings,
+            status.display_name,
+            stamp_date,
+            timestamp,
+        )
+        entries.append(
+            RepoBundleEntry(
+                key=status.key,
+                display_name=status.display_name,
+                repo_path=status.path,
+                branch=status.branch,
+                commit=status.commit,
+                remote_url=status.remote_url,
+                dirty=status.dirty,
+                untracked_count=status.untracked_count,
+                ahead_count=status.ahead_count,
+                behind_count=status.behind_count,
+                planned_bundle_path=bundle_path,
+                planned_manifest_path=manifest_path,
+                planned_runbook_path=runbook_path,
+                error=status.error,
+            )
+        )
+    return RepoBundlePlan(
+        generated_at=now.isoformat(),
+        repo_backup_root=settings.repo_backup_root,
+        manifest_dir=settings.manifest_dir,
+        runbook_dir=settings.runbook_dir,
+        planned_index_manifest_path=index_manifest_path,
+        planned_index_runbook_path=index_runbook_path,
+        entries=entries,
+    )
+
+
+def _ensure_usb_path(path: Path) -> None:
+    resolved = path.expanduser().resolve()
+    try:
+        resolved.relative_to(REQUIRED_BACKUP_MOUNT)
+    except ValueError as exc:
+        raise ValueError(f"path is not under {REQUIRED_BACKUP_MOUNT}: {resolved}") from exc
+    if not REQUIRED_BACKUP_MOUNT.is_mount():
+        raise ValueError(f"required USB mount is not active: {REQUIRED_BACKUP_MOUNT}")
+
+
+def _manifest_payload(plan: RepoBundlePlan, entry: RepoBundleEntry) -> dict[str, object]:
+    return {
+        "repo_key": entry.key,
+        "repo_name": entry.display_name,
+        "repo_path": str(entry.repo_path),
+        "branch": entry.branch,
+        "commit": entry.commit,
+        "remote_url": entry.remote_url,
+        "dirty": entry.dirty,
+        "untracked_count": entry.untracked_count,
+        "ahead_count": entry.ahead_count,
+        "behind_count": entry.behind_count,
+        "generated_at": plan.generated_at,
+        "bundle_path": str(entry.planned_bundle_path),
+        "manifest_path": str(entry.planned_manifest_path),
+        "runbook_path": str(entry.planned_runbook_path),
+    }
+
+
+def _index_manifest_payload(plan: RepoBundlePlan) -> dict[str, object]:
+    return {
+        "generated_at": plan.generated_at,
+        "repo_backup_root": str(plan.repo_backup_root),
+        "manifest_dir": str(plan.manifest_dir),
+        "runbook_dir": str(plan.runbook_dir),
+        "index_runbook_path": str(plan.planned_index_runbook_path),
+        "repositories": [
+            {
+                "repo_key": entry.key,
+                "repo_name": entry.display_name,
+                "repo_path": str(entry.repo_path),
+                "branch": entry.branch,
+                "commit": entry.commit,
+                "remote_url": entry.remote_url,
+                "dirty": entry.dirty,
+                "untracked_count": entry.untracked_count,
+                "ahead_count": entry.ahead_count,
+                "behind_count": entry.behind_count,
+                "bundle_path": str(entry.planned_bundle_path),
+                "manifest_path": str(entry.planned_manifest_path),
+                "runbook_path": str(entry.planned_runbook_path),
+                "error": entry.error,
+            }
+            for entry in plan.entries
+        ],
+    }
+
+
+def _runbook_text(entry: RepoBundleEntry) -> str:
+    return "\n".join(
+        [
+            f"# Restore {entry.display_name}",
+            "",
+            f"Bundle: {entry.planned_bundle_path}",
+            f"Commit: {entry.commit}",
+            f"Branch: {entry.branch}",
+            f"Remote: {entry.remote_url}",
+            "",
+            "Restore steps:",
+            f"1. git clone {entry.planned_bundle_path} {entry.display_name}",
+            f"2. cd {entry.display_name}",
+            f"3. git checkout {entry.branch}",
+            "",
+            "Notes:",
+            "- Git bundles capture committed Git history only.",
+            "- Dirty working tree changes and untracked files are not included.",
+            "- Mercury never commits, pushes, or modifies the source repository.",
+            "",
+        ]
+    )
+
+
+def _index_runbook_text(plan: RepoBundlePlan) -> str:
+    lines = [
+        "# Mercury repository transfer runbook",
+        "",
+        f"Generated: {plan.generated_at}",
+        f"Repo backup root: {plan.repo_backup_root}",
+        f"Manifest dir: {plan.manifest_dir}",
+        f"Runbook dir: {plan.runbook_dir}",
+        "",
+        "Repositories:",
+    ]
+    for entry in plan.entries:
+        state = "dirty" if entry.dirty else "clean"
+        if entry.error:
+            state = f"error ({entry.error})"
+        lines.extend(
+            [
+                f"- {entry.display_name}",
+                f"  path: {entry.repo_path}",
+                f"  branch: {entry.branch}",
+                f"  commit: {entry.commit}",
+                f"  remote: {entry.remote_url}",
+                f"  worktree: {state}",
+                f"  bundle: {entry.planned_bundle_path}",
+                f"  manifest: {entry.planned_manifest_path}",
+                f"  restore note: {entry.planned_runbook_path}",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "Notes:",
+            "- Git bundles include committed history only.",
+            "- Dirty tracked changes and untracked files are not included in bundle contents.",
+            "- Mercury does not commit, push, or modify repositories.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def execute_repo_bundle_plan(plan: RepoBundlePlan) -> RepoBundlePlan:
+    _ensure_usb_path(plan.repo_backup_root)
+    _ensure_usb_path(plan.manifest_dir)
+    _ensure_usb_path(plan.runbook_dir)
+
+    for entry in plan.entries:
+        if entry.error:
+            continue
+        entry.planned_bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        entry.planned_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        entry.planned_runbook_path.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["git", "bundle", "create", str(entry.planned_bundle_path), "--all"],
+            cwd=entry.repo_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        entry.planned_manifest_path.write_text(
+            json.dumps(_manifest_payload(plan, entry), indent=2) + "\n",
+            encoding="utf-8",
+        )
+        entry.planned_runbook_path.write_text(
+            _runbook_text(entry),
+            encoding="utf-8",
+        )
+        entry.executed = True
+    plan.planned_index_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    plan.planned_index_runbook_path.parent.mkdir(parents=True, exist_ok=True)
+    plan.planned_index_manifest_path.write_text(
+        json.dumps(_index_manifest_payload(plan), indent=2) + "\n",
+        encoding="utf-8",
+    )
+    plan.planned_index_runbook_path.write_text(
+        _index_runbook_text(plan),
+        encoding="utf-8",
+    )
+    return plan

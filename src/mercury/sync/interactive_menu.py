@@ -15,6 +15,7 @@ from mercury.core.safety import BACKUP_KIND_FULL, SYNC_DEV_CONFIRMATION_PHRASE
 from mercury.database import MariaDbConfigError, MariaDbLiveError, try_load_mariadb_config
 from mercury.menu.subscreen import pause_and_redraw, read_submenu_choice, render_submenu
 from mercury.sync.sync_runner import run_sync_batch
+from mercury.sync.selection import select_sync_entries
 from mercury.sync.terminal.runner import print_sync_batch_result
 from mercury.sync.readiness import SyncReadinessReport, build_sync_readiness_report
 from mercury.sync.terminal.readiness import print_sync_readiness_report
@@ -62,10 +63,15 @@ def _sync_submenu_options(report: SyncReadinessReport) -> list[tuple[str, str]]:
             label = f"{label} (live mode required)"
         options.append(("2", label))
     if _ready_entries(report):
-        sync_label = f"Sync ready pairs ({report.ready_count})"
+        sync_label = f"Sync all ready pairs ({report.ready_count})"
         if not live_allowed:
             sync_label = f"{sync_label} (live mode required)"
         options.append(("3", sync_label))
+        if report.ready_count > 1:
+            single_label = "Sync one ready pair"
+            if not live_allowed:
+                single_label = f"{single_label} (live mode required)"
+            options.append(("4", single_label))
     return options
 
 
@@ -148,6 +154,47 @@ def _run_sync_for_ready(report: SyncReadinessReport) -> None:
     print_sync_batch_result(batch, compact=True)
 
 
+def _run_sync_for_one_ready(report: SyncReadinessReport) -> None:
+    ready = _ready_entries(report)
+    if not ready:
+        menu_display.write_status("warn", "No ready pairs — choose Prepare or Rescan first.")
+        return
+    if len(ready) == 1:
+        _run_sync_for_ready(report)
+        return
+
+    rows = []
+    for index, entry in enumerate(ready, start=1):
+        rows.append([str(index), entry.prod, entry.expected_dev])
+    display_screen.write_blank()
+    display_screen.write_compact_table(
+        ["#", "SOURCE", "TARGET"],
+        rows,
+        min_col_widths=[2, 28, 28],
+        max_col_widths=[2, 36, 36],
+    )
+    choice = menu_prompts.ask_stripped("\nPair number to sync: ")
+    if choice is None or not choice:
+        display_screen.write_summary("Sync cancelled.")
+        return
+    try:
+        selected_index = int(choice)
+    except ValueError:
+        menu_display.write_status("warn", f"Invalid pair number: {choice!r}")
+        return
+    if selected_index < 1 or selected_index > len(ready):
+        menu_display.write_status("warn", f"Pair number out of range: {selected_index}")
+        return
+
+    selected = ready[selected_index - 1]
+    filtered = select_sync_entries(
+        report.entries,
+        source=selected.prod,
+        target=selected.expected_dev,
+    )
+    _run_sync_for_ready(report.model_copy(update={"entries": filtered, "ready_count": 1}))
+
+
 def _refresh_report(report: SyncReadinessReport) -> SyncReadinessReport:
     refreshed = _load_report()
     return refreshed if refreshed is not None else report
@@ -189,6 +236,12 @@ def run_sync_menu(*, interactive: bool = True) -> None:
 
         if choice == "3":
             _run_sync_for_ready(report)
+            report = _refresh_report(report)
+            show_title = pause_and_redraw()
+            continue
+
+        if choice == "4":
+            _run_sync_for_one_ready(report)
             report = _refresh_report(report)
             show_title = pause_and_redraw()
             continue

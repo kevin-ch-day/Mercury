@@ -54,8 +54,8 @@ def test_format_table_respects_min_column_widths() -> None:
         indent=0,
         min_col_widths=[8, 10],
     )
-    assert lines[0] == "ROLE      PLAN      "
-    assert lines[2] == "prod      backup    "
+    assert lines[0] == "ROLE      PLAN"
+    assert lines[2] == "prod      backup"
 
 
 def test_write_table_delegates_to_display_table(capsys) -> None:

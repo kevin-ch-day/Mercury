@@ -1,0 +1,26 @@
+# Copy to config/repos.toml and adjust paths for your Fedora workspace.
+# Mercury reads repo metadata only. Repo bundle creation is explicit and never commits or pushes.
+
+[repos.mercury]
+display_name = "Mercury"
+path = "~/Laughlin/GitHub/Mercury"
+
+[repos.erebus]
+display_name = "Erebus"
+path = "~/Laughlin/GitHub/Erebus"
+
+[repos.erebus_web]
+display_name = "Erebus Web"
+path = "~/Laughlin/GitHub/Erebus-Web"
+
+[repos.scytaledroid]
+display_name = "ScytaleDroid"
+path = "~/Laughlin/GitHub/ScytaleDroid"
+
+[repos.scytaledroid_web]
+display_name = "ScytaleDroid Web"
+path = "~/Laughlin/GitHub/ScytaleDroid-Web"
+
+[repos.obsidiandroid]
+display_name = "ObsidianDroid"
+path = "~/Laughlin/GitHub/ObsidianDroid"

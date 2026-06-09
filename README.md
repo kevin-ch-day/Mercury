@@ -1,8 +1,8 @@
 # Mercury
 
-**Mercury** is a Fedora-first **operations utility** for database backup, disaster recovery, schema-only exports, and production-to-development sync on the Android security research platform.
+**Mercury** is a Fedora-first **operations utility** for MariaDB backup, verification, restore-check, production-to-development sync, Git repository transfer bundles, and transfer manifests/runbooks on the Android security research platform.
 
-For the current Fedora milestone, it protects the active source databases `android_permission_intel`, `erebus_threat_intel_prod`, and `scytaledroid_core_prod`, and manages the dev sync targets `erebus_threat_intel_dev` and `scytaledroid_core_dev` as disposable refresh targets. It is not an AI tool, web app, or repo-status utility.
+For the current Fedora milestone, it protects the active source databases `android_permission_intel`, `erebus_threat_intel_prod`, and `scytaledroid_core_prod`, manages the dev sync targets `erebus_threat_intel_dev` and `scytaledroid_core_dev` as disposable refresh targets, and can inventory configured Git repositories plus write explicit Git bundles to the USB transfer media. It is not an AI tool, web app, or workstation rebuild utility.
 
 Windows is for **seed development** only; production use targets **Fedora**.
 
@@ -33,6 +33,8 @@ mercury db ping                    # read-only server probe
 mercury db discover                # live inventory (needs config/local.toml)
 mercury status --live              # protection snapshot from live server
 mercury backup run --db erebus_threat_intel_prod --kind full   # dry-run plan
+mercury repo status
+mercury transfer status --live
 python -m pytest
 ```
 
@@ -70,6 +72,7 @@ mercury menu
 mercury db ping
 mercury db discover [--demo]
 mercury db inspect --name erebus_threat_intel_prod
+mercury db active
 mercury db access                    # catalog vs server presence
 mercury db pairs
 mercury db classify --name <db>
@@ -100,10 +103,29 @@ For the current Fedora milestone, live backup execution also requires the mounte
 ```bash
 mercury sync plan [--demo]
 mercury sync readiness [--live]
-mercury sync run [--live] [--execute] [--yes]
+mercury sync run [--live] [--source <prod>] [--target <dev>] [--execute] [--yes]
+mercury sync all [--live] [--execute] [--yes]
 ```
 
-`sync run --execute` restores verified backups into disposable dev targets. For the current milestone, sync readiness only applies to `erebus_threat_intel_prod -> erebus_threat_intel_dev` and `scytaledroid_core_prod -> scytaledroid_core_dev`. `android_permission_intel` is backup-only and does not participate in sync pairing. Requires live mode and typing `SYNC DEV` unless `--yes`.
+`sync run --execute` restores verified backups into disposable dev targets. With no filter it processes all ready pairs; `--source` or `--target` limits execution to one pair. `sync all` is the explicit batch alias. For the current milestone, sync readiness only applies to `erebus_threat_intel_prod -> erebus_threat_intel_dev` and `scytaledroid_core_prod -> scytaledroid_core_dev`. `android_permission_intel` is backup-only and does not participate in sync pairing. Requires live mode and typing `SYNC DEV` unless `--yes`.
+
+### Repository transfer
+
+```bash
+mercury repo status [--verbose]
+mercury repo bundle [--repo mercury] [--execute]
+```
+
+`repo status` is read-only and reports configured repo path, branch, commit, remote, clean/dirty state, untracked count, and upstream ahead/behind status when available. `repo bundle --execute` writes Git bundles plus repo manifests and short restore notes under the USB-backed paths configured in `config/local.toml`.
+
+### Combined transfer
+
+```bash
+mercury transfer status [--live]
+mercury transfer write [--live] [--execute]
+```
+
+`transfer status` shows one combined database + repository handoff summary. `transfer write --execute` writes one aggregate transfer manifest and one aggregate runbook to the USB-backed manifest/runbook paths.
 
 ### Restore-check
 
@@ -125,6 +147,9 @@ Successful restore-check runs now auto-drop the temporary `_restorecheck_*` data
 [mercury]
 backup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"
 log_dir = "/mnt/MERCURY_DATA_USB/mercury_logs"
+repo_backup_root = "/mnt/MERCURY_DATA_USB/mercury_repo_backups"
+manifest_dir = "/mnt/MERCURY_DATA_USB/mercury_manifests"
+runbook_dir = "/mnt/MERCURY_DATA_USB/mercury_runbooks"
 dry_run = true
 live_actions_enabled = false
 
@@ -159,6 +184,7 @@ src/mercury/
   database/      discovery, MariaDB, classification
   env/           environment probe
   reporting/     protection status, previews
+  transfer/      combined database + repository transfer manifest/runbook
   sync/          prod→dev planning, readiness, execution
   restore/       restore-check planning and execution
 ```
@@ -197,6 +223,7 @@ See [database module](docs/database_module.md).
 - [Disaster recovery runbook](docs/disaster_recovery_runbook.md)
 - [Backup verification](docs/backup_verification.md)
 - [MariaDB live discovery](docs/mariadb_discovery.md)
+- [Mercury v1 checklist](docs/mercury_v1_checklist.md)
 
 ## License
 

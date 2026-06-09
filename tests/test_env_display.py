@@ -10,6 +10,7 @@ def _env_result() -> EnvProbeResult:
         python_version="3.14.5",
         platform_system="Linux",
         platform_release="7.0.10",
+        platform_support="Fedora supported",
         repo_root="/tmp",
         config_dir="/tmp/config",
         output_dir="/tmp/out",
@@ -44,6 +45,7 @@ def test_build_environment_check_fields_connected() -> None:
     )
     fields = build_environment_check_fields(_env_result(), probe)
     assert fields["Runtime"]["Python"] == "3.14.5"
+    assert fields["Runtime"]["Platform support"] == "Fedora supported"
     assert fields["MariaDB"]["Status"] == "connected"
     assert fields["MariaDB"]["User"] == "root@localhost"
     assert fields["MariaDB"]["Socket"] == "/var/lib/mysql/mysql.sock"

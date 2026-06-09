@@ -9,6 +9,8 @@ LOGS_DIR = REPO_ROOT / "logs"
 
 DATABASES_EXAMPLE = CONFIG_DIR / "databases.example.toml"
 DATABASES_LOCAL = CONFIG_DIR / "databases.toml"
+REPOS_EXAMPLE = CONFIG_DIR / "repos.example.toml"
+REPOS_LOCAL = CONFIG_DIR / "repos.toml"
 LOCAL_EXAMPLE = CONFIG_DIR / "local.example.toml"
 LOCAL_CONFIG = CONFIG_DIR / "local.toml"
 PROTECTION_REPORT_FILE = OUTPUT_DIR / "protection_status.txt"

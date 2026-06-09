@@ -19,7 +19,7 @@ def test_render_menu_text_contains_header_and_items() -> None:
     text = render_menu_text()
     assert MENU_TITLE in text
     assert MENU_SUBTITLE in text
-    assert "Status" in text
+    assert "Main Menu" in text
     assert "Execution mode" in text
     assert "Backup target" in text
     assert "Blocker" in text
@@ -137,7 +137,7 @@ def test_menu_renders_without_crashing(capsys: pytest.CaptureFixture[str]) -> No
 @pytest.mark.parametrize(
     ("choice", "snippets"),
     [
-        ("1", ("Backup root:", "Source databases:", "Production sources", "Run full backup")),
+        ("1", ("USB target", "DATABASE PAIR / SOURCE", "Run full backup")),
         ("2", ("verified", "Rescan")),
         ("3", ("ready", "blocked", "Rescan plans", "Run allowed", "restore-check backup")),
         ("4", ("ready", "blocked", "Rescan readiness")),

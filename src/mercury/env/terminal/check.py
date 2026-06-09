@@ -37,6 +37,7 @@ def build_environment_check_fields(
         "Runtime": {
             "Python": env.python_version,
             "Platform": f"{env.platform_system} {env.platform_release}",
+            "Platform support": env.platform_support,
             "Config": "config/local.toml" if policy.config_path is not None else "fallback/default",
         },
         "Execution Safety": {

@@ -19,6 +19,17 @@ def _sample_report(*, ready: int = 0, blocked: int = 1) -> SyncReadinessReport:
             blockers=[] if ready > 0 else ["No on-disk backup found for production source."],
         ),
     ]
+    if ready > 1:
+        entries.append(
+            SyncReadinessEntry(
+                prod="scytaledroid_core_prod",
+                expected_dev="scytaledroid_core_dev",
+                dev_listed=True,
+                project="ScytaleDroid",
+                ready_for_sync_planning=True,
+                blockers=[],
+            )
+        )
     return SyncReadinessReport(
         mode="live",
         backup_root="/tmp/backups",
@@ -66,7 +77,14 @@ def test_prepare_dry_run_shows_live_mode_hint(
 def test_sync_submenu_shows_sync_when_ready() -> None:
     report = _sample_report(ready=1, blocked=1)
     labels = [label for _key, label in _sync_submenu_options(report)]
-    assert any(label.startswith("Sync ready pairs") for label in labels)
+    assert any(label.startswith("Sync all ready pairs") for label in labels)
+
+
+def test_sync_submenu_shows_single_pair_option_when_multiple_ready() -> None:
+    report = _sample_report(ready=2, blocked=0)
+    labels = [label for _key, label in _sync_submenu_options(report)]
+    assert any(label.startswith("Sync all ready pairs") for label in labels)
+    assert any(label.startswith("Sync one ready pair") for label in labels)
 
 
 def test_run_sync_menu_non_interactive(

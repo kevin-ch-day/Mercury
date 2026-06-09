@@ -125,6 +125,24 @@ def _pad_cell(cell: str, width: int, *, align: Align) -> str:
     return cell.ljust(width)
 
 
+def _format_row(
+    cells: list[str],
+    widths: list[int],
+    *,
+    alignments: list[Align],
+    gap_text: str,
+) -> str:
+    rendered: list[str] = []
+    last_index = len(cells) - 1
+    for index, cell in enumerate(cells):
+        align = alignments[index] if index < len(alignments) else "left"
+        if index == last_index:
+            rendered.append(cell.rjust(widths[index]) if align == "right" else cell)
+        else:
+            rendered.append(_pad_cell(cell, widths[index], align=align))
+    return gap_text.join(rendered).rstrip()
+
+
 def format_table(
     headers: list[str],
     rows: list[list[str]],
@@ -177,23 +195,24 @@ def format_table(
         for index, cell in enumerate(cells):
             widths[index] = max(widths[index], len(cell))
 
-    header_cells = [
-        _pad_cell(header, widths[i], align=alignments[i] if i < len(alignments) else "left")
-        for i, header in enumerate(headers)
-    ]
-    header_line = prefix + gap_text.join(header_cells)
+    header_line = prefix + _format_row(
+        headers,
+        widths,
+        alignments=alignments,
+        gap_text=gap_text,
+    )
     rule = prefix + resolved.rule_char * max(len(header_line) - len(prefix), 1)
 
     body: list[str] = []
     for cells in normalized_rows:
-        padded = [
-            _pad_cell(
-                cells[i],
-                widths[i],
-                align=alignments[i] if i < len(alignments) else "left",
+        body.append(
+            prefix
+            + _format_row(
+                cells,
+                widths,
+                alignments=alignments,
+                gap_text=gap_text,
             )
-            for i in range(len(headers))
-        ]
-        body.append(prefix + gap_text.join(padded))
+        )
 
     return [header_line, rule, *body]

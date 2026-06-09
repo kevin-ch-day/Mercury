@@ -10,6 +10,7 @@ from pathlib import Path
 import tomllib
 
 from mercury.core.paths import LOCAL_CONFIG, REPO_ROOT
+from mercury.core.platform import detect_platform
 from mercury.core.safety import DRY_RUN_ONLY, LIVE_ACTIONS_ENABLED
 
 ENV_DRY_RUN = "MERCURY_DRY_RUN"
@@ -103,7 +104,10 @@ class ExecutionPolicy:
 
     def live_execution_allowed(self) -> bool:
         """Live backup execution requires both flags to permit writes."""
+        platform_info = detect_platform()
         return (
+            platform_info.allows_live_execution
+            and
             (not self.dry_run)
             and self.live_actions_enabled
             and self.config_path is not None
@@ -111,6 +115,12 @@ class ExecutionPolicy:
         )
 
     def refusal_reason(self) -> str | None:
+        platform_info = detect_platform()
+        if not platform_info.allows_live_execution:
+            return (
+                "Mercury live execution is not supported on Windows. "
+                "Use Windows for seed planning/status only and run live operations on Fedora."
+            )
         if self.dry_run:
             return "Result: dry-run only; no files were written."
         if not self.live_actions_enabled:

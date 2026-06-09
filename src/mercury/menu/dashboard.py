@@ -20,7 +20,6 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     policy = load_execution_policy()
 
     rows: list[str] = [
-        body_label("Status"),
         dashboard_row("MariaDB", "[ok] connected" if connected else "[!!] unavailable"),
         dashboard_row("Execution mode", "LIVE" if policy.live_execution_allowed() else "DRY RUN"),
         dashboard_row("Backup target", backup_root_summary_label(policy)),

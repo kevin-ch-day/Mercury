@@ -22,9 +22,9 @@ Guidance for AI coding agents (Cursor, ChatGPT, Codex) working in this repositor
 
 ## What Mercury is
 
-Mercury is a **Fedora-first Python CLI** for MariaDB backup, disaster recovery, schema export, verification, prod→dev sync planning, and protection reporting on an Android security research platform.
+Mercury is a **Fedora-first Python CLI** for MariaDB backup, disaster recovery, schema export, verification, prod→dev sync planning, Git repository transfer bundles, and transfer manifests/runbooks on an Android security research platform.
 
-It is **not** an AI tool, web app, malware analyzer, or GitHub status utility.
+It is **not** an AI tool, web app, malware analyzer, or workstation/bootstrap utility.
 
 **Production target:** Fedora/Linux. Windows is acceptable for seed development only.
 
@@ -73,8 +73,10 @@ src/mercury/
   env/                     # terminal/, interactive_menu.py, probe.py
   logging/                 # terminal/, engine.py, events.py, analysis.py
   reporting/               # terminal/, protection.py, preview.py
+  repo/                    # configured Git repo status, bundle, manifest, runbook
   restore/                 # check_plan.py, restore_runner.py, terminal/, …
   sync/                    # sync_plan.py, sync_runner.py, terminal/, …
+  transfer/                # aggregate database+repo transfer manifest and runbook
   database/
     core/                  # Models, catalog, classifier, inventory
     terminal/              # CLI output (inventory, inspect, ping, policy, …)

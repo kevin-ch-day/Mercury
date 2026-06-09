@@ -13,26 +13,35 @@ def test_run_backup_menu_non_interactive(
 ) -> None:
     run_backup_menu(interactive=False)
     out = capsys.readouterr().out
-    assert "Target:" in out
-    assert "Mode: DRY RUN" in out
-    assert "Action: full backup" in out
-    assert "DATABASE" in out
-    assert "ROLE" in out
+    assert "Backup Operations" in out
+    assert "USB target" not in out
+    assert "USB Path:" in out
+    assert "Used:" in out
+    assert "Total:" in out
+    assert "Free:" in out
+    assert "Usage:" in out
+    assert "Status:" not in out
+    assert "Mode:" not in out
+    assert "Action:" not in out
+    assert "DATABASE PAIR / SOURCE" in out
     assert "PLAN" in out
-    assert "SYNC" in out
-    assert "DATABASE                      ROLE      PLAN      SYNC" in out
-    assert "android_permission_intel      shared    backup    n/a" in out
-    assert "erebus_threat_intel_dev       dev       skip      refresh target" in out
+    assert "TARGET" in out
     assert "android_permission_intel" in out
-    assert "shared" in out
-    assert "prod" in out
-    assert "dev" in out
-    assert "dev target" in out
+    assert "backup    n/a" in out
+    assert "erebus_threat_intel_prod" in out
+    assert "erebus_threat_intel_dev" in out
+    assert "refresh target" in out
+    assert "dev target exists" not in out
+    assert "ROLE" not in out
+    assert "SYNC" not in out
+    assert "android_permission_intel" in out
     assert "skip" in out
     assert "excluded" not in out
-    assert "dev target exists" not in out
     assert "Ignored databases:" not in out
     assert "\n[1] Refresh" in out
     assert "\n[2] Run full backup" in out
+    assert "\n[3] Verify source backups" in out
+    assert "\n[4] Show backup status" in out
+    assert "\n[5] Write DB bundle and runbooks" in out
     assert "Verify on-disk backups" not in out
     assert "Backup plan (dry-run)" not in out

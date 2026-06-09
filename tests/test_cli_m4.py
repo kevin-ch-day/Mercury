@@ -47,3 +47,8 @@ def test_cli_manifest_preview_rejects_dev() -> None:
     )
     assert result.returncode != 0
     assert "backup source" in (result.stdout + result.stderr).lower()
+
+
+def test_cli_db_active() -> None:
+    result = run_cli("db", "active")
+    assert result.returncode == 0 or "local.toml" in (result.stdout + result.stderr).lower()

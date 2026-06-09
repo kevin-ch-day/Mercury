@@ -7,6 +7,8 @@ from mercury.core.paths import (
     DATABASES_LOCAL,
     LOCAL_CONFIG,
     LOCAL_EXAMPLE,
+    REPOS_EXAMPLE,
+    REPOS_LOCAL,
 )
 
 
@@ -19,6 +21,7 @@ def init_local_config(*, force: bool = False) -> list[str]:
     results: list[str] = []
     pairs = [
         (DATABASES_EXAMPLE, DATABASES_LOCAL, "databases.toml"),
+        (REPOS_EXAMPLE, REPOS_LOCAL, "repos.toml"),
         (LOCAL_EXAMPLE, LOCAL_CONFIG, "local.toml"),
     ]
     for src, dest, label in pairs:

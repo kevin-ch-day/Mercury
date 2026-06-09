@@ -1,5 +1,6 @@
 """Mercury command-line interface."""
 
+import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
@@ -19,6 +20,8 @@ env_app = typer.Typer(help="Environment commands.")
 db_app = typer.Typer(help="Database commands.")
 database_app = typer.Typer(help="Database module (same commands as db).")
 backup_app = typer.Typer(help="Backup commands.")
+repo_app = typer.Typer(help="Repository protection and transfer commands.")
+transfer_app = typer.Typer(help="Combined database + repository transfer manifests and runbooks.")
 config_app = typer.Typer(help="Configuration commands.")
 sync_app = typer.Typer(help="Production sync-pair planning and execution.")
 restore_app = typer.Typer(help="Restore-check and DR execution.")
@@ -29,6 +32,8 @@ app.add_typer(env_app, name="env")
 app.add_typer(db_app, name="db")
 app.add_typer(database_app, name="database")
 app.add_typer(backup_app, name="backup")
+app.add_typer(repo_app, name="repo")
+app.add_typer(transfer_app, name="transfer")
 app.add_typer(config_app, name="config")
 app.add_typer(sync_app, name="sync")
 app.add_typer(restore_app, name="restore-check")
@@ -99,6 +104,7 @@ def env_probe(
     output.heading("Environment")
     output.field("python", result.python_version)
     output.field("platform", f"{result.platform_system} ({result.platform_release})")
+    output.field("platform_support", result.platform_support)
     output.field("mode", result.mode)
     output.field("dry_run", policy.dry_run)
     output.field("live_actions", policy.live_actions_enabled)
@@ -261,6 +267,121 @@ def backup_manifest_preview(
     output.write(format_manifest_preview_json(preview))
 
 
+@repo_app.command("status")
+def repo_status_cmd(
+    repo: list[str] = typer.Option(
+        None,
+        "--repo",
+        help="Configured repo key or display name. Repeat to filter.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        help="Show per-repository path and remote URL details.",
+    ),
+) -> None:
+    """Inspect configured Git repositories without modifying them."""
+    from mercury.repo import inspect_repositories, load_repo_definitions
+    from mercury.repo.config import RepoSelectionError, select_repo_definitions
+    from mercury.repo.terminal import print_repo_statuses
+
+    try:
+        definitions = select_repo_definitions(load_repo_definitions(), selected_keys=repo)
+    except RepoSelectionError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+    print_repo_statuses(inspect_repositories(definitions), verbose=verbose)
+
+
+@repo_app.command("bundle")
+def repo_bundle_cmd(
+    repo: list[str] = typer.Option(
+        None,
+        "--repo",
+        help="Configured repo key or display name. Repeat to filter.",
+    ),
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Create Git bundles plus repo manifest and restore note on the USB target.",
+    ),
+) -> None:
+    """Plan or write Git bundles for configured repositories."""
+    from mercury.repo import (
+        build_repo_bundle_plan,
+        execute_repo_bundle_plan,
+        inspect_repositories,
+        load_repo_bundle_settings,
+        load_repo_definitions,
+    )
+    from mercury.repo.config import RepoSelectionError, select_repo_definitions
+    from mercury.repo.terminal import print_repo_bundle_plan
+
+    try:
+        definitions = select_repo_definitions(load_repo_definitions(), selected_keys=repo)
+    except RepoSelectionError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+    plan = build_repo_bundle_plan(
+        inspect_repositories(definitions),
+        load_repo_bundle_settings(),
+    )
+    if not execute:
+        print_repo_bundle_plan(plan, executed=False)
+        return
+
+    try:
+        executed_plan = execute_repo_bundle_plan(plan)
+    except (OSError, subprocess.CalledProcessError, ValueError) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+    print_repo_bundle_plan(executed_plan, executed=True)
+
+
+@transfer_app.command("status")
+def transfer_status_cmd(
+    live: bool = typer.Option(
+        False,
+        "--live",
+        help="Use live database inventory and live sync readiness.",
+    ),
+) -> None:
+    """Show one combined transfer summary for database and repository lanes."""
+    from mercury.transfer import build_transfer_bundle, print_transfer_bundle
+
+    print_transfer_bundle(build_transfer_bundle(live=live))
+
+
+@transfer_app.command("write")
+def transfer_write_cmd(
+    live: bool = typer.Option(
+        False,
+        "--live",
+        help="Use live database inventory and live sync readiness.",
+    ),
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Write the combined transfer manifest and runbook to the USB target.",
+    ),
+) -> None:
+    """Plan or write one combined transfer manifest and runbook."""
+    from mercury.transfer import build_transfer_bundle, print_transfer_bundle, write_transfer_bundle
+
+    bundle = build_transfer_bundle(live=live)
+    print_transfer_bundle(bundle)
+    if not execute:
+        return
+    try:
+        write_transfer_bundle(bundle)
+    except ValueError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+    output.write()
+    output.write(f"Wrote: {bundle.transfer_manifest_path}")
+    output.write(f"Wrote: {bundle.transfer_runbook_path}")
+
+
 @backup_app.command("verify-plan")
 def backup_verify_plan(
     demo: bool = typer.Option(
@@ -370,6 +491,11 @@ def backup_run_cmd(
 def backup_batch_cmd(
     kind: str = typer.Option("full", "--kind", help="Backup kind: full or schema_only."),
     execute: bool = typer.Option(False, "--execute", help="Execute all backup sources."),
+    db: list[str] = typer.Option(
+        None,
+        "--db",
+        help="Limit to one or more active backup source databases.",
+    ),
     demo: bool = typer.Option(
         False,
         "--demo",
@@ -377,7 +503,11 @@ def backup_batch_cmd(
     ),
 ) -> None:
     """Plan or execute backups for all approved backup sources."""
-    from mercury.backup.batch_runner import run_backup_batch
+    from mercury.backup.batch_runner import (
+        BackupSourceSelectionError,
+        run_backup_batch,
+        select_batch_sources,
+    )
     from mercury.backup.terminal.batch import print_backup_batch_result
     from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
 
@@ -386,18 +516,49 @@ def backup_batch_cmd(
         typer.echo("Invalid --kind. Use: full or schema_only")
         raise typer.Exit(1)
 
+    try:
+        sources = select_batch_sources(selected=db, live=not demo)
+    except BackupSourceSelectionError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+
     batch = run_backup_batch(
         normalized,  # type: ignore[arg-type]
         execute=execute,
         live=not demo,
+        sources=sources,
     )
     print_backup_batch_result(batch)
     if batch.errors or (execute and batch.refused_count and not batch.executed_count):
         raise typer.Exit(1)
 
 
+@backup_app.command("all")
+def backup_all_cmd(
+    kind: str = typer.Option("full", "--kind", help="Backup kind: full or schema_only."),
+    execute: bool = typer.Option(False, "--execute", help="Execute backups for active source databases."),
+    db: list[str] = typer.Option(
+        None,
+        "--db",
+        help="Limit to one or more active backup source databases.",
+    ),
+    demo: bool = typer.Option(
+        False,
+        "--demo",
+        help="Use demo/catalog inventory instead of live server.",
+    ),
+) -> None:
+    """Alias for batch backup over the active source database set."""
+    backup_batch_cmd(kind=kind, execute=execute, db=db, demo=demo)
+
+
 @backup_app.command("verify-all")
 def backup_verify_all_cmd(
+    db: list[str] = typer.Option(
+        None,
+        "--db",
+        help="Limit verification to one or more active backup source databases.",
+    ),
     demo: bool = typer.Option(
         False,
         "--demo",
@@ -410,14 +571,18 @@ def backup_verify_all_cmd(
     ),
 ) -> None:
     """Verify latest on-disk backup for each backup source."""
-    from mercury.backup.batch_runner import resolve_batch_sources
+    from mercury.backup.batch_runner import BackupSourceSelectionError, select_batch_sources
     from mercury.backup.find_latest_backup import find_latest_backup_directory
     from mercury.core.execution_policy import load_execution_policy
     from mercury.backup.verification import verify_backup_directory
     from mercury.backup.terminal.verify import print_verification_result
 
     policy = load_execution_policy()
-    sources = resolve_batch_sources(live=not demo)
+    try:
+        sources = select_batch_sources(selected=db, live=not demo)
+    except BackupSourceSelectionError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
     passed = 0
     failed = 0
     skipped = 0
@@ -467,6 +632,74 @@ def backup_verify_all_cmd(
     log_verify_all_summary(passed=passed, failed=failed, skipped=skipped, sources=len(sources))
     output.write()
     output.write("Verify-all complete: all backup sources passed verification.")
+
+
+@backup_app.command("status")
+def backup_status_cmd(
+    db: list[str] = typer.Option(
+        None,
+        "--db",
+        help="Limit status to one or more active backup source databases.",
+    ),
+    demo: bool = typer.Option(
+        False,
+        "--demo",
+        help="Use demo/catalog backup sources instead of live inventory.",
+    ),
+) -> None:
+    """Show latest protection status for active source database backups."""
+    from mercury.backup import build_backup_status_report, print_backup_status_report
+    from mercury.backup.batch_runner import BackupSourceSelectionError
+
+    try:
+        report = build_backup_status_report(live=not demo, selected=db)
+    except BackupSourceSelectionError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+    print_backup_status_report(report)
+
+
+@backup_app.command("bundle")
+def backup_bundle_cmd(
+    db: list[str] = typer.Option(
+        None,
+        "--db",
+        help="Limit bundle output to one or more active backup source databases.",
+    ),
+    demo: bool = typer.Option(
+        False,
+        "--demo",
+        help="Use demo/catalog backup sources instead of live inventory.",
+    ),
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Write database manifest and restore runbook files to the USB target.",
+    ),
+) -> None:
+    """Plan or write one database transfer manifest/runbook set for active source backups."""
+    from mercury.backup import (
+        build_database_bundle_plan,
+        print_database_bundle_plan,
+        write_database_bundle_plan,
+    )
+    from mercury.backup.batch_runner import BackupSourceSelectionError
+
+    try:
+        plan = build_database_bundle_plan(live=not demo, selected=db)
+    except BackupSourceSelectionError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+    print_database_bundle_plan(plan, executed=False)
+    if not execute:
+        return
+    try:
+        write_database_bundle_plan(plan)
+    except ValueError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+    output.write()
+    print_database_bundle_plan(plan, executed=True)
 
 
 @backup_app.command("list")
@@ -577,19 +810,34 @@ def sync_run_cmd(
         "--execute",
         help="Restore verified backups into dev targets (requires live actions).",
     ),
+    source: str | None = typer.Option(
+        None,
+        "--source",
+        help="Limit sync to one production source database.",
+    ),
+    target: str | None = typer.Option(
+        None,
+        "--target",
+        help="Limit sync to one development target database.",
+    ),
     yes: bool = typer.Option(False, "--yes", help="Skip SYNC DEV confirmation prompt."),
 ) -> None:
     """Plan or execute development refresh for ready production sync pairs."""
     from mercury.core.execution_policy import load_execution_policy
     from mercury.core.safety import SYNC_DEV_CONFIRMATION_PHRASE
     from mercury.sync.sync_runner import run_sync_batch
+    from mercury.sync.selection import select_sync_entries
     from mercury.sync.terminal.runner import print_sync_batch_result
     from mercury.sync.readiness import build_sync_readiness_report
 
     report = build_sync_readiness_report(live=live)
     ready = [entry for entry in report.entries if entry.ready_for_sync_planning]
+    ready = select_sync_entries(ready, source=source, target=target)
     if not ready:
-        typer.echo("No ready production sync pairs. Run: mercury sync readiness --live")
+        if source or target:
+            typer.echo("No ready production sync pairs matched the requested source/target filter.")
+        else:
+            typer.echo("No ready production sync pairs. Run: mercury sync readiness --live")
         raise typer.Exit(1)
 
     policy = load_execution_policy()
@@ -604,6 +852,20 @@ def sync_run_cmd(
     print_sync_batch_result(batch, compact=True)
     if execute and batch.executed_count == 0:
         raise typer.Exit(1)
+
+
+@sync_app.command("all")
+def sync_all_cmd(
+    live: bool = typer.Option(True, "--live/--demo", help="Use live inventory."),
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Restore all ready verified backups into dev targets (requires live actions).",
+    ),
+    yes: bool = typer.Option(False, "--yes", help="Skip SYNC DEV confirmation prompt."),
+) -> None:
+    """Plan or execute sync for all ready production sync pairs."""
+    sync_run_cmd(live=live, execute=execute, source=None, target=None, yes=yes)
 
 
 @restore_app.command("plan")
@@ -760,7 +1022,7 @@ def status_cmd(
 def config_init_cmd(
     force: bool = typer.Option(False, "--force", help="Overwrite existing local config."),
 ) -> None:
-    """Create config/databases.toml and config/local.toml from examples."""
+    """Create config/databases.toml, config/repos.toml, and config/local.toml from examples."""
     from mercury.config.init import init_local_config
 
     output.heading("Initialize local config")

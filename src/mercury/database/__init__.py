@@ -42,6 +42,7 @@ from mercury.database.discovery import (
     discover_from_config,
 )
 from mercury.database.terminal import (
+    print_active_scope_report,
     print_classification,
     print_inventory,
     print_readonly_discovery_plan,
@@ -71,6 +72,8 @@ from mercury.database.policy import (
 )
 from mercury.database.facade import DatabaseService, default_service
 from mercury.database.mariadb import (
+    ActiveScopeDatabaseRow,
+    ActiveScopeReport,
     MariaDbConfigError,
     MariaDbConnectionConfig,
     MariaDbDriverMissingError,
@@ -84,6 +87,7 @@ from mercury.database.mariadb import (
     resolve_mariadb_target,
     try_load_mariadb_config,
     build_readonly_discovery_plan,
+    fetch_active_scope_report,
 )
 from mercury.database.mariadb.access import PlatformAccessReport, build_platform_access_report
 from mercury.database.mariadb.inspect import DatabaseInspectResult, inspect_database_on_server
@@ -93,6 +97,8 @@ __all__ = [
     "default_service",
     "DatabaseRecord",
     "DatabaseInventory",
+    "ActiveScopeDatabaseRow",
+    "ActiveScopeReport",
     "CatalogEntry",
     "PLATFORM_CATALOG",
     "PLATFORM_DATABASES",
@@ -126,10 +132,12 @@ __all__ = [
     "inspect_database_on_server",
     "DatabaseInspectResult",
     "build_platform_access_report",
+    "fetch_active_scope_report",
     "PlatformAccessReport",
     "probe_client_tooling",
     "build_readonly_discovery_plan",
     "print_inventory",
+    "print_active_scope_report",
     "print_classification",
     "print_readonly_discovery_plan",
     "print_prod_dev_pairs",

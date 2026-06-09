@@ -27,6 +27,11 @@ from mercury.database.mariadb.session import (
 # Backward-compatible alias
 fetch_database_names = fetch_user_database_names
 from mercury.database.mariadb.access import PlatformAccessReport, build_platform_access_report
+from mercury.database.mariadb.active_scope import (
+    ActiveScopeDatabaseRow,
+    ActiveScopeReport,
+    fetch_active_scope_report,
+)
 from mercury.database.mariadb.inspect import DatabaseInspectResult, inspect_database_on_server
 from mercury.database.mariadb.probe import (
     ReadOnlyDiscoveryPlan,
@@ -50,7 +55,10 @@ __all__ = [
     "inspect_database_on_server",
     "DatabaseInspectResult",
     "build_platform_access_report",
+    "fetch_active_scope_report",
     "PlatformAccessReport",
+    "ActiveScopeDatabaseRow",
+    "ActiveScopeReport",
     "READ_ONLY_SQL",
     "SYSTEM_DATABASES",
     "MariaDbServerProbe",

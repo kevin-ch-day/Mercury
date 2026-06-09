@@ -1,6 +1,7 @@
 """Database CLI terminal output — inventory, inspect, ping, policy, pairs, stats."""
 
 from mercury.database.terminal.access import print_platform_access
+from mercury.database.terminal.active_scope import print_active_scope_report
 from mercury.database.terminal.discover_menu import (
     build_discover_menu_fields,
     print_discover_menu,
@@ -21,6 +22,7 @@ from mercury.database.terminal.stats import print_database_stats
 
 __all__ = [
     "build_discover_menu_fields",
+    "print_active_scope_report",
     "print_classification",
     "print_database_inspect",
     "print_database_inspect_menu",

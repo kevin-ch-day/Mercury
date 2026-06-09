@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from mercury.backup.backup_runner import BackupExecutionError, BackupExecutionResult, execute_backup
 from mercury.backup.manifest import BackupKind
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
+from mercury.database.core import classify_database
 from mercury.database.discovery import discover, discover_demo
 from mercury.database.mariadb.session import try_load_mariadb_config
 from mercury.database.backup_planning import build_backup_plan_from_inventory
@@ -23,6 +24,10 @@ class BackupBatchResult(BaseModel):
     dry_run_count: int = 0
 
 
+class BackupSourceSelectionError(ValueError):
+    """Selected backup source list is not valid for the current scope."""
+
+
 def resolve_batch_sources(*, live: bool = False) -> list[str]:
     """Backup source names from live server or demo/config inventory."""
     if live and try_load_mariadb_config() is not None:
@@ -31,6 +36,38 @@ def resolve_batch_sources(*, live: bool = False) -> list[str]:
         inventory = discover_demo()
     plan = build_backup_plan_from_inventory(inventory)
     return list(plan.backup_sources)
+
+
+def select_batch_sources(
+    *,
+    selected: list[str] | None = None,
+    live: bool = False,
+) -> list[str]:
+    """Resolve current backup sources and validate any requested filter."""
+    available = resolve_batch_sources(live=live)
+    if not selected:
+        return available
+
+    available_set = set(available)
+    resolved: list[str] = []
+    seen: set[str] = set()
+    for database in selected:
+        if database in seen:
+            continue
+        seen.add(database)
+
+        classification = classify_database(database)
+        if not classification.backup_source:
+            raise BackupSourceSelectionError(
+                f"Refusing backup selection for '{database}': not an approved backup source."
+            )
+        if database not in available_set:
+            raise BackupSourceSelectionError(
+                f"Backup source '{database}' is not in the current active backup scope."
+            )
+        resolved.append(database)
+
+    return resolved
 
 
 def run_backup_batch(

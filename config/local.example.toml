@@ -9,6 +9,9 @@ backup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"
 dry_run = true
 # Explicit gate for mariadb-dump execution and backup file writes
 live_actions_enabled = false
+repo_backup_root = "/mnt/MERCURY_DATA_USB/mercury_repo_backups"
+manifest_dir = "/mnt/MERCURY_DATA_USB/mercury_manifests"
+runbook_dir = "/mnt/MERCURY_DATA_USB/mercury_runbooks"
 
 # File logging under logs/
 #   mercury-YYYY-MM-DD.log  — general session/operation log
