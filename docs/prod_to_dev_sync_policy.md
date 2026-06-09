@@ -37,7 +37,7 @@ CLI:
 
 ```bash
 mercury sync readiness --live
-mercury sync run --live --execute --yes   # skips SYNC DEV prompt only with --yes
+mercury sync run --live --execute         # requires typing SYNC DEV
 ```
 
 Menu: **Sync Production -> Development** → Prepare → Sync ready pairs (requires typing `SYNC DEV`).

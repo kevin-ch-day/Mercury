@@ -52,3 +52,10 @@ def test_cli_manifest_preview_rejects_dev() -> None:
 def test_cli_db_active() -> None:
     result = run_cli("db", "active")
     assert result.returncode == 0 or "local.toml" in (result.stdout + result.stderr).lower()
+
+
+def test_cli_sync_run_help_does_not_offer_yes_bypass() -> None:
+    result = run_cli("sync", "run", "--help")
+    assert result.returncode == 0
+    assert "--yes" not in result.stdout
+    assert "SYNC DEV" in result.stdout

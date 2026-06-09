@@ -6,6 +6,7 @@ No I/O — safe to use in tests, reports, and string builders.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Iterable
 
 
@@ -18,6 +19,23 @@ def format_bytes(value: int) -> str:
     if value < 1024 * 1024 * 1024:
         return f"{value / (1024 * 1024):.2f} MiB"
     return f"{value / (1024 * 1024 * 1024):.2f} GiB"
+
+
+def format_human_datetime(value: str | datetime | None) -> str:
+    """Human-friendly terminal timestamp like ``6/9/2026 3:01 PM``."""
+    if value is None:
+        return "-"
+    if isinstance(value, datetime):
+        instant = value
+    else:
+        try:
+            instant = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return value
+
+    hour = instant.hour % 12 or 12
+    suffix = "AM" if instant.hour < 12 else "PM"
+    return f"{instant.month}/{instant.day}/{instant.year} {hour}:{instant.minute:02d} {suffix}"
 
 
 def short_path(path: str, *, max_len: int = 52) -> str:

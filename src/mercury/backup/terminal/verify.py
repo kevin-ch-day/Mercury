@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic import BaseModel, Field
 
 from mercury import output
 from mercury.terminal import format as display_format
 from mercury.terminal import screen as display_screen
 from mercury.backup.on_disk_index import DemoBackupList, OnDiskBackupList, latest_records_by_database
+from mercury.backup.verification import verify_backup_artifacts
 from mercury.database.core import shared_authority_note
 from mercury.reporting.preview import BackupReportPreview, format_report_preview_markdown
 from mercury.backup.verification import BackupVerificationResult, VerificationPlan
@@ -134,7 +137,16 @@ def print_on_disk_backup_list(
             return
         rows = []
         for record in latest_records:
-            status = display_format.format_verification_status(verified=record.verified)
+            verified = record.verified
+            if record.directory:
+                try:
+                    verified = verify_backup_artifacts(
+                        Path(record.directory),
+                        database=record.database,
+                    ).verified
+                except OSError:
+                    verified = record.verified
+            status = display_format.format_verification_status(verified=verified)
             rows.append([record.database, record.backup_id, status])
         display_screen.write_compact_table(
             ["DATABASE", "LATEST BACKUP", "STATUS"],
@@ -158,7 +170,16 @@ def print_on_disk_backup_list(
             return
         rows = []
         for record in latest_records:
-            status = display_format.format_verification_status(verified=record.verified)
+            verified = record.verified
+            if record.directory:
+                try:
+                    verified = verify_backup_artifacts(
+                        Path(record.directory),
+                        database=record.database,
+                    ).verified
+                except OSError:
+                    verified = record.verified
+            status = display_format.format_verification_status(verified=verified)
             rows.append([record.database, record.backup_id, status])
         display_screen.write_compact_table(
             ["DATABASE", "LATEST BACKUP", "STATUS"],
@@ -186,7 +207,7 @@ def print_on_disk_backup_list(
             output.write(f"  schema: {record.schema_file}")
         output.write(f"  verified: {record.verified}")
         if record.created_at:
-            output.write(f"  created_at: {record.created_at}")
+            output.write(f"  created_at: {display_format.format_human_datetime(record.created_at)}")
     output.write("")
 
 
@@ -215,7 +236,7 @@ def print_verification_result(result: BackupVerificationResult, *, compact: bool
     output.field("size_ok", result.size_ok)
     output.field("role_ok", result.role_ok)
     if result.checked_at:
-        output.field("checked_at", result.checked_at)
+        output.field("checked_at", display_format.format_human_datetime(result.checked_at))
     if result.issues:
         output.heading("Issues")
         for issue in result.issues:

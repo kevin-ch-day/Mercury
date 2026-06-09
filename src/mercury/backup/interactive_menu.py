@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import shutil
-from datetime import datetime
 
 from mercury import output
 from mercury.menu import main_display as menu_display
@@ -22,7 +21,8 @@ from mercury.backup.on_disk_index import build_on_disk_backup_list, latest_recor
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.runtime import should_probe_database_status
 from mercury.core.safety import BACKUP_KIND_FULL
-from mercury.terminal.format import format_bytes
+from mercury.terminal.format import format_bytes, format_human_datetime
+from mercury.terminal.table import Table, TableStyle
 from mercury.database.backup_planning import BackupPlanDryRun, build_backup_plan_from_inventory
 from mercury.database.discovery import discover, discover_demo
 from mercury.database.core.classifier import DatabaseRole, classify_database
@@ -79,13 +79,7 @@ def _storage_usage_fields(policy) -> dict[str, str]:
 
 
 def _format_last_backup(created_at: str | None) -> str:
-    if not created_at:
-        return "-"
-    try:
-        instant = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-    except ValueError:
-        return created_at
-    return instant.strftime("%Y-%m-%d %H:%M")
+    return format_human_datetime(created_at)
 
 
 def _backup_screen_rows(plan: BackupPlanDryRun) -> list[list[str]]:
@@ -169,11 +163,14 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
     display_screen.write_blank()
     rows = _backup_screen_rows(plan)
     if rows:
-        display_screen.write_compact_table(
+        table = Table.from_headers(
             ["DATABASE", "STATUS", "LAST BACKUP", "TARGET"],
             rows,
-            min_col_widths=[30, 8, 16, 14],
+            style=TableStyle(indent=0),
+            min_col_widths=[30, 8, 16, 18],
+            max_col_widths=[36, 12, 16, 28],
         )
+        display_screen.write_structured_table(table)
     else:
         display_screen.write_status("warn", "No databases in active backup scope.")
     options: list[tuple[str, str]] = [
@@ -199,8 +196,6 @@ def _run_backup(plan: BackupPlanDryRun) -> None:
         sources=list(plan.backup_sources),
     )
     print_backup_batch_result(batch, compact=True, menu=True)
-    if batch.executed_count:
-        display_screen.write_summary(f"Wrote {batch.executed_count} backup(s).")
 
 
 def _run_verify_sources() -> None:

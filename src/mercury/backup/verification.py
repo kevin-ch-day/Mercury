@@ -330,4 +330,7 @@ def verify_backup_directory(
         backup_id=result.backup_id,
         updated_manifest=updated_manifest,
     )
+    from mercury.state.ledger import record_backup_verification
+
+    record_backup_verification(result)
     return result

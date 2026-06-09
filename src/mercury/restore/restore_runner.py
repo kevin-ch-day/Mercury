@@ -148,7 +148,7 @@ def execute_restore_into_database(
 
     if not resolved.live_execution_allowed():
         reason = resolved.refusal_reason() or "Live restore is not permitted."
-        return RestoreExecutionResult(
+        result = RestoreExecutionResult(
             source_database=source_database,
             target_database=target_database,
             dump_path=str(dump_path),
@@ -157,6 +157,10 @@ def execute_restore_into_database(
             commands=commands,
             cleanup_command=cleanup_command,
         )
+        from mercury.state.ledger import record_restore_check_result
+
+        record_restore_check_result(result)
+        return result
 
     cfg = config or try_load_mariadb_config()
     if cfg is None:
@@ -171,7 +175,7 @@ def execute_restore_into_database(
         _execute_client_sql(cfg, f"CREATE DATABASE `{target_database}`")
         runner(import_argv, _client_env(cfg), dump_path, cfg, target_database)
     except BackupExecutionError as exc:
-        return RestoreExecutionResult(
+        result = RestoreExecutionResult(
             source_database=source_database,
             target_database=target_database,
             dump_path=str(dump_path),
@@ -184,6 +188,10 @@ def execute_restore_into_database(
             commands=commands,
             cleanup_command=cleanup_command,
         )
+        from mercury.state.ledger import record_restore_check_result
+
+        record_restore_check_result(result)
+        return result
 
     cleanup_dropped = False
     message = f"Restored {source_database} into {target_database}."
@@ -202,7 +210,7 @@ def execute_restore_into_database(
                 f"Run: {cleanup_command}"
             )
 
-    return RestoreExecutionResult(
+    result = RestoreExecutionResult(
         source_database=source_database,
         target_database=target_database,
         dump_path=str(dump_path),
@@ -213,3 +221,7 @@ def execute_restore_into_database(
         cleanup_dropped=cleanup_dropped,
         cleanup_command=cleanup_command,
     )
+    from mercury.state.ledger import record_restore_check_result
+
+    record_restore_check_result(result)
+    return result

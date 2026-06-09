@@ -103,6 +103,10 @@ def run_sync_batch(
         else:
             batch.refused_count += 1
 
+    if execute:
+        from mercury.state.ledger import record_sync_batch_execution
+
+        record_sync_batch_execution(batch)
     return batch
 
 

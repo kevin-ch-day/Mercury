@@ -1,28 +1,57 @@
 # Mercury v1 checklist
 
-Mercury v1 is complete when the scoped transfer lanes below are complete.
+Mercury v1 closeout is complete for the scoped transfer lanes below.
+
+## Recorded v1 closeout
+
+- Database package: complete
+- Repository package: complete with warnings
+- Transfer package: complete
+- Prod-to-dev sync: executed
+- Dirty repo warnings: recorded truthfully at bundle time
+- System rebuild scope: out of scope for Mercury
 
 ## Database lane
 
 - Source databases backed up to `/mnt/MERCURY_DATA_USB/mercury_backups`
 - Full backups verified with manifest, checksum, size, and role checks
 - Restore-check completed successfully for each active source database
+- Latest verified backups present on the USB for each active source database
 - Production sync readiness clearly reported for the two active prod→dev pairs
-- Optional prod→dev sync executed only after readiness passes and verified afterward
+- Actual prod→dev sync executed after readiness passed and `SYNC DEV` was confirmed
 
 ## Repository lane
 
 - Configured repositories discovered from `config/repos.toml`
 - Repo path, branch, commit, remote, clean/dirty state, untracked count, and upstream status reported
-- Git bundles written to `/mnt/MERCURY_DATA_USB/mercury_repo_backups`
-- Repo manifests written to `/mnt/MERCURY_DATA_USB/mercury_manifests`
-- Short restore/import notes written to `/mnt/MERCURY_DATA_USB/mercury_runbooks`
+- Git bundles written to `/mnt/MERCURY_DATA_USB/mercury_repo_backups/2026-06-09`
+- Git bundle verification recorded (bundle exists, size > 0, `git bundle verify` passed)
+- Repo manifests written to `/mnt/MERCURY_DATA_USB/mercury_manifests/2026-06-09`
+- Short restore/import notes written to `/mnt/MERCURY_DATA_USB/mercury_runbooks/2026-06-09`
+- Dirty repo warnings captured truthfully when bundles were created from dirty worktrees
+
+Recorded warnings:
+
+- Dirty repos at bundle time included `Mercury` and `Linux Scripts`
+- Git bundles include committed history only; uncommitted local changes are not part of the bundle
+- `ScytaleDroid` was behind upstream at bundle time
 
 ## Transfer artifacts
 
 - Database backup manifests available on the USB
 - Repository manifests available on the USB
+- Combined transfer manifest written to `/mnt/MERCURY_DATA_USB/mercury_manifests/transfer_manifest_20260609_031800.json`
+- Combined transfer runbook written to `/mnt/MERCURY_DATA_USB/mercury_runbooks/transfer_runbook_20260609_031800.md`
 - Short restore/import instructions available for both database and repository transfers
+- USB paths verified for database, repository, manifest, and runbook outputs
+- Mercury portable state written under `/mnt/MERCURY_DATA_USB/mercury_state`
+
+## v1 completion summary
+
+- Database package: complete
+- Repository package: complete with warnings
+- Transfer package: complete
+- Sync decision recorded as executed
 
 ## Out of scope
 

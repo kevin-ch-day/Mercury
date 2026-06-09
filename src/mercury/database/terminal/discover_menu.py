@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from mercury.terminal import format as display_format
 from mercury.terminal import screen as display_screen
+from mercury.terminal.table import Table, TableStyle
 from mercury.database.core import (
     DatabaseInventory,
     filter_inventory,
@@ -64,12 +65,14 @@ def print_discover_menu(
     )
     display_screen.write_blank()
     headers, rows = _discover_menu_table_rows(inventory)
-    display_screen.write_compact_table(
+    table = Table.from_headers(
         headers,
         rows,
+        style=TableStyle(indent=0),
         min_col_widths=[28, 8, 8, 12],
         max_col_widths=[36, 8, 8, 12],
     )
+    display_screen.write_structured_table(table)
     display_screen.write_blank()
     display_screen.write_summary("Shared authority: android_permission_intel (backup-only)")
     if out_of_scope_names:

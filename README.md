@@ -6,6 +6,15 @@ For the current Fedora milestone, it protects the active source databases `andro
 
 Windows and non-Fedora Linux are for **seed planning / development** only; live Mercury operations target **Fedora**.
 
+## Current v1 status
+
+- Database package: complete
+- Repository package: complete with warnings
+- Transfer package: complete
+- Prod-to-dev sync: executed
+- Dirty repo warnings: recorded truthfully in manifests/state output
+- System rebuild scope: out of scope for Mercury
+
 ## Hard policy
 
 - Backup **production / source-of-truth** only (`*_prod`, `android_permission_intel`).
@@ -111,11 +120,11 @@ Repo-local `backups/` remains development-only and does not count as production 
 ```bash
 mercury sync plan [--demo]
 mercury sync readiness [--live]
-mercury sync run [--live] [--source <prod>] [--target <dev>] [--execute] [--yes]
-mercury sync all [--live] [--execute] [--yes]
+mercury sync run [--live] [--source <prod>] [--target <dev>] [--execute]
+mercury sync all [--live] [--execute]
 ```
 
-`sync run --execute` restores verified backups into disposable dev targets. With no filter it processes all ready pairs; `--source` or `--target` limits execution to one pair. `sync all` is the explicit batch alias. For the current milestone, sync readiness only applies to `erebus_threat_intel_prod -> erebus_threat_intel_dev` and `scytaledroid_core_prod -> scytaledroid_core_dev`. `android_permission_intel` is backup-only and does not participate in sync pairing. Requires live mode and typing `SYNC DEV` unless `--yes`.
+`sync run --execute` restores verified backups into disposable dev targets. With no filter it processes all ready pairs; `--source` or `--target` limits execution to one pair. `sync all` is the explicit batch alias. For the current milestone, sync readiness only applies to `erebus_threat_intel_prod -> erebus_threat_intel_dev` and `scytaledroid_core_prod -> scytaledroid_core_dev`. `android_permission_intel` is backup-only and does not participate in sync pairing. Requires live mode and typing `SYNC DEV`.
 
 ### Repository transfer
 
@@ -125,7 +134,7 @@ mercury repo status [--verbose]
 mercury repo bundle [--repo mercury] [--execute]
 ```
 
-`repo init-config` writes `config/repos.toml` from the known Fedora desktop repo paths. `repo status` is read-only and reports configured repo path, branch, commit, remote, clean/dirty state, untracked count, and upstream ahead/behind status when available. `repo bundle --execute` writes Git bundles plus repo manifests and short restore notes under the USB-backed paths configured in `config/local.toml`.
+`repo init-config` writes `config/repos.toml` from the known Fedora desktop repo paths. `repo status` is read-only and reports configured repo path, branch, commit, remote, clean/dirty state, untracked count, and upstream ahead/behind status when available. `repo bundle --execute` writes Git bundles plus repo manifests and short restore notes under the USB-backed paths configured in `config/local.toml`. Mercury keeps one current verified bundle set per repo and prunes older repo bundle artifacts only after the replacement bundle is written and verified successfully.
 
 ### Combined transfer
 

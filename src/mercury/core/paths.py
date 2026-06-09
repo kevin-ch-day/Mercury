@@ -6,6 +6,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 CONFIG_DIR = REPO_ROOT / "config"
 OUTPUT_DIR = REPO_ROOT / "output"
 LOGS_DIR = REPO_ROOT / "logs"
+DATA_DIR = REPO_ROOT / "data"
 
 DATABASES_EXAMPLE = CONFIG_DIR / "databases.example.toml"
 DATABASES_LOCAL = CONFIG_DIR / "databases.toml"

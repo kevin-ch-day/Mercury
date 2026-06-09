@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -106,9 +107,11 @@ def test_execute_repo_bundle_plan_writes_bundle_manifest_and_runbook(
         [RepoDefinition(key="scytaledroid", display_name="ScytaleDroid", path=repo)]
     )
     plan = build_repo_bundle_plan(statuses, settings)
+    state_root = tmp_path / "state"
 
     monkeypatch.setattr("mercury.repo.bundle.REQUIRED_BACKUP_MOUNT", usb_root)
     monkeypatch.setattr(Path, "is_mount", lambda self: self == usb_root)
+    monkeypatch.setattr("mercury.state.ledger.resolve_state_root", lambda policy=None: state_root)
 
     executed = execute_repo_bundle_plan(plan)
     entry = executed.entries[0]
@@ -120,6 +123,8 @@ def test_execute_repo_bundle_plan_writes_bundle_manifest_and_runbook(
     manifest = json.loads(entry.planned_manifest_path.read_text(encoding="utf-8"))
     assert manifest["repo_name"] == "ScytaleDroid"
     assert manifest["bundle_path"] == str(entry.planned_bundle_path)
+    assert manifest["bundle_verified"] is True
+    assert manifest["bundle_size_bytes"] > 0
     runbook = entry.planned_runbook_path.read_text(encoding="utf-8")
     assert "git clone" in runbook
     assert "Dirty working tree changes and untracked files are not included." in runbook
@@ -127,6 +132,116 @@ def test_execute_repo_bundle_plan_writes_bundle_manifest_and_runbook(
     assert index_manifest["repositories"][0]["repo_name"] == "ScytaleDroid"
     index_runbook = executed.planned_index_runbook_path.read_text(encoding="utf-8")
     assert "Mercury repository transfer runbook" in index_runbook
+    repo_csv = (state_root / "repo_bundles.csv").read_text(encoding="utf-8")
+    assert "ScytaleDroid" in repo_csv
+    operations = (state_root / "operations.jsonl").read_text(encoding="utf-8")
+    assert "repo_bundle_written" in operations
+
+
+def test_execute_repo_bundle_plan_prunes_older_repo_artifacts_after_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _make_repo(tmp_path, "mercury")
+    usb_root = tmp_path / "usb"
+    repo_root = usb_root / "mercury_repo_backups"
+    manifest_dir = usb_root / "mercury_manifests"
+    runbook_dir = usb_root / "mercury_runbooks"
+    settings = RepoBundleSettings(
+        repo_backup_root=repo_root,
+        manifest_dir=manifest_dir,
+        runbook_dir=runbook_dir,
+    )
+    statuses = inspect_repositories(
+        [RepoDefinition(key="mercury", display_name="Mercury", path=repo)]
+    )
+    state_root = tmp_path / "state"
+
+    class _FakeDateTime(datetime):
+        current = datetime(2026, 6, 9, 3, 18, 0, tzinfo=timezone.utc)
+
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return cls.current
+            return cls.current.astimezone(tz)
+
+    monkeypatch.setattr("mercury.repo.bundle.datetime", _FakeDateTime)
+    monkeypatch.setattr("mercury.repo.bundle.REQUIRED_BACKUP_MOUNT", usb_root)
+    monkeypatch.setattr(Path, "is_mount", lambda self: self == usb_root)
+    monkeypatch.setattr("mercury.state.ledger.resolve_state_root", lambda policy=None: state_root)
+
+    first_plan = build_repo_bundle_plan(statuses, settings)
+    first_executed = execute_repo_bundle_plan(first_plan)
+    first_entry = first_executed.entries[0]
+    assert first_entry.planned_bundle_path.exists()
+    assert first_entry.planned_manifest_path.exists()
+    assert first_entry.planned_runbook_path.exists()
+
+    _FakeDateTime.current = datetime(2026, 6, 9, 3, 19, 0, tzinfo=timezone.utc)
+    second_plan = build_repo_bundle_plan(statuses, settings)
+    second_executed = execute_repo_bundle_plan(second_plan)
+    second_entry = second_executed.entries[0]
+
+    assert second_entry.planned_bundle_path.exists()
+    assert second_entry.planned_manifest_path.exists()
+    assert second_entry.planned_runbook_path.exists()
+    assert not first_entry.planned_bundle_path.exists()
+    assert not first_entry.planned_manifest_path.exists()
+    assert not first_entry.planned_runbook_path.exists()
+    assert second_entry.pruned_bundle_paths == [first_entry.planned_bundle_path]
+    assert second_entry.pruned_manifest_paths == [first_entry.planned_manifest_path]
+    assert second_entry.pruned_runbook_paths == [first_entry.planned_runbook_path]
+
+    operations = (state_root / "operations.jsonl").read_text(encoding="utf-8")
+    assert "repo_bundle_retention_pruned" in operations
+
+
+def test_print_repo_bundle_plan_includes_state_summary(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mercury.repo.bundle import RepoBundleEntry, RepoBundlePlan
+    from mercury.repo.terminal import print_repo_bundle_plan
+    from mercury.state.summary import StateSummary
+    import mercury.repo.terminal as terminal_mod
+
+    terminal_mod.build_state_summary = lambda: StateSummary(
+        state_root=tmp_path / "state",
+        source="repo-local fallback",
+        operations=4,
+        database_backup_rows=1,
+        repo_bundle_rows=1,
+        transfer_package_rows=0,
+        sync_event_rows=0,
+    )
+    plan = RepoBundlePlan(
+        generated_at="2026-06-09T00:00:00+00:00",
+        repo_backup_root=tmp_path / "usb" / "mercury_repo_backups",
+        manifest_dir=tmp_path / "usb" / "mercury_manifests",
+        runbook_dir=tmp_path / "usb" / "mercury_runbooks",
+        planned_index_manifest_path=tmp_path / "usb" / "mercury_manifests" / "repo_transfer_manifest.json",
+        planned_index_runbook_path=tmp_path / "usb" / "mercury_runbooks" / "repo_transfer_runbook.md",
+        entries=[
+            RepoBundleEntry(
+                key="mercury",
+                display_name="Mercury",
+                repo_path=tmp_path / "Mercury",
+                branch="main",
+                commit="abc123def456abc123def456abc123def456abcd",
+                remote_url="https://example/Mercury.git",
+                dirty=False,
+                untracked_count=0,
+                planned_bundle_path=tmp_path / "usb" / "mercury_repo_backups" / "mercury.bundle",
+                planned_manifest_path=tmp_path / "usb" / "mercury_manifests" / "mercury.repo_manifest.json",
+                planned_runbook_path=tmp_path / "usb" / "mercury_runbooks" / "mercury.restore.md",
+            )
+        ],
+    )
+    print_repo_bundle_plan(plan, executed=False)
+    out = capsys.readouterr().out
+    assert "State root" in out
+    assert "State ops" in out
 
 
 def test_select_repo_definitions_raises_for_unknown_selection(tmp_path: Path) -> None:
@@ -170,14 +285,14 @@ def test_write_local_repo_config_writes_existing_known_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     mercury_repo = tmp_path / "Mercury"
-    scripts_repo = tmp_path / "Linux-Scripts"
+    scripts_repo = tmp_path / "fedora-linux-scripts"
     mercury_repo.mkdir()
     scripts_repo.mkdir()
     monkeypatch.setattr(
         "mercury.repo.config.DEFAULT_LOCAL_REPO_CANDIDATES",
         [
             ("mercury", "Mercury", str(mercury_repo)),
-            ("linux_scripts", "Linux Scripts", str(scripts_repo)),
+            ("fedora_linux_scripts", "Fedora Linux Scripts", str(scripts_repo)),
             ("missing_repo", "Missing Repo", str(tmp_path / "missing")),
         ],
     )
@@ -186,8 +301,8 @@ def test_write_local_repo_config_writes_existing_known_paths(
     written_path, definitions = write_local_repo_config(path=destination)
     assert written_path == destination
     assert destination.exists()
-    assert [definition.key for definition in definitions] == ["mercury", "linux_scripts"]
+    assert [definition.key for definition in definitions] == ["mercury", "fedora_linux_scripts"]
     text = destination.read_text(encoding="utf-8")
     assert "[repos.mercury]" in text
-    assert "[repos.linux_scripts]" in text
+    assert "[repos.fedora_linux_scripts]" in text
     assert "missing_repo" not in text

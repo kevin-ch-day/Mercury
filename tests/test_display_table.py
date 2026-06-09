@@ -69,6 +69,19 @@ def test_write_table_delegates_to_display_table(capsys) -> None:
     assert "22" in out
 
 
+def test_write_structured_table_uses_table_builder(capsys) -> None:
+    table = display_table.Table.from_headers(
+        ["DATABASE", "STATUS"],
+        [["android_permission_intel", "current"]],
+        min_col_widths=[24, 8],
+    )
+    display_screen.write_structured_table(table)
+    out = capsys.readouterr().out
+    assert "DATABASE" in out
+    assert "android_permission_intel" in out
+    assert "current" in out
+
+
 def test_display_format_reexports_format_table() -> None:
     lines = display_format.format_table(["X"], [["y"]])
     assert "X" in lines[0]

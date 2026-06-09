@@ -1,6 +1,9 @@
 """Tests for compact environment check display."""
 
+from pathlib import Path
+
 from mercury.database.mariadb.session import MariaDbServerProbe
+from mercury.core.execution_policy import ExecutionPolicy
 from mercury.env.terminal.check import build_environment_check_fields, connection_label
 from mercury.env.probe import EnvProbeResult
 
@@ -57,3 +60,30 @@ def test_build_environment_check_fields_connected() -> None:
 def test_build_environment_check_fields_not_configured() -> None:
     fields = build_environment_check_fields(_env_result())
     assert "not configured" in str(fields["MariaDB"]["Status"])
+
+
+def test_build_environment_check_fields_live_sync_mentions_sync_dev(
+    monkeypatch,
+) -> None:
+    probe = MariaDbServerProbe(
+        host="localhost",
+        port=3306,
+        configured_user="root",
+        connected=True,
+        current_user="root@localhost",
+    )
+    monkeypatch.setattr(
+        "mercury.core.execution_policy.load_execution_policy",
+        lambda: ExecutionPolicy(
+            dry_run=False,
+            live_actions_enabled=True,
+            backup_root=Path("/mnt/MERCURY_DATA_USB/mercury_backups"),
+            config_path=Path("/tmp/local.toml"),
+            allow_unsafe_backup_root=False,
+        ),
+    )
+    fields = build_environment_check_fields(_env_result(), probe)
+    assert (
+        fields["Execution Safety"]["Destructive sync"]
+        == "enabled for ready pairs with SYNC DEV confirmation"
+    )

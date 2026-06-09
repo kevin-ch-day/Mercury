@@ -27,6 +27,7 @@ sync_app = typer.Typer(help="Production sync-pair planning and execution.")
 restore_app = typer.Typer(help="Restore-check and DR execution.")
 report_app = typer.Typer(help="Backup report previews (dry-run).")
 logs_app = typer.Typer(help="Mercury log files under logs/.")
+state_app = typer.Typer(help="Portable Mercury operation ledger and summaries.")
 
 app.add_typer(env_app, name="env")
 app.add_typer(db_app, name="db")
@@ -39,6 +40,7 @@ app.add_typer(sync_app, name="sync")
 app.add_typer(restore_app, name="restore-check")
 app.add_typer(report_app, name="report")
 app.add_typer(logs_app, name="logs")
+app.add_typer(state_app, name="state")
 
 
 @app.callback()
@@ -151,6 +153,14 @@ def env_probe(
         output.heading("Safety policy")
         for line in format_policy_summary().splitlines():
             output.write(line)
+
+
+@state_app.command("summary")
+def state_summary() -> None:
+    """Show Mercury's portable ledger root and recorded operation counts."""
+    from mercury.state.summary import build_state_summary, print_state_summary
+
+    print_state_summary(build_state_summary())
 
 
 @backup_app.command("plan")
@@ -396,17 +406,15 @@ def transfer_write_cmd(
     from mercury.transfer import build_transfer_bundle, print_transfer_bundle, write_transfer_bundle
 
     bundle = build_transfer_bundle(live=live)
-    print_transfer_bundle(bundle)
     if not execute:
+        print_transfer_bundle(bundle, executed=False)
         return
     try:
-        write_transfer_bundle(bundle)
+        bundle = write_transfer_bundle(bundle)
     except ValueError as exc:
         typer.echo(str(exc))
         raise typer.Exit(1) from exc
-    output.write()
-    output.write(f"Wrote: {bundle.transfer_manifest_path}")
-    output.write(f"Wrote: {bundle.transfer_runbook_path}")
+    print_transfer_bundle(bundle, executed=True)
 
 
 @backup_app.command("verify-plan")
@@ -835,7 +843,7 @@ def sync_run_cmd(
     execute: bool = typer.Option(
         False,
         "--execute",
-        help="Restore verified backups into dev targets (requires live actions).",
+        help="Restore verified backups into dev targets (requires live actions and typing SYNC DEV).",
     ),
     source: str | None = typer.Option(
         None,
@@ -847,7 +855,6 @@ def sync_run_cmd(
         "--target",
         help="Limit sync to one development target database.",
     ),
-    yes: bool = typer.Option(False, "--yes", help="Skip SYNC DEV confirmation prompt."),
 ) -> None:
     """Plan or execute development refresh for ready production sync pairs."""
     from mercury.core.execution_policy import load_execution_policy
@@ -868,7 +875,7 @@ def sync_run_cmd(
         raise typer.Exit(1)
 
     policy = load_execution_policy()
-    if execute and policy.live_execution_allowed() and not yes:
+    if execute and policy.live_execution_allowed():
         typer.echo(f"Type {SYNC_DEV_CONFIRMATION_PHRASE!r} to sync into dev.")
         typed = typer.prompt("Confirm")
         if typed != SYNC_DEV_CONFIRMATION_PHRASE:
@@ -887,12 +894,11 @@ def sync_all_cmd(
     execute: bool = typer.Option(
         False,
         "--execute",
-        help="Restore all ready verified backups into dev targets (requires live actions).",
+        help="Restore all ready verified backups into dev targets (requires live actions and typing SYNC DEV).",
     ),
-    yes: bool = typer.Option(False, "--yes", help="Skip SYNC DEV confirmation prompt."),
 ) -> None:
     """Plan or execute sync for all ready production sync pairs."""
-    sync_run_cmd(live=live, execute=execute, source=None, target=None, yes=yes)
+    sync_run_cmd(live=live, execute=execute, source=None, target=None)
 
 
 @restore_app.command("plan")

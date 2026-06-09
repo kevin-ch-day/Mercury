@@ -43,7 +43,11 @@ def build_environment_check_fields(
         "Execution Safety": {
             "Mode": "DRY RUN" if policy.dry_run else "LIVE",
             "Live actions": "disabled" if not policy.live_actions_enabled else "enabled",
-            "Destructive sync": "blocked" if policy.dry_run or not policy.live_actions_enabled else "enabled for ready pairs only",
+            "Destructive sync": (
+                "blocked"
+                if policy.dry_run or not policy.live_actions_enabled
+                else "enabled for ready pairs with SYNC DEV confirmation"
+            ),
         },
     }
 

@@ -28,8 +28,13 @@ class RepoBundleEntry(BaseModel):
     planned_bundle_path: Path
     planned_manifest_path: Path
     planned_runbook_path: Path
+    bundle_verified: bool = False
+    bundle_size_bytes: int | None = None
     executed: bool = False
     error: str | None = None
+    pruned_bundle_paths: list[Path] = Field(default_factory=list)
+    pruned_manifest_paths: list[Path] = Field(default_factory=list)
+    pruned_runbook_paths: list[Path] = Field(default_factory=list)
 
 
 class RepoBundlePlan(BaseModel):
@@ -60,6 +65,53 @@ def _bundle_dirs(settings: RepoBundleSettings, display_name: str, stamp_date: st
         manifest_dir / f"{slug}_{timestamp}.repo_manifest.json",
         runbook_dir / f"{slug}_{timestamp}.restore.md",
     )
+
+
+def _temp_path(path: Path) -> Path:
+    return path.with_name(f"{path.name}.tmp")
+
+
+def _write_text_atomic(path: Path, content: str) -> None:
+    temp_path = _temp_path(path)
+    temp_path.write_text(content, encoding="utf-8")
+    temp_path.replace(path)
+
+
+def _prune_repo_history(
+    plan: RepoBundlePlan,
+    entry: RepoBundleEntry,
+) -> tuple[list[Path], list[Path], list[Path]]:
+    slug = _slug(entry.display_name)
+    bundle_pattern = f"*/{slug}/{slug}_*.bundle"
+    manifest_pattern = f"*/{slug}_*.repo_manifest.json"
+    runbook_pattern = f"*/{slug}_*.restore.md"
+
+    pruned_bundles: list[Path] = []
+    pruned_manifests: list[Path] = []
+    pruned_runbooks: list[Path] = []
+
+    for candidate in sorted(plan.repo_backup_root.glob(bundle_pattern)):
+        if candidate == entry.planned_bundle_path:
+            continue
+        if candidate.is_file():
+            candidate.unlink()
+            pruned_bundles.append(candidate)
+
+    for candidate in sorted(plan.manifest_dir.glob(manifest_pattern)):
+        if candidate == entry.planned_manifest_path:
+            continue
+        if candidate.is_file():
+            candidate.unlink()
+            pruned_manifests.append(candidate)
+
+    for candidate in sorted(plan.runbook_dir.glob(runbook_pattern)):
+        if candidate == entry.planned_runbook_path:
+            continue
+        if candidate.is_file():
+            candidate.unlink()
+            pruned_runbooks.append(candidate)
+
+    return pruned_bundles, pruned_manifests, pruned_runbooks
 
 
 def build_repo_bundle_plan(
@@ -132,6 +184,8 @@ def _manifest_payload(plan: RepoBundlePlan, entry: RepoBundleEntry) -> dict[str,
         "behind_count": entry.behind_count,
         "generated_at": plan.generated_at,
         "bundle_path": str(entry.planned_bundle_path),
+        "bundle_verified": entry.bundle_verified,
+        "bundle_size_bytes": entry.bundle_size_bytes,
         "manifest_path": str(entry.planned_manifest_path),
         "runbook_path": str(entry.planned_runbook_path),
     }
@@ -157,6 +211,8 @@ def _index_manifest_payload(plan: RepoBundlePlan) -> dict[str, object]:
                 "ahead_count": entry.ahead_count,
                 "behind_count": entry.behind_count,
                 "bundle_path": str(entry.planned_bundle_path),
+                "bundle_verified": entry.bundle_verified,
+                "bundle_size_bytes": entry.bundle_size_bytes,
                 "manifest_path": str(entry.planned_manifest_path),
                 "runbook_path": str(entry.planned_runbook_path),
                 "error": entry.error,
@@ -242,30 +298,70 @@ def execute_repo_bundle_plan(plan: RepoBundlePlan) -> RepoBundlePlan:
         entry.planned_bundle_path.parent.mkdir(parents=True, exist_ok=True)
         entry.planned_manifest_path.parent.mkdir(parents=True, exist_ok=True)
         entry.planned_runbook_path.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(
-            ["git", "bundle", "create", str(entry.planned_bundle_path), "--all"],
-            cwd=entry.repo_path,
-            check=True,
-            capture_output=True,
-            text=True,
+        bundle_temp = _temp_path(entry.planned_bundle_path)
+        manifest_temp = _temp_path(entry.planned_manifest_path)
+        runbook_temp = _temp_path(entry.planned_runbook_path)
+        try:
+            subprocess.run(
+                ["git", "bundle", "create", str(bundle_temp), "--all"],
+                cwd=entry.repo_path,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            if not bundle_temp.exists():
+                raise ValueError(f"bundle was not created: {bundle_temp}")
+            size_bytes = bundle_temp.stat().st_size
+            if size_bytes <= 0:
+                raise ValueError(f"bundle is empty: {bundle_temp}")
+            subprocess.run(
+                ["git", "bundle", "verify", str(bundle_temp)],
+                cwd=entry.repo_path,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            entry.bundle_size_bytes = size_bytes
+            entry.bundle_verified = True
+            bundle_temp.replace(entry.planned_bundle_path)
+            manifest_temp.write_text(
+                json.dumps(_manifest_payload(plan, entry), indent=2) + "\n",
+                encoding="utf-8",
+            )
+            manifest_temp.replace(entry.planned_manifest_path)
+            runbook_temp.write_text(
+                _runbook_text(entry),
+                encoding="utf-8",
+            )
+            runbook_temp.replace(entry.planned_runbook_path)
+        finally:
+            for temp_path in (bundle_temp, manifest_temp, runbook_temp):
+                try:
+                    if temp_path.exists():
+                        temp_path.unlink()
+                except OSError:
+                    pass
+
+        pruned_bundles, pruned_manifests, pruned_runbooks = _prune_repo_history(
+            plan,
+            entry,
         )
-        entry.planned_manifest_path.write_text(
-            json.dumps(_manifest_payload(plan, entry), indent=2) + "\n",
-            encoding="utf-8",
-        )
-        entry.planned_runbook_path.write_text(
-            _runbook_text(entry),
-            encoding="utf-8",
-        )
+        entry.pruned_bundle_paths = pruned_bundles
+        entry.pruned_manifest_paths = pruned_manifests
+        entry.pruned_runbook_paths = pruned_runbooks
         entry.executed = True
     plan.planned_index_manifest_path.parent.mkdir(parents=True, exist_ok=True)
     plan.planned_index_runbook_path.parent.mkdir(parents=True, exist_ok=True)
-    plan.planned_index_manifest_path.write_text(
+    _write_text_atomic(
+        plan.planned_index_manifest_path,
         json.dumps(_index_manifest_payload(plan), indent=2) + "\n",
-        encoding="utf-8",
     )
-    plan.planned_index_runbook_path.write_text(
+    _write_text_atomic(
+        plan.planned_index_runbook_path,
         _index_runbook_text(plan),
-        encoding="utf-8",
     )
+    from mercury.state.ledger import record_repo_bundle_execution, record_repo_bundle_retention
+
+    record_repo_bundle_execution(plan)
+    record_repo_bundle_retention(plan)
     return plan

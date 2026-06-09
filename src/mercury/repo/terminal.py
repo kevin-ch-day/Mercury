@@ -5,6 +5,7 @@ from __future__ import annotations
 from mercury.terminal import screen as display_screen
 from mercury.repo.bundle import RepoBundlePlan
 from mercury.repo.status import RepoStatus, summarize_repo_statuses
+from mercury.state.summary import build_state_summary
 
 
 def print_repo_statuses(statuses: list[RepoStatus], *, verbose: bool = False) -> None:
@@ -59,6 +60,7 @@ def print_repo_statuses(statuses: list[RepoStatus], *, verbose: bool = False) ->
 
 
 def print_repo_bundle_plan(plan: RepoBundlePlan, *, executed: bool = False) -> None:
+    state = build_state_summary()
     dirty = sum(1 for entry in plan.entries if entry.dirty and not entry.error)
     errors = sum(1 for entry in plan.entries if entry.error)
     display_screen.write_fields(
@@ -69,6 +71,8 @@ def print_repo_bundle_plan(plan: RepoBundlePlan, *, executed: bool = False) -> N
             "Repositories": len(plan.entries),
             "Dirty repos": dirty,
             "Errors": errors,
+            "State root": str(state.state_root),
+            "State ops": state.operations,
         }
     )
     display_screen.write_blank()
@@ -105,4 +109,7 @@ def print_repo_bundle_plan(plan: RepoBundlePlan, *, executed: bool = False) -> N
         display_screen.write_blank()
         display_screen.write_summary(
             "Bundles, per-repo manifests, transfer index manifest, and restore notes were written to the USB paths above."
+        )
+        display_screen.write_summary(
+            "Repo retention keeps one current verified bundle set per repo; older repo artifacts are pruned after successful replacement."
         )

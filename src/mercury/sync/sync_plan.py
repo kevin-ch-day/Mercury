@@ -7,7 +7,7 @@ from mercury.database.prod_dev_pairs import ProdDevPair, build_prod_dev_pairs
 from mercury.core.safety import SYNC_DEV_CONFIRMATION_PHRASE
 
 SYNC_PLAN_NOTES = [
-    "Sync is disabled in seed mode.",
+    "Sync execution remains gated until readiness passes and live confirmation is provided.",
     f"Future dev sync will require typing: {SYNC_DEV_CONFIRMATION_PHRASE}",
     "Prerequisite: verified full backup of each production source before any sync.",
     "Never drop or overwrite *_prod; target is *_dev only.",

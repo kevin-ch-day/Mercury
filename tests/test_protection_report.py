@@ -92,9 +92,33 @@ def test_compact_report_does_not_truncate_shared_authority_source(capsys) -> Non
 
     print_protection_report(build_protection_report(), compact=True)
     out = capsys.readouterr().out
-    assert "SOURCE DATABASE               SOURCE ROLE              PROJECT" in out
-    assert "android_permission_intel      shared authority source  Platform" in out
+    assert "SOURCE DATABASE               SOURCE ROLE              STATUS" in out
+    assert "PROJECT" in out
+    assert "android_permission_intel      shared authority source" in out
     assert "Production sources:" in out
     assert "Shared authority:" in out
     assert "Sync pairs:" in out
     assert "shared authority source" in out
+
+
+def test_compact_report_includes_source_protection_status(monkeypatch, capsys) -> None:
+    from mercury.reporting.protection import print_protection_report
+
+    report = build_protection_report()
+    report.source_statuses = {
+        "android_permission_intel": "verified",
+        "erebus_threat_intel_prod": "missing",
+        "scytaledroid_core_prod": "failed",
+    }
+    report.verified_source_count = 1
+    report.missing_source_count = 1
+    report.failed_source_count = 1
+
+    print_protection_report(report, compact=True)
+    out = capsys.readouterr().out
+    assert "Verified sources:" in out
+    assert "Missing sources:" in out
+    assert "Failed sources:" in out
+    assert "android_permission_intel      shared authority source  verified" in out
+    assert "erebus_threat_intel_prod      production source        missing" in out
+    assert "scytaledroid_core_prod        production source        failed" in out

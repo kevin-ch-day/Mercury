@@ -139,7 +139,7 @@ def test_menu_renders_without_crashing(capsys: pytest.CaptureFixture[str]) -> No
     [
         ("1", ("USB Path", "LAST BACKUP", "Run full backup", "Restore-check source backups")),
         ("2", ("ready", "blocked", "Recheck Database Sync Status")),
-        ("3", ("Backup root", "Active scope", "Source databases")),
+        ("3", ("REPORTS AND BACKUP HISTORY", "Backup root", "Show backup history", "Show protection status")),
         ("4", ("ENVIRONMENT CHECK", "Runtime", "Live mode guide")),
         ("5", ("Active scope:", "Backup sources:", "DATABASE", "ROLE", "Rescan inventory")),
         ("6", ("LIVE MODE GUIDE", "Before enabling live writes", "How to enable live writes")),
@@ -159,7 +159,9 @@ def test_handle_menu_action(
         monkeypatch.setattr("mercury.sync.interactive_menu.read_sync_choice", lambda: "0")
     if choice == "1":
         monkeypatch.setattr("mercury.backup.interactive_menu.read_backup_choice", lambda: "0")
-    if choice in {"3", "6"}:
+    if choice == "3":
+        monkeypatch.setattr("mercury.reporting.interactive_menu.read_reports_choice", lambda: "0")
+    if choice == "6":
         monkeypatch.setattr("mercury.menu.prompts.wait_for_continue", lambda *args, **kwargs: None)
     assert handle_menu_choice(choice) == "continue"
     out = capsys.readouterr().out.lower()

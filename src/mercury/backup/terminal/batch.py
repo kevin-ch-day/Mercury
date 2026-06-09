@@ -2,6 +2,7 @@
 
 from mercury import output
 from mercury.terminal import screen as display_screen
+from mercury.terminal.table import Table, TableStyle
 from mercury.backup.batch_runner import BackupBatchResult
 
 
@@ -12,6 +13,14 @@ def _write_refusal_line(refusal: str) -> None:
     display_screen.write_status("warn", refusal)
 
 
+def _result_label(result) -> str:
+    if result.executed:
+        return "written"
+    if result.refused:
+        return "refused"
+    return "planned"
+
+
 def print_backup_batch_result(
     batch: BackupBatchResult,
     *,
@@ -19,20 +28,47 @@ def print_backup_batch_result(
     menu: bool = False,
 ) -> None:
     if compact and menu:
-        names = [result.database for result in batch.results]
         mode = "LIVE" if batch.execute else "DRY RUN"
         display_screen.write_fields(
             {
                 "Execution mode": mode,
-                "Source databases": len(names),
-                "Databases": ", ".join(names) if names else "(none)",
+                "Source databases": len(batch.sources),
+                "Executed": batch.executed_count,
+                "Dry-run": batch.dry_run_count,
+                "Refused": batch.refused_count,
             }
         )
+        if batch.results:
+            rows = [
+                [
+                    result.database,
+                    _result_label(result),
+                    result.manifest.backup_id if result.manifest else "-",
+                ]
+                for result in batch.results
+            ]
+            display_screen.write_blank()
+            display_screen.write_structured_table(
+                Table.from_headers(
+                    ["DATABASE", "RESULT", "BACKUP ID"],
+                    rows,
+                    style=TableStyle(indent=0),
+                    min_col_widths=[28, 8, 18],
+                    max_col_widths=[36, 10, 40],
+                )
+            )
         refusal = next((r.refusal_reason for r in batch.results if r.refusal_reason), None)
         if refusal:
+            display_screen.write_blank()
             _write_refusal_line(refusal)
         for error in batch.errors:
             display_screen.write_status("fail", error)
+        if batch.executed_count:
+            display_screen.write_blank()
+            display_screen.write_summary("Backups written. Next: verify source backups [3].")
+        elif batch.dry_run_count:
+            display_screen.write_blank()
+            display_screen.write_summary("Result: dry-run only; no files were written.")
         return
 
     if compact:

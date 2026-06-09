@@ -56,3 +56,15 @@ For live execution, Mercury requires:
 - `[mercury] live_actions_enabled = true`
 - a Fedora runtime host
 - a mounted USB-backed root under `/mnt/MERCURY_DATA_USB/mercury_backups`
+
+## Retention
+
+- Database retention is intentionally conservative in v1.1.
+- Mercury does not yet auto-prune database backup files because the current layout tracks one latest manifest/checksum/report set inside a shared database/day directory.
+- The accepted future policy is to keep the last 2 verified full backup sets per source database and prune only after a newer backup verifies successfully.
+- That database retention policy should be implemented after a layout migration to one unique backup-set directory per backup ID or timestamp.
+
+Repository retention is different:
+
+- Mercury keeps 1 current verified Git bundle set per configured repo.
+- Older repo bundle artifacts are pruned only after the replacement bundle is written and `git bundle verify` succeeds.

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
 
+from mercury.backup.status import build_backup_status_report
 from mercury.database import (
     BackupPlanDryRun,
     DatabaseInventory,
@@ -22,6 +23,7 @@ from mercury.database.prod_dev_pairs import ProdDevPair, build_prod_dev_pairs, o
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.runtime import operator_status
 from mercury.core.safety import MODE_SEED
+from mercury.terminal.format import format_human_datetime
 
 
 class ProtectionReport(BaseModel):
@@ -35,6 +37,10 @@ class ProtectionReport(BaseModel):
     protected: list[str] = Field(default_factory=list)
     not_protected: list[str] = Field(default_factory=list)
     shared_authority: list[str] = Field(default_factory=list)
+    source_statuses: dict[str, str] = Field(default_factory=dict)
+    verified_source_count: int = 0
+    missing_source_count: int = 0
+    failed_source_count: int = 0
     manual_review: list[str] = Field(default_factory=list)
     prod_dev_pairs: list[ProdDevPair] = Field(default_factory=list)
     orphan_dev: list[str] = Field(default_factory=list)
@@ -71,6 +77,11 @@ def build_protection_report(*, live: bool = False, probe_database: bool = False)
             review.append(name)
 
     policy = load_execution_policy()
+    backup_status = build_backup_status_report(
+        live=live,
+        selected=list(plan.backup_sources),
+        policy=policy,
+    )
     actions: list[str] = []
     if policy.live_execution_allowed():
         actions.append("Run: mercury backup run --db <prod> --kind full --execute")
@@ -102,6 +113,10 @@ def build_protection_report(*, live: bool = False, probe_database: bool = False)
         protected=protected,
         not_protected=not_protected,
         shared_authority=shared,
+        source_statuses={entry.database: entry.protection_status for entry in backup_status.entries},
+        verified_source_count=backup_status.verified_count,
+        missing_source_count=backup_status.missing_count,
+        failed_source_count=backup_status.failed_count,
         manual_review=review,
         prod_dev_pairs=pairs,
         orphan_dev=orphans,
@@ -116,7 +131,7 @@ def format_protection_report(report: ProtectionReport, *, compact: bool = False)
 
     lines: list[str] = [
         "MERCURY PROTECTION STATUS",
-        f"Generated: {report.generated_at}",
+        f"Generated: {format_human_datetime(report.generated_at)}",
         f"Mode: {report.mode} | Connection: {report.connection}",
         "",
         "Operator status:",
@@ -238,6 +253,9 @@ def print_protection_report(report: ProtectionReport, *, compact: bool = False) 
             "Production sources": len(production_sources),
             "Shared authority": len(report.shared_authority),
             "Sync pairs": len(report.prod_dev_pairs),
+            "Verified sources": report.verified_source_count,
+            "Missing sources": report.missing_source_count,
+            "Failed sources": report.failed_source_count,
         }
     )
     if report.ignored_out_of_scope_count:
@@ -248,13 +266,14 @@ def print_protection_report(report: ProtectionReport, *, compact: bool = False) 
             entry = CATALOG_BY_NAME.get(name)
             project = entry.project if entry and entry.project else "—"
             source_role = source_role_label(name)
-            rows.append([name, source_role, project])
+            status = report.source_statuses.get(name, "unknown")
+            rows.append([name, source_role, status, project])
         display_screen.write_blank()
         display_screen.write_compact_table(
-            ["SOURCE DATABASE", "SOURCE ROLE", "PROJECT"],
+            ["SOURCE DATABASE", "SOURCE ROLE", "STATUS", "PROJECT"],
             rows,
-            min_col_widths=[28, 16, 12],
-            max_col_widths=[36, 24, 16],
+            min_col_widths=[28, 16, 10, 12],
+            max_col_widths=[36, 24, 14, 16],
         )
     else:
         display_screen.write_status("warn", "No protected backup sources yet")

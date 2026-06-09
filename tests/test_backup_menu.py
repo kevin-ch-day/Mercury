@@ -45,3 +45,72 @@ def test_run_backup_menu_non_interactive(
     assert "\n[5] Write DB bundle and runbooks" in out
     assert "Verify on-disk backups" not in out
     assert "Backup plan (dry-run)" not in out
+
+
+def test_backup_menu_uses_human_last_backup_format(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mercury.backup.interactive_menu import _render_backup_screen
+    from mercury.database.backup_planning import build_backup_plan
+
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.build_prod_dev_pairs",
+        lambda names: [],
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.latest_records_by_database",
+        lambda listing: [
+            type(
+                "Record",
+                (),
+                {
+                    "database": "android_permission_intel",
+                    "created_at": "2026-06-09T15:01:26+00:00",
+                },
+            )()
+        ],
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.build_on_disk_backup_list",
+        lambda _root: object(),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.build_backup_status_report",
+        lambda live=False: type(
+            "Report",
+            (),
+            {
+                "entries": [
+                    type(
+                        "Entry",
+                        (),
+                        {
+                            "database": "android_permission_intel",
+                            "protection_status": "verified",
+                        },
+                    )()
+                ]
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.load_execution_policy",
+        lambda: type(
+            "Policy",
+            (),
+            {
+                "backup_root": "/tmp/backups",
+                "live_execution_allowed": lambda self=None: True,
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu._storage_usage_fields",
+        lambda policy: {"USB Path": "/tmp/backups"},
+    )
+
+    plan = build_backup_plan(["android_permission_intel"])
+    _render_backup_screen(plan, show_title=False)
+    out = capsys.readouterr().out
+    assert "6/9/2026 3:01 PM" in out

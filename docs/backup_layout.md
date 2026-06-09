@@ -13,6 +13,13 @@ backups/YYYY-MM-DD/<database>/
 
 For the current Fedora milestone, the live backup root is expected to be `/mnt/MERCURY_DATA_USB/mercury_backups`; paths above are relative to that root. Repo-local `backups/` may be used for dry-run or development simulation only and do not count as production protection in live/operator mode.
 
+Current implementation note:
+
+- Timestamped dump files can accumulate inside the same database/day directory.
+- `manifest.json`, `checksum.sha256`, and `backup_report.md` describe the latest tracked backup in that directory.
+- Because of that shared-directory model, Mercury does not yet prune database backup history automatically.
+- A later layout migration to one unique backup-set directory per backup ID will make “keep last 2 verified full backups” safe to implement.
+
 ## Backup kinds
 
 | Kind | File | Contents |

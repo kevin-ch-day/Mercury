@@ -10,6 +10,7 @@ import pytest
 
 from mercury.backup.on_disk_index import build_on_disk_backup_list, latest_records_by_database
 from mercury.backup.verification import verify_backup_artifacts
+from mercury.backup.terminal.verify import print_on_disk_backup_list
 from mercury.core.safety import BACKUP_KIND_FULL
 
 from tests.conftest import REPO_ROOT, run_cli
@@ -129,3 +130,41 @@ def test_cli_backup_list_on_disk() -> None:
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "BACKUP LIST (on-disk)" in result.stdout
+
+
+def test_print_on_disk_backup_list_recomputes_verified_status(tmp_path: Path, capsys) -> None:
+    backup_dir = tmp_path / "2026-06-09" / "android_permission_intel"
+    backup_dir.mkdir(parents=True)
+    dump_name = "android_permission_intel_20260609_030126.sql.gz"
+    schema_name = "android_permission_intel_20260609_030126.schema.sql.gz"
+    (backup_dir / dump_name).write_bytes(b"dump-bytes\n")
+    (backup_dir / schema_name).write_bytes(b"schema-bytes\n")
+    manifest = {
+        "backup_id": "android_permission_intel-full-20260609_030126_787",
+        "database": "android_permission_intel",
+        "backup_kind": "full",
+        "created_at": "2026-06-09T03:01:26+00:00",
+        "dump_file": dump_name,
+        "schema_file": schema_name,
+        "sha256": "",
+        "schema_sha256": None,
+        "size_bytes": 11,
+        "schema_size_bytes": 12,
+        "source_role": "shared_authority",
+        "tool_used": "mariadb-dump",
+        "verified": False,
+        "live_actions_enabled": True,
+        "dry_run": False,
+        "notes": "",
+    }
+    (backup_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    from mercury.backup.checksum import write_checksum_file
+
+    write_checksum_file(backup_dir, [dump_name, schema_name])
+    listing = build_on_disk_backup_list(tmp_path)
+
+    print_on_disk_backup_list(listing, compact=True, menu=True)
+    out = capsys.readouterr().out
+    assert "android_permission_intel" in out
+    assert "verified" in out

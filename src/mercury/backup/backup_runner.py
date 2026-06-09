@@ -440,6 +440,9 @@ def execute_backup(
         manifest.backup_id,
         relative_dir,
     )
+    from mercury.state.ledger import record_backup_execution
+
+    record_backup_execution(result)
     return result
 
 

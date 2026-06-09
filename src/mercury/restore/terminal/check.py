@@ -3,6 +3,7 @@
 from mercury import output
 from mercury.terminal import format as display_format
 from mercury.terminal import screen as display_screen
+from mercury.terminal.table import Table, TableStyle
 from mercury.restore.check_plan import RestoreCheckPlan
 
 
@@ -41,7 +42,14 @@ def print_restore_check_plans(
             status = _compact_restore_status(plan)
             rows.append([plan.source_prod, status])
         display_screen.write_blank()
-        display_screen.write_table(["DATABASE", "STATUS"], rows, max_col_widths=[36, 24])
+        table = Table.from_headers(
+            ["DATABASE", "STATUS"],
+            rows,
+            style=TableStyle(indent=2),
+            min_col_widths=[28, 12],
+            max_col_widths=[36, 24],
+        )
+        display_screen.write_structured_table(table)
         return
 
     for plan in plans:

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from mercury.backup.bundle import DatabaseBundlePlan
 from mercury.terminal import screen as display_screen
+from mercury.state.summary import build_state_summary
 
 
 def print_database_bundle_plan(plan: DatabaseBundlePlan, *, executed: bool = False) -> None:
     title = "Database backup bundle"
+    state = build_state_summary()
     display_screen.open_screen(title)
     display_screen.write_fields(
         {
@@ -18,6 +20,8 @@ def print_database_bundle_plan(plan: DatabaseBundlePlan, *, executed: bool = Fal
             "Verified": plan.verified_count,
             "Missing": plan.missing_count,
             "Failed": plan.failed_count,
+            "State root": str(state.state_root),
+            "State ops": state.operations,
         }
     )
     display_screen.write_blank()

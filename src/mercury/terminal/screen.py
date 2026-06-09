@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Literal
 
 from mercury.core import output
-from mercury.terminal.table import format_table
+from mercury.terminal.table import Table, format_table
 from mercury.terminal.theme import open_screen_lines, tag
 
 StatusKind = Literal["ok", "warn", "fail", "info"]
@@ -84,6 +84,12 @@ def write_compact_table(
         max_col_widths=max_col_widths,
         align=align,
     )
+
+
+def write_structured_table(table: Table) -> None:
+    """Render a shared ``Table`` object without each caller re-specifying formatting."""
+    for line in table.lines():
+        output.write(line)
 
 
 def write_list(title: str, items: list[str]) -> None:

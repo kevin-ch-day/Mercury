@@ -111,3 +111,51 @@ def test_cli_backup_bundle_demo_plan(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Database backup bundle" in result.stdout
     assert "android_permission_intel" in result.stdout
+
+
+def test_print_database_bundle_plan_includes_state_summary(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    from mercury.backup.bundle import DatabaseBundleEntry, DatabaseBundlePlan
+    from mercury.backup.terminal.bundle import print_database_bundle_plan
+    from mercury.state.summary import StateSummary
+    import mercury.backup.terminal.bundle as terminal_mod
+
+    terminal_mod.build_state_summary = lambda: StateSummary(
+        state_root=tmp_path / "state",
+        source="repo-local fallback",
+        operations=5,
+        database_backup_rows=3,
+        repo_bundle_rows=0,
+        transfer_package_rows=0,
+        sync_event_rows=0,
+    )
+    plan = DatabaseBundlePlan(
+        generated_at="2026-06-09T00:00:00+00:00",
+        backup_root=tmp_path / "backups",
+        manifest_dir=tmp_path / "usb" / "mercury_manifests",
+        runbook_dir=tmp_path / "usb" / "mercury_runbooks",
+        planned_index_manifest_path=tmp_path / "usb" / "mercury_manifests" / "database_transfer_manifest.json",
+        planned_index_runbook_path=tmp_path / "usb" / "mercury_runbooks" / "database_transfer_runbook.md",
+        source_count=1,
+        verified_count=1,
+        missing_count=0,
+        failed_count=0,
+        entries=[
+            DatabaseBundleEntry(
+                database="android_permission_intel",
+                role="shared",
+                protection_status="verified",
+                backup_id="android-full-1",
+                backup_directory=str(tmp_path / "backups" / "android_permission_intel"),
+                planned_manifest_path=tmp_path / "usb" / "mercury_manifests" / "android.db_manifest.json",
+                planned_runbook_path=tmp_path / "usb" / "mercury_runbooks" / "android.restore.md",
+            )
+        ],
+        warnings=[],
+    )
+    print_database_bundle_plan(plan, executed=False)
+    out = capsys.readouterr().out
+    assert "State root" in out
+    assert "State ops" in out

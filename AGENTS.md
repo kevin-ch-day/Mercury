@@ -90,7 +90,7 @@ src/mercury/
 
 Policy constants: `src/mercury/core/safety.py`. Execution gates: `src/mercury/core/execution_policy.py`.
 
-**Terminal theme:** Mercury uses a restrained semantic terminal theme via `mercury.terminal.theme` and Rich-backed `mercury.core.output`. The main menu is a cleaner operator console with explicit Environment, Execution Safety, Backup Storage, Protection, and Actions sections. Colors apply on TTY stdout only. Disable with `NO_COLOR` or `MERCURY_NO_COLOR=1`; force with `MERCURY_FORCE_COLOR=1` (overrides `NO_COLOR`).
+**Terminal theme:** Mercury uses a restrained semantic terminal theme via `mercury.terminal.theme` and Rich-backed `mercury.core.output`. The main menu is a plain operator console with a compact status summary and workflow-focused action list. Colors apply on TTY stdout only. Disable with `NO_COLOR` or `MERCURY_NO_COLOR=1`; force with `MERCURY_FORCE_COLOR=1` (overrides `NO_COLOR`).
 
 ```bash
 python -m venv .venv

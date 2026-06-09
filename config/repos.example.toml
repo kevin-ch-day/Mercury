@@ -30,7 +30,3 @@ path = "/home/secadmin/Laughlin/GitHub/obsidiandroid"
 [repos.fedora_linux_scripts]
 display_name = "Fedora Linux Scripts"
 path = "/home/secadmin/Laughlin/GitHub/fedora-linux-scripts"
-
-[repos.linux_scripts]
-display_name = "Linux Scripts"
-path = "/home/secadmin/Laughlin/GitHub/Linux-Scripts"

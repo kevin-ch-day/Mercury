@@ -26,6 +26,9 @@ backups/
 logs/*
 !logs/.gitkeep
 
+data/*
+!data/README.md
+
 *.log
 .DS_Store
 Thumbs.db

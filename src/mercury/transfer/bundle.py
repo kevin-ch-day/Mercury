@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import socket
 
 from pydantic import BaseModel, Field
 
@@ -38,21 +39,33 @@ class TransferRepoEntry(BaseModel):
     untracked_count: int
     ahead_count: int | None = None
     behind_count: int | None = None
+    bundle_path: str | None = None
+    repo_manifest_path: str | None = None
+    repo_runbook_path: str | None = None
+    bundle_verified: bool = False
+    bundle_size_bytes: int | None = None
+    warning: str | None = None
     error: str | None = None
 
 
 class TransferBundle(BaseModel):
     generated_at: str
+    host: str
     mode: str
     backup_root: str
+    required_usb_mount: str
     manifest_dir: str
     runbook_dir: str
     database_entries: list[TransferDatabaseEntry] = Field(default_factory=list)
     repo_entries: list[TransferRepoEntry] = Field(default_factory=list)
     ready_sync_pairs: int = 0
     blocked_sync_pairs: int = 0
+    dirty_repo_names: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
     transfer_manifest_path: str
     transfer_runbook_path: str
+    latest_transfer_manifest_path: str | None = None
+    latest_transfer_runbook_path: str | None = None
 
 
 def _transfer_output_paths(settings: RepoBundleSettings, stamp: str) -> tuple[Path, Path]:
@@ -71,6 +84,28 @@ def _ensure_usb_path(path: Path) -> None:
         raise ValueError(f"required USB mount is not active: {REQUIRED_BACKUP_MOUNT}")
 
 
+def _latest_transfer_artifact(directory: Path, pattern: str) -> Path | None:
+    candidates = sorted(directory.glob(pattern))
+    return candidates[-1] if candidates else None
+
+
+def _latest_repo_manifest_entries(manifest_dir: Path) -> dict[str, dict[str, object]]:
+    latest: dict[str, dict[str, object]] = {}
+    for path in sorted(manifest_dir.glob("*/*.repo_manifest.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        repo_key = str(payload.get("repo_key") or "").strip()
+        if not repo_key:
+            continue
+        generated_at = str(payload.get("generated_at") or "")
+        existing = latest.get(repo_key)
+        if existing is None or generated_at >= str(existing.get("generated_at") or ""):
+            latest[repo_key] = payload
+    return latest
+
+
 def build_transfer_bundle(*, live: bool = False) -> TransferBundle:
     policy = load_execution_policy()
     settings = load_repo_bundle_settings()
@@ -79,6 +114,7 @@ def build_transfer_bundle(*, live: bool = False) -> TransferBundle:
     backup_list = build_on_disk_backup_list(policy.backup_root)
     latest_by_database = {record.database: record for record in latest_records_by_database(backup_list)}
     repo_statuses = inspect_repositories(load_repo_definitions())
+    latest_repo_manifests = _latest_repo_manifest_entries(settings.manifest_dir)
 
     database_entries: list[TransferDatabaseEntry] = []
     for database in protection.protected:
@@ -100,38 +136,67 @@ def build_transfer_bundle(*, live: bool = False) -> TransferBundle:
             )
         )
 
-    repo_entries = [
-        TransferRepoEntry(
-            repo_key=status.key,
-            repo_name=status.display_name,
-            repo_path=str(status.path),
-            branch=status.branch,
-            commit=status.commit,
-            remote_url=status.remote_url,
-            dirty=status.dirty,
-            untracked_count=status.untracked_count,
-            ahead_count=status.ahead_count,
-            behind_count=status.behind_count,
-            error=status.error,
+    repo_entries: list[TransferRepoEntry] = []
+    dirty_repo_names: list[str] = []
+    for status in repo_statuses:
+        manifest_payload = latest_repo_manifests.get(status.key, {})
+        warning = None
+        if status.dirty:
+            dirty_repo_names.append(status.display_name)
+            warning = (
+                "Repository was dirty at bundle time. Git bundles contain committed history only; "
+                "uncommitted changes are not included."
+            )
+        repo_entries.append(
+            TransferRepoEntry(
+                repo_key=status.key,
+                repo_name=status.display_name,
+                repo_path=str(status.path),
+                branch=status.branch,
+                commit=status.commit,
+                remote_url=status.remote_url,
+                dirty=status.dirty,
+                untracked_count=status.untracked_count,
+                ahead_count=status.ahead_count,
+                behind_count=status.behind_count,
+                bundle_path=manifest_payload.get("bundle_path"),
+                repo_manifest_path=manifest_payload.get("manifest_path"),
+                repo_runbook_path=manifest_payload.get("runbook_path"),
+                bundle_verified=bool(manifest_payload.get("bundle_verified", False)),
+                bundle_size_bytes=manifest_payload.get("bundle_size_bytes"),
+                warning=warning,
+                error=status.error,
+            )
         )
-        for status in repo_statuses
-    ]
 
     now = datetime.now(timezone.utc)
     stamp = now.strftime("%Y%m%d_%H%M%S")
     manifest_path, runbook_path = _transfer_output_paths(settings, stamp)
+    latest_transfer_manifest = _latest_transfer_artifact(settings.manifest_dir, "transfer_manifest_*.json")
+    latest_transfer_runbook = _latest_transfer_artifact(settings.runbook_dir, "transfer_runbook_*.md")
+    warnings: list[str] = []
+    if dirty_repo_names:
+        warnings.append(
+            "Dirty repos not fully captured by Git bundles: " + ", ".join(dirty_repo_names)
+        )
     return TransferBundle(
         generated_at=now.isoformat(),
+        host=socket.gethostname(),
         mode="live" if live else "seed",
         backup_root=str(policy.backup_root),
+        required_usb_mount=str(REQUIRED_BACKUP_MOUNT),
         manifest_dir=str(settings.manifest_dir),
         runbook_dir=str(settings.runbook_dir),
         database_entries=database_entries,
         repo_entries=repo_entries,
         ready_sync_pairs=readiness.ready_count,
         blocked_sync_pairs=readiness.blocked_count,
+        dirty_repo_names=dirty_repo_names,
+        warnings=warnings,
         transfer_manifest_path=str(manifest_path),
         transfer_runbook_path=str(runbook_path),
+        latest_transfer_manifest_path=str(latest_transfer_manifest) if latest_transfer_manifest else None,
+        latest_transfer_runbook_path=str(latest_transfer_runbook) if latest_transfer_runbook else None,
     )
 
 
@@ -140,8 +205,12 @@ def _runbook_text(bundle: TransferBundle) -> str:
         "# Mercury transfer runbook",
         "",
         f"Generated: {bundle.generated_at}",
+        f"Host: {bundle.host}",
         f"Mode: {bundle.mode}",
+        f"USB mount: {bundle.required_usb_mount}",
         f"Database backup root: {bundle.backup_root}",
+        f"Manifest dir: {bundle.manifest_dir}",
+        f"Runbook dir: {bundle.runbook_dir}",
         "",
         "Database restore inputs:",
     ]
@@ -173,12 +242,17 @@ def _runbook_text(bundle: TransferBundle) -> str:
                 f"  commit: {entry.commit}",
                 f"  remote: {entry.remote_url}",
                 f"  worktree: {state}",
+                f"  bundle: {entry.bundle_path or 'missing'}",
+                f"  bundle_verified: {entry.bundle_verified}",
             ]
         )
+        if entry.warning:
+            lines.append(f"  warning: {entry.warning}")
     lines.extend(
         [
             "",
             f"Prod-to-dev sync readiness: {bundle.ready_sync_pairs} ready, {bundle.blocked_sync_pairs} blocked",
+            "Actual sync: deferred",
             "",
             "Notes:",
             "- Database restore-check uses temporary _restorecheck_* databases only.",
@@ -187,6 +261,10 @@ def _runbook_text(bundle: TransferBundle) -> str:
             "",
         ]
     )
+    if bundle.warnings:
+        lines.extend(["Warnings:"])
+        lines.extend([f"- {warning}" for warning in bundle.warnings])
+        lines.append("")
     return "\n".join(lines)
 
 
@@ -199,4 +277,7 @@ def write_transfer_bundle(bundle: TransferBundle) -> TransferBundle:
     runbook_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(bundle.model_dump_json(indent=2) + "\n", encoding="utf-8")
     runbook_path.write_text(_runbook_text(bundle), encoding="utf-8")
+    from mercury.state.ledger import record_transfer_bundle_written
+
+    record_transfer_bundle_written(bundle)
     return bundle

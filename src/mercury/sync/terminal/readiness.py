@@ -3,6 +3,7 @@
 from mercury import output
 from mercury.database.core import shared_authority_note
 from mercury.terminal import screen as display_screen
+from mercury.terminal.table import Table, TableStyle
 from mercury.sync.readiness import SyncReadinessReport
 
 
@@ -54,12 +55,14 @@ def print_sync_readiness_report(
             )
             rows.append([database, status, reason])
         display_screen.write_blank()
-        display_screen.write_compact_table(
+        table = Table.from_headers(
             ["DATABASE", "STATUS", "REASON"],
             rows,
+            style=TableStyle(indent=0),
             min_col_widths=[24, 8, 24],
             max_col_widths=[28, 12, 40],
         )
+        display_screen.write_structured_table(table)
         return
 
     output.heading("SYNC READINESS (verified source backup required)")

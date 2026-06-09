@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from mercury import output
 from mercury.menu import main_display as menu_display
-from mercury.terminal import screen as display_screen
 
 # Re-export for tests and backward compatibility.
 MENU_TITLE = menu_display.MENU_TITLE
@@ -36,33 +34,9 @@ def run_verify_plan() -> None:
 
 
 def run_reports_and_history() -> None:
-    from mercury.core.execution_policy import load_execution_policy
-    from mercury.core.runtime import should_probe_database_status
-    from mercury.reporting.protection import build_protection_report, print_protection_report
-    from mercury.database import MariaDbConfigError, MariaDbLiveError
-    from mercury.backup.on_disk_index import build_on_disk_backup_list
-    from mercury.backup.terminal.verify import print_on_disk_backup_list
+    from mercury.reporting.interactive_menu import run_reports_menu
 
-    policy = load_execution_policy()
-    backup_list = build_on_disk_backup_list(policy.backup_root)
-    print_on_disk_backup_list(backup_list, compact=True, menu=True)
-    display_screen.write_blank()
-
-    live = should_probe_database_status()
-    try:
-        print_protection_report(build_protection_report(live=live), compact=True)
-    except (MariaDbConfigError, MariaDbLiveError) as exc:
-        menu_display.write_status("warn", f"Live report unavailable: {exc}")
-        display_screen.write_blank()
-        print_protection_report(build_protection_report(), compact=True)
-    except Exception as exc:
-        menu_display.write_status("fail", f"Report failed: {exc}")
-        display_screen.write_blank()
-        print_protection_report(build_protection_report(), compact=True)
-
-    from mercury.menu import prompts as menu_prompts
-
-    menu_prompts.wait_for_continue()
+    run_reports_menu()
 
 
 def run_sync_plan() -> None:

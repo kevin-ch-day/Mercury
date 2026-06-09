@@ -21,7 +21,6 @@ DEFAULT_LOCAL_REPO_CANDIDATES: list[tuple[str, str, str]] = [
     ("scytaledroid_web", "ScytaleDroid Web", "/var/www/html/ScytaleDroid-Web"),
     ("obsidiandroid", "ObsidianDroid", "/home/secadmin/Laughlin/GitHub/obsidiandroid"),
     ("fedora_linux_scripts", "Fedora Linux Scripts", "/home/secadmin/Laughlin/GitHub/fedora-linux-scripts"),
-    ("linux_scripts", "Linux Scripts", "/home/secadmin/Laughlin/GitHub/Linux-Scripts"),
 ]
 
 

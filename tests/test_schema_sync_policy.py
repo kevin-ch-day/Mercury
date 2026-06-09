@@ -21,6 +21,7 @@ def test_sync_plan_requires_confirmation_phrase() -> None:
     assert plan.enabled is False
     assert plan.confirmation_phrase == SYNC_DEV_CONFIRMATION_PHRASE
     assert any(e.source == "erebus_threat_intel_prod" for e in plan.entries)
+    assert any("Sync execution remains gated" in note for note in plan.notes)
 
 
 def test_sync_plan_all_catalog_pairs_have_dev() -> None:
