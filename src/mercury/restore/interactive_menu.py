@@ -1,4 +1,4 @@
-"""Interactive restore-check menu (option 3)."""
+"""Interactive restore-check menu inside the backup operations lane."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from mercury.restore.terminal.check import print_restore_check_plans
 from mercury.restore.restore_runner import execute_restore_into_database
 from mercury.restore.terminal.runner import print_restore_execution_result
 
-RESTORE_SCREEN_TITLE = "Restore-check Backup"
+RESTORE_SCREEN_TITLE = "Restore-check Operations"
 
 
 def read_restore_choice() -> str | None:
@@ -47,16 +47,16 @@ def _render_restore_screen(plans, *, show_title: bool) -> None:
     else:
         print_restore_check_plans(plans, compact=True, menu=True)
     display_screen.write_blank()
-    options: list[tuple[str, str]] = [("1", "Rescan plans")]
+    options: list[tuple[str, str]] = [("1", "Refresh")]
     if _allowed_plans(plans):
         policy = load_execution_policy()
-        label = "Run allowed restore checks"
+        label = "Run restore-checks"
         if not policy.live_execution_allowed():
             label = f"{label} (live mode required)"
         options.append(("2", label))
     restorecheck_count = len(_restorecheck_names_on_server())
     if restorecheck_count:
-        options.append(("3", f"Clean up restore-check databases ({restorecheck_count})"))
+        options.append(("3", f"Clean up temp restore-check databases ({restorecheck_count})"))
     render_submenu(options)
 
 

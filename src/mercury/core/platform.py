@@ -38,7 +38,7 @@ class PlatformInfo:
 
     @property
     def allows_live_execution(self) -> bool:
-        return not self.is_windows
+        return self.is_fedora
 
     @property
     def operator_note(self) -> str:

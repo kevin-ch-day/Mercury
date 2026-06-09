@@ -1,26 +1,36 @@
-# Copy to config/repos.toml and adjust paths for your Fedora workspace.
+# Copy to config/repos.toml or run:
+#   mercury repo init-config
+#
 # Mercury reads repo metadata only. Repo bundle creation is explicit and never commits or pushes.
 
 [repos.mercury]
 display_name = "Mercury"
-path = "~/Laughlin/GitHub/Mercury"
+path = "/home/secadmin/Laughlin/GitHub/Mercury"
 
-[repos.erebus]
-display_name = "Erebus"
-path = "~/Laughlin/GitHub/Erebus"
+[repos.erebus_engine]
+display_name = "Erebus Engine"
+path = "/home/secadmin/Laughlin/GitHub/erebus-engine-fedora"
 
 [repos.erebus_web]
 display_name = "Erebus Web"
-path = "~/Laughlin/GitHub/Erebus-Web"
+path = "/var/www/html/erebus-web"
 
 [repos.scytaledroid]
 display_name = "ScytaleDroid"
-path = "~/Laughlin/GitHub/ScytaleDroid"
+path = "/home/secadmin/Laughlin/GitHub/ScytaleDroid"
 
 [repos.scytaledroid_web]
 display_name = "ScytaleDroid Web"
-path = "~/Laughlin/GitHub/ScytaleDroid-Web"
+path = "/var/www/html/ScytaleDroid-Web"
 
 [repos.obsidiandroid]
 display_name = "ObsidianDroid"
-path = "~/Laughlin/GitHub/ObsidianDroid"
+path = "/home/secadmin/Laughlin/GitHub/obsidiandroid"
+
+[repos.fedora_linux_scripts]
+display_name = "Fedora Linux Scripts"
+path = "/home/secadmin/Laughlin/GitHub/fedora-linux-scripts"
+
+[repos.linux_scripts]
+display_name = "Linux Scripts"
+path = "/home/secadmin/Laughlin/GitHub/Linux-Scripts"

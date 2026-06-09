@@ -1,4 +1,4 @@
-"""Tests for Mercury repository status and bundle planning."""
+"""Tests for Mercury repository status, config seeding, and bundle planning."""
 
 from __future__ import annotations
 
@@ -10,7 +10,14 @@ import subprocess
 import pytest
 
 from mercury.repo.bundle import build_repo_bundle_plan, execute_repo_bundle_plan
-from mercury.repo.config import RepoBundleSettings, RepoDefinition, RepoSelectionError, select_repo_definitions
+from mercury.repo.config import (
+    RepoBundleSettings,
+    RepoDefinition,
+    RepoSelectionError,
+    render_repo_config,
+    select_repo_definitions,
+    write_local_repo_config,
+)
 from mercury.repo.status import inspect_repositories, summarize_repo_statuses
 
 
@@ -144,3 +151,43 @@ def test_summarize_repo_statuses_counts_states(tmp_path: Path) -> None:
     assert summary.clean == 1
     assert summary.dirty == 1
     assert summary.errors == 0
+
+
+def test_render_repo_config_contains_expected_entries(tmp_path: Path) -> None:
+    definitions = [
+        RepoDefinition(key="mercury", display_name="Mercury", path=tmp_path / "Mercury"),
+        RepoDefinition(key="erebus_engine", display_name="Erebus Engine", path=tmp_path / "erebus"),
+    ]
+    text = render_repo_config(definitions)
+    assert "[repos.mercury]" in text
+    assert 'display_name = "Mercury"' in text
+    assert f'path = "{tmp_path / "Mercury"}"' in text
+    assert "[repos.erebus_engine]" in text
+
+
+def test_write_local_repo_config_writes_existing_known_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mercury_repo = tmp_path / "Mercury"
+    scripts_repo = tmp_path / "Linux-Scripts"
+    mercury_repo.mkdir()
+    scripts_repo.mkdir()
+    monkeypatch.setattr(
+        "mercury.repo.config.DEFAULT_LOCAL_REPO_CANDIDATES",
+        [
+            ("mercury", "Mercury", str(mercury_repo)),
+            ("linux_scripts", "Linux Scripts", str(scripts_repo)),
+            ("missing_repo", "Missing Repo", str(tmp_path / "missing")),
+        ],
+    )
+
+    destination = tmp_path / "config" / "repos.toml"
+    written_path, definitions = write_local_repo_config(path=destination)
+    assert written_path == destination
+    assert destination.exists()
+    assert [definition.key for definition in definitions] == ["mercury", "linux_scripts"]
+    text = destination.read_text(encoding="utf-8")
+    assert "[repos.mercury]" in text
+    assert "[repos.linux_scripts]" in text
+    assert "missing_repo" not in text

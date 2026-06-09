@@ -46,4 +46,4 @@ Mercury is a **Fedora-first operations utility** for the Android security resear
 - `mercury backup verify --latest`  
 - `mercury sync-dev --source <prod> --target <dev>` — requires `SYNC DEV` confirmation  
 
-Windows is for seed development only.
+Windows and non-Fedora Linux are for seed development/status only. Live Mercury operations are Fedora-only.

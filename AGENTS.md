@@ -26,7 +26,7 @@ Mercury is a **Fedora-first Python CLI** for MariaDB backup, disaster recovery, 
 
 It is **not** an AI tool, web app, malware analyzer, or workstation/bootstrap utility.
 
-**Production target:** Fedora/Linux. Windows is acceptable for seed development only.
+**Production target:** Fedora for live operations. Windows and non-Fedora Linux are acceptable for seed planning/development only.
 
 ## Non-negotiable safety policy
 
@@ -53,6 +53,7 @@ Policy constants live in `src/mercury/core/safety.py`. Execution gates live in `
 - Backup **execution** exists but is gated (`backup run --execute` requires `dry_run=false` and `live_actions_enabled=true`).
 - Prod→dev **sync execution** and restore-check execution exist but are gated the same way (`sync run --execute`, `restore-check run --execute`).
 - Menu and CLI default to dry-run; live writes require explicit policy in `config/local.toml` or env vars.
+- Live execution is Fedora-only; unsupported hosts remain seed/status only even when dry-run is disabled.
 
 ## Repository layout
 
@@ -134,7 +135,8 @@ Classification: `src/mercury/database/core/classifier.py`
 ## Configuration
 
 ```bash
-mercury config init   # copies example → config/local.toml, config/databases.toml
+mercury config init   # copies example → config/local.toml, config/databases.toml, config/repos.toml
+mercury repo init-config   # writes config/repos.toml from known Fedora desktop repo paths
 ```
 
 **Live read-only access (local Fedora socket example):**

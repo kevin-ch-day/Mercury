@@ -4,7 +4,7 @@
 
 For the current Fedora milestone, it protects the active source databases `android_permission_intel`, `erebus_threat_intel_prod`, and `scytaledroid_core_prod`, manages the dev sync targets `erebus_threat_intel_dev` and `scytaledroid_core_dev` as disposable refresh targets, and can inventory configured Git repositories plus write explicit Git bundles to the USB transfer media. It is not an AI tool, web app, or workstation rebuild utility.
 
-Windows is for **seed development** only; production use targets **Fedora**.
+Windows and non-Fedora Linux are for **seed planning / development** only; live Mercury operations target **Fedora**.
 
 ## Hard policy
 
@@ -87,8 +87,11 @@ mercury backup plan [--demo]             # live inventory when configured
 mercury backup schema-plan [--demo]
 mercury backup run --db <prod> --kind full|schema_only [--execute]
 mercury backup batch [--kind full|schema_only] [--execute] [--demo]
+mercury backup all [--kind full|schema_only] [--execute] [--demo]
 mercury backup verify --db <prod> [--path DIR] [--update-manifest]
 mercury backup verify-all [--update-manifest] [--demo]
+mercury backup status [--db <source>] [--demo]
+mercury backup bundle [--db <source>] [--demo] [--execute]
 mercury backup verify-plan --demo
 mercury backup manifest-preview --db <prod> --kind full|schema_only
 mercury backup list [--demo]
@@ -96,7 +99,12 @@ mercury report preview --db <prod> --kind full|schema_only
 ```
 
 `backup run --execute` and `backup batch --execute` require `[mercury] dry_run = false` and `live_actions_enabled = true` in `config/local.toml`.
-For the current Fedora milestone, live backup execution also requires the mounted USB-backed root under `/mnt/MERCURY_DATA_USB/mercury_backups`; repo-local `backups/` remains development-only and does not count as production protection in live/operator mode.
+For the current Fedora milestone, live backup execution also requires:
+- Fedora as the runtime host
+- the mounted USB-backed root under `/mnt/MERCURY_DATA_USB/mercury_backups`
+
+Repo-local `backups/` remains development-only and does not count as production protection in live/operator mode.
+`backup status` reports the latest protection state for active source databases using on-disk manifests and verification checks. `backup bundle --execute` writes database transfer manifests and restore notes to the configured USB-backed manifest/runbook paths.
 
 ### Sync
 
@@ -112,11 +120,12 @@ mercury sync all [--live] [--execute] [--yes]
 ### Repository transfer
 
 ```bash
+mercury repo init-config [--force]
 mercury repo status [--verbose]
 mercury repo bundle [--repo mercury] [--execute]
 ```
 
-`repo status` is read-only and reports configured repo path, branch, commit, remote, clean/dirty state, untracked count, and upstream ahead/behind status when available. `repo bundle --execute` writes Git bundles plus repo manifests and short restore notes under the USB-backed paths configured in `config/local.toml`.
+`repo init-config` writes `config/repos.toml` from the known Fedora desktop repo paths. `repo status` is read-only and reports configured repo path, branch, commit, remote, clean/dirty state, untracked count, and upstream ahead/behind status when available. `repo bundle --execute` writes Git bundles plus repo manifests and short restore notes under the USB-backed paths configured in `config/local.toml`.
 
 ### Combined transfer
 

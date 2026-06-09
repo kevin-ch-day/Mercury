@@ -54,4 +54,5 @@ For live execution, Mercury requires:
 
 - `[mercury] dry_run = false`
 - `[mercury] live_actions_enabled = true`
+- a Fedora runtime host
 - a mounted USB-backed root under `/mnt/MERCURY_DATA_USB/mercury_backups`

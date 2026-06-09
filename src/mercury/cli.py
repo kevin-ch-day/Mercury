@@ -293,6 +293,33 @@ def repo_status_cmd(
     print_repo_statuses(inspect_repositories(definitions), verbose=verbose)
 
 
+@repo_app.command("init-config")
+def repo_init_config_cmd(
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Overwrite config/repos.toml when it already exists.",
+    ),
+) -> None:
+    """Write config/repos.toml from the known local Fedora repo paths."""
+    from mercury.repo import write_local_repo_config
+
+    try:
+        path, definitions = write_local_repo_config(force=force)
+    except FileExistsError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+
+    output.write(f"Wrote: {path}")
+    output.write(f"Configured repositories: {len(definitions)}")
+    if definitions:
+        output.write("")
+        for definition in definitions:
+            output.write(f"- {definition.display_name}: {definition.path}")
+    else:
+        output.write("No known local repository paths were found.")
+
+
 @repo_app.command("bundle")
 def repo_bundle_cmd(
     repo: list[str] = typer.Option(

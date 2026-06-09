@@ -43,6 +43,26 @@ def test_execution_policy_refuses_live_windows(monkeypatch: pytest.MonkeyPatch, 
     assert "not supported on Windows" in (policy.refusal_reason() or "")
 
 
+def test_execution_policy_refuses_live_non_fedora_linux(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        "mercury.core.execution_policy.detect_platform",
+        lambda: PlatformInfo(system="Linux", release="6.9", distro_id="ubuntu", distro_name="Ubuntu"),
+    )
+    policy = ExecutionPolicy(
+        dry_run=False,
+        live_actions_enabled=True,
+        backup_root=tmp_path,
+        config_path=tmp_path / "local.toml",
+    )
+    assert policy.live_execution_allowed() is False
+    reason = policy.refusal_reason() or ""
+    assert "supported only on Fedora" in reason
+    assert "Ubuntu" in reason
+
+
 def test_probe_environment_exposes_platform_support(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "mercury.env.probe.detect_platform",

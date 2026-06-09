@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from datetime import datetime
 
 from mercury import output
 from mercury.menu import main_display as menu_display
@@ -12,12 +13,12 @@ from mercury.backup.batch_runner import run_backup_batch
 from mercury.backup import (
     build_backup_status_report,
     build_database_bundle_plan,
-    print_backup_status_report,
     write_database_bundle_plan,
 )
 from mercury.backup.terminal.batch import print_backup_batch_result
 from mercury.backup.terminal.bundle import print_database_bundle_plan
 from mercury.backup.terminal.verify import print_verify_menu_summary, run_verify_all_for_menu
+from mercury.backup.on_disk_index import build_on_disk_backup_list, latest_records_by_database
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.runtime import should_probe_database_status
 from mercury.core.safety import BACKUP_KIND_FULL
@@ -27,6 +28,7 @@ from mercury.database.discovery import discover, discover_demo
 from mercury.database.core.classifier import DatabaseRole, classify_database
 from mercury.database.prod_dev_pairs import build_prod_dev_pairs
 from mercury.menu.subscreen import pause_and_redraw, read_submenu_choice, render_submenu
+from mercury.restore.interactive_menu import run_restore_menu
 
 BACKUP_SCREEN_TITLE = "Backup Operations"
 
@@ -76,22 +78,53 @@ def _storage_usage_fields(policy) -> dict[str, str]:
     return fields
 
 
-def _plan_rows(plan: BackupPlanDryRun) -> list[list[str]]:
-    rows: list[list[str]] = []
+def _format_last_backup(created_at: str | None) -> str:
+    if not created_at:
+        return "-"
+    try:
+        instant = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    except ValueError:
+        return created_at
+    return instant.strftime("%Y-%m-%d %H:%M")
+
+
+def _backup_screen_rows(plan: BackupPlanDryRun) -> list[list[str]]:
     in_scope_names = [entry.name for entry in plan.classifications]
     pairs = build_prod_dev_pairs(in_scope_names)
     paired_prod_names = {pair.prod for pair in pairs}
     paired_dev_names = {pair.expected_dev for pair in pairs}
+    latest_records = {
+        record.database: record
+        for record in latest_records_by_database(
+            build_on_disk_backup_list(load_execution_policy().backup_root)
+        )
+    }
+    status_entries = {
+        entry.database: entry
+        for entry in build_backup_status_report(live=should_probe_database_status()).entries
+    }
+
+    rows: list[list[str]] = []
 
     for name in sorted(plan.backup_sources):
         classification = classify_database(name)
         if classification.role == DatabaseRole.SHARED_AUTHORITY:
-            rows.append([name, "backup", "n/a"])
+            entry = status_entries.get(name)
+            record = latest_records.get(name)
+            status = "current" if entry and entry.protection_status == "verified" else (
+                "missing" if entry and entry.protection_status == "missing" else "warning"
+            )
+            rows.append([name, status, _format_last_backup(record.created_at if record else None), "n/a"])
 
     for pair in pairs:
-        rows.append([pair.prod, "backup", pair.expected_dev])
+        entry = status_entries.get(pair.prod)
+        record = latest_records.get(pair.prod)
+        status = "current" if entry and entry.protection_status == "verified" else (
+            "missing" if entry and entry.protection_status == "missing" else "warning"
+        )
+        rows.append([pair.prod, status, _format_last_backup(record.created_at if record else None), pair.expected_dev])
         if pair.dev_listed:
-            rows.append([pair.expected_dev, "skip", "refresh target"])
+            rows.append([pair.expected_dev, "skip", "-", "refresh target"])
 
     # Fallback for any unexpected in-scope dev exclusions not covered by pair logic.
     extra_dev_targets = sorted(
@@ -102,7 +135,7 @@ def _plan_rows(plan: BackupPlanDryRun) -> list[list[str]]:
         and item.name not in paired_dev_names
     )
     for name in extra_dev_targets:
-        rows.append([name, "skip", "refresh target"])
+        rows.append([name, "skip", "-", "refresh target"])
 
     extra_prod_sources = sorted(
         name
@@ -110,7 +143,12 @@ def _plan_rows(plan: BackupPlanDryRun) -> list[list[str]]:
         if classify_database(name).role == DatabaseRole.PRODUCTION and name not in paired_prod_names
     )
     for name in extra_prod_sources:
-        rows.append([name, "backup", "n/a"])
+        entry = status_entries.get(name)
+        record = latest_records.get(name)
+        status = "current" if entry and entry.protection_status == "verified" else (
+            "missing" if entry and entry.protection_status == "missing" else "warning"
+        )
+        rows.append([name, status, _format_last_backup(record.created_at if record else None), "n/a"])
 
     return rows
 
@@ -129,19 +167,19 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
         _storage_usage_fields(policy)
     )
     display_screen.write_blank()
-    rows = _plan_rows(plan)
+    rows = _backup_screen_rows(plan)
     if rows:
         display_screen.write_compact_table(
-            ["DATABASE PAIR / SOURCE", "PLAN", "TARGET"],
+            ["DATABASE", "STATUS", "LAST BACKUP", "TARGET"],
             rows,
-            min_col_widths=[30, 8, 14],
+            min_col_widths=[30, 8, 16, 14],
         )
     else:
         display_screen.write_status("warn", "No databases in active backup scope.")
     options: list[tuple[str, str]] = [
         ("1", "Refresh"),
         ("3", "Verify source backups"),
-        ("4", "Show backup status"),
+        ("4", "Restore-check source backups"),
         ("5", "Write DB bundle and runbooks"),
     ]
     if plan.backup_sources:
@@ -173,11 +211,6 @@ def _run_verify_sources() -> None:
         f"Verified {summary.verified}, missing {summary.missing}, failed {summary.failed}. "
         "Manifests updated where verification passed."
     )
-
-
-def _show_backup_status() -> None:
-    report = build_backup_status_report(live=should_probe_database_status())
-    print_backup_status_report(report)
 
 
 def _write_backup_bundle() -> None:
@@ -226,7 +259,7 @@ def run_backup_menu(*, interactive: bool = True) -> None:
             continue
 
         if choice == "4":
-            _show_backup_status()
+            run_restore_menu()
             show_title = pause_and_redraw()
             continue
 

@@ -91,18 +91,11 @@ MENU_SECTIONS: list[tuple[str, list[MenuItem]]] = [
         "Core workflows",
         [
             MenuItem("1", "Backup source databases"),
-            MenuItem("2", "Verify backups"),
-            MenuItem("3", "Restore-check backup"),
-            MenuItem("4", "Sync production to development"),
-            MenuItem("5", "Reports and backup history"),
-        ],
-    ),
-    (
-        "Diagnostics",
-        [
-            MenuItem("6", "Environment details"),
-            MenuItem("7", "Database inventory"),
-            MenuItem("8", "Live mode guide"),
+            MenuItem("2", "Sync production to development"),
+            MenuItem("3", "Reports and backup history"),
+            MenuItem("4", "Environment details"),
+            MenuItem("5", "Database inventory"),
+            MenuItem("6", "Live mode guide"),
         ],
     ),
 ]

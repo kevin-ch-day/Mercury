@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,6 +22,7 @@ from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
 from mercury.core.paths import REPO_ROOT
 from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY, LIVE_ACTIONS_ENABLED
 from mercury.backup.verification import verify_backup_artifacts
+from tests.conftest import run_cli
 
 FIXED_DATE = "2026-05-30"
 FIXED_TS = "20260530_120000"
@@ -442,18 +441,8 @@ def test_manifest_sha256_matches_artifact(tmp_path: Path) -> None:
     backup_dir = tmp_path / "backups" / FIXED_DATE / "erebus_threat_intel_prod"
     artifact = backup_dir / result.manifest.dump_file
     assert result.manifest.sha256 == sha256_file(artifact)
-
-
-def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, "-m", "mercury.cli", *args],
-        capture_output=True,
-        text=True,
-    )
-
-
 def test_cli_backup_run_dry_run_default() -> None:
-    result = _run_cli(
+    result = run_cli(
         "backup",
         "run",
         "--db",
@@ -467,7 +456,7 @@ def test_cli_backup_run_dry_run_default() -> None:
 
 
 def test_cli_backup_run_refuses_dev() -> None:
-    result = _run_cli(
+    result = run_cli(
         "backup",
         "run",
         "--db",
@@ -519,7 +508,7 @@ def test_cli_backup_run_labels_relative_backup_directory(tmp_path: Path) -> None
 
 
 def test_cli_backup_run_execute_refused_in_seed() -> None:
-    result = _run_cli(
+    result = run_cli(
         "backup",
         "run",
         "--db",

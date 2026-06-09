@@ -5,6 +5,7 @@ This repo is a **Fedora-first Python CLI** for MariaDB backup, DR, and prod→de
 ## Required reading
 
 1. **[AGENTS.md](../AGENTS.md)** — safety policy, layout, CLI, pitfalls (authoritative)
+   Compatibility note: some tools may discover the lowercase root file [agents.md](../agents.md), which points back to `AGENTS.md`.
 2. **[docs/ai_extension_points.md](../docs/ai_extension_points.md)** — recipes for CLI, backup, DB, tests
 
 ## Safety (never violate)
@@ -12,6 +13,7 @@ This repo is a **Fedora-first Python CLI** for MariaDB backup, DR, and prod→de
 - Backup only `*_prod` and `android_permission_intel`. Never `*_dev`.
 - Never drop/overwrite/restore into `*_prod`.
 - Dry-run default; live writes need explicit config gates.
+- Live execution is supported only on Fedora; Windows and non-Fedora Linux are seed/status only.
 - Live backup execution for the current Fedora milestone requires the mounted USB root under `/mnt/MERCURY_DATA_USB/mercury_backups`; repo-local backups do not count as production protection.
 - Live SQL: read-only only.
 

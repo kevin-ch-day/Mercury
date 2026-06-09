@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from mercury.core.execution_policy import ExecutionPolicy
+from mercury.core.platform import PlatformInfo
 from mercury.menu.dashboard import _sync_readiness_summary, dashboard_rows
 
 
@@ -43,6 +44,15 @@ def test_dashboard_rows_warn_on_repo_local_backup_root(monkeypatch) -> None:
     )
     rows = dashboard_rows(probe_database=False)
     assert any("repo-local fallback" in row for row in rows)
+
+
+def test_dashboard_rows_show_platform_when_not_fedora(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "mercury.menu.dashboard.detect_platform",
+        lambda: PlatformInfo(system="Windows", release="11"),
+    )
+    rows = dashboard_rows(probe_database=False)
+    assert any("Platform" in row and "Windows seed-only" in row for row in rows)
 
 
 def test_sync_readiness_summary_reports_none_verified() -> None:

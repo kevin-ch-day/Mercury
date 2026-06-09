@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@v4
@@ -23,7 +23,24 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install package
-        run: pip install -e ".[mariadb,dev]"
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
+          python -m pip install -e ".[mariadb,dev]"
+
+      - name: Check package metadata
+        run: python -m pip check
+
+      - name: Build distribution artifacts
+        run: python -m build
 
       - name: Run tests
         run: python -m pytest -q
+
+      - name: Smoke test CLI entrypoints
+        run: |
+          python -m mercury.cli --help
+          python -m mercury.cli backup --help
+          python -m mercury.cli sync --help
+          python -m mercury.cli repo --help
+          python -m mercury.cli transfer --help

@@ -56,22 +56,22 @@ def _ready_entries(report: SyncReadinessReport):
 def _sync_submenu_options(report: SyncReadinessReport) -> list[tuple[str, str]]:
     policy = load_execution_policy()
     live_allowed = policy.live_execution_allowed()
-    options: list[tuple[str, str]] = [("1", "Rescan readiness")]
+    options: list[tuple[str, str]] = [("1", "Recheck Database Sync Status")]
     if _blocked_prod_sources(report):
         label = "Prepare production backups"
         if not live_allowed:
             label = f"{label} (live mode required)"
         options.append(("2", label))
     if _ready_entries(report):
-        sync_label = f"Sync all ready pairs ({report.ready_count})"
+        sync_label = "Sync All Ready Databases"
         if not live_allowed:
             sync_label = f"{sync_label} (live mode required)"
-        options.append(("3", sync_label))
+        options.append(("2" if not _blocked_prod_sources(report) else "3", sync_label))
         if report.ready_count > 1:
-            single_label = "Sync one ready pair"
+            single_label = "Sync One Ready Pair"
             if not live_allowed:
                 single_label = f"{single_label} (live mode required)"
-            options.append(("4", single_label))
+            options.append(("3" if not _blocked_prod_sources(report) else "4", single_label))
     return options
 
 
@@ -82,7 +82,7 @@ def _render_sync_screen(report: SyncReadinessReport, *, show_title: bool) -> Non
     if not live_allowed and report.blocked_count > 0:
         display_screen.write_status(
             "warn",
-            "Live mode is required for backup preparation and sync. Open [8] Live mode guide from the main menu.",
+            "Live mode is required for backup preparation and sync. Open [6] Live mode guide from the main menu.",
         )
     print_sync_readiness_report(report, compact=True, menu=True)
     display_screen.write_blank()
@@ -111,8 +111,8 @@ def _prepare_production_backups(report: SyncReadinessReport) -> None:
         display_screen.write_summary("Result: dry-run only; no files were written.")
         display_screen.write_bullets(
             [
-                "Enable live mode: main menu [8] Live mode guide",
-                "Then run Prepare again here, verify with [2], and sync ready pairs",
+                "Enable live mode: main menu [6] Live mode guide",
+                "Then run Prepare again here, verify with [3], and sync ready pairs",
             ]
         )
         return
@@ -140,9 +140,7 @@ def _run_sync_for_ready(report: SyncReadinessReport) -> None:
     policy = load_execution_policy()
     execute = policy.live_execution_allowed()
     if execute:
-        display_screen.write_summary(
-            f"Ready to sync {len(ready)} pair(s). Type {SYNC_DEV_CONFIRMATION_PHRASE!r} to confirm."
-        )
+        display_screen.write_summary("This will overwrite development targets only.")
         if not menu_prompts.ask_confirmation_phrase(
             SYNC_DEV_CONFIRMATION_PHRASE,
             action="sync into dev",
@@ -228,19 +226,21 @@ def run_sync_menu(*, interactive: bool = True) -> None:
             show_title = pause_and_redraw()
             continue
 
-        if choice == "2":
+        blocked_present = bool(_blocked_prod_sources(report))
+
+        if choice == "2" and blocked_present:
             _prepare_production_backups(report)
             report = _refresh_report(report)
             show_title = pause_and_redraw()
             continue
 
-        if choice == "3":
+        if (choice == "2" and not blocked_present) or (choice == "3" and blocked_present):
             _run_sync_for_ready(report)
             report = _refresh_report(report)
             show_title = pause_and_redraw()
             continue
 
-        if choice == "4":
+        if (choice == "3" and not blocked_present) or (choice == "4" and blocked_present):
             _run_sync_for_one_ready(report)
             report = _refresh_report(report)
             show_title = pause_and_redraw()

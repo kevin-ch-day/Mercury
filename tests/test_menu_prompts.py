@@ -48,7 +48,8 @@ def test_normalize_menu_choice_maps_quit_aliases() -> None:
 def test_is_valid_menu_choice() -> None:
     assert menu_prompts.is_valid_menu_choice("0")
     assert menu_prompts.is_valid_menu_choice("q")
-    assert menu_prompts.is_valid_menu_choice("8")
+    assert menu_prompts.is_valid_menu_choice("6")
+    assert not menu_prompts.is_valid_menu_choice("8")
     assert not menu_prompts.is_valid_menu_choice("")
     assert not menu_prompts.is_valid_menu_choice("99")
 
@@ -114,11 +115,18 @@ def test_ask_yes_no_parses_answer() -> None:
 
 
 def test_ask_confirmation_phrase_exact_match() -> None:
-    menu_prompts.set_prompt_reader(lambda _prompt: "SYNC DEV")
+    seen: list[str] = []
+
+    def yes_reader(prompt: str) -> str:
+        seen.append(prompt)
+        return "SYNC DEV"
+
+    menu_prompts.set_prompt_reader(yes_reader)
     try:
         assert menu_prompts.ask_confirmation_phrase("SYNC DEV", action="sync") is True
     finally:
         menu_prompts.set_prompt_reader(None)
+    assert seen == ["\nConfirmation (sync) [SYNC DEV]: "]
 
     menu_prompts.set_prompt_reader(lambda _prompt: "sync dev")
     try:

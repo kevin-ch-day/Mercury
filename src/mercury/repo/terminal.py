@@ -18,7 +18,7 @@ def print_repo_statuses(statuses: list[RepoStatus], *, verbose: bool = False) ->
         }
     )
     if not statuses:
-        display_screen.write_status("warn", "No repositories configured. Run: mercury config init")
+        display_screen.write_status("warn", "No repositories configured. Run: mercury repo init-config")
         return
 
     rows: list[list[str]] = []

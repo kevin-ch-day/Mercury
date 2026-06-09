@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from mercury.core.execution_policy import load_execution_policy
+from mercury.core.platform import detect_platform
 from mercury.core.storage_status import (
     backup_root_summary_label,
     backup_root_storage_status_label,
@@ -24,6 +25,9 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
         dashboard_row("Execution mode", "LIVE" if policy.live_execution_allowed() else "DRY RUN"),
         dashboard_row("Backup target", backup_root_summary_label(policy)),
     ]
+    platform_info = detect_platform()
+    if not platform_info.is_fedora:
+        rows.append(dashboard_row("Platform", platform_info.support_label))
 
     if policy.backup_root_state() != "usb-mounted":
         rows.append(dashboard_row("Storage status", backup_root_storage_status_label(policy, styled=True)))

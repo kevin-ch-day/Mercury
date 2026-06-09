@@ -31,9 +31,9 @@ def print_restore_check_plans(
         blocked = len(plans) - ready
         display_screen.write_fields(
             {
-                "ready": ready,
-                "blocked": blocked,
-                "mode": "dry-run",
+                "Ready sources": ready,
+                "Blocked sources": blocked,
+                "Plan mode": "dry-run",
             }
         )
         rows: list[list[str]] = []

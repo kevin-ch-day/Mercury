@@ -1,37 +1,52 @@
 # Contributing to Mercury
 
-Thank you for contributing. Mercury protects production MariaDB databases on a security research platform — **safety rules are non-negotiable**.
+Mercury is a Fedora-first operations CLI for MariaDB backup, verification,
+restore-check, prod-to-dev sync, Git repo bundles, and transfer manifests.
 
-## Before you start
+Before opening a pull request, read:
 
-1. Read [AGENTS.md](AGENTS.md) — safety policy, layout, and agent workflow.
-2. For implementation recipes, see [docs/ai_extension_points.md](docs/ai_extension_points.md).
+- [AGENTS.md](./AGENTS.md)
+- [docs/ai_extension_points.md](./docs/ai_extension_points.md)
 
-## Development setup
+## Ground rules
+
+- Do not weaken production safety policy.
+- Do not add unrelated product scope such as web dashboards, AI features, or workstation bootstrap behavior.
+- Do not commit credentials or `config/local.toml`.
+- Keep live SQL read-only unless you are in an explicitly gated execution path that already exists.
+
+## Setup
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip install -e ".[mariadb,dev]"
-mercury config init   # creates gitignored local config
-python -m pytest
 ```
 
-Do **not** commit `config/local.toml`, `config/databases.toml`, or credentials.
+## Validation
+
+Run the full test suite before submitting:
+
+```bash
+.venv/bin/python -m pytest
+```
+
+Useful additional checks:
+
+```bash
+.venv/bin/python -m mercury.cli --help
+.venv/bin/python -m mercury.cli backup --help
+.venv/bin/python -m mercury.cli repo --help
+.venv/bin/python -m mercury.cli transfer --help
+```
 
 ## Pull requests
 
-- Keep diffs focused; match existing style.
-- Add or update tests for behavior changes.
-- Ensure `python -m pytest` passes locally.
-- Do not weaken production protection (`*_prod`, dry-run gates, read-only live SQL).
-- Update docs when changing CLI commands or policy behavior.
+Use the repository PR template and include:
 
-## Safety reminders
+- what changed
+- why it changed
+- safety impact
+- exact validation commands you ran
 
-- Backup sources: `*_prod` and `android_permission_intel` only.
-- Never back up `*_dev` by default; never restore into `*_prod`.
-- Live writes require explicit config gates (`dry_run=false` and `live_actions_enabled=true`).
-
-## Questions
-
-Open an issue on GitHub for bugs, feature requests, or policy questions.
+If the change touches backup, sync, restore, or execution policy, call that out explicitly in the PR summary.

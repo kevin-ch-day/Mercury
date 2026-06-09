@@ -19,23 +19,19 @@ def menu_actions() -> dict[str, MenuAction]:
     from mercury.menu.runners import (
         run_backup_batch_menu,
         run_reports_and_history,
-        run_restore_check_menu,
         run_sync_plan,
         run_discover_databases,
         run_environment_check,
         run_live_mode_guide,
-        run_verify_plan,
     )
 
     runners: dict[str, Callable[[], None]] = {
         "1": run_backup_batch_menu,
-        "2": run_verify_plan,
-        "3": run_restore_check_menu,
-        "4": run_sync_plan,
-        "5": run_reports_and_history,
-        "6": run_environment_check,
-        "7": run_discover_databases,
-        "8": run_live_mode_guide,
+        "2": run_sync_plan,
+        "3": run_reports_and_history,
+        "4": run_environment_check,
+        "5": run_discover_databases,
+        "6": run_live_mode_guide,
     }
     return {
         item.key: MenuAction(key=item.key, title=item.title, runner=runners[item.key])

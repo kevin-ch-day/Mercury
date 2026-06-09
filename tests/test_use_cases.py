@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -15,6 +13,7 @@ from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.restore.check_plan import build_restore_check_plan, planned_restore_check_name
 from mercury.sync.readiness import build_sync_readiness_report
 from mercury.core.paths import REPO_ROOT
+from tests.conftest import run_cli
 
 
 def test_resolve_batch_sources_includes_prod() -> None:
@@ -100,43 +99,30 @@ def test_planned_restore_check_name_format() -> None:
 
 
 def test_cli_backup_batch_dry_run() -> None:
-    result = subprocess.run(
-        [sys.executable, "-m", "mercury.cli", "backup", "batch", "--demo"],
-        capture_output=True,
-        text=True,
-    )
+    result = run_cli("backup", "batch", "--demo")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "BACKUP BATCH" in result.stdout
 
 
 def test_cli_sync_readiness() -> None:
-    result = subprocess.run(
-        [sys.executable, "-m", "mercury.cli", "sync", "readiness"],
-        capture_output=True,
-        text=True,
-    )
+    result = run_cli("sync", "readiness")
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "Mode:" in result.stdout
-    assert "PAIR" in result.stdout
+    assert "Backup root:" in result.stdout
+    assert "DATABASE" in result.stdout
     assert "STATUS" in result.stdout
+    assert "REASON" in result.stdout
+    assert "erebus_threat_intel" in result.stdout
 
 
 def test_cli_restore_check_plan() -> None:
     env = os.environ.copy()
     env["MERCURY_BACKUP_ROOT"] = "/tmp/mercury-empty-restore-check"
     env["MERCURY_ALLOW_UNSAFE_BACKUP_ROOT"] = "1"
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "mercury.cli",
-            "restore-check",
-            "plan",
-            "--db",
-            "erebus_threat_intel_prod",
-        ],
-        capture_output=True,
-        text=True,
+    result = run_cli(
+        "restore-check",
+        "plan",
+        "--db",
+        "erebus_threat_intel_prod",
         env=env,
     )
     assert result.returncode != 0
@@ -144,10 +130,6 @@ def test_cli_restore_check_plan() -> None:
 
 
 def test_cli_sync_plan_live_or_demo() -> None:
-    result = subprocess.run(
-        [sys.executable, "-m", "mercury.cli", "sync", "plan", "--demo"],
-        capture_output=True,
-        text=True,
-    )
+    result = run_cli("sync", "plan", "--demo")
     assert result.returncode == 0
     assert "sync plan" in result.stdout.lower()

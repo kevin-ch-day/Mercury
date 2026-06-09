@@ -40,7 +40,7 @@ def test_render_menu_text_shows_database_status_when_configured() -> None:
 
 
 def test_run_menu_redisplay_after_choice(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    inputs = iter(["6", "0"])
+    inputs = iter(["4", "0"])
     monkeypatch.setattr(
         "mercury.menu.prompts.ask",
         lambda _prompt="": next(inputs),
@@ -50,7 +50,7 @@ def test_run_menu_redisplay_after_choice(monkeypatch: pytest.MonkeyPatch, capsys
     run_menu(interactive=True)
     out = capsys.readouterr().out
     assert out.count("MERCURY OPERATOR CONSOLE") == 1
-    assert out.count("[6] Environment details") >= 2
+    assert out.count("[4] Environment details") >= 2
     assert "Rescan" in out
     assert "LIVE MODE GUIDE" not in out
     assert "Press any key to continue" not in out
@@ -106,7 +106,7 @@ def test_handle_invalid_choice_includes_range(capsys: pytest.CaptureFixture[str]
     assert interactive_handle_choice("99") == "invalid"
     out = capsys.readouterr().out
     assert "Invalid choice" in out
-    assert "0-8" in out
+    assert "0-6" in out
 
 
 def test_handle_sync_plan_returns_to_menu_without_footer(
@@ -114,10 +114,10 @@ def test_handle_sync_plan_returns_to_menu_without_footer(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr("mercury.sync.interactive_menu.read_sync_choice", lambda: "0")
-    assert handle_menu_choice("4") == "continue"
+    assert handle_menu_choice("2") == "continue"
     out = capsys.readouterr().out
     assert "ready" in out.lower() or "blocked" in out.lower()
-    assert "Rescan readiness" in out
+    assert "Recheck Database Sync Status" in out
     assert "[0] Return" not in out
     assert "CLI:" not in out
 
@@ -137,14 +137,12 @@ def test_menu_renders_without_crashing(capsys: pytest.CaptureFixture[str]) -> No
 @pytest.mark.parametrize(
     ("choice", "snippets"),
     [
-        ("1", ("USB target", "DATABASE PAIR / SOURCE", "Run full backup")),
-        ("2", ("verified", "Rescan")),
-        ("3", ("ready", "blocked", "Rescan plans", "Run allowed", "restore-check backup")),
-        ("4", ("ready", "blocked", "Rescan readiness")),
-        ("5", ("Backup root", "Active scope", "Source databases")),
-        ("6", ("ENVIRONMENT CHECK", "Runtime", "Live mode guide")),
-        ("7", ("Active scope:", "Backup sources:", "DATABASE", "ROLE", "Rescan inventory")),
-        ("8", ("LIVE MODE GUIDE", "Before enabling live writes", "How to enable live writes")),
+        ("1", ("USB Path", "LAST BACKUP", "Run full backup", "Restore-check source backups")),
+        ("2", ("ready", "blocked", "Recheck Database Sync Status")),
+        ("3", ("Backup root", "Active scope", "Source databases")),
+        ("4", ("ENVIRONMENT CHECK", "Runtime", "Live mode guide")),
+        ("5", ("Active scope:", "Backup sources:", "DATABASE", "ROLE", "Rescan inventory")),
+        ("6", ("LIVE MODE GUIDE", "Before enabling live writes", "How to enable live writes")),
     ],
 )
 def test_handle_menu_action(
@@ -153,19 +151,15 @@ def test_handle_menu_action(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    if choice == "6":
-        monkeypatch.setattr("mercury.env.interactive_menu.read_env_choice", lambda: "0")
-    if choice == "7":
-        monkeypatch.setattr("mercury.database.discovery_menu.read_discover_choice", lambda: "0")
     if choice == "4":
+        monkeypatch.setattr("mercury.env.interactive_menu.read_env_choice", lambda: "0")
+    if choice == "5":
+        monkeypatch.setattr("mercury.database.discovery_menu.read_discover_choice", lambda: "0")
+    if choice == "2":
         monkeypatch.setattr("mercury.sync.interactive_menu.read_sync_choice", lambda: "0")
     if choice == "1":
         monkeypatch.setattr("mercury.backup.interactive_menu.read_backup_choice", lambda: "0")
-    if choice == "2":
-        monkeypatch.setattr("mercury.verify.interactive_menu.read_verify_choice", lambda: "0")
-    if choice == "3":
-        monkeypatch.setattr("mercury.restore.interactive_menu.read_restore_choice", lambda: "0")
-    if choice in {"5", "8"}:
+    if choice in {"3", "6"}:
         monkeypatch.setattr("mercury.menu.prompts.wait_for_continue", lambda *args, **kwargs: None)
     assert handle_menu_choice(choice) == "continue"
     out = capsys.readouterr().out.lower()

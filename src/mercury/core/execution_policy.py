@@ -117,9 +117,20 @@ class ExecutionPolicy:
     def refusal_reason(self) -> str | None:
         platform_info = detect_platform()
         if not platform_info.allows_live_execution:
+            if platform_info.is_windows:
+                return (
+                    "Mercury live execution is not supported on Windows. "
+                    "Use Windows for seed planning/status only and run live operations on Fedora."
+                )
+            if platform_info.is_linux:
+                distro = platform_info.distro_name or platform_info.distro_id or "Linux"
+                return (
+                    f"Mercury live execution is supported only on Fedora. {distro} was detected. "
+                    "Use non-Fedora Linux for seed planning/status only, or run live operations on Fedora."
+                )
             return (
-                "Mercury live execution is not supported on Windows. "
-                "Use Windows for seed planning/status only and run live operations on Fedora."
+                f"Mercury live execution is supported only on Fedora. {platform_info.system} was detected. "
+                "Use this host for seed planning/status only."
             )
         if self.dry_run:
             return "Result: dry-run only; no files were written."

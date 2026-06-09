@@ -34,7 +34,7 @@ def menu_action_keys() -> list[str]:
 
 
 def menu_option_range_label() -> str:
-    """Human-readable option range, e.g. ``0-8``."""
+    """Human-readable option range, e.g. ``0-6``."""
     keys = menu_action_keys()
     if not keys:
         return "0"
@@ -188,7 +188,7 @@ def ask_confirmation_phrase(expected: str, *, action: str = "continue") -> bool:
 
     Returns False on mismatch or interrupt.
     """
-    prompt = f"\nType {expected!r} to {action}, or anything else to cancel: "
+    prompt = f"\nConfirmation ({action}) [{expected}]: "
     raw = ask_stripped(prompt)
     if raw is None:
         return False

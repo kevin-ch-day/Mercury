@@ -23,17 +23,17 @@ def test_run_backup_menu_non_interactive(
     assert "Status:" not in out
     assert "Mode:" not in out
     assert "Action:" not in out
-    assert "DATABASE PAIR / SOURCE" in out
-    assert "PLAN" in out
+    assert "DATABASE" in out
+    assert "STATUS" in out
+    assert "LAST BACKUP" in out
     assert "TARGET" in out
     assert "android_permission_intel" in out
-    assert "backup    n/a" in out
+    assert "n/a" in out
     assert "erebus_threat_intel_prod" in out
     assert "erebus_threat_intel_dev" in out
     assert "refresh target" in out
     assert "dev target exists" not in out
-    assert "ROLE" not in out
-    assert "SYNC" not in out
+    assert "PLAN" not in out
     assert "android_permission_intel" in out
     assert "skip" in out
     assert "excluded" not in out
@@ -41,7 +41,7 @@ def test_run_backup_menu_non_interactive(
     assert "\n[1] Refresh" in out
     assert "\n[2] Run full backup" in out
     assert "\n[3] Verify source backups" in out
-    assert "\n[4] Show backup status" in out
+    assert "\n[4] Restore-check source backups" in out
     assert "\n[5] Write DB bundle and runbooks" in out
     assert "Verify on-disk backups" not in out
     assert "Backup plan (dry-run)" not in out
