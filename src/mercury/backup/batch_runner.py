@@ -8,8 +8,6 @@ from mercury.backup.backup_runner import BackupExecutionError, BackupExecutionRe
 from mercury.backup.manifest import BackupKind
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
 from mercury.database.core import classify_database
-from mercury.database.discovery import discover, discover_demo
-from mercury.database.mariadb.session import try_load_mariadb_config
 from mercury.database.backup_planning import build_backup_plan_from_inventory
 
 
@@ -30,10 +28,9 @@ class BackupSourceSelectionError(ValueError):
 
 def resolve_batch_sources(*, live: bool = False) -> list[str]:
     """Backup source names from live server or demo/config inventory."""
-    if live and try_load_mariadb_config() is not None:
-        inventory = discover("live")
-    else:
-        inventory = discover_demo()
+    from mercury.database.discovery import discover_for_planning
+
+    inventory = discover_for_planning(live=live)
     plan = build_backup_plan_from_inventory(inventory)
     return list(plan.backup_sources)
 

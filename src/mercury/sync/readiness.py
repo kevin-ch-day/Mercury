@@ -9,7 +9,7 @@ from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.database.core.scope import is_in_scope
-from mercury.database.discovery import discover, discover_demo
+from mercury.database.discovery import discover_for_planning
 from mercury.database.prod_dev_pairs import ProdDevPair, build_prod_dev_pairs
 
 
@@ -35,8 +35,11 @@ class SyncReadinessReport(BaseModel):
 
 def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
     """Check prod→dev pairs against verified full backups on disk."""
+    from mercury.database.discovery import discover_for_planning
+
     policy = load_execution_policy()
-    inventory = discover("live") if live else discover_demo()
+    inventory = discover_for_planning(live=live)
+    mode = "live" if live and inventory.mode == "mariadb_readonly" else "demo"
     names = [entry.name for entry in inventory.entries]
     projects = {entry.name: entry.project for entry in inventory.entries if entry.project}
     pairs = build_prod_dev_pairs(names, projects=projects)
@@ -94,7 +97,7 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
         )
 
     report = SyncReadinessReport(
-        mode="live" if live else "demo",
+        mode=mode,
         backup_root=str(policy.backup_root),
         entries=entries,
         ready_count=ready_count,

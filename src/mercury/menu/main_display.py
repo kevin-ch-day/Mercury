@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from mercury.core.environment_status import build_environment_status
 from mercury.core.runtime import should_probe_database_status
 from mercury.terminal.format import format_bytes, short_path
 from mercury.terminal.theme import (
@@ -96,6 +97,8 @@ MENU_SECTIONS: list[tuple[str, list[MenuItem]]] = [
             MenuItem("4", "Environment details"),
             MenuItem("5", "Database inventory"),
             MenuItem("6", "Live mode guide"),
+            MenuItem("7", "System doctor / repair guide"),
+            MenuItem("8", "Deploy to this system"),
         ],
     ),
 ]
@@ -116,21 +119,28 @@ def iter_menu_items() -> list[MenuItem]:
 def _status_tags(*, probe_database: bool | None = None) -> tuple[str, str, str, str, str, str]:
     probe = should_probe_database_status() if probe_database is None else probe_database
     status = operator_status(probe_database=probe)
-    connected = "connected" in status["database"].lower() and "not connected" not in status["database"].lower()
+    env = build_environment_status(probe_database=probe)
+    connected = env.mariadb.connection_works is True
     safety_tag = "[--]" if "dry-run" in status["safety"] else "[ok]"
     db_tag = "[ok]" if connected else "[!!]"
+    if connected:
+        database_label = status["database"]
+    elif not env.config.local_toml_present:
+        database_label = "config missing"
+    elif env.mariadb.connection_works is False:
+        database_label = "credentials failed"
+    elif env.mariadb.mariadb_client_found and env.mariadb.service_active:
+        database_label = "config missing" if not env.mariadb.config_present else "not connected"
+    else:
+        database_label = status["database"]
     backup_root = status["backup_root"]
-    backup_tag = (
-        "[!!]"
-        if backup_root == "not configured" or backup_root.startswith("repo-local fallback")
-        else "[ok]"
-    )
+    backup_tag = "[!!]" if env.policy.backup_root_state() != "usb-mounted" else "[ok]"
     backup_detail = short_path(backup_root, max_len=40) if backup_root != "not configured" else "not configured"
     return (
         safety_tag,
         status["safety"],
         db_tag,
-        status["database"],
+        database_label,
         backup_tag,
         backup_detail,
     )
@@ -138,11 +148,13 @@ def _status_tags(*, probe_database: bool | None = None) -> tuple[str, str, str, 
 
 def readiness_summary(*, probe_database: bool | None = None) -> str:
     """One-line readiness headline (verbose views)."""
+    probe = should_probe_database_status() if probe_database is None else probe_database
+    env = build_environment_status(probe_database=probe)
     safety_tag, _safety, db_tag, _database, backup_tag, backup_root = _status_tags(
         probe_database=probe_database
     )
-    if backup_root == "not configured":
-        return menu_status_row("Attention", "[!!]", "Backup root not configured")
+    if backup_root == "not configured" or not env.config.local_toml_present:
+        return menu_status_row("Attention", "[!!]", "Local config not initialized")
     if db_tag == "[!!]":
         return menu_status_row("Attention", "[!!]", "MariaDB not reachable")
     if safety_tag == "[--]":

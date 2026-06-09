@@ -4,8 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from mercury.database.core import PLATFORM_DATABASES, inventory_summary, load_databases_from_file
-from mercury.database.discovery import discover_demo, discover_from_config
+from mercury.database.core import PLATFORM_DATABASES, DatabaseInventory, DatabaseRole, classify_database, inventory_summary, load_databases_from_file
+from mercury.database.discovery import discover_demo, discover_for_planning, discover_from_config
+from mercury.backup.batch_runner import resolve_batch_sources
 from mercury.core.paths import DATABASES_EXAMPLE
 
 
@@ -86,3 +87,54 @@ def test_demo_catalog_matches_real_platform_databases() -> None:
         "scytaledroid_core_prod",
         "scytaledroid_core_dev",
     }
+
+# merged from test_discover_for_planning.py
+def test_discover_for_planning_falls_back_to_demo_when_live_empty(monkeypatch) -> None:
+    empty_live = DatabaseInventory(connection="connected", mode="mariadb_readonly", primary_config="local.toml")
+
+    monkeypatch.setattr(
+        "mercury.database.discovery.discover",
+        lambda mode, **kwargs: empty_live if mode == "live" else (_ for _ in ()).throw(AssertionError(mode)),
+    )
+    monkeypatch.setattr(
+        "mercury.database.mariadb.session.try_load_mariadb_config",
+        lambda: object(),
+    )
+
+    inventory = discover_for_planning(live=True)
+    assert inventory.count > 0
+    sources = resolve_batch_sources(live=True)
+    assert "erebus_threat_intel_prod" in sources
+
+# merged from test_db_classifier.py
+@pytest.mark.parametrize(
+    ("name", "role", "backup_source", "dev_target", "manual_review"),
+    [
+        ("erebus_threat_intel_prod", DatabaseRole.PRODUCTION, True, False, False),
+        ("scytaledroid_core_prod", DatabaseRole.PRODUCTION, True, False, False),
+        ("erebus_threat_intel_dev", DatabaseRole.DEVELOPMENT, False, True, False),
+        ("gecko_research_database_dev", DatabaseRole.DEVELOPMENT, False, True, False),
+        ("android_permission_intel", DatabaseRole.SHARED_AUTHORITY, True, False, False),
+        (
+            "_restorecheck_erebus_threat_intel_prod_20260530",
+            DatabaseRole.RESTORE_CHECK_TEMP,
+            False,
+            False,
+            False,
+        ),
+        ("random_test_db", DatabaseRole.UNKNOWN, False, False, True),
+    ],
+)
+def test_classify_database(
+    name: str,
+    role: DatabaseRole,
+    backup_source: bool,
+    dev_target: bool,
+    manual_review: bool,
+) -> None:
+    result = classify_database(name)
+    assert result.role == role
+    assert result.backup_source is backup_source
+    assert result.dev_target is dev_target
+    assert result.manual_review is manual_review
+

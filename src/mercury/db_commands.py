@@ -149,6 +149,22 @@ def register_commands(app: typer.Typer) -> None:
             typer.echo(str(exc))
             raise typer.Exit(1) from exc
 
+    @app.command("inventory")
+    def inventory_cmd(
+        demo: bool = typer.Option(
+            False,
+            "--demo",
+            help="Platform catalog + config (no server).",
+        ),
+        verbose: bool = typer.Option(
+            False,
+            "--verbose",
+            help="Include mode, config source, and footer notes.",
+        ),
+    ) -> None:
+        """Live read-only database inventory (alias for discover)."""
+        discover_cmd(demo=demo, verbose=verbose)
+
     @app.command("list")
     def list_cmd(
         demo: bool = typer.Option(True, "--demo/--no-demo", help="Same as discover --demo."),

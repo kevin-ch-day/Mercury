@@ -2,15 +2,51 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from mercury.backup.interactive_menu import run_backup_menu
+from mercury.core.execution_policy import ExecutionPolicy
+from mercury.verify.interactive_menu import run_verify_menu
 
 
 def test_run_backup_menu_non_interactive(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.should_probe_database_status",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.latest_records_by_database",
+        lambda listing: [],
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.build_backup_status_report",
+        lambda live=False: type("Report", (), {"entries": []})(),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.load_execution_policy",
+        lambda: ExecutionPolicy(
+            dry_run=True,
+            live_actions_enabled=False,
+            backup_root=tmp_path / "backups",
+            config_path=None,
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu._storage_usage_fields",
+        lambda policy: {
+            "USB Path": str(policy.backup_root),
+            "Used": "0 B",
+            "Total": "1 GiB",
+            "Free": "1 GiB",
+            "Usage": "0%",
+        },
+    )
     run_backup_menu(interactive=False)
     out = capsys.readouterr().out
     assert "Backup Operations" in out
@@ -114,3 +150,15 @@ def test_backup_menu_uses_human_last_backup_format(
     _render_backup_screen(plan, show_title=False)
     out = capsys.readouterr().out
     assert "6/9/2026 3:01 PM" in out
+
+# merged from test_verify_menu.py
+def test_run_verify_menu_non_interactive(capsys: pytest.CaptureFixture[str]) -> None:
+    run_verify_menu(interactive=False)
+    out = capsys.readouterr().out
+    assert "verified" in out
+    assert "Rescan" in out
+    assert "Verify all" in out
+    assert "SOURCE ROLE" in out
+    assert "shared authority source" in out
+    assert "Actions" not in out
+

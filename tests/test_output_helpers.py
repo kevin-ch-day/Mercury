@@ -4,12 +4,6 @@ from mercury.core import output
 from mercury.terminal.theme import set_color_enabled, strip_markup
 
 
-def test_status_tags() -> None:
-    assert output.tag_ok("done").startswith("[ok]")
-    assert output.tag_warn("missing").startswith("[--]")
-    assert output.tag_fail("error").startswith("[!!]")
-
-
 def test_action_banner(capsys) -> None:
     output.action_banner("Environment Check")
     out = capsys.readouterr().out

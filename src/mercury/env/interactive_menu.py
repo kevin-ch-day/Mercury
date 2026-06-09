@@ -125,3 +125,42 @@ def run_env_menu(*, interactive: bool = True) -> None:
 def run_live_mode_guide() -> None:
     _print_live_mode_guide()
     menu_prompts.wait_for_continue()
+
+
+def run_doctor_menu(*, interactive: bool = True) -> None:
+    from mercury.env.doctor import run_doctor
+    from mercury.env.terminal.doctor import print_doctor_report, print_repair_plan
+    from mercury.menu import prompts as menu_prompts
+
+    show_title = True
+    while True:
+        if show_title:
+            display_screen.write_report_header("SYSTEM DOCTOR")
+        report = run_doctor(probe_database=True)
+        print_doctor_report(report)
+        display_screen.write_blank()
+        output.write(
+            menu_display.render_option_menu(
+                title="Actions",
+                options=[
+                    ("1", "Show repair plan"),
+                    ("2", "Rescan"),
+                ],
+                bottom_label="Back",
+            )
+        )
+        if not interactive:
+            return
+        choice = read_submenu_choice()
+        if choice is None or choice == "0":
+            return
+        if choice == "1":
+            print_repair_plan(report)
+            menu_prompts.wait_for_continue()
+            show_title = False
+            continue
+        if choice == "2":
+            display_screen.write_summary("Rescanned environment.")
+            show_title = pause_and_redraw()
+            continue
+        output.write(menu_prompts.invalid_choice_message(choice))

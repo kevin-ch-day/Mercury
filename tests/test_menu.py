@@ -15,20 +15,6 @@ from mercury.menu.runners import (
 from mercury.menu.loop import handle_menu_choice as interactive_handle_choice
 
 
-def test_render_menu_text_contains_header_and_items() -> None:
-    text = render_menu_text()
-    assert MENU_TITLE in text
-    assert MENU_SUBTITLE in text
-    assert "Main Menu" in text
-    assert "Execution mode" in text
-    assert "Backup target" in text
-    assert "Blocker" in text
-    assert "      [1] Backup source databases" in text
-    assert "      [0] Exit" in text
-    assert "Core workflows" not in text
-    assert "Diagnostics" not in text
-
-
 def test_render_menu_text_shows_database_status_when_configured() -> None:
     from mercury.core.runtime import should_probe_database_status
 
@@ -103,10 +89,12 @@ def test_handle_empty_choice() -> None:
 
 
 def test_handle_invalid_choice_includes_range(capsys: pytest.CaptureFixture[str]) -> None:
+    from mercury.menu.prompts import menu_option_range_label
+
     assert interactive_handle_choice("99") == "invalid"
     out = capsys.readouterr().out
     assert "Invalid choice" in out
-    assert "0-6" in out
+    assert menu_option_range_label() in out
 
 
 def test_handle_sync_plan_returns_to_menu_without_footer(
@@ -143,6 +131,8 @@ def test_menu_renders_without_crashing(capsys: pytest.CaptureFixture[str]) -> No
         ("4", ("ENVIRONMENT CHECK", "Runtime", "Live mode guide")),
         ("5", ("Active scope:", "Backup sources:", "DATABASE", "ROLE", "Rescan inventory")),
         ("6", ("LIVE MODE GUIDE", "Before enabling live writes", "How to enable live writes")),
+        ("7", ("MERCURY DOCTOR", "Repo", "Recommended Next Step")),
+        ("8", ("Deploy to This System", "Deploy databases", "Deploy repositories")),
     ],
 )
 def test_handle_menu_action(
@@ -163,7 +153,72 @@ def test_handle_menu_action(
         monkeypatch.setattr("mercury.reporting.interactive_menu.read_reports_choice", lambda: "0")
     if choice == "6":
         monkeypatch.setattr("mercury.menu.prompts.wait_for_continue", lambda *args, **kwargs: None)
+    if choice == "7":
+        monkeypatch.setattr("mercury.env.interactive_menu.read_submenu_choice", lambda: "0")
+    if choice == "8":
+        monkeypatch.setattr("mercury.deploy.interactive_menu.read_deploy_choice", lambda: "0")
     assert handle_menu_choice(choice) == "continue"
     out = capsys.readouterr().out.lower()
     matched = sum(1 for snippet in snippets if snippet.lower() in out)
     assert matched >= 1, f"expected one of {snippets!r} in menu output"
+
+# merged from test_menu_display.py
+def test_status_line_includes_tags() -> None:
+    line = menu_display.status_line(probe_database=False)
+    assert "Status:" in line
+    assert "[--]" in line or "[ok]" in line
+
+# merged from test_menu_display.py
+def test_status_rows_include_operator_fields() -> None:
+    rows = menu_display.status_rows(probe_database=False)
+    text = "\n".join(rows)
+    assert "Mode" in text
+    assert "Database" in text
+    assert "Backups" in text
+
+# merged from test_menu_display.py
+def test_format_menu_bottom_option_exit_and_return() -> None:
+    assert menu_display.format_menu_bottom_option("Exit") == "      [0] Exit"
+    assert menu_display.format_menu_bottom_option("Return") == "      [0] Return"
+
+# merged from test_menu_display.py
+def test_render_option_menu_puts_return_last() -> None:
+    text = menu_display.render_option_menu(
+        title="Sub menu",
+        options=[("1", "First"), ("2", "Second")],
+        bottom_label="Return",
+    )
+    lines = text.splitlines()
+    assert lines[-1] == "      [0] Return"
+    assert "      [1] First" in lines
+
+# merged from test_menu_display.py
+def test_render_main_menu_matches_simple_layout() -> None:
+    text = menu_display.render_main_menu()
+    assert menu_display.MENU_TITLE in text
+    assert menu_display.MENU_SUBTITLE in text
+    assert "\nMain Menu\n" in text
+    assert "Backup target" in text
+    assert "USB backups" in text
+    assert "Execution Safety" not in text
+    assert "─" in text
+    assert "      [1] Backup source databases" in text
+    assert "      [0] Exit" in text
+    assert "Core workflows" not in text
+    assert "Diagnostics" not in text
+    assert f"{menu_display.MENU_SUBTITLE}\n────────────────" not in text
+
+# merged from test_menu_display.py
+def test_render_main_menu_body_omits_title_block() -> None:
+    body = menu_display.render_main_menu_body()
+    assert menu_display.MENU_TITLE not in body
+    assert "Main Menu" in body
+    assert "MariaDB" in body
+    assert "      [1] Backup source databases" in body
+
+# merged from test_menu_display.py
+def test_render_menu_help_lists_shortcuts() -> None:
+    help_text = menu_display.render_menu_help()
+    assert "Operator console help" in help_text
+    assert "0 or q to exit" in help_text
+

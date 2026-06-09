@@ -84,9 +84,12 @@ def resolve_state_root(policy: ExecutionPolicy | None = None) -> Path:
     return DATA_DIR
 
 
-def _ensure_state_root(state_root: Path | None = None) -> Path:
+def _ensure_state_root(state_root: Path | None = None) -> Path | None:
     root = (state_root or resolve_state_root()).expanduser().resolve()
-    root.mkdir(parents=True, exist_ok=True)
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        return None
     return root
 
 
@@ -94,20 +97,28 @@ def _timestamp() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _append_jsonl(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, sort_keys=True) + "\n")
+def _append_jsonl(path: Path, payload: dict[str, Any]) -> bool:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, sort_keys=True) + "\n")
+    except PermissionError:
+        return False
+    return True
 
 
-def _append_csv(path: Path, fieldnames: list[str], row: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    write_header = not path.exists()
-    with path.open("a", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
-        if write_header:
-            writer.writeheader()
-        writer.writerow({key: row.get(key, "") for key in fieldnames})
+def _append_csv(path: Path, fieldnames: list[str], row: dict[str, Any]) -> bool:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_header = not path.exists()
+        with path.open("a", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+            if write_header:
+                writer.writeheader()
+            writer.writerow({key: row.get(key, "") for key in fieldnames})
+    except PermissionError:
+        return False
+    return True
 
 
 def _operation_payload(event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -118,9 +129,12 @@ def _operation_payload(event_type: str, payload: dict[str, Any]) -> dict[str, An
     }
 
 
-def _append_operation(event_type: str, payload: dict[str, Any], *, state_root: Path | None = None) -> Path:
+def _append_operation(event_type: str, payload: dict[str, Any], *, state_root: Path | None = None) -> Path | None:
     root = _ensure_state_root(state_root)
-    _append_jsonl(root / OPERATIONS_JSONL, _operation_payload(event_type, payload))
+    if root is None:
+        return None
+    if not _append_jsonl(root / OPERATIONS_JSONL, _operation_payload(event_type, payload)):
+        return None
     return root
 
 
@@ -153,6 +167,8 @@ def record_backup_execution(result, *, state_root: Path | None = None) -> None:
         },
         state_root=state_root,
     )
+    if root is None:
+        return
     _append_csv(
         root / DATABASE_BACKUPS_CSV,
         DATABASE_BACKUP_FIELDS,
@@ -189,6 +205,8 @@ def record_backup_verification(result, *, state_root: Path | None = None) -> Non
         },
         state_root=state_root,
     )
+    if root is None:
+        return
     _append_csv(
         root / DATABASE_BACKUPS_CSV,
         DATABASE_BACKUP_FIELDS,
@@ -234,6 +252,8 @@ def record_restore_check_result(
         },
         state_root=state_root,
     )
+    if root is None:
+        return
     _append_csv(
         root / DATABASE_BACKUPS_CSV,
         DATABASE_BACKUP_FIELDS,
@@ -257,6 +277,8 @@ def record_restore_check_result(
 
 def record_repo_bundle_execution(plan, *, state_root: Path | None = None) -> None:
     root = _ensure_state_root(state_root)
+    if root is None:
+        return
     for entry in plan.entries:
         if not entry.executed:
             continue
@@ -302,6 +324,8 @@ def record_repo_bundle_execution(plan, *, state_root: Path | None = None) -> Non
 
 def record_repo_bundle_retention(plan, *, state_root: Path | None = None) -> None:
     root = _ensure_state_root(state_root)
+    if root is None:
+        return
     for entry in plan.entries:
         pruned_bundles = [str(path) for path in entry.pruned_bundle_paths]
         pruned_manifests = [str(path) for path in entry.pruned_manifest_paths]
@@ -341,6 +365,8 @@ def record_transfer_bundle_written(bundle, *, state_root: Path | None = None) ->
         },
         state_root=state_root,
     )
+    if root is None:
+        return
     _append_csv(
         root / TRANSFER_PACKAGES_CSV,
         TRANSFER_PACKAGE_FIELDS,
@@ -362,6 +388,8 @@ def record_transfer_bundle_written(bundle, *, state_root: Path | None = None) ->
 
 def record_sync_batch_execution(batch, *, state_root: Path | None = None) -> None:
     root = _ensure_state_root(state_root)
+    if root is None:
+        return
     for result in batch.results:
         if not (result.executed or result.refused):
             continue

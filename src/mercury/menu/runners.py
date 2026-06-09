@@ -69,6 +69,18 @@ def run_live_mode_guide() -> None:
     run_live_mode_guide()
 
 
+def run_doctor_menu() -> None:
+    from mercury.env.interactive_menu import run_doctor_menu as _run_doctor_menu
+
+    _run_doctor_menu()
+
+
+def run_deploy_menu() -> None:
+    from mercury.deploy.interactive_menu import run_deploy_menu as _run_deploy_menu
+
+    _run_deploy_menu()
+
+
 # Re-export interactive loop (implementation in menu.loop).
 from mercury.menu.loop import MenuResult, handle_menu_choice, run_menu  # noqa: E402
 

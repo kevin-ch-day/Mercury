@@ -89,21 +89,7 @@ def _latest_transfer_artifact(directory: Path, pattern: str) -> Path | None:
     return candidates[-1] if candidates else None
 
 
-def _latest_repo_manifest_entries(manifest_dir: Path) -> dict[str, dict[str, object]]:
-    latest: dict[str, dict[str, object]] = {}
-    for path in sorted(manifest_dir.glob("*/*.repo_manifest.json")):
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        repo_key = str(payload.get("repo_key") or "").strip()
-        if not repo_key:
-            continue
-        generated_at = str(payload.get("generated_at") or "")
-        existing = latest.get(repo_key)
-        if existing is None or generated_at >= str(existing.get("generated_at") or ""):
-            latest[repo_key] = payload
-    return latest
+from mercury.repo.manifest_index import latest_repo_manifest_entries
 
 
 def build_transfer_bundle(*, live: bool = False) -> TransferBundle:
@@ -114,7 +100,7 @@ def build_transfer_bundle(*, live: bool = False) -> TransferBundle:
     backup_list = build_on_disk_backup_list(policy.backup_root)
     latest_by_database = {record.database: record for record in latest_records_by_database(backup_list)}
     repo_statuses = inspect_repositories(load_repo_definitions())
-    latest_repo_manifests = _latest_repo_manifest_entries(settings.manifest_dir)
+    latest_repo_manifests = latest_repo_manifest_entries(settings.manifest_dir)
 
     database_entries: list[TransferDatabaseEntry] = []
     for database in protection.protected:

@@ -80,31 +80,9 @@ def _default_import_runner(
     _config: MariaDbConnectionConfig,
     _target: str,
 ) -> None:
-    if not dump_path.is_file():
-        raise BackupExecutionError(f"Dump file not found: {dump_path}")
-    with subprocess.Popen(
-        ["gzip", "-dc", str(dump_path)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    ) as gzip_proc:
-        assert gzip_proc.stdout is not None
-        import_proc = subprocess.Popen(
-            argv,
-            stdin=gzip_proc.stdout,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
-        )
-        gzip_proc.stdout.close()
-        _, import_err = import_proc.communicate()
-        gzip_returncode = gzip_proc.wait()
-        import_returncode = import_proc.returncode
+    from mercury.database.mariadb.import_stream import run_compressed_sql_import
 
-    if gzip_returncode != 0:
-        raise BackupExecutionError("gunzip failed while reading backup dump")
-    if import_returncode != 0:
-        detail = (import_err or b"").decode().strip()
-        raise BackupExecutionError(detail or "mariadb import failed")
+    run_compressed_sql_import(argv, env, dump_path, strip_definer=True)
 
 
 def execute_restore_into_database(
@@ -196,15 +174,13 @@ def execute_restore_into_database(
     cleanup_dropped = False
     message = f"Restored {source_database} into {target_database}."
     if cleanup_command:
-        from mercury.restore.check_cleanup import drop_restorecheck_database
-
-        cleanup = drop_restorecheck_database(target_database, execute=True, config=cfg)
-        if cleanup.dropped:
+        try:
+            _execute_client_sql(cfg, cleanup_command)
             cleanup_dropped = True
             message = (
                 f"Restored {source_database} into {target_database} and dropped the temporary restore-check database."
             )
-        else:
+        except BackupExecutionError:
             message = (
                 f"Restored {source_database} into {target_database}, but automatic cleanup failed. "
                 f"Run: {cleanup_command}"

@@ -2,51 +2,114 @@
 
 from __future__ import annotations
 
+from mercury.core.environment_status import (
+    backup_target_dashboard_label,
+    build_environment_status,
+    config_dashboard_label,
+    mariadb_dashboard_label,
+    recommended_next_step,
+    resolve_dashboard_blocker,
+    storage_status_dashboard_label,
+)
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.platform import detect_platform
-from mercury.core.storage_status import (
-    backup_root_summary_label,
-    backup_root_storage_status_label,
-)
 from mercury.core.runtime import should_probe_database_status
-from mercury.terminal.theme import body_label, dashboard_row
-from mercury.core.runtime import operator_status
+from mercury.terminal.theme import dashboard_row
 
 
 def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     """Sectioned operator status for the Mercury home screen."""
     probe = should_probe_database_status() if probe_database is None else probe_database
-    status = operator_status(probe_database=probe)
-    connected = "connected" in status["database"].lower() and "not connected" not in status["database"].lower()
-    policy = load_execution_policy()
+    env = build_environment_status(probe_database=probe)
+    policy = env.policy
+    config_initialized = env.config.initialized
 
     rows: list[str] = [
-        dashboard_row("MariaDB", "[ok] connected" if connected else "[!!] unavailable"),
+        dashboard_row("MariaDB", mariadb_dashboard_label(env.mariadb)),
         dashboard_row("Execution mode", "LIVE" if policy.live_execution_allowed() else "DRY RUN"),
-        dashboard_row("Backup target", backup_root_summary_label(policy)),
+        dashboard_row("Config", config_dashboard_label(env.config)),
+        dashboard_row("Backup target", backup_target_dashboard_label(policy, env.usb)),
     ]
     platform_info = detect_platform()
     if not platform_info.is_fedora:
         rows.append(dashboard_row("Platform", platform_info.support_label))
 
-    if policy.backup_root_state() != "usb-mounted":
-        rows.append(dashboard_row("Storage status", backup_root_storage_status_label(policy, styled=True)))
+    if policy.backup_root_state() != "usb-mounted" or env.permission_checks:
+        rows.append(
+            dashboard_row(
+                "Storage status",
+                storage_status_dashboard_label(
+                    policy,
+                    config=env.config,
+                    usb=env.usb,
+                    permission_checks=env.permission_checks,
+                ),
+            )
+        )
 
-    verified_names, source_names = _verified_source_summary(live=probe and connected)
-    ready, blocked, blocker = _sync_readiness_summary(
-        live=probe and connected,
-        verified_names=verified_names,
-        source_names=source_names,
-    )
+    deploy_status_line = "skipped until config initialized"
+    sync_blocker = "None."
+    if not config_initialized:
+        source_line = "skipped until config initialized"
+        sync_line = "skipped until config initialized"
+        deploy_line = "skipped until config initialized"
+        blocker = resolve_dashboard_blocker(
+            setup_blocker=env.primary_setup_blocker,
+            verified_names=set(),
+            source_names=set(),
+            sync_blocker="No verified full backups exist yet.",
+            config_initialized=False,
+        )
+    else:
+        verified_names, source_names = _verified_source_summary(
+            live=probe and env.mariadb.connection_works is True
+        )
+        ready, blocked, sync_blocker = _sync_readiness_summary(
+            live=probe and env.mariadb.connection_works is True,
+            verified_names=verified_names,
+            source_names=source_names,
+        )
+        deploy_line = _deploy_target_summary(live=probe and env.mariadb.connection_works is True)
+        deploy_status_line = _deploy_status_line(live=probe and env.mariadb.connection_works is True)
+        deploy_complete = "deploy not needed" in deploy_line.lower()
+        blocker = resolve_dashboard_blocker(
+            setup_blocker=env.primary_setup_blocker,
+            verified_names=verified_names,
+            source_names=source_names,
+            sync_blocker=sync_blocker,
+            config_initialized=True,
+            deploy_complete=deploy_complete,
+        )
+        source_line = f"{len(verified_names)} of {len(source_names)} verified"
+        sync_line = f"{ready} ready, {blocked} need dev targets"
 
     rows.extend(
         [
-            dashboard_row("Source DBs", f"{len(verified_names)} of {len(source_names)} verified"),
-            dashboard_row("Sync pairs", f"{ready} ready, {blocked} blocked"),
-            dashboard_row("Blocker", blocker),
+            dashboard_row("USB backups", source_line),
+            dashboard_row("MariaDB targets", deploy_line if config_initialized else "skipped until config initialized"),
+            dashboard_row("Deploy status", deploy_status_line if config_initialized else "skipped until config initialized"),
+            dashboard_row("Sync pairs", sync_line),
+            dashboard_row("Environment", blocker),
         ]
     )
+    if config_initialized and deploy_complete and sync_blocker not in {"None.", ""}:
+        from mercury.deploy.rebuild_status import sync_blocker_is_rebuild_blocker
+
+        if not sync_blocker_is_rebuild_blocker(sync_blocker, deploy_complete=True):
+            rows.append(dashboard_row("Sync blocker", sync_blocker))
+    if env.has_repairable_blockers:
+        rows.append(dashboard_row("Repair", "Run ./run.sh doctor --repair-plan"))
+    elif env.setup_hints:
+        rows.append(dashboard_row("Setup", env.setup_hints[0]))
+        for hint in env.setup_hints[1:]:
+            rows.append(dashboard_row("", hint))
     return rows
+
+
+def setup_hint_lines(*, probe_database: bool | None = None) -> list[str]:
+    probe = should_probe_database_status() if probe_database is None else probe_database
+    env = build_environment_status(probe_database=probe)
+    return list(env.setup_hints)
 
 
 def _verified_source_summary(*, live: bool) -> tuple[set[str], set[str]]:
@@ -71,6 +134,33 @@ def _verified_source_summary(*, live: bool) -> tuple[set[str], set[str]]:
         return verified, sources
     except Exception:
         return set(), set()
+
+
+def _deploy_status_line(*, live: bool) -> str:
+    if not live:
+        return "skipped until MariaDB probed"
+    try:
+        from mercury.deploy.rebuild_status import build_rebuild_status_report
+
+        report = build_rebuild_status_report(probe_database=True)
+        return report.deploy_status
+    except Exception:
+        return "unknown"
+
+
+def _deploy_target_summary(*, live: bool) -> str:
+    if not live:
+        return "skipped until MariaDB probed"
+    try:
+        from mercury.deploy.snapshot import (
+            build_deployment_snapshot,
+            deployment_target_dashboard_label,
+        )
+
+        snapshot = build_deployment_snapshot(execute=False)
+        return deployment_target_dashboard_label(snapshot)
+    except Exception:
+        return "deploy status unavailable"
 
 
 def _sync_readiness_summary(

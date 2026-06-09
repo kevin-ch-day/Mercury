@@ -116,7 +116,36 @@ def configure_logging(
         return None
 
     resolved_dir = resolve_log_dir(override=log_dir)
-    resolved_dir.mkdir(parents=True, exist_ok=True)
+    from mercury.core.path_permissions import check_path_permission, chown_repair_command
+
+    log_check = check_path_permission(resolved_dir, label="log directory")
+    if log_check.needs_repair:
+        _configured = True
+        _log_file = None
+        _error_log_file = None
+        _database_log_file = None
+        _backup_log_file = None
+        repair = chown_repair_command(resolved_dir) if resolved_dir.exists() else "./run.sh doctor --repair-plan"
+        print(
+            f"Mercury: cannot write logs under {resolved_dir} ({log_check.detail}). "
+            f"Continuing without file logging. Repair: {repair}",
+            file=sys.stderr,
+        )
+        return None
+    try:
+        resolved_dir.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        _configured = True
+        _log_file = None
+        _error_log_file = None
+        _database_log_file = None
+        _backup_log_file = None
+        print(
+            f"Mercury: cannot write logs to {resolved_dir} (permission denied). "
+            "Continuing without file logging. Run: ./run.sh doctor --repair-plan",
+            file=sys.stderr,
+        )
+        return None
 
     log_path = daily_log_path(log_dir=resolved_dir)
     error_path = error_log_path(log_dir=resolved_dir)
@@ -133,24 +162,40 @@ def configure_logging(
     root.setLevel(logging.DEBUG)
     root.propagate = False
     clear_logger(LOGGER_NAME)
-    attach_file_handler(root, log_path, level=file_level)
-    attach_file_handler(root, error_path, level=logging.ERROR)
+    try:
+        attach_file_handler(root, log_path, level=file_level)
+        attach_file_handler(root, error_path, level=logging.ERROR)
 
-    database_logger = logging.getLogger(DATABASE_LOGGER_NAME)
-    database_logger.setLevel(logging.DEBUG)
-    database_logger.propagate = True
-    clear_logger(DATABASE_LOGGER_NAME)
-    attach_file_handler(database_logger, database_path, level=logging.DEBUG)
+        database_logger = logging.getLogger(DATABASE_LOGGER_NAME)
+        database_logger.setLevel(logging.DEBUG)
+        database_logger.propagate = True
+        clear_logger(DATABASE_LOGGER_NAME)
+        attach_file_handler(database_logger, database_path, level=logging.DEBUG)
 
-    backup_logger = logging.getLogger(BACKUP_LOGGER_NAME)
-    backup_logger.setLevel(logging.DEBUG)
-    backup_logger.propagate = True
-    clear_logger(BACKUP_LOGGER_NAME)
-    attach_file_handler(backup_logger, backup_path, level=logging.DEBUG)
+        backup_logger = logging.getLogger(BACKUP_LOGGER_NAME)
+        backup_logger.setLevel(logging.DEBUG)
+        backup_logger.propagate = True
+        clear_logger(BACKUP_LOGGER_NAME)
+        attach_file_handler(backup_logger, backup_path, level=logging.DEBUG)
 
-    error_logger = logging.getLogger(ERROR_LOGGER_NAME)
-    error_logger.setLevel(logging.DEBUG)
-    error_logger.propagate = True
+        error_logger = logging.getLogger(ERROR_LOGGER_NAME)
+        error_logger.setLevel(logging.DEBUG)
+        error_logger.propagate = True
+    except PermissionError:
+        clear_logger(LOGGER_NAME)
+        clear_logger(DATABASE_LOGGER_NAME)
+        clear_logger(BACKUP_LOGGER_NAME)
+        _configured = True
+        _log_file = None
+        _error_log_file = None
+        _database_log_file = None
+        _backup_log_file = None
+        print(
+            f"Mercury: cannot write logs under {resolved_dir} (permission denied). "
+            "Continuing without file logging. Run: ./run.sh doctor --repair-plan",
+            file=sys.stderr,
+        )
+        return None
 
     _configured_loggers = [LOGGER_NAME, DATABASE_LOGGER_NAME, BACKUP_LOGGER_NAME, ERROR_LOGGER_NAME]
 

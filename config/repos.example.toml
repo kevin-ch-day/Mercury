@@ -2,31 +2,44 @@
 #   mercury repo init-config
 #
 # Mercury reads repo metadata only. Repo bundle creation is explicit and never commits or pushes.
+#
+# For fresh-workstation deployment, add remote_url so Mercury can plan GitHub clones:
+#   ./run.sh deploy repos --from-github --dry-run
 
 [repos.mercury]
 display_name = "Mercury"
-path = "/home/secadmin/Laughlin/GitHub/Mercury"
+path = "/home/linuxadmin/GitHub/Mercury"
+default_branch = "main"
+# remote_url = "https://github.com/your-org/Mercury.git"
 
 [repos.erebus_engine]
 display_name = "Erebus Engine"
-path = "/home/secadmin/Laughlin/GitHub/erebus-engine-fedora"
+path = "/home/linuxadmin/GitHub/erebus-engine-fedora"
+default_branch = "main"
+# remote_url = "https://github.com/your-org/erebus-engine-fedora.git"
 
 [repos.erebus_web]
 display_name = "Erebus Web"
 path = "/var/www/html/erebus-web"
+default_branch = "main"
 
 [repos.scytaledroid]
 display_name = "ScytaleDroid"
-path = "/home/secadmin/Laughlin/GitHub/ScytaleDroid"
+path = "/home/linuxadmin/GitHub/ScytaleDroid"
+default_branch = "main"
+# remote_url = "https://github.com/your-org/ScytaleDroid.git"
 
 [repos.scytaledroid_web]
 display_name = "ScytaleDroid Web"
 path = "/var/www/html/ScytaleDroid-Web"
+default_branch = "main"
 
 [repos.obsidiandroid]
 display_name = "ObsidianDroid"
-path = "/home/secadmin/Laughlin/GitHub/obsidiandroid"
+path = "/home/linuxadmin/GitHub/obsidiandroid"
+default_branch = "main"
 
 [repos.fedora_linux_scripts]
 display_name = "Fedora Linux Scripts"
-path = "/home/secadmin/Laughlin/GitHub/fedora-linux-scripts"
+path = "/home/linuxadmin/GitHub/fedora-linux-scripts"
+default_branch = "main"

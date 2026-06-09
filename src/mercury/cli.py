@@ -25,6 +25,7 @@ transfer_app = typer.Typer(help="Combined database + repository transfer manifes
 config_app = typer.Typer(help="Configuration commands.")
 sync_app = typer.Typer(help="Production sync-pair planning and execution.")
 restore_app = typer.Typer(help="Restore-check and DR execution.")
+deploy_app = typer.Typer(help="Deploy verified USB backups onto this MariaDB host.")
 report_app = typer.Typer(help="Backup report previews (dry-run).")
 logs_app = typer.Typer(help="Mercury log files under logs/.")
 state_app = typer.Typer(help="Portable Mercury operation ledger and summaries.")
@@ -38,6 +39,7 @@ app.add_typer(transfer_app, name="transfer")
 app.add_typer(config_app, name="config")
 app.add_typer(sync_app, name="sync")
 app.add_typer(restore_app, name="restore-check")
+app.add_typer(deploy_app, name="deploy")
 app.add_typer(report_app, name="report")
 app.add_typer(logs_app, name="logs")
 app.add_typer(state_app, name="state")
@@ -901,6 +903,201 @@ def sync_all_cmd(
     sync_run_cmd(live=live, execute=execute, source=None, target=None)
 
 
+@deploy_app.command("db")
+def deploy_db_cmd(
+    database: list[str] | None = typer.Option(
+        None,
+        "--database",
+        "--db",
+        help="Deploy one protected database (repeatable).",
+    ),
+    all_sources: bool = typer.Option(
+        False,
+        "--all",
+        help="Deploy all protected databases with verified backups.",
+    ),
+    latest: bool = typer.Option(
+        True,
+        "--latest/--no-latest",
+        help="Use the latest verified backup per database (default).",
+    ),
+    dry_run: bool = typer.Option(
+        True,
+        "--dry-run/--no-dry-run",
+        help="Plan only; do not import (default).",
+    ),
+    plan_only: bool = typer.Option(
+        False,
+        "--plan-only",
+        help="Alias for dry-run plan output.",
+    ),
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Execute deployment (requires live actions enabled).",
+    ),
+    allow_create: bool = typer.Option(
+        True,
+        "--allow-create/--no-allow-create",
+        help="Allow CREATE DATABASE when target is missing.",
+    ),
+    skip_existing: bool = typer.Option(
+        True,
+        "--skip-existing/--no-skip-existing",
+        help="Skip databases that already exist locally (default).",
+    ),
+) -> None:
+    """Deploy verified USB backups onto this MariaDB host (dry-run by default)."""
+    from mercury.deploy.models import DeployOptions
+    from mercury.deploy.plan import build_deployment_plan
+    from mercury.deploy.runner import execute_deployment_batch
+    from mercury.deploy.terminal.plan import print_deployment_plan
+    from mercury.deploy.terminal.summary import print_deployment_summary
+
+    if plan_only:
+        dry_run = True
+        execute = False
+    if execute:
+        dry_run = False
+
+    selected: list[str] | None = list(database) if database else None
+    if all_sources:
+        selected = None
+    elif not selected and not latest:
+        typer.echo("Specify --all, --database, or use --latest (default).")
+        raise typer.Exit(1)
+
+    options = DeployOptions(
+        allow_create_database=allow_create,
+        skip_existing=skip_existing,
+    )
+    if dry_run and not execute:
+        plan = build_deployment_plan(databases=selected, options=options, execute=False)
+        print_deployment_plan(plan)
+        if not plan.candidates and plan.blockers:
+            raise typer.Exit(1)
+        return
+
+    batch = execute_deployment_batch(databases=selected, options=options, execute=True)
+    print_deployment_summary(batch)
+    if batch.failed_count:
+        raise typer.Exit(1)
+
+
+@deploy_app.command("repos")
+def deploy_repos_cmd(
+    repo: list[str] | None = typer.Option(
+        None,
+        "--repo",
+        help="Configured repo key or display name. Repeat to filter.",
+    ),
+    dry_run: bool = typer.Option(
+        True,
+        "--dry-run/--no-dry-run",
+        help="Plan only; do not clone (default).",
+    ),
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Execute repository deployment (requires live actions enabled).",
+    ),
+    from_github: bool = typer.Option(
+        False,
+        "--from-github",
+        help="Clone missing repositories from configured remote_url values.",
+    ),
+    from_usb: bool = typer.Option(
+        False,
+        "--from-usb",
+        help="Clone missing repositories from verified USB git bundles.",
+    ),
+    skip_existing: bool = typer.Option(
+        True,
+        "--skip-existing/--no-skip-existing",
+        help="Skip repositories that already exist locally (default).",
+    ),
+) -> None:
+    """Deploy configured Git repositories onto this workstation (dry-run by default)."""
+    from mercury.deploy.repos.build_plan import build_repo_deploy_plan
+    from mercury.deploy.repos.models import RepoDeployOptions
+    from mercury.deploy.repos.runner import execute_repo_deploy_batch
+    from mercury.deploy.repos.terminal.plan import print_repo_deploy_plan
+    from mercury.deploy.repos.terminal.summary import print_repo_deploy_summary
+
+    if execute:
+        dry_run = False
+    source_mode = "auto"
+    if from_github:
+        source_mode = "github"
+    elif from_usb:
+        source_mode = "usb"
+
+    options = RepoDeployOptions(skip_existing=skip_existing)
+    selected = list(repo) if repo else None
+    if dry_run and not execute:
+        print_repo_deploy_plan(
+            build_repo_deploy_plan(
+                selected_keys=selected,
+                options=options,
+                source_mode=source_mode,
+                execute=False,
+            )
+        )
+        return
+
+    batch = execute_repo_deploy_batch(
+        selected_keys=selected,
+        options=options,
+        source_mode=source_mode,
+        execute=True,
+    )
+    print_repo_deploy_summary(batch)
+    if batch.failed_count:
+        raise typer.Exit(1)
+
+
+@deploy_app.command("system")
+def deploy_system_cmd(
+    dry_run: bool = typer.Option(
+        True,
+        "--dry-run/--no-dry-run",
+        help="Show combined database + repository plan (default).",
+    ),
+) -> None:
+    """Dry-run plan for databases and repositories on a fresh workstation."""
+    from mercury.deploy.system import build_system_deploy_plan, print_system_deploy_plan
+
+    if dry_run:
+        print_system_deploy_plan(build_system_deploy_plan(execute=False))
+        return
+    typer.echo("Live combined system deploy is not automated yet. Run deploy db and deploy repos separately.")
+    raise typer.Exit(1)
+
+
+@deploy_app.command("use-cases")
+def deploy_use_cases_cmd() -> None:
+    """Show deployment scenarios detected for this workstation."""
+    from mercury.deploy.terminal.use_cases import print_deploy_use_cases
+    from mercury.deploy.use_cases import detect_deploy_use_cases
+
+    print_deploy_use_cases(detect_deploy_use_cases())
+
+
+@deploy_app.command("status")
+def deploy_status_cmd(
+    check_db: bool = typer.Option(
+        True,
+        "--check-db/--no-check-db",
+        help="Probe MariaDB and repository state on this host.",
+    ),
+) -> None:
+    """Post-rebuild checkpoint: databases, repositories, USB, sync, and next step."""
+    from mercury.deploy.rebuild_status import build_rebuild_status_report
+    from mercury.deploy.terminal.rebuild_status import print_rebuild_status
+
+    print_rebuild_status(build_rebuild_status_report(probe_database=check_db))
+
+
 @restore_app.command("plan")
 def restore_check_plan_cmd(
     db: str = typer.Option(..., "--db", help="Production database to restore-check."),
@@ -1061,6 +1258,49 @@ def config_init_cmd(
     output.heading("Initialize local config")
     for line in init_local_config(force=force):
         output.item(line)
+
+
+@app.command("doctor")
+def doctor_cmd(
+    repair_plan: bool = typer.Option(
+        False,
+        "--repair-plan",
+        help="Print grouped repair commands (never executed automatically).",
+    ),
+    rebuild_summary: bool = typer.Option(
+        False,
+        "--rebuild-summary",
+        help="Show post-rebuild checkpoint (databases, repos, USB, next step).",
+    ),
+    self_heal: bool = typer.Option(
+        False,
+        "--self-heal",
+        help="Create missing Mercury directories when parent paths are writable (no sudo).",
+    ),
+    check_db: bool = typer.Option(
+        True,
+        "--check-db/--no-check-db",
+        help="Probe configured MariaDB credentials when config is present.",
+    ),
+) -> None:
+    """Diagnose fresh-rebuild setup, permissions, and MariaDB readiness."""
+    from mercury.env.doctor import run_doctor
+    from mercury.env.terminal.doctor import print_doctor_report, print_repair_plan
+
+    if rebuild_summary:
+        from mercury.deploy.rebuild_status import build_rebuild_status_report
+        from mercury.deploy.terminal.rebuild_status import print_rebuild_status
+
+        print_rebuild_status(build_rebuild_status_report(probe_database=check_db))
+        return
+
+    report = run_doctor(probe_database=check_db, self_heal=self_heal)
+    if repair_plan:
+        print_repair_plan(report)
+    else:
+        print_doctor_report(report)
+    if report.blockers:
+        raise typer.Exit(1)
 
 
 @app.command("menu")

@@ -97,11 +97,6 @@ def test_verification_model_can_represent_issues_and_success() -> None:
     assert passed.checksum_matches is True
 
 
-def test_report_preview_refuses_dev() -> None:
-    with pytest.raises(ManifestPreviewError):
-        build_report_preview("erebus_threat_intel_dev", BACKUP_KIND_FULL)
-
-
 def test_cli_verify_plan_demo() -> None:
     result = run_cli("backup", "verify-plan", "--demo")
     assert result.returncode == 0

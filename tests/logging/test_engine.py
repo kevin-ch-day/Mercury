@@ -22,6 +22,7 @@ from mercury.logging import (
     log_session_end,
     log_session_start,
     read_log_tail,
+    reset_logging,
     search_log_files,
 )
 
@@ -158,3 +159,25 @@ def test_log_routing(
 
     assert current_fn() == path_fn(log_dir=log_dir)
     assert snippet in read_log(current_fn)
+
+# merged from test_logging_permissions.py
+def test_configure_logging_survives_permission_error(monkeypatch, tmp_path: Path, capsys) -> None:
+    reset_logging()
+    log_dir = tmp_path / "mercury_logs"
+    log_dir.mkdir()
+    log_dir.chmod(0o555)
+
+    def fail_mkdir(*args, **kwargs):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr("mercury.logging.engine.resolve_log_dir", lambda **kwargs: log_dir)
+    monkeypatch.setattr(Path, "mkdir", fail_mkdir)
+
+    result = configure_logging(enabled=True)
+    captured = capsys.readouterr()
+    assert result is None
+    assert "chown" in captured.err.lower() or "doctor" in captured.err.lower() or "repair" in captured.err.lower()
+    reset_logging()
+
+    log_dir.chmod(0o755)
+

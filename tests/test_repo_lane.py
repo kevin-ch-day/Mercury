@@ -297,6 +297,7 @@ def test_write_local_repo_config_writes_existing_known_paths(
         ],
     )
 
+    monkeypatch.setattr("mercury.repo.config._home_github_candidates", lambda: [])
     destination = tmp_path / "config" / "repos.toml"
     written_path, definitions = write_local_repo_config(path=destination)
     assert written_path == destination

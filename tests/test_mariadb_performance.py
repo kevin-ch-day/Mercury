@@ -11,27 +11,22 @@ from mercury.database.mariadb.inspect import inspect_database_on_server
 from mercury.database.mariadb.readonly_session import probe_server_facts
 from mercury.database.mariadb.stats import fetch_all_database_stats
 
-SOCKET_PATH = Path("/var/lib/mysql/mysql.sock")
+from tests.conftest import (
+    DEFAULT_MARIADB_SOCKET,
+    live_mariadb_client_config,
+    mariadb_client_connects,
+    platform_prod_databases_present,
+)
+
+SOCKET_PATH = DEFAULT_MARIADB_SOCKET
 
 
 def _mariadb_socket_available(path: Path = SOCKET_PATH) -> bool:
-    try:
-        return path.exists()
-    except OSError:
-        return False
+    return mariadb_client_connects(path)
 
 
 def _client_config():
-    from mercury.database.mariadb.config import MariaDbConnectionConfig
-
-    return MariaDbConnectionConfig(
-        host="127.0.0.1",
-        port=3306,
-        user="root",
-        password="",
-        use_client=True,
-        unix_socket=str(SOCKET_PATH),
-    )
+    return live_mariadb_client_config()
 
 
 @pytest.mark.skipif(not _mariadb_socket_available(), reason="MariaDB socket not present")
@@ -47,6 +42,8 @@ class TestMariaDbPerformanceIntegration:
         assert "@" in lines[2]
 
     def test_probe_server_facts_single_round_trip_client(self) -> None:
+        if not platform_prod_databases_present():
+            pytest.skip("Platform prod databases not present on MariaDB server")
         facts = probe_server_facts(_client_config())
         assert facts["ping_ok"] == "1"
         assert facts["version"]
@@ -71,6 +68,8 @@ class TestMariaDbPerformanceIntegration:
         assert "information_schema.schemata" in calls[0]
 
     def test_fetch_all_database_stats(self) -> None:
+        if not platform_prod_databases_present():
+            pytest.skip("Platform prod databases not present on MariaDB server")
         report = fetch_all_database_stats(_client_config())
         assert report.databases
         names = {entry.name for entry in report.databases}

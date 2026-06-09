@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from mercury import output
+from mercury.core.environment_status import build_environment_status, discover_usb_target
 from mercury.core.storage_status import (
     backup_root_filesystem,
     backup_root_free_space_label,
@@ -33,12 +34,19 @@ def build_environment_check_fields(
     from mercury.core.execution_policy import load_execution_policy
 
     policy = load_execution_policy()
+    env_status = build_environment_status(probe_database=probe is not None or error is not None)
+    usb = discover_usb_target()
     fields: dict[str, dict[str, object]] = {
         "Runtime": {
             "Python": env.python_version,
             "Platform": f"{env.platform_system} {env.platform_release}",
             "Platform support": env.platform_support,
-            "Config": "config/local.toml" if policy.config_path is not None else "fallback/default",
+            "Config": "config/local.toml" if policy.config_path is not None else "not initialized",
+        },
+        "Local Config": {
+            "local.toml": "present" if env_status.config.local_toml_present else "missing",
+            "databases.toml": "present" if env_status.config.databases_toml_present else "missing",
+            "repos.toml": "present" if env_status.config.repos_toml_present else "missing",
         },
         "Execution Safety": {
             "Mode": "DRY RUN" if policy.dry_run else "LIVE",
@@ -51,26 +59,37 @@ def build_environment_check_fields(
         },
     }
 
-    mariadb_fields: dict[str, object]
+    mariadb_fields: dict[str, object] = {
+        "Client": env_status.mariadb.mariadb_client or "not found",
+        "Dump tool": env_status.mariadb.mysqldump_client or "not found",
+        "Service": env_status.mariadb.service_state,
+        "Socket": "available" if env_status.mariadb.socket_available else "unavailable",
+        "Config": "present" if env_status.mariadb.config_present else "missing",
+    }
     if probe is not None and probe.connected:
-        mariadb_fields = {
-            "Status": "connected",
-            "User": connection_label(probe),
-            "Version": probe.server_version or "unknown",
-        }
+        mariadb_fields["Connection"] = "connected"
+        mariadb_fields["User"] = connection_label(probe)
+        mariadb_fields["Version"] = probe.server_version or "unknown"
         if probe.unix_socket:
-            mariadb_fields["Socket"] = probe.unix_socket
+            mariadb_fields["Socket path"] = probe.unix_socket
         if probe.latency_ms is not None:
             mariadb_fields["Latency"] = f"{probe.latency_ms:.2f} ms"
     elif error:
-        mariadb_fields = {"Status": f"unavailable — {error}"}
+        mariadb_fields["Connection"] = f"failed — {error}"
+    elif env_status.mariadb.config_present:
+        mariadb_fields["Connection"] = "not probed"
     else:
-        mariadb_fields = {"Status": "not configured"}
+        mariadb_fields["Connection"] = "not configured — run: ./run.sh config init"
     fields["MariaDB"] = mariadb_fields
 
     backup_storage = {
         "Target": str(policy.backup_root.resolve()),
         "Mount": backup_root_mount_label(policy),
+        "USB detected": (
+            f"yes ({usb.mount_path})"
+            if usb.mercury_layout_present
+            else ("mounted, layout incomplete" if usb.mounted else "no")
+        ),
     }
     filesystem = backup_root_filesystem(policy.backup_root)
     if filesystem is not None:
@@ -79,6 +98,8 @@ def build_environment_check_fields(
     if free_space is not None:
         backup_storage["Free space"] = free_space
     backup_storage["Status"] = backup_root_storage_status_label(policy)
+    if env_status.primary_setup_blocker:
+        backup_storage["Note"] = env_status.primary_setup_blocker
     fields["Backup Storage"] = backup_storage
     return fields
 

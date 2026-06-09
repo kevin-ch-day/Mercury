@@ -20,6 +20,51 @@ FIXED_NOW = datetime(2026, 5, 30, 12, 0, 0, tzinfo=timezone.utc)
 DEFAULT_MARIADB_SOCKET = Path("/var/lib/mysql/mysql.sock")
 
 
+def live_mariadb_client_config():
+    """MariaDB client config for integration tests (local.toml when present)."""
+    from mercury.database.mariadb.config import MariaDbConnectionConfig, load_mariadb_config
+
+    local = repo_local_config()
+    if local.exists():
+        try:
+            return load_mariadb_config(local)
+        except Exception:
+            pass
+    return MariaDbConnectionConfig(
+        host="127.0.0.1",
+        port=3306,
+        user="root",
+        password="",
+        use_client=True,
+        unix_socket=str(DEFAULT_MARIADB_SOCKET),
+    )
+
+
+def mariadb_client_connects(path: Path = DEFAULT_MARIADB_SOCKET) -> bool:
+    if not mariadb_socket_available(path):
+        return False
+    from mercury.database.mariadb.client import client_fetch_scalar
+    from mercury.database.mariadb.errors import MariaDbLiveError
+
+    try:
+        client_fetch_scalar(live_mariadb_client_config(), "SELECT 1")
+    except MariaDbLiveError:
+        return False
+    return True
+
+
+def platform_prod_databases_present() -> bool:
+    if not mariadb_client_connects():
+        return False
+    from mercury.database.mariadb.session import fetch_user_database_names
+
+    try:
+        names = fetch_user_database_names(live_mariadb_client_config())
+    except Exception:
+        return False
+    return "erebus_threat_intel_prod" in names
+
+
 def run_cli(
     *args: str,
     cwd: Path | str | None = None,

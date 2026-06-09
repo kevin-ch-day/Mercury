@@ -6,6 +6,7 @@ import sys
 from pydantic import BaseModel, Field
 
 from mercury.config.settings import config_status
+from mercury.core.environment_status import build_environment_status
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.platform import detect_platform
 from mercury.core.paths import CONFIG_DIR, OUTPUT_DIR, REPO_ROOT
@@ -25,6 +26,8 @@ class EnvProbeResult(BaseModel):
     config_status: dict[str, str] = Field(default_factory=dict)
     notes: list[str] = Field(default_factory=list)
     database_probe: dict[str, object] | None = None
+    setup_blocker: str | None = None
+    setup_hints: list[str] = Field(default_factory=list)
 
 
 def probe_environment(*, check_database: bool = False, menu: bool = False) -> EnvProbeResult:
@@ -34,11 +37,15 @@ def probe_environment(*, check_database: bool = False, menu: bool = False) -> En
     inventory = discover_from_config()
     mariadb_ready = try_load_mariadb_config() is not None
     platform_info = detect_platform()
+    env_status = build_environment_status(probe_database=check_database)
 
     notes: list[str] = []
     if menu:
-        if not mariadb_ready:
+        if env_status.primary_setup_blocker:
+            notes.append(env_status.primary_setup_blocker)
+        elif not mariadb_ready:
             notes.append("No MariaDB config — run: mercury config init")
+        notes.extend(env_status.setup_hints)
     else:
         notes = [
             f"Known databases (config/catalog): {inventory.count} — use: mercury db discover [--demo]",
@@ -48,6 +55,9 @@ def probe_environment(*, check_database: bool = False, menu: bool = False) -> En
             notes.insert(0, "MariaDB config present — use: mercury db ping (read-only probe)")
         else:
             notes.insert(0, "Mercury seed: no live database connections (config/local.toml not ready).")
+        if env_status.primary_setup_blocker:
+            notes.insert(0, env_status.primary_setup_blocker)
+        notes.extend(env_status.setup_hints)
 
     db_probe: dict[str, object] | None = None
     if check_database:
@@ -69,6 +79,8 @@ def probe_environment(*, check_database: bool = False, menu: bool = False) -> En
         config_status=config_status(),
         notes=notes,
         database_probe=db_probe,
+        setup_blocker=env_status.primary_setup_blocker,
+        setup_hints=list(env_status.setup_hints),
     )
 
 

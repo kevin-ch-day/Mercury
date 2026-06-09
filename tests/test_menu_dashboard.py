@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from mercury.core.execution_policy import ExecutionPolicy
+from mercury.core.paths import REPO_ROOT
 from mercury.core.platform import PlatformInfo
 from mercury.menu.dashboard import _sync_readiness_summary, dashboard_rows
 
@@ -13,6 +14,7 @@ def test_dashboard_rows_include_core_fields() -> None:
     text = "\n".join(rows)
     assert "MariaDB" in text
     assert "Execution mode" in text
+    assert "Config" in text
     assert "Backup target" in text
     assert "Execution Safety" not in text
 
@@ -20,27 +22,49 @@ def test_dashboard_rows_include_core_fields() -> None:
 def test_dashboard_rows_include_extended_stats() -> None:
     rows = dashboard_rows(probe_database=False)
     text = "\n".join(rows)
-    assert "Source DBs" in text
+    assert "USB backups" in text
+    assert "MariaDB targets" in text
     assert "Sync pairs" in text
-    assert "Blocker" in text
+    assert "Environment" in text
 
 
 def test_dashboard_rows_warn_on_repo_local_backup_root(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "mercury.menu.dashboard.load_execution_policy",
-        lambda: ExecutionPolicy(
-            dry_run=True,
-            live_actions_enabled=False,
-            backup_root=Path("/home/secadmin/Laughlin/GitHub/Mercury/backups"),
-        ),
+    from types import SimpleNamespace
+
+    from mercury.core.environment_status import ConfigSetupStatus, UsbDiscovery
+
+    repo_backups = REPO_ROOT / "backups"
+    policy = ExecutionPolicy(
+        dry_run=True,
+        live_actions_enabled=False,
+        backup_root=repo_backups,
+        config_path=REPO_ROOT / "config" / "local.toml",
     )
+    env = SimpleNamespace(
+        policy=policy,
+        config=ConfigSetupStatus(True, True, True),
+        usb=UsbDiscovery(REPO_ROOT / "mnt" / "MERCURY_DATA_USB", False, False, None),
+        mariadb=SimpleNamespace(
+            connection_works=None,
+            config_present=True,
+            mariadb_client_found=True,
+            mysqldump_found=True,
+            service_active=True,
+            service_state="active",
+            socket_available=True,
+            connection_error=None,
+        ),
+        primary_setup_blocker=None,
+        setup_hints=(),
+        permission_checks=(),
+        repairable_blockers=(),
+        has_repairable_blockers=False,
+    )
+    monkeypatch.setattr("mercury.menu.dashboard.build_environment_status", lambda **kwargs: env)
+    monkeypatch.setattr("mercury.menu.dashboard.load_execution_policy", lambda: policy)
     monkeypatch.setattr(
         "mercury.core.runtime.load_execution_policy",
-        lambda: ExecutionPolicy(
-            dry_run=True,
-            live_actions_enabled=False,
-            backup_root=Path("/home/secadmin/Laughlin/GitHub/Mercury/backups"),
-        ),
+        lambda: policy,
     )
     rows = dashboard_rows(probe_database=False)
     assert any("repo-local fallback" in row for row in rows)

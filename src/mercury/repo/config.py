@@ -5,22 +5,42 @@ from __future__ import annotations
 from pathlib import Path
 import tomllib
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from mercury.core.execution_policy import REQUIRED_BACKUP_MOUNT
 from mercury.core.paths import LOCAL_CONFIG, REPOS_EXAMPLE, REPOS_LOCAL
+
+
+def _home_github_candidates() -> list[tuple[str, str, str]]:
+    """Discover ~/GitHub/<name> checkouts for the current operator."""
+    home = Path.home()
+    github_dir = home / "GitHub"
+    if not github_dir.is_dir():
+        return []
+    found: list[tuple[str, str, str]] = []
+    for child in sorted(github_dir.iterdir()):
+        if not child.is_dir() or not (child / ".git").is_dir():
+            continue
+        slug = child.name.lower().replace("-", "_").replace(" ", "_")
+        found.append((slug, child.name, str(child.resolve())))
+    return found
+
 
 DEFAULT_REPO_BACKUP_ROOT = REQUIRED_BACKUP_MOUNT / "mercury_repo_backups"
 DEFAULT_MANIFEST_DIR = REQUIRED_BACKUP_MOUNT / "mercury_manifests"
 DEFAULT_RUNBOOK_DIR = REQUIRED_BACKUP_MOUNT / "mercury_runbooks"
 DEFAULT_LOCAL_REPO_CANDIDATES: list[tuple[str, str, str]] = [
-    ("mercury", "Mercury", "/home/secadmin/Laughlin/GitHub/Mercury"),
-    ("erebus_engine", "Erebus Engine", "/home/secadmin/Laughlin/GitHub/erebus-engine-fedora"),
+    ("mercury", "Mercury", "{home}/GitHub/Mercury"),
+    ("erebus_engine", "Erebus Engine", "{home}/GitHub/erebus-engine-fedora"),
     ("erebus_web", "Erebus Web", "/var/www/html/erebus-web"),
-    ("scytaledroid", "ScytaleDroid", "/home/secadmin/Laughlin/GitHub/ScytaleDroid"),
+    ("scytaledroid", "ScytaleDroid", "{home}/GitHub/ScytaleDroid"),
     ("scytaledroid_web", "ScytaleDroid Web", "/var/www/html/ScytaleDroid-Web"),
-    ("obsidiandroid", "ObsidianDroid", "/home/secadmin/Laughlin/GitHub/obsidiandroid"),
-    ("fedora_linux_scripts", "Fedora Linux Scripts", "/home/secadmin/Laughlin/GitHub/fedora-linux-scripts"),
+    ("obsidiandroid", "ObsidianDroid", "{home}/GitHub/obsidiandroid"),
+    ("fedora_linux_scripts", "Fedora Linux Scripts", "{home}/GitHub/fedora-linux-scripts"),
+    # Legacy workstation layout (still probed when paths exist)
+    ("mercury_legacy", "Mercury", "/home/secadmin/Laughlin/GitHub/Mercury"),
+    ("erebus_engine_legacy", "Erebus Engine", "/home/secadmin/Laughlin/GitHub/erebus-engine-fedora"),
+    ("scytaledroid_legacy", "ScytaleDroid", "/home/secadmin/Laughlin/GitHub/ScytaleDroid"),
 ]
 
 
@@ -28,6 +48,8 @@ class RepoDefinition(BaseModel):
     key: str
     display_name: str
     path: Path
+    remote_url: str | None = None
+    default_branch: str = "main"
 
 
 class RepoSelectionError(ValueError):
@@ -41,11 +63,18 @@ class RepoBundleSettings(BaseModel):
 
 
 def discover_local_repo_definitions() -> list[RepoDefinition]:
-    """Discover known local repository paths for the Fedora workstation layout."""
+    """Discover known local repository paths for the current workstation layout."""
+    home = str(Path.home())
     repos: list[RepoDefinition] = []
+    seen_paths: set[str] = set()
     for key, display_name, raw_path in DEFAULT_LOCAL_REPO_CANDIDATES:
-        repo_path = Path(raw_path).expanduser().resolve()
+        expanded = raw_path.format(home=home)
+        repo_path = Path(expanded).expanduser().resolve()
+        path_key = str(repo_path)
+        if path_key in seen_paths:
+            continue
         if repo_path.is_dir():
+            seen_paths.add(path_key)
             repos.append(
                 RepoDefinition(
                     key=key,
@@ -53,6 +82,19 @@ def discover_local_repo_definitions() -> list[RepoDefinition]:
                     path=repo_path,
                 )
             )
+    for key, display_name, raw_path in _home_github_candidates():
+        repo_path = Path(raw_path).resolve()
+        path_key = str(repo_path)
+        if path_key in seen_paths:
+            continue
+        seen_paths.add(path_key)
+        repos.append(
+            RepoDefinition(
+                key=key,
+                display_name=display_name,
+                path=repo_path,
+            )
+        )
     return repos
 
 
@@ -69,18 +111,66 @@ def render_repo_config(definitions: list[RepoDefinition]) -> str:
                 f"[repos.{definition.key}]",
                 f'display_name = "{definition.display_name}"',
                 f'path = "{definition.path}"',
-                "",
+                f'default_branch = "{definition.default_branch}"',
             ]
         )
+        if definition.remote_url:
+            lines.append(f'remote_url = "{definition.remote_url}"')
+        lines.append("")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def build_workstation_repo_definitions(
+    existing: list[RepoDefinition] | None = None,
+) -> list[RepoDefinition]:
+    """Build repo targets for the current user, including paths not created yet."""
+    existing_by_key = {repo.key: repo for repo in (existing or [])}
+    home = str(Path.home())
+    repos: list[RepoDefinition] = []
+    seen_keys: set[str] = set()
+    for key, display_name, raw_path in DEFAULT_LOCAL_REPO_CANDIDATES:
+        if key.endswith("_legacy"):
+            continue
+        if key in seen_keys:
+            continue
+        repo_path = Path(raw_path.format(home=home)).expanduser()
+        previous = existing_by_key.get(key)
+        repos.append(
+            RepoDefinition(
+                key=key,
+                display_name=display_name,
+                path=repo_path,
+                remote_url=previous.remote_url if previous else None,
+                default_branch=previous.default_branch if previous else "main",
+            )
+        )
+        seen_keys.add(key)
+    for key, display_name, raw_path in _home_github_candidates():
+        if key in seen_keys:
+            continue
+        previous = existing_by_key.get(key)
+        repos.append(
+            RepoDefinition(
+                key=key,
+                display_name=display_name,
+                path=Path(raw_path),
+                remote_url=previous.remote_url if previous else None,
+                default_branch=previous.default_branch if previous else "main",
+            )
+        )
+        seen_keys.add(key)
+    from mercury.repo.usb_metadata import enrich_repo_definitions_from_usb
+
+    return enrich_repo_definitions_from_usb(repos)
 
 
 def write_local_repo_config(*, path: Path | None = None, force: bool = False) -> tuple[Path, list[RepoDefinition]]:
     """Write config/repos.toml from known local Fedora repo paths."""
     destination = path or REPOS_LOCAL
+    existing = load_repo_definitions(destination) if destination.exists() else []
     if destination.exists() and not force:
         raise FileExistsError(f"{destination} already exists. Use --force to overwrite it.")
-    definitions = discover_local_repo_definitions()
+    definitions = build_workstation_repo_definitions(existing) if force else discover_local_repo_definitions()
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(render_repo_config(definitions), encoding="utf-8")
     return destination, definitions
@@ -121,11 +211,15 @@ def load_repo_definitions(path: Path | None = None) -> list[RepoDefinition]:
             continue
         display_name = str(raw.get("display_name") or key)
         repo_path = Path(str(raw_path)).expanduser().resolve()
+        remote_url = raw.get("remote_url")
+        default_branch = str(raw.get("default_branch") or "main")
         repos.append(
             RepoDefinition(
                 key=str(key),
                 display_name=display_name,
                 path=repo_path,
+                remote_url=str(remote_url).strip() if remote_url else None,
+                default_branch=default_branch,
             )
         )
     return repos

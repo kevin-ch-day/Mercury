@@ -24,7 +24,7 @@ from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.terminal.format import format_bytes, format_human_datetime
 from mercury.terminal.table import Table, TableStyle
 from mercury.database.backup_planning import BackupPlanDryRun, build_backup_plan_from_inventory
-from mercury.database.discovery import discover, discover_demo
+from mercury.database.discovery import discover_for_planning
 from mercury.database.core.classifier import DatabaseRole, classify_database
 from mercury.database.prod_dev_pairs import build_prod_dev_pairs
 from mercury.menu.subscreen import pause_and_redraw, read_submenu_choice, render_submenu
@@ -148,7 +148,7 @@ def _backup_screen_rows(plan: BackupPlanDryRun) -> list[list[str]]:
 
 
 def _load_plan() -> BackupPlanDryRun:
-    inventory = discover("live") if should_probe_database_status() else discover_demo()
+    inventory = discover_for_planning(live=should_probe_database_status())
     return build_backup_plan_from_inventory(inventory)
 
 

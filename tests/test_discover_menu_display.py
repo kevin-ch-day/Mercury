@@ -98,3 +98,13 @@ def test_discover_menu_explains_shared_authority_source(capsys: pytest.CaptureFi
     print_discover_menu(discover_demo())
     out = capsys.readouterr().out
     assert "Shared authority: android_permission_intel (backup-only)" in out
+
+
+def test_run_discover_menu_non_interactive(capsys: pytest.CaptureFixture[str]) -> None:
+    from mercury.database.discovery_menu import run_discover_menu
+
+    run_discover_menu(interactive=False)
+    out = capsys.readouterr().out
+    assert "Active scope:" in out
+    assert "Rescan inventory" in out
+    assert "CLI:" not in out

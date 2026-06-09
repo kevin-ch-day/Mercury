@@ -6,8 +6,18 @@ from pathlib import Path
 
 import pytest
 
+from mercury.core.execution_policy import ExecutionPolicy
 from mercury.sync.interactive_menu import _blocked_prod_sources, _sync_submenu_options, run_sync_menu
 from mercury.sync.readiness import SyncReadinessEntry, SyncReadinessReport
+
+
+def _seed_execution_policy(tmp_path: Path) -> ExecutionPolicy:
+    return ExecutionPolicy(
+        dry_run=True,
+        live_actions_enabled=False,
+        backup_root=tmp_path / "backups",
+        config_path=None,
+    )
 
 
 def _sample_report(*, ready: int = 0, blocked: int = 1) -> SyncReadinessReport:
@@ -46,7 +56,14 @@ def test_blocked_prod_sources_skips_missing_dev_targets() -> None:
     assert _blocked_prod_sources(report) == ["erebus_threat_intel_prod"]
 
 
-def test_sync_submenu_shows_prepare_when_blocked() -> None:
+def test_sync_submenu_shows_prepare_when_blocked(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        "mercury.sync.interactive_menu.load_execution_policy",
+        lambda: _seed_execution_policy(tmp_path),
+    )
     report = _sample_report()
     labels = [label for _key, label in _sync_submenu_options(report)]
     assert any("Prepare production backups" in label for label in labels)
@@ -57,10 +74,15 @@ def test_sync_submenu_shows_prepare_when_blocked() -> None:
 def test_prepare_dry_run_shows_live_mode_hint(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
     from mercury.backup.batch_runner import BackupBatchResult
     from mercury.sync.interactive_menu import _prepare_production_backups
 
+    monkeypatch.setattr(
+        "mercury.sync.interactive_menu.load_execution_policy",
+        lambda: _seed_execution_policy(tmp_path),
+    )
     monkeypatch.setattr(
         "mercury.sync.interactive_menu.run_backup_batch",
         lambda *args, **kwargs: BackupBatchResult(

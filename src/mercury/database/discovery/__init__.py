@@ -47,8 +47,26 @@ def discover(
     return inventory
 
 
+def discover_for_planning(*, live: bool = False) -> DatabaseInventory:
+    """
+    Inventory for backup/sync planning.
+
+    Uses live SHOW DATABASES when configured; falls back to catalog/demo when live
+    discovery returns no databases (common on fresh rebuilds before prod DBs exist).
+    """
+    if live:
+        from mercury.database.mariadb.session import try_load_mariadb_config
+
+        if try_load_mariadb_config() is not None:
+            inventory = discover("live")
+            if inventory.count > 0:
+                return inventory
+    return discover_demo()
+
+
 __all__ = [
     "discover",
+    "discover_for_planning",
     "discover_from_config",
     "discover_demo",
     "DiscoveryMode",

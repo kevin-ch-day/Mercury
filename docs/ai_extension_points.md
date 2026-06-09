@@ -127,7 +127,7 @@ execute_backup(
 
 1. `database/core/catalog.py` — new `CatalogEntry`
 2. `classifier.py` — only if naming doesn't match `*_prod` / `*_dev` / shared rules
-3. Tests: `tests/test_db_classifier.py`
+3. Tests: `tests/test_db_discover.py` (`test_classify_database`)
 4. `mercury db access` will show catalog vs server presence automatically
 
 ---
@@ -137,15 +137,19 @@ execute_backup(
 | Area | Test file |
 |------|-----------|
 | Imports / smoke | `test_imports.py` |
-| CLI seed | `test_cli_seed.py`, `test_cli_m4.py` |
+| CLI commands | `test_cli_commands.py` |
+| Environment / doctor / config | `test_environment.py` |
 | Backup execute | `test_backup_execute.py` |
 | Backup verify | `test_backup_verify.py`, `test_m45_verification.py` |
-| MariaDB live | `test_m5_mariadb_live.py`, `test_m6_mariadb_connect.py`, `test_m7_mariadb_access.py` |
-| Discovery | `test_db_discover.py`, `test_database_module.py` |
-| Classifier | `test_db_classifier.py` |
+| MariaDB mocked session | `test_mariadb_session.py` |
+| MariaDB live integration | `test_m7_mariadb_access.py`, `test_mariadb_performance.py` |
+| Discovery + classifier | `test_db_discover.py` |
+| Database scope + active scope | `test_database_scope.py` |
 | Protection report | `test_protection_report.py` |
-| Menu | `test_menu.py` |
-| Config init | `test_config_init.py` |
+| Menu + display | `test_menu.py`, `test_menu_dashboard.py`, `test_menu_prompts.py` |
+| Schema / manifest layout | `test_m4_schema_manifest.py` |
+| Terminal tables | `test_display_table.py`, `test_display_format.py` |
+| Logging | `tests/logging/test_engine.py` |
 
 ---
 

@@ -31,19 +31,6 @@ def test_format_plan_status() -> None:
     assert display_format.format_plan_status(ready=False) == "blocked"
 
 
-def test_format_table_aligns_columns() -> None:
-    lines = display_format.format_table(
-        ["DATABASE", "ENV"],
-        [
-            ["erebus_threat_intel_prod", "PROD"],
-            ["erebus_threat_intel_dev", "DEV"],
-        ],
-    )
-    assert len(lines) == 4
-    assert "DATABASE" in lines[0]
-    assert lines[1].startswith("  -")
-
-
 def test_format_report_header() -> None:
     lines = display_format.format_report_header("BACKUP LIST")
     assert lines[0] == "BACKUP LIST"

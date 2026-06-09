@@ -4,6 +4,7 @@ import pytest
 
 from mercury import menu_display
 from mercury import menu_prompts
+from mercury.menu.subscreen import read_submenu_choice
 
 
 def test_menu_action_keys_match_sections() -> None:
@@ -49,7 +50,7 @@ def test_is_valid_menu_choice() -> None:
     assert menu_prompts.is_valid_menu_choice("0")
     assert menu_prompts.is_valid_menu_choice("q")
     assert menu_prompts.is_valid_menu_choice("6")
-    assert not menu_prompts.is_valid_menu_choice("8")
+    assert menu_prompts.is_valid_menu_choice("8")
     assert not menu_prompts.is_valid_menu_choice("")
     assert not menu_prompts.is_valid_menu_choice("99")
 
@@ -133,3 +134,18 @@ def test_ask_confirmation_phrase_exact_match() -> None:
         assert menu_prompts.ask_confirmation_phrase("SYNC DEV", action="sync") is False
     finally:
         menu_prompts.set_prompt_reader(None)
+
+# merged from test_menu_subscreen.py
+def test_read_submenu_choice_empty_reprompts(monkeypatch: pytest.MonkeyPatch) -> None:
+    answers = iter(["", "1"])
+    monkeypatch.setattr(
+        "mercury.menu.prompts.ask_stripped",
+        lambda _prompt: next(answers),
+    )
+    assert read_submenu_choice() == "1"
+
+# merged from test_menu_subscreen.py
+def test_read_submenu_choice_zero_returns_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("mercury.menu.prompts.ask_stripped", lambda _prompt: "0")
+    assert read_submenu_choice() == "0"
+
