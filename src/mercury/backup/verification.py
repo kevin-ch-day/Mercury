@@ -34,6 +34,12 @@ VERIFICATION_SEED_STATUS: list[str] = [
     "no database contacted",
 ]
 
+MANIFEST_VERIFIED_STAMP_NOTE = (
+    "manifest.json verified is written false at backup time and only becomes true after "
+    "mercury backup verify --update-manifest (or Verify menu option 2). Live protection status "
+    "uses checksum/artifact checks and USB mercury_state/database_backups.csv verify events."
+)
+
 
 class BackupVerificationResult(BaseModel):
     """Future/live verification outcome for one backup artifact set."""
@@ -157,6 +163,15 @@ def apply_verification_success(result: BackupVerificationResult) -> BackupVerifi
             "preview_only": False,
         }
     )
+
+
+def manifest_verified_stamp(manifest_path: str | Path) -> bool | None:
+    """Return manifest.json verified stamp when readable; None if missing/invalid."""
+    path = Path(manifest_path)
+    manifest = _load_manifest(path)
+    if manifest is None:
+        return None
+    return manifest.verified
 
 
 def _load_manifest(path: Path) -> BackupManifest | None:

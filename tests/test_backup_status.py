@@ -94,6 +94,34 @@ def test_build_backup_status_report_marks_repo_local_root_untrusted(
         assert report.entries[0].protection_status == "missing"
 
 
+def test_build_backup_status_report_does_not_append_ledger(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mercury.state.ledger import DATABASE_BACKUPS_CSV
+
+    state_root = tmp_path / "state"
+    monkeypatch.setattr("mercury.state.ledger.resolve_state_root", lambda policy=None: state_root)
+    _write_verified_backup(
+        tmp_path,
+        "android_permission_intel",
+        "android_permission_intel-full-20260608_120000",
+    )
+    build_backup_status_report(
+        live=False,
+        selected=["android_permission_intel"],
+        policy=ExecutionPolicy(
+            dry_run=False,
+            live_actions_enabled=True,
+            backup_root=tmp_path,
+            config_path=tmp_path / "local.toml",
+            allow_unsafe_backup_root=True,
+        ),
+    )
+    assert not (state_root / DATABASE_BACKUPS_CSV).exists()
+    assert not (state_root / "operations.jsonl").exists()
+
+
 def test_cli_backup_status_compact_report(tmp_path: Path) -> None:
     _write_verified_backup(
         tmp_path,

@@ -1,12 +1,22 @@
-"""Prod→dev sync readiness based on verified on-disk backups."""
+"""Prod→dev sync readiness based on artifact-verified on-disk backups and freshness."""
 
 from __future__ import annotations
+
+import json
 
 from pydantic import BaseModel, Field
 
 from mercury.backup.find_latest_backup import find_latest_backup_directory
+from mercury.backup.freshness import (
+    FRESHNESS_STALE,
+    FRESHNESS_UNKNOWN,
+    assess_backup_freshness,
+    parse_backup_timestamp,
+)
+from mercury.backup.layout import MANIFEST_FILENAME
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.execution_policy import load_execution_policy
+from mercury.core.runtime import should_probe_database_status
 from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.database.core.scope import is_in_scope
 from mercury.database.discovery import discover_for_planning
@@ -21,8 +31,21 @@ class SyncReadinessEntry(BaseModel):
     latest_backup_dir: str | None = None
     backup_verified: bool = False
     backup_id: str | None = None
+    backup_freshness: str | None = None
     ready_for_sync_planning: bool = False
     blockers: list[str] = Field(default_factory=list)
+
+
+def _load_backup_created_at(backup_dir) -> str | None:
+    manifest_path = backup_dir / MANIFEST_FILENAME
+    if not manifest_path.is_file():
+        return None
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    created_at = data.get("created_at")
+    return str(created_at) if created_at else None
 
 
 class SyncReadinessReport(BaseModel):
@@ -62,6 +85,7 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
         backup_dir = find_latest_backup_directory(policy.backup_root, pair.prod)
         backup_verified = False
         backup_id: str | None = None
+        backup_freshness: str | None = None
         latest_dir: str | None = None
 
         if backup_dir is None:
@@ -72,9 +96,27 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
             backup_verified = verify.verified
             backup_id = verify.backup_id
             if not verify.verified:
-                blockers.append("Latest backup is not verified (manifest/checksum/size/role).")
+                blockers.append(
+                    "Latest backup is not artifact-verified (manifest/checksum/size/role)."
+                )
             if verify.backup_kind != BACKUP_KIND_FULL:
                 blockers.append("Latest backup is not a verified full backup.")
+            elif backup_verified and live and should_probe_database_status():
+                freshness = assess_backup_freshness(
+                    pair.prod,
+                    backup_at=parse_backup_timestamp(_load_backup_created_at(backup_dir)),
+                    live=True,
+                )
+                backup_freshness = freshness.freshness
+                if freshness.freshness == FRESHNESS_STALE:
+                    blockers.append(
+                        "Backup artifacts are artifact-verified but freshness is stale; "
+                        "run full backup before prod→dev sync."
+                    )
+                elif freshness.freshness == FRESHNESS_UNKNOWN:
+                    blockers.append(
+                        "Backup freshness is unknown; run full backup before prod→dev sync."
+                    )
 
         ready = pair.dev_listed and backup_verified and not blockers
         if ready:
@@ -91,6 +133,7 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
                 latest_backup_dir=latest_dir,
                 backup_verified=backup_verified,
                 backup_id=backup_id,
+                backup_freshness=backup_freshness,
                 ready_for_sync_planning=ready,
                 blockers=blockers,
             )

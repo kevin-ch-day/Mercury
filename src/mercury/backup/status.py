@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from pydantic import BaseModel, Field
 
 from mercury.backup.batch_runner import select_batch_sources
 from mercury.backup.find_latest_backup import find_latest_backup_directory
-from mercury.backup.verification import verify_backup_directory
+from mercury.backup.freshness import (
+    FRESHNESS_STALE,
+    FRESHNESS_UNKNOWN,
+    assess_backup_freshness,
+    parse_backup_timestamp,
+)
+from mercury.backup.layout import MANIFEST_FILENAME
+from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
 from mercury.database.core import classify_database
 
@@ -17,6 +27,12 @@ class BackupStatusEntry(BaseModel):
     protection_status: str
     backup_id: str | None = None
     backup_directory: str | None = None
+    backup_created_at: str | None = None
+    freshness: str = FRESHNESS_UNKNOWN
+    latest_source_activity_at: str | None = None
+    activity_signal: str | None = None
+    backup_age: str | None = None
+    recommend_full_backup: bool = False
     issues: list[str] = Field(default_factory=list)
 
 
@@ -27,6 +43,8 @@ class BackupStatusReport(BaseModel):
     verified_count: int = 0
     missing_count: int = 0
     failed_count: int = 0
+    stale_count: int = 0
+    unknown_freshness_count: int = 0
     entries: list[BackupStatusEntry] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
@@ -48,6 +66,18 @@ def _untrusted_root_warning(policy: ExecutionPolicy) -> str | None:
     return None
 
 
+def _load_backup_created_at(backup_dir: Path) -> str | None:
+    manifest_path = backup_dir / MANIFEST_FILENAME
+    if not manifest_path.is_file():
+        return None
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    created_at = data.get("created_at")
+    return str(created_at) if created_at else None
+
+
 def build_backup_status_report(
     *,
     live: bool = False,
@@ -62,6 +92,8 @@ def build_backup_status_report(
     verified_count = 0
     missing_count = 0
     failed_count = 0
+    stale_count = 0
+    unknown_freshness_count = 0
     entries: list[BackupStatusEntry] = []
 
     for database in sources:
@@ -73,12 +105,21 @@ def build_backup_status_report(
                     database=database,
                     role=role,
                     protection_status="missing",
+                    recommend_full_backup=True,
                 )
             )
             missing_count += 1
+            unknown_freshness_count += 1
             continue
 
-        verification = verify_backup_directory(backup_dir, database=database, update_manifest=False)
+        backup_created_at = _load_backup_created_at(backup_dir)
+        freshness = assess_backup_freshness(
+            database,
+            backup_at=parse_backup_timestamp(backup_created_at),
+            live=live,
+        )
+
+        verification = verify_backup_artifacts(backup_dir, database=database)
         status = "verified" if verification.verified else "failed"
         issues = list(verification.issues)
         if warning:
@@ -90,6 +131,17 @@ def build_backup_status_report(
         else:
             failed_count += 1
 
+        if freshness.freshness == FRESHNESS_STALE:
+            stale_count += 1
+        elif freshness.freshness == FRESHNESS_UNKNOWN:
+            unknown_freshness_count += 1
+
+        if freshness.recommend_full_backup and status == "verified":
+            issues.append(
+                "Backup artifacts are verified, but freshness is stale or unknown. "
+                "Run full backup before workstation handoff."
+            )
+
         entries.append(
             BackupStatusEntry(
                 database=database,
@@ -97,6 +149,16 @@ def build_backup_status_report(
                 protection_status=status,
                 backup_id=verification.backup_id,
                 backup_directory=str(backup_dir),
+                backup_created_at=backup_created_at,
+                freshness=freshness.freshness,
+                latest_source_activity_at=(
+                    freshness.latest_source_activity_at.isoformat()
+                    if freshness.latest_source_activity_at
+                    else None
+                ),
+                activity_signal=freshness.activity_signal,
+                backup_age=freshness.backup_age,
+                recommend_full_backup=freshness.recommend_full_backup or status != "verified",
                 issues=issues,
             )
         )
@@ -108,6 +170,8 @@ def build_backup_status_report(
         verified_count=verified_count,
         missing_count=missing_count,
         failed_count=failed_count,
+        stale_count=stale_count,
+        unknown_freshness_count=unknown_freshness_count,
         entries=entries,
         warnings=[warning] if warning else [],
     )

@@ -70,6 +70,26 @@ def log_restore_check(*, database: str, allowed: bool, blocker_count: int) -> No
     )
 
 
+def log_target_completeness(
+    *,
+    database: str,
+    status: str,
+    live_objects: int | None,
+    backup_objects: int | None,
+    missing_critical: int,
+) -> None:
+    level = logging.INFO if status == "complete" else logging.WARNING
+    get_logger("mercury.restore").log(
+        level,
+        "target completeness database=%s status=%s live_objects=%s backup_objects=%s missing_critical=%s",
+        database,
+        status,
+        live_objects,
+        backup_objects,
+        missing_critical,
+    )
+
+
 def log_env_probe(*, connected: bool, database_status: str) -> None:
     get_logger("mercury.database").info(
         "env probe connected=%s database_status=%s",

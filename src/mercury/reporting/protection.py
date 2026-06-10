@@ -41,6 +41,9 @@ class ProtectionReport(BaseModel):
     verified_source_count: int = 0
     missing_source_count: int = 0
     failed_source_count: int = 0
+    stale_source_count: int = 0
+    unknown_freshness_source_count: int = 0
+    source_freshness: dict[str, str] = Field(default_factory=dict)
     manual_review: list[str] = Field(default_factory=list)
     prod_dev_pairs: list[ProdDevPair] = Field(default_factory=list)
     orphan_dev: list[str] = Field(default_factory=list)
@@ -101,6 +104,11 @@ def build_protection_report(*, live: bool = False, probe_database: bool = False)
         actions.append(f"Manual review required: {name}")
     if not policy.live_execution_allowed():
         actions.append("Dry-run mode: backup/sync execution requires explicit live enable.")
+    if backup_status.stale_count or backup_status.unknown_freshness_count:
+        actions.insert(
+            0,
+            "Run full backup for stale or unknown-freshness sources before workstation handoff or prod→dev sync.",
+        )
 
     return ProtectionReport(
         generated_at=datetime.now(timezone.utc).isoformat(),
@@ -117,6 +125,9 @@ def build_protection_report(*, live: bool = False, probe_database: bool = False)
         verified_source_count=backup_status.verified_count,
         missing_source_count=backup_status.missing_count,
         failed_source_count=backup_status.failed_count,
+        stale_source_count=backup_status.stale_count,
+        unknown_freshness_source_count=backup_status.unknown_freshness_count,
+        source_freshness={entry.database: entry.freshness for entry in backup_status.entries},
         manual_review=review,
         prod_dev_pairs=pairs,
         orphan_dev=orphans,
@@ -256,6 +267,8 @@ def print_protection_report(report: ProtectionReport, *, compact: bool = False) 
             "Verified sources": report.verified_source_count,
             "Missing sources": report.missing_source_count,
             "Failed sources": report.failed_source_count,
+            "Freshness stale": report.stale_source_count,
+            "Freshness unknown": report.unknown_freshness_source_count,
         }
     )
     if report.ignored_out_of_scope_count:
@@ -267,6 +280,9 @@ def print_protection_report(report: ProtectionReport, *, compact: bool = False) 
             project = entry.project if entry and entry.project else "—"
             source_role = source_role_label(name)
             status = report.source_statuses.get(name, "unknown")
+            freshness = report.source_freshness.get(name, "unknown")
+            if status == "verified" and freshness != "unknown":
+                status = f"{status}/{freshness}"
             rows.append([name, source_role, status, project])
         display_screen.write_blank()
         display_screen.write_compact_table(

@@ -822,12 +822,12 @@ def sync_plan_cmd(
 @sync_app.command("readiness")
 def sync_readiness_cmd(
     live: bool = typer.Option(
-        False,
-        "--live",
-        help="Use live server inventory for production sync pairs.",
+        True,
+        "--live/--demo",
+        help="Use live server inventory and freshness probes (default) or demo/catalog only.",
     ),
 ) -> None:
-    """Report which production sync pairs have verified full backups."""
+    """Report which production sync pairs have artifact-verified fresh full backups."""
     from mercury.database import MariaDbConfigError, MariaDbLiveError
     from mercury.sync.readiness import build_sync_readiness_report
     from mercury.sync.terminal.readiness import print_sync_readiness_report
@@ -1096,6 +1096,38 @@ def deploy_status_cmd(
     from mercury.deploy.terminal.rebuild_status import print_rebuild_status
 
     print_rebuild_status(build_rebuild_status_report(probe_database=check_db))
+
+
+@restore_app.command("readiness")
+def restore_check_readiness_cmd(
+    db: list[str] = typer.Option(
+        None,
+        "--db",
+        help="Limit to one or more production backup source databases.",
+    ),
+    demo: bool = typer.Option(
+        False,
+        "--demo",
+        help="Use demo/catalog backup sources instead of live inventory.",
+    ),
+) -> None:
+    """Read-only deployment check: target/schema completeness vs backup baseline (not data freshness)."""
+    from mercury.backup.batch_runner import BackupSourceSelectionError, select_batch_sources
+    from mercury.core.runtime import should_probe_database_status
+    from mercury.restore.readiness import build_target_completeness_report, restore_readiness_should_fail
+    from mercury.restore.terminal.readiness import print_target_completeness_report
+
+    probe = should_probe_database_status() and not demo
+    try:
+        databases = select_batch_sources(selected=db, live=probe) if db else None
+    except BackupSourceSelectionError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+
+    report = build_target_completeness_report(databases=databases, live=not demo)
+    print_target_completeness_report(report)
+    if restore_readiness_should_fail(report, live=not demo):
+        raise typer.Exit(1)
 
 
 @restore_app.command("plan")

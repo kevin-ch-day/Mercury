@@ -60,9 +60,11 @@ def test_run_backup_menu_non_interactive(
     assert "Mode:" not in out
     assert "Action:" not in out
     assert "DATABASE" in out
-    assert "STATUS" in out
+    assert "ARTIFACT" in out
+    assert "FRESHNESS" in out
     assert "LAST BACKUP" in out
     assert "TARGET" in out
+    assert "Artifact verified" in out
     assert "android_permission_intel" in out
     assert "n/a" in out
     assert "erebus_threat_intel_prod" in out
@@ -124,9 +126,13 @@ def test_backup_menu_uses_human_last_backup_format(
                         {
                             "database": "android_permission_intel",
                             "protection_status": "verified",
+                            "freshness": "unknown",
+                            "backup_age": "1h ago",
                         },
                     )()
-                ]
+                ],
+                "stale_count": 0,
+                "unknown_freshness_count": 1,
             },
         )(),
     )
@@ -149,7 +155,9 @@ def test_backup_menu_uses_human_last_backup_format(
     plan = build_backup_plan(["android_permission_intel"])
     _render_backup_screen(plan, show_title=False)
     out = capsys.readouterr().out
-    assert "6/9/2026 3:01 PM" in out
+    assert "3:01 PM" in out
+    assert "1h ago" in out
+
 
 # merged from test_verify_menu.py
 def test_run_verify_menu_non_interactive(capsys: pytest.CaptureFixture[str]) -> None:
@@ -161,4 +169,3 @@ def test_run_verify_menu_non_interactive(capsys: pytest.CaptureFixture[str]) -> 
     assert "SOURCE ROLE" in out
     assert "shared authority source" in out
     assert "Actions" not in out
-

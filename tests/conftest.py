@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -12,6 +13,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI = [sys.executable, "-m", "mercury.cli"]
+ENV_STATE_ROOT = "MERCURY_STATE_ROOT"
 
 FIXED_DATE = "2026-05-30"
 FIXED_TS = "20260530_120000"
@@ -71,12 +73,15 @@ def run_cli(
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run ``mercury.cli`` in a subprocess and return the completed process."""
+    merged_env = os.environ.copy()
+    if env:
+        merged_env.update(env)
     return subprocess.run(
         [*CLI, *args],
         capture_output=True,
         text=True,
         cwd=cwd,
-        env=env,
+        env=merged_env,
     )
 
 
@@ -105,3 +110,12 @@ def _reset_menu_prompt_reader() -> Iterator[None]:
     yield
     set_prompt_reader(None)
     set_continue_reader(None)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_mercury_state_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Keep pytest ledger writes off the operator USB state tree."""
+    state_root = tmp_path / "mercury_state"
+    state_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv(ENV_STATE_ROOT, str(state_root))
+    yield

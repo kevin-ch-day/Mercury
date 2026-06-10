@@ -170,7 +170,12 @@ def test_dry_run_does_not_write_backup_files(tmp_path: Path) -> None:
     )
     assert result.executed is False
     assert result.dry_run is True
-    assert not list(tmp_path.rglob("*"))
+    leftover = [
+        path
+        for path in tmp_path.rglob("*")
+        if "mercury_state" not in path.parts
+    ]
+    assert not leftover
 
 
 def test_live_execution_refused_without_enable(tmp_path: Path) -> None:

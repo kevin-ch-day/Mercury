@@ -49,6 +49,13 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
 
     deploy_status_line = "skipped until config initialized"
     sync_blocker = "None."
+    stale_names: set[str] = set()
+    unknown_names: set[str] = set()
+    verified_names: set[str] = set()
+    source_names: set[str] = set()
+    ready = 0
+    blocked = 0
+    deploy_complete = False
     if not config_initialized:
         source_line = "skipped until config initialized"
         sync_line = "skipped until config initialized"
@@ -61,7 +68,7 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             config_initialized=False,
         )
     else:
-        verified_names, source_names = _verified_source_summary(
+        verified_names, source_names, stale_names, unknown_names = _verified_source_summary(
             live=probe and env.mariadb.connection_works is True
         )
         ready, blocked, sync_blocker = _sync_readiness_summary(
@@ -83,9 +90,17 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
         source_line = f"{len(verified_names)} of {len(source_names)} verified"
         sync_line = f"{ready} ready, {blocked} need dev targets"
 
+    source_summary = source_line
+    if config_initialized:
+        source_summary = f"{len(verified_names)} of {len(source_names)} artifact-verified"
+        if stale_names:
+            source_summary += f"; {len(stale_names)} stale"
+        if unknown_names:
+            source_summary += f"; {len(unknown_names)} freshness unknown"
+
     rows.extend(
         [
-            dashboard_row("USB backups", source_line),
+            dashboard_row("USB backups", source_summary),
             dashboard_row("MariaDB targets", deploy_line if config_initialized else "skipped until config initialized"),
             dashboard_row("Deploy status", deploy_status_line if config_initialized else "skipped until config initialized"),
             dashboard_row("Sync pairs", sync_line),
@@ -112,28 +127,23 @@ def setup_hint_lines(*, probe_database: bool | None = None) -> list[str]:
     return list(env.setup_hints)
 
 
-def _verified_source_summary(*, live: bool) -> tuple[set[str], set[str]]:
+def _verified_source_summary(*, live: bool) -> tuple[set[str], set[str], set[str], set[str]]:
     try:
         from mercury.backup.batch_runner import resolve_batch_sources
-        from mercury.backup.find_latest_backup import find_latest_backup_directory
-        from mercury.backup.verification import verify_backup_artifacts
-        from mercury.core.safety import BACKUP_KIND_FULL
+        from mercury.backup.status import build_backup_status_report
 
-        policy = load_execution_policy()
+        report = build_backup_status_report(live=live)
         sources = set(resolve_batch_sources(live=live))
-        verified: set[str] = set()
-        for name in sources:
-            backup_dir = find_latest_backup_directory(policy.backup_root, name)
-            if backup_dir is None:
-                continue
-            if policy.backup_root_is_within_repo() and not policy.allow_unsafe_backup_root:
-                continue
-            result = verify_backup_artifacts(backup_dir, database=name)
-            if result.verified and result.backup_kind == BACKUP_KIND_FULL:
-                verified.add(name)
-        return verified, sources
+        verified = {
+            entry.database
+            for entry in report.entries
+            if entry.protection_status == "verified"
+        }
+        stale = {entry.database for entry in report.entries if entry.freshness == "stale"}
+        unknown = {entry.database for entry in report.entries if entry.freshness == "unknown"}
+        return verified, sources, stale, unknown
     except Exception:
-        return set(), set()
+        return set(), set(), set(), set()
 
 
 def _deploy_status_line(*, live: bool) -> str:
@@ -178,7 +188,11 @@ def _sync_readiness_summary(
         for entry in report.entries:
             blocker_messages.extend(entry.blockers)
         if blocker_messages:
-            if any("No on-disk backup found for production source." in msg for msg in blocker_messages):
+            if any("freshness is stale" in msg for msg in blocker_messages):
+                blocker = "Artifact-verified backups are stale; run full backup before sync."
+            elif any("freshness is unknown" in msg for msg in blocker_messages):
+                blocker = "Backup freshness unknown; run full backup before sync."
+            elif any("No on-disk backup found for production source." in msg for msg in blocker_messages):
                 missing_sources = source_names - verified_names
                 sync_source_names = {entry.prod for entry in report.entries}
                 if not verified_names:

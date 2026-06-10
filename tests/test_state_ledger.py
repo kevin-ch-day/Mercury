@@ -87,7 +87,7 @@ def test_backup_and_verify_append_state_ledger(
 
 def test_build_state_summary_counts_files(tmp_path: Path) -> None:
     state_root = tmp_path / "mercury_state"
-    state_root.mkdir(parents=True)
+    state_root.mkdir(parents=True, exist_ok=True)
     (state_root / "operations.jsonl").write_text(
         json.dumps({"event_type": "backup_executed"}) + "\n" + json.dumps({"event_type": "backup_verified"}) + "\n",
         encoding="utf-8",
@@ -116,3 +116,34 @@ def test_build_state_summary_counts_files(tmp_path: Path) -> None:
     assert summary.repo_bundle_rows == 1
     assert summary.transfer_package_rows == 1
     assert summary.sync_event_rows == 1
+
+
+def test_is_operator_ledger_path_filters_pytest_temp_dirs() -> None:
+    from mercury.state.ledger import is_operator_ledger_path, read_operator_database_backup_rows
+
+    assert is_operator_ledger_path("/mnt/MERCURY_DATA_USB/mercury_backups/2026-06-09/db") is True
+    assert is_operator_ledger_path("/tmp/pytest-of-secadmin/pytest-1/backups/db") is False
+
+
+def test_read_operator_database_backup_rows_excludes_pytest_paths(tmp_path: Path) -> None:
+    from mercury.state.ledger import DATABASE_BACKUPS_CSV, read_operator_database_backup_rows
+
+    state_root = tmp_path / "ledger_fixture_state"
+    state_root.mkdir(parents=True, exist_ok=True)
+    (state_root / DATABASE_BACKUPS_CSV).write_text(
+        "timestamp,database,role,event,backup_kind,backup_id,backup_path,dump_file,schema_file,size_bytes,verified,restore_check_status,warnings\n"
+        "2026-06-09T00:00:00+00:00,erebus_threat_intel_prod,production,verify,full,id1,/mnt/MERCURY_DATA_USB/mercury_backups/2026-06-09/erebus,,,,True,,\n"
+        "2026-06-09T00:00:01+00:00,erebus_threat_intel_prod,production,restore_check,,,/tmp/pytest-of-secadmin/pytest-1/test,,,,,failed,msg\n",
+        encoding="utf-8",
+    )
+    rows = read_operator_database_backup_rows(state_root=state_root)
+    assert len(rows) == 1
+    assert rows[0]["backup_path"].startswith("/mnt/MERCURY_DATA_USB")
+
+
+def test_resolve_state_root_honors_mercury_state_root_env(tmp_path: Path, monkeypatch) -> None:
+    from mercury.state.ledger import ENV_STATE_ROOT, resolve_state_root
+
+    custom = tmp_path / "custom_state"
+    monkeypatch.setenv(ENV_STATE_ROOT, str(custom))
+    assert resolve_state_root() == custom.resolve()

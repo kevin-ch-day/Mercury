@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,9 @@ DATABASE_BACKUPS_CSV = "database_backups.csv"
 REPO_BUNDLES_CSV = "repo_bundles.csv"
 TRANSFER_PACKAGES_CSV = "transfer_packages.csv"
 SYNC_EVENTS_CSV = "sync_events.csv"
+
+ENV_STATE_ROOT = "MERCURY_STATE_ROOT"
+TEST_LEDGER_PATH_MARKERS = ("/tmp/pytest", "/pytest-of-", "/pyfakefs")
 
 DATABASE_BACKUP_FIELDS = [
     "timestamp",
@@ -75,6 +79,12 @@ SYNC_EVENT_FIELDS = [
 
 def resolve_state_root(policy: ExecutionPolicy | None = None) -> Path:
     """Use USB-backed state when the required mount is active; else repo-local data/."""
+    override = os.environ.get(ENV_STATE_ROOT)
+    if override:
+        return Path(override).expanduser().resolve()
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return (DATA_DIR / "pytest_state").resolve()
+
     resolved_policy = policy or load_execution_policy()
     if (
         REQUIRED_BACKUP_MOUNT.is_mount()
@@ -82,6 +92,33 @@ def resolve_state_root(policy: ExecutionPolicy | None = None) -> Path:
     ):
         return REQUIRED_BACKUP_MOUNT / STATE_DIRNAME
     return DATA_DIR
+
+
+def is_operator_ledger_path(path: str | None) -> bool:
+    """True when a ledger backup_path belongs to operator/USB history, not pytest temp dirs."""
+    if not path:
+        return True
+    normalized = str(path).replace("\\", "/")
+    return not any(marker in normalized for marker in TEST_LEDGER_PATH_MARKERS)
+
+
+def read_database_backup_rows(*, state_root: Path | None = None) -> list[dict[str, str]]:
+    """Load database backup ledger rows from CSV."""
+    root = (state_root or resolve_state_root()).expanduser().resolve()
+    path = root / DATABASE_BACKUPS_CSV
+    if not path.is_file():
+        return []
+    with path.open(encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def read_operator_database_backup_rows(*, state_root: Path | None = None) -> list[dict[str, str]]:
+    """Operator-facing ledger rows with pytest/temp paths excluded."""
+    return [
+        row
+        for row in read_database_backup_rows(state_root=state_root)
+        if is_operator_ledger_path(row.get("backup_path"))
+    ]
 
 
 def _ensure_state_root(state_root: Path | None = None) -> Path | None:

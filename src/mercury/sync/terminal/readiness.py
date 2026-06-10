@@ -22,8 +22,12 @@ def _compact_readiness_status(*, ready: bool, blockers: list[str]) -> str:
         return "USB root required"
     if "No on-disk backup found for production source." in blockers:
         return "missing verified backup"
-    if "Latest backup is not verified (manifest/checksum/size/role)." in blockers:
+    if "Latest backup is not artifact-verified (manifest/checksum/size/role)." in blockers:
         return "backup not verified"
+    if any("freshness is stale" in blocker for blocker in blockers):
+        return "backup stale"
+    if any("freshness is unknown" in blocker for blocker in blockers):
+        return "freshness unknown"
     if "Latest backup is not a verified full backup." in blockers:
         return "backup not full"
     if blockers:
@@ -33,7 +37,7 @@ def _compact_readiness_status(*, ready: bool, blockers: list[str]) -> str:
 
 def _compact_readiness_reason(*, ready: bool, blockers: list[str]) -> str:
     if ready:
-        return "verified source backup available"
+        return "artifact-verified fresh source backup available"
     return _compact_readiness_status(ready=ready, blockers=blockers)
 
 
@@ -65,7 +69,7 @@ def print_sync_readiness_report(
         display_screen.write_structured_table(table)
         return
 
-    output.heading("SYNC READINESS (verified source backup required)")
+    output.heading("SYNC READINESS (artifact-verified source backup required)")
     output.field("mode", report.mode)
     output.field("backup_root", report.backup_root)
     output.field("ready", report.ready_count)
@@ -81,9 +85,11 @@ def print_sync_readiness_report(
         if entry.backup_id:
             output.write(f"  backup_id: {entry.backup_id}")
         output.write(f"  backup_verified: {entry.backup_verified}")
+        if entry.backup_freshness:
+            output.write(f"  backup_freshness: {entry.backup_freshness}")
         for blocker in entry.blockers:
             output.write(f"  - {blocker}")
 
     output.write()
     output.write(shared_authority_note())
-    output.write("Prerequisite: verified full backup before prod→dev sync.")
+    output.write("Prerequisite: artifact-verified full backup with fresh data before prod→dev sync.")

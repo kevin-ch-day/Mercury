@@ -14,7 +14,7 @@ def _compact_restore_status(plan: RestoreCheckPlan) -> str:
         return "USB root required"
     if "No on-disk backup found for production source." in plan.blockers:
         return "missing verified backup"
-    if "Latest backup is not verified." in plan.blockers:
+    if "Latest backup is not artifact-verified." in plan.blockers:
         return "backup not verified"
     if plan.blockers:
         return plan.blockers[0]
@@ -73,6 +73,23 @@ def print_restore_check_plan(plan: RestoreCheckPlan, *, compact: bool = False) -
         output.field("backup_id", plan.backup_id)
     if plan.dump_file:
         output.field("dump_file", plan.dump_file)
+
+    if plan.target_completeness is not None:
+        output.heading("Target completeness (schema/objects; not data freshness)")
+        completeness = plan.target_completeness
+        output.field("status", completeness.completeness_status)
+        output.field("ready_for_restore_planning", completeness.ready_for_restore_planning)
+        if completeness.live_object_count is not None and completeness.backup_object_count is not None:
+            output.field(
+                "live_vs_backup_objects",
+                f"{completeness.live_object_count} live / {completeness.backup_object_count} backup baseline",
+            )
+        if completeness.missing_critical_tables:
+            output.field("missing_critical_tables", ", ".join(completeness.missing_critical_tables))
+        for blocker in completeness.blockers:
+            output.bullet(blocker)
+        for warning in completeness.warnings:
+            output.bullet(warning)
 
     if plan.blockers:
         output.heading("Blockers")

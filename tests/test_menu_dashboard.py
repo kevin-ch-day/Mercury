@@ -195,3 +195,37 @@ def test_sync_readiness_summary_reports_missing_source_databases_for_partial_gen
         readiness.build_sync_readiness_report = original
 
     assert blocker == "Verified backups still missing for source databases."
+
+
+def test_sync_readiness_summary_reports_stale_blocker() -> None:
+    report = SimpleNamespace(
+        entries=[
+            SimpleNamespace(
+                prod="erebus_threat_intel_prod",
+                blockers=[
+                    "Backup artifacts are artifact-verified but freshness is stale; "
+                    "run full backup before prod→dev sync."
+                ],
+            ),
+        ],
+        ready_count=0,
+        blocked_count=1,
+    )
+
+    def fake_build_sync_readiness_report(*, live: bool):
+        return report
+
+    import mercury.sync.readiness as readiness
+
+    original = readiness.build_sync_readiness_report
+    readiness.build_sync_readiness_report = fake_build_sync_readiness_report
+    try:
+        _ready, _blocked, blocker = _sync_readiness_summary(
+            live=True,
+            verified_names={"erebus_threat_intel_prod"},
+            source_names={"erebus_threat_intel_prod", "android_permission_intel"},
+        )
+    finally:
+        readiness.build_sync_readiness_report = original
+
+    assert blocker == "Artifact-verified backups are stale; run full backup before sync."

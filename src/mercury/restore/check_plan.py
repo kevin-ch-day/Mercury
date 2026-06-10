@@ -11,7 +11,9 @@ from mercury.backup.find_latest_backup import find_latest_backup_directory
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.safety import BACKUP_KIND_FULL
+from mercury.core.runtime import should_probe_database_status
 from mercury.database.core import classify_database
+from mercury.restore.readiness import TargetCompletenessEntry, build_target_completeness_entry
 
 
 class RestoreCheckPlan(BaseModel):
@@ -26,6 +28,7 @@ class RestoreCheckPlan(BaseModel):
     planned_commands: list[str] = Field(default_factory=list)
     blockers: list[str] = Field(default_factory=list)
     safety_notes: list[str] = Field(default_factory=list)
+    target_completeness: TargetCompletenessEntry | None = None
 
 
 def planned_restore_check_name(prod_database: str, *, date: str | None = None) -> str:
@@ -71,7 +74,7 @@ def build_restore_check_plan(prod_database: str) -> RestoreCheckPlan:
         backup_verified = verify.verified
         backup_id = verify.backup_id
         if not verify.verified:
-            blockers.append("Latest backup is not verified.")
+            blockers.append("Latest backup is not artifact-verified.")
         manifest_path = backup_dir / "manifest.json"
         if manifest_path.exists():
             data = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -86,6 +89,10 @@ def build_restore_check_plan(prod_database: str) -> RestoreCheckPlan:
             f"gunzip -c {artifact} | mariadb {target}",
             f"# Validate row counts / spot checks, then DROP DATABASE `{target}`;",
         ]
+
+    target_completeness: TargetCompletenessEntry | None = None
+    if should_probe_database_status():
+        target_completeness = build_target_completeness_entry(prod_database)
 
     allowed = (
         classification.backup_source
@@ -105,4 +112,5 @@ def build_restore_check_plan(prod_database: str) -> RestoreCheckPlan:
         planned_commands=commands,
         blockers=blockers,
         safety_notes=safety,
+        target_completeness=target_completeness,
     )

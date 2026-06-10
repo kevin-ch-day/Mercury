@@ -13,23 +13,32 @@ def print_backup_status_report(report: BackupStatusReport) -> None:
             "Backup root": report.backup_root,
             "Backup root state": report.backup_root_state,
             "Source databases": report.source_count,
-            "Verified": report.verified_count,
+            "Artifact verified": report.verified_count,
             "Missing": report.missing_count,
             "Failed": report.failed_count,
+            "Freshness stale": report.stale_count,
+            "Freshness unknown": report.unknown_freshness_count,
         }
     )
     display_screen.write_blank()
 
     rows = [
-        [entry.database, entry.role, entry.protection_status, entry.backup_id or "—"]
+        [
+            entry.database,
+            entry.role,
+            entry.protection_status,
+            entry.freshness,
+            entry.backup_age or "—",
+            entry.backup_id or "—",
+        ]
         for entry in report.entries
     ]
     if rows:
         display_screen.write_compact_table(
-            ["DATABASE", "ROLE", "STATUS", "LATEST BACKUP"],
+            ["DATABASE", "ROLE", "ARTIFACT", "FRESHNESS", "BACKUP AGE", "LATEST BACKUP"],
             rows,
-            min_col_widths=[28, 8, 14, 20],
-            max_col_widths=[36, 10, 18, 38],
+            min_col_widths=[28, 8, 10, 10, 10, 20],
+            max_col_widths=[36, 10, 12, 12, 12, 38],
         )
     else:
         display_screen.write_status("warn", "No source databases in active backup scope.")
@@ -38,3 +47,10 @@ def print_backup_status_report(report: BackupStatusReport) -> None:
         display_screen.write_blank()
         for warning in report.warnings:
             display_screen.write_status("warn", warning)
+
+    display_screen.write_blank()
+    display_screen.write_summary(
+        "Artifact verified = checksum/manifest checks passed. "
+        "Freshness compares backup time to latest read-only source DB activity. "
+        "manifest.json verified=false is normal until mercury backup verify --update-manifest."
+    )

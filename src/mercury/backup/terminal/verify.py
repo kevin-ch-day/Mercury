@@ -13,7 +13,13 @@ from mercury.backup.on_disk_index import DemoBackupList, OnDiskBackupList, lates
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.database.core import shared_authority_note
 from mercury.reporting.preview import BackupReportPreview, format_report_preview_markdown
-from mercury.backup.verification import BackupVerificationResult, VerificationPlan
+from mercury.backup.verification import (
+    MANIFEST_VERIFIED_STAMP_NOTE,
+    BackupVerificationResult,
+    VerificationPlan,
+    manifest_verified_stamp,
+    verify_backup_artifacts,
+)
 
 
 class VerifyMenuSummary(BaseModel):
@@ -156,7 +162,9 @@ def print_on_disk_backup_list(
         )
         display_screen.write_blank()
         display_screen.write_summary(
-            "manifest.json and checksum.sha256 track the latest backup in each database directory; older dump files may remain."
+            "Live status uses checksum/artifact verification. "
+            "manifest.json verified is a backup-time stamp unless updated with "
+            "mercury backup verify --update-manifest."
         )
         return
 
@@ -188,7 +196,9 @@ def print_on_disk_backup_list(
         )
         display_screen.write_blank()
         display_screen.write_summary(
-            "manifest.json and checksum.sha256 track the latest backup in each database directory; older dump files may remain."
+            "Live status uses checksum/artifact verification. "
+            "manifest.json verified is a backup-time stamp unless updated with "
+            "mercury backup verify --update-manifest."
         )
         return
 
@@ -205,7 +215,19 @@ def print_on_disk_backup_list(
             output.write(f"  dump: {record.dump_file}")
         if record.schema_file:
             output.write(f"  schema: {record.schema_file}")
-        output.write(f"  verified: {record.verified}")
+        artifact_verified = record.verified
+        if record.directory:
+            try:
+                artifact_verified = verify_backup_artifacts(
+                    Path(record.directory),
+                    database=record.database,
+                ).verified
+            except OSError:
+                artifact_verified = record.verified
+        output.write(
+            f"  artifact_verified: {artifact_verified} "
+            f"(manifest stamp verified={record.verified})"
+        )
         if record.created_at:
             output.write(f"  created_at: {display_format.format_human_datetime(record.created_at)}")
     output.write("")
@@ -230,6 +252,9 @@ def print_verification_result(result: BackupVerificationResult, *, compact: bool
     output.field("backup_id", result.backup_id)
     output.field("manifest_path", result.manifest_path)
     output.field("verified", result.verified)
+    manifest_stamp = manifest_verified_stamp(result.manifest_path)
+    if manifest_stamp is not None and manifest_stamp != result.verified:
+        output.field("manifest_verified_stamp", manifest_stamp)
     output.field("manifest_exists", result.manifest_exists)
     output.field("checksum_exists", result.checksum_exists)
     output.field("checksum_matches", result.checksum_matches)
@@ -247,3 +272,6 @@ def print_verification_result(result: BackupVerificationResult, *, compact: bool
     else:
         output.write()
         output.write("Verification failed. Backup is not considered protected.")
+    if manifest_stamp is not None and manifest_stamp is False and result.verified:
+        output.write()
+        output.write(MANIFEST_VERIFIED_STAMP_NOTE)
