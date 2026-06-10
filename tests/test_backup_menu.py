@@ -26,7 +26,11 @@ def test_run_backup_menu_non_interactive(
     )
     monkeypatch.setattr(
         "mercury.backup.interactive_menu.build_backup_status_report",
-        lambda live=False: type("Report", (), {"entries": []})(),
+        lambda live=False: type(
+            "Report",
+            (),
+            {"entries": [], "stale_count": 0, "unknown_freshness_count": 0},
+        )(),
     )
     monkeypatch.setattr(
         "mercury.backup.interactive_menu.load_execution_policy",

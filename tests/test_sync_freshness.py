@@ -63,7 +63,10 @@ def test_sync_readiness_blocks_stale_verified_backup(
             allow_unsafe_backup_root=True,
         ),
     )
-    monkeypatch.setattr("mercury.sync.readiness.discover", lambda _mode: inventory)
+    monkeypatch.setattr(
+        "mercury.sync.readiness.discover_for_planning",
+        lambda live=True: inventory,
+    )
     monkeypatch.setattr("mercury.sync.readiness.should_probe_database_status", lambda: True)
     monkeypatch.setattr(
         "mercury.sync.readiness.assess_backup_freshness",
@@ -106,7 +109,10 @@ def test_sync_readiness_uses_artifact_verified_blocker_wording(
             allow_unsafe_backup_root=True,
         ),
     )
-    monkeypatch.setattr("mercury.sync.readiness.discover", lambda _mode: inventory)
+    monkeypatch.setattr(
+        "mercury.sync.readiness.discover_for_planning",
+        lambda live=True: inventory,
+    )
     monkeypatch.setattr("mercury.sync.readiness.should_probe_database_status", lambda: False)
 
     report = build_sync_readiness_report(live=True)
