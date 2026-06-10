@@ -18,6 +18,7 @@ DEMO_BACKUP_RECORDS: list[tuple[str, BackupKind]] = [
     ("erebus_threat_intel_prod", BACKUP_KIND_SCHEMA_ONLY),
     ("android_permission_intel", BACKUP_KIND_FULL),
     ("scytaledroid_core_prod", BACKUP_KIND_SCHEMA_ONLY),
+    ("obsidiandroid_core_prod", BACKUP_KIND_FULL),
 ]
 
 

@@ -8,6 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.conftest import STALE_OPERATOR_REPO_PATH, STALE_REPO_HOME_SUFFIX
+
 from mercury.config.init import _apply_repo_local_paths, init_local_config
 from mercury.core.environment_status import (
     ConfigSetupStatus,
@@ -268,6 +270,9 @@ def test_root_owned_log_file_blocks_directory(tmp_path: Path) -> None:
     log_file.write_text("seed\n", encoding="utf-8")
     try:
         os.chown(log_file, 0, 0)
+    except PermissionError:
+        pytest.skip("cannot chown to root in this environment")
+    try:
         check = check_path_permission(logs, label="USB log directory")
         assert check.needs_repair
         assert "mercury-2026-06-09.log" in check.detail
@@ -320,15 +325,14 @@ def test_doctor_repo_warnings_use_effective_paths(
     from mercury.repo.config import RepoDefinition
 
     home = tmp_path / "linuxadmin"
-    mercury = home / "GitHub" / "Mercury"
-    mercury.mkdir(parents=True)
+    (home / STALE_REPO_HOME_SUFFIX).mkdir(parents=True)
     monkeypatch.setattr("mercury.repo.path_repair.Path.home", lambda: home)
 
     repos = [
         RepoDefinition(
             key="mercury",
             display_name="Mercury",
-            path=Path("/home/secadmin/Laughlin/GitHub/Mercury"),
+            path=STALE_OPERATOR_REPO_PATH,
         ),
         RepoDefinition(
             key="missing",
@@ -427,6 +431,9 @@ def test_root_owned_usb_dir_needs_repair(tmp_path: Path) -> None:
     try:
         logs.chmod(0o755)
         os.chown(logs, 0, 0)
+    except PermissionError:
+        pytest.skip("cannot chown to root in this environment")
+    try:
         check = check_path_permission(logs, label="USB log directory")
         assert check.needs_repair or not check.writable
     finally:
@@ -626,9 +633,9 @@ def test_probe_returns_expected_fields() -> None:
     assert result.platform_system
     assert result.platform_support
     assert result.repo_root
-    expected_mode = MODE_SEED if policy.dry_run or not policy.live_actions_enabled else "operational"
+    expected_mode = MODE_SEED if not policy.backup_execution_allowed() else "operational"
     assert result.mode == expected_mode
-    assert result.dry_run_only is policy.dry_run
+    assert result.dry_run_only is (not policy.backup_execution_allowed())
 
 # from test_env_probe.py
 def test_probe_config_status_keys() -> None:
@@ -682,7 +689,8 @@ def test_build_environment_check_fields_connected(monkeypatch, tmp_path: Path) -
     assert fields["MariaDB"]["Connection"] == "connected"
     assert fields["MariaDB"]["User"] == "root@localhost"
     assert fields["MariaDB"]["Socket path"] == "/var/lib/mysql/mysql.sock"
-    assert fields["Execution Safety"]["Mode"] == "DRY RUN"
+    assert "Backup mode" in fields["Execution Safety"]
+    assert "Sync/deploy/restore" in fields["Execution Safety"]
     assert "Database Scope" not in fields
     assert "Recommended action" not in fields
 
@@ -735,20 +743,18 @@ def test_build_environment_check_fields_live_sync_mentions_sync_dev(
         current_user="root@localhost",
     )
     monkeypatch.setattr(
-        "mercury.core.execution_policy.load_execution_policy",
+        "mercury.env.terminal.check.load_execution_policy",
         lambda: ExecutionPolicy(
             dry_run=False,
             live_actions_enabled=True,
             backup_root=Path("/mnt/MERCURY_DATA_USB/mercury_backups"),
             config_path=Path("/tmp/local.toml"),
-            allow_unsafe_backup_root=False,
+            allow_unsafe_backup_root=True,
         ),
     )
     fields = build_environment_check_fields(_env_result(), probe)
-    assert (
-        fields["Execution Safety"]["Destructive sync"]
-        == "enabled for ready pairs with SYNC DEV confirmation"
-    )
+    assert fields["Execution Safety"]["Sync/deploy/restore"] == "enabled with confirmation"
+    assert fields["Execution Safety"]["Backup mode"] == "writes to USB"
 
 # from test_env_menu.py
 def test_run_env_menu_non_interactive(capsys: pytest.CaptureFixture[str]) -> None:
@@ -773,7 +779,7 @@ def test_run_env_menu_no_duplicate_heading(capsys: pytest.CaptureFixture[str]) -
 def test_live_mode_guide_has_no_decorative_bullets(capsys: pytest.CaptureFixture[str]) -> None:
     _print_live_mode_guide()
     out = capsys.readouterr().out
-    assert "LIVE MODE GUIDE" in out
+    assert "OPERATOR SAFETY GUIDE" in out
     assert "◆" not in out
-    assert "Before enabling live writes" in out
+    assert "Destructive actions" in out
 

@@ -31,6 +31,8 @@ Run the full test suite before submitting:
 .venv/bin/python -m pytest
 ```
 
+Subprocess CLI tests use `tests/conftest.py:run_cli()`, which prepends `src/` to `PYTHONPATH` so pytest works with or without an editable install. Editable install (`pip install -e ".[mariadb,dev]"`) is still recommended for day-to-day development.
+
 Useful additional checks:
 
 ```bash

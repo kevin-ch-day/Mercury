@@ -18,7 +18,7 @@ def test_build_discover_menu_fields_includes_roles() -> None:
     inventory = discover_demo()
     fields = build_discover_menu_fields(inventory)
     assert fields["Active scope"] == inventory.count
-    assert fields["Backup sources"] == 3
+    assert fields["Backup sources"] == 4
     assert fields["Sync targets"] == 2
 
 

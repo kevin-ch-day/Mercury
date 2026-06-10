@@ -2,7 +2,13 @@
 
 from mercury.database.core.classifier import DatabaseRole, classify_database
 from mercury.database.core.models import DatabaseInventory, DatabaseRecord
-from mercury.database.core.scope import is_active_backup_source, is_active_dev_target
+from mercury.database.core.scope import (
+    ACTIVE_BACKUP_SOURCE_DATABASES,
+    ACTIVE_DEV_TARGET_DATABASES,
+    is_active_backup_source,
+    is_active_dev_target,
+    is_active_sync_source,
+)
 
 
 def backup_source_entries(inventory: DatabaseInventory) -> list[DatabaseRecord]:
@@ -107,7 +113,7 @@ def source_role_label(name: str) -> str:
 
 def sync_role_label(name: str) -> str:
     """Operator-facing sync role label for active-scope discovery screens."""
-    if is_active_backup_source(name) and name.endswith("_prod"):
+    if is_active_sync_source(name):
         return "source+pair"
     if is_active_backup_source(name):
         return "backup-only"

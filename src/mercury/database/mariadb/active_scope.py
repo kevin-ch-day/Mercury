@@ -5,7 +5,13 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from mercury.database.core import DatabaseRole, classify_database
-from mercury.database.core.scope import ACTIVE_BACKUP_SOURCE_DATABASES, ACTIVE_DEV_TARGET_DATABASES
+from mercury.database.core.scope import (
+    ACTIVE_BACKUP_SOURCE_DATABASES,
+    ACTIVE_DEV_TARGET_DATABASES,
+    is_active_backup_source,
+    is_active_dev_target,
+    is_active_sync_source,
+)
 from mercury.database.mariadb.config import MariaDbConnectionConfig
 from mercury.database.mariadb.readonly_session import readonly_connection
 from mercury.terminal.format import format_bytes
@@ -91,9 +97,11 @@ def fetch_active_scope_report(
         classification = classify_database(name)
         if classification.role == DatabaseRole.SHARED_AUTHORITY:
             sync_role = "backup-only"
-        elif classification.backup_source:
+        elif is_active_sync_source(name):
             sync_role = "source+pair"
-        elif classification.dev_target:
+        elif classification.backup_source and is_active_backup_source(name):
+            sync_role = "backup-only"
+        elif is_active_dev_target(name):
             sync_role = "dev target"
         else:
             sync_role = "manual review"

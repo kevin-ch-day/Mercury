@@ -123,10 +123,10 @@ def build_rebuild_status_report(*, probe_database: bool = True) -> RebuildStatus
     usb_healthy = not any(check.needs_repair for check in env.permission_checks)
 
     if deploy_status == "complete" and not deployment_needed:
-        if policy.live_execution_allowed():
-            recommended = "./run.sh backup run --all --execute"
+        if policy.backup_execution_allowed():
+            recommended = "./run.sh backup all"
         else:
-            recommended = "./run.sh backup run --all --dry-run"
+            recommended = "./run.sh backup plan"
     elif deployment_needed:
         recommended = "./run.sh deploy system --dry-run"
     else:

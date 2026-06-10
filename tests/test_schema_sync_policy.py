@@ -45,10 +45,11 @@ def test_policy_validate_demo_ok() -> None:
 
 def test_sample_manifest_writes_json(tmp_path: Path, monkeypatch) -> None:
     from mercury.backup.sample_manifest import write_sample_manifests
+    from mercury.database.backup_planning import build_demo_backup_plan
 
     monkeypatch.setattr("mercury.backup.sample_manifest.OUTPUT_DIR", tmp_path)
     paths = write_sample_manifests(tmp_path)
     assert len(paths) == 2
     data = json.loads(paths[0].read_text(encoding="utf-8"))
-    assert data["database"] == "erebus_threat_intel_prod"
+    assert data["database"] in build_demo_backup_plan().backup_sources
     assert data["verified"] is False

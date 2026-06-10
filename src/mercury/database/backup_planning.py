@@ -36,7 +36,7 @@ def build_backup_plan(database_names: list[str]) -> BackupPlanDryRun:
     """Build a dry-run backup plan from database names."""
     plan = BackupPlanDryRun(safety_notes=list(SAFETY_NOTES))
 
-    for name in database_names:
+    for name in sorted(set(database_names)):
         classification = classify_database(name)
         plan.classifications.append(classification)
         if not is_in_scope(name):
@@ -63,8 +63,21 @@ def build_backup_plan(database_names: list[str]) -> BackupPlanDryRun:
     return plan
 
 
-def build_backup_plan_from_inventory(inventory: DatabaseInventory) -> BackupPlanDryRun:
-    return build_backup_plan(inventory.names)
+def anchor_planning_names(inventory: DatabaseInventory, *, live: bool) -> list[str]:
+    """Union live inventory with configured protected backup sources when planning live."""
+    if not live:
+        return list(inventory.names)
+    from mercury.database.core.scope import ACTIVE_BACKUP_SOURCE_DATABASES
+
+    return sorted(set(inventory.names) | ACTIVE_BACKUP_SOURCE_DATABASES)
+
+
+def build_backup_plan_from_inventory(
+    inventory: DatabaseInventory,
+    *,
+    live: bool = False,
+) -> BackupPlanDryRun:
+    return build_backup_plan(anchor_planning_names(inventory, live=live))
 
 
 def build_demo_backup_plan() -> BackupPlanDryRun:

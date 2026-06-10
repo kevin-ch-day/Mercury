@@ -1,4 +1,4 @@
-"""Detect operator deployment scenarios for fresh-workstation rebuilds."""
+"""Detect operator recovery-deployment scenarios for a prepared Fedora host."""
 
 from __future__ import annotations
 
@@ -76,7 +76,11 @@ def detect_deploy_use_cases() -> list[DeployUseCase]:
             )
         )
 
-    if not db_snapshot.deployment_needed and db_snapshot.on_server_count:
+    if (
+        not db_snapshot.deployment_needed
+        and db_snapshot.on_server_count
+        and db_snapshot.missing_source_count == 0
+    ):
         cases.append(
             DeployUseCase(
                 case_id="databases_already_deployed",

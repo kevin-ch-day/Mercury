@@ -1,6 +1,8 @@
-# System deployment runbook (Neptune / fresh Fedora rebuild)
+# System recovery deployment runbook (Neptune / prepared Fedora host)
 
-Mercury supports rebuilding a workstation from **USB artifacts** and **GitHub**, not just databases.
+Mercury can restore **Mercury-managed artifacts** — verified USB database backups and configured Git repositories — onto a **prepared Fedora/MariaDB host**. This is recovery deployment, not full workstation provisioning.
+
+Mercury does **not** install Fedora packages, configure systemd, manage MariaDB users/grants, or bootstrap a bare OS. The host must already have MariaDB, Git, and operator paths ready (see `mercury env doctor`).
 
 ## Lanes
 
@@ -13,7 +15,7 @@ Mercury supports rebuilding a workstation from **USB artifacts** and **GitHub**,
 
 Menu: **option 8 → Deploy to this system**
 
-## Fresh rebuild workflow
+## Fresh host recovery workflow
 
 ```bash
 cd ~/GitHub/Mercury

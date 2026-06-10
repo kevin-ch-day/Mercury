@@ -102,46 +102,28 @@ class ExecutionPolicy:
             return "low free space"
         return "usb-mounted"
 
-    def live_execution_allowed(self) -> bool:
-        """Live backup execution requires both flags to permit writes."""
-        platform_info = detect_platform()
-        return (
-            platform_info.allows_live_execution
-            and
-            (not self.dry_run)
-            and self.live_actions_enabled
-            and self.config_path is not None
-            and (self.allow_unsafe_backup_root or self.backup_root_state() == "usb-mounted")
-        )
-
-    def refusal_reason(self) -> str | None:
+    def backup_environment_refusal(self) -> str | None:
+        """Environment checks for backup writes (platform, USB, config)."""
         platform_info = detect_platform()
         if not platform_info.allows_live_execution:
             if platform_info.is_windows:
                 return (
-                    "Mercury live execution is not supported on Windows. "
-                    "Use Windows for seed planning/status only and run live operations on Fedora."
+                    "Mercury backup execution is not supported on Windows. "
+                    "Use Windows for seed planning/status only and run backups on Fedora."
                 )
             if platform_info.is_linux:
                 distro = platform_info.distro_name or platform_info.distro_id or "Linux"
                 return (
-                    f"Mercury live execution is supported only on Fedora. {distro} was detected. "
-                    "Use non-Fedora Linux for seed planning/status only, or run live operations on Fedora."
+                    f"Mercury backup execution is supported only on Fedora. {distro} was detected. "
+                    "Use non-Fedora Linux for seed planning/status only, or run backups on Fedora."
                 )
             return (
-                f"Mercury live execution is supported only on Fedora. {platform_info.system} was detected. "
+                f"Mercury backup execution is supported only on Fedora. {platform_info.system} was detected. "
                 "Use this host for seed planning/status only."
-            )
-        if self.dry_run:
-            return "Result: dry-run only; no files were written."
-        if not self.live_actions_enabled:
-            return (
-                "Live actions are disabled. Set [mercury].live_actions_enabled = true "
-                f"in config/local.toml or export {ENV_LIVE_ACTIONS}=1."
             )
         if self.config_path is None:
             return (
-                "Live backup execution requires config/local.toml. Run: mercury config init "
+                "Backup execution requires config/local.toml. Run: mercury config init "
                 "and set [mercury].backup_root to /mnt/MERCURY_DATA_USB/mercury_backups."
             )
         if self.allow_unsafe_backup_root:
@@ -149,36 +131,86 @@ class ExecutionPolicy:
         resolved = self.backup_root.resolve()
         if self.backup_root_is_within_repo():
             return (
-                "Refusing live backup execution with a repo-local backup_root: "
+                "Refusing backup execution with a repo-local backup_root: "
                 f"{resolved}. Configure [mercury].backup_root under /mnt/MERCURY_DATA_USB."
             )
         if not self.backup_root_exists():
             return (
-                "Refusing live backup execution because backup_root does not exist: "
+                "Refusing backup execution because backup_root does not exist: "
                 f"{resolved}. Create /mnt/MERCURY_DATA_USB/mercury_backups on the mounted USB first."
             )
         if not self.backup_root_is_under_required_mount():
             return (
-                "Refusing live backup execution because backup_root is not under "
+                "Refusing backup execution because backup_root is not under "
                 f"{REQUIRED_BACKUP_MOUNT}: {resolved}"
             )
         if not self.required_mount_is_active():
             return (
-                "Refusing live backup execution because the required USB mount is not active: "
+                "Refusing backup execution because the required USB mount is not active: "
                 f"{REQUIRED_BACKUP_MOUNT}"
             )
         free_bytes = self.backup_root_free_bytes()
         if free_bytes is None:
             return (
-                "Refusing live backup execution because free space could not be determined for "
+                "Refusing backup execution because free space could not be determined for "
                 f"{resolved}."
             )
         if free_bytes < MIN_FREE_BYTES:
             return (
-                "Refusing live backup execution because backup_root has insufficient free space: "
+                "Refusing backup execution because backup_root has insufficient free space: "
                 f"{resolved} ({free_bytes} bytes free, requires at least {MIN_FREE_BYTES} bytes / 20 GB)."
             )
         return None
+
+    def backup_execution_allowed(self) -> bool:
+        """True when backup writes to USB are permitted for this host."""
+        return self.backup_environment_refusal() is None
+
+    def backup_refusal_reason(self) -> str | None:
+        return self.backup_environment_refusal()
+
+    def live_execution_allowed(self) -> bool:
+        """Destructive or privileged live execution (sync, deploy, restore)."""
+        if self.backup_environment_refusal() is not None:
+            return False
+        return (not self.dry_run) and self.live_actions_enabled
+
+    def refusal_reason(self) -> str | None:
+        """Why destructive live execution is blocked (sync, deploy, restore)."""
+        env_refusal = self.backup_environment_refusal()
+        if env_refusal:
+            return env_refusal
+        if self.dry_run:
+            return "Result: dry-run only; no files were written."
+        if not self.live_actions_enabled:
+            return (
+                "Live actions are disabled. Set [mercury].live_actions_enabled = true "
+                f"in config/local.toml or export {ENV_LIVE_ACTIONS}=1."
+            )
+        return None
+
+
+def backup_mode_label(policy: ExecutionPolicy) -> str:
+    """Short operator label for backup write readiness."""
+    if policy.backup_execution_allowed():
+        return "writes to USB"
+    refusal = policy.backup_environment_refusal()
+    if refusal and "repo-local" in refusal:
+        return "blocked until USB backup root is configured"
+    if refusal and "USB" in refusal:
+        return "blocked until USB is mounted"
+    if refusal and "config/local.toml" in refusal:
+        return "blocked until config is initialized"
+    return "blocked until backup environment is ready"
+
+
+def destructive_ops_label(policy: ExecutionPolicy) -> str:
+    """Short operator label for sync/deploy/restore gating."""
+    if policy.live_execution_allowed():
+        return "enabled with confirmation"
+    if policy.dry_run or not policy.live_actions_enabled:
+        return "requires live_actions_enabled in config/local.toml"
+    return "blocked until environment is ready"
 
 
 def resolve_backup_root(

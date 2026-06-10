@@ -6,7 +6,12 @@ from mercury import output
 from mercury.menu import main_display as menu_display
 from mercury.menu import prompts as menu_prompts
 from mercury.terminal import screen as display_screen
-from mercury.core.execution_policy import ENV_DRY_RUN, ENV_LIVE_ACTIONS, load_execution_policy
+from mercury.core.execution_policy import (
+    ENV_LIVE_ACTIONS,
+    backup_mode_label,
+    destructive_ops_label,
+    load_execution_policy,
+)
 from mercury.database import (
     MariaDbConfigError,
     MariaDbDriverMissingError,
@@ -65,35 +70,34 @@ def _render_env_screen(*, show_title: bool) -> None:
 def _print_live_mode_guide() -> None:
     policy = load_execution_policy()
     config_path = policy.config_path or "config/local.toml"
-    display_screen.write_report_header("LIVE MODE GUIDE")
+    display_screen.write_report_header("OPERATOR SAFETY GUIDE")
     output.write("Current state")
-    output.write(_guide_field("Mode", "LIVE" if policy.live_execution_allowed() else "DRY RUN"))
-    output.write(_guide_field("Live actions", "enabled" if policy.live_actions_enabled else "disabled"))
+    output.write(_guide_field("Backup mode", backup_mode_label(policy)))
+    output.write(_guide_field("Sync/deploy/restore", destructive_ops_label(policy)))
     output.write(_guide_field("Config file", config_path))
     output.write("")
-    output.write("Before enabling live writes")
-    output.write("Show backup plan.")
-    output.write("Confirm the USB target is /mnt/MERCURY_DATA_USB/mercury_backups.")
-    output.write("Confirm the three source databases are correct.")
+    output.write("Backups")
+    output.write("Backups write to USB when MariaDB, config, and the USB backup root are valid.")
+    output.write("Use Backup Operations -> Run full backup now, or: ./run.sh backup all")
+    output.write("Use Preview backup plan or ./run.sh backup plan --dry-run to preview only.")
     output.write("")
-    output.write("How to enable live writes")
+    output.write("Verification")
+    output.write("Verification is safe and updates manifests/ledger when checks pass.")
+    output.write("Use Backup Operations -> Verify source backups, or: ./run.sh backup verify-all")
+    output.write("")
+    output.write("Destructive actions")
+    output.write("Prod-to-dev sync, deploy, and restore still require live_actions_enabled.")
     output.write(f"Edit {config_path}:")
-    output.write("dry_run = false")
     output.write("live_actions_enabled = true")
+    output.write("dry_run = false  # only needed for sync/deploy/restore, not backups")
     output.write("")
     output.write("Or for this shell only:")
-    output.write(f"export {ENV_DRY_RUN}=0")
     output.write(f"export {ENV_LIVE_ACTIONS}=1")
     output.write("")
-    output.write("What live writes can do")
-    output.write("Backups write artifacts to the USB target.")
-    output.write("Restore-check may create temporary _restorecheck_* databases.")
-    output.write("Prod-to-dev sync is separately gated and only destructive to dev targets.")
+    output.write("Safety")
+    output.write("Sync requires typing SYNC DEV and readiness checks.")
     output.write("Production restore is never allowed.")
-    output.write("")
-    output.write("After enabling")
-    output.write("Re-run Environment Check.")
-    output.write("Run one controlled backup first.")
+    output.write("Missing protected sources are refused, not silently skipped as success.")
 
 
 def _guide_field(name: str, value: object, *, label_width: int = 20) -> str:

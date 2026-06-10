@@ -34,7 +34,7 @@ dry_run = true
 live_actions_enabled = false
 ```
 
-Out-of-scope databases such as `gecko_research_database_*`, `droid_threat_intel_db_prod`, and `proofpoint_cti_db_dev` may still appear in live discovery output. Mercury keeps them visible for operator awareness, but excludes them from active backup/sync planning for this milestone.
+Out-of-scope databases such as legacy `gecko_research_database_*` (Komodo/market-event naming), `droid_threat_intel_db_prod`, and `proofpoint_cti_db_dev` may still appear in live discovery output. Mercury keeps them visible for operator awareness, but excludes them from active backup/sync planning for this milestone.
 
 ### Option A — TCP + password (remote / password auth)
 

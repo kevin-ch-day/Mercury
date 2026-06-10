@@ -12,8 +12,13 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+SRC_ROOT = REPO_ROOT / "src"
 CLI = [sys.executable, "-m", "mercury.cli"]
 ENV_STATE_ROOT = "MERCURY_STATE_ROOT"
+
+# Stale repos.toml path under a legacy home prefix that must not exist on the test host.
+STALE_OPERATOR_REPO_PATH = Path("/home/secadmin/Laughlin/GitHub/legacy-mercury-checkout")
+STALE_REPO_HOME_SUFFIX = Path("GitHub/legacy-mercury-checkout")
 
 FIXED_DATE = "2026-05-30"
 FIXED_TS = "20260530_120000"
@@ -73,15 +78,12 @@ def run_cli(
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run ``mercury.cli`` in a subprocess and return the completed process."""
-    merged_env = os.environ.copy()
-    if env:
-        merged_env.update(env)
     return subprocess.run(
         [*CLI, *args],
         capture_output=True,
         text=True,
         cwd=cwd,
-        env=merged_env,
+        env=subprocess_env(env),
     )
 
 
@@ -96,9 +98,46 @@ def repo_local_config() -> Path:
     return REPO_ROOT / "config" / "local.toml"
 
 
+def subprocess_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    """Environment for subprocess CLI tests (editable install or src on PYTHONPATH)."""
+    merged = os.environ.copy()
+    src = str(SRC_ROOT)
+    existing = merged.get("PYTHONPATH", "")
+    merged["PYTHONPATH"] = src if not existing else f"{src}{os.pathsep}{existing}"
+    if extra:
+        merged.update(extra)
+    return merged
+
+
+def fedora_platform_info():
+    from mercury.core.platform import PlatformInfo
+
+    return PlatformInfo(
+        system="Linux",
+        release="7.0",
+        distro_id="fedora",
+        distro_name="Fedora Linux",
+    )
+
+
 @pytest.fixture
 def repo_root() -> Path:
     return REPO_ROOT
+
+
+@pytest.fixture(autouse=True)
+def _assume_fedora_platform_for_policy_tests(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[None]:
+    """Live-execution policy tests assume Fedora unless testing platform refusal directly."""
+    node_path = str(getattr(request.node, "path", "") or "")
+    if node_path.endswith("test_platform_policy.py"):
+        yield
+        return
+    fedora = fedora_platform_info()
+    monkeypatch.setattr("mercury.core.execution_policy.detect_platform", lambda: fedora)
+    yield
 
 
 @pytest.fixture(autouse=True)

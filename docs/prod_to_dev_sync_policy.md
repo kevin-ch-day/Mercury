@@ -42,4 +42,4 @@ mercury sync run --live --execute         # requires typing SYNC DEV
 
 Menu: **Sync Production -> Development** → Prepare → Sync ready pairs (requires typing `SYNC DEV`).
 
-Out-of-scope databases (for example `gecko_research_database_*`, `droid_threat_intel_db_*`, and `proofpoint_cti_db_dev`) do not participate in sync planning for this milestone. Live discovery may still show them for operator awareness, but they are not treated as backup or sync blockers.
+Out-of-scope databases (for example legacy `gecko_research_database_*`, Komodo/market-event `droid_threat_intel_db_*`, and `proofpoint_cti_db_dev`) do not participate in sync planning for this milestone. Live discovery may still show them for operator awareness, but they are not treated as backup or sync blockers. `obsidiandroid_core_prod` is a protected backup source but is backup-only unless `obsidiandroid_core_dev` is explicitly added to sync scope.

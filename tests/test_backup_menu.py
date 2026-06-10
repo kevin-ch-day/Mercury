@@ -81,12 +81,12 @@ def test_run_backup_menu_non_interactive(
     assert "excluded" not in out
     assert "Ignored databases:" not in out
     assert "\n[1] Refresh" in out
-    assert "\n[2] Run full backup" in out
+    assert "\n[2] Run full backup now" in out
     assert "\n[3] Verify source backups" in out
     assert "\n[4] Restore-check source backups" in out
     assert "\n[5] Write DB bundle and runbooks" in out
     assert "Verify on-disk backups" not in out
-    assert "Backup plan (dry-run)" not in out
+    assert "\n[6] Preview backup plan" in out
 
 
 def test_backup_menu_uses_human_last_backup_format(
@@ -147,7 +147,7 @@ def test_backup_menu_uses_human_last_backup_format(
             (),
             {
                 "backup_root": "/tmp/backups",
-                "live_execution_allowed": lambda self=None: True,
+                "backup_execution_allowed": lambda self=None: True,
             },
         )(),
     )
@@ -164,6 +164,43 @@ def test_backup_menu_uses_human_last_backup_format(
 
 
 # merged from test_verify_menu.py
+def test_run_backup_menu_executes_when_environment_ready(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from mercury.backup.interactive_menu import _run_backup
+    from mercury.database.backup_planning import build_backup_plan
+
+    policy = ExecutionPolicy(
+        dry_run=True,
+        live_actions_enabled=False,
+        backup_root=tmp_path / "backups",
+        config_path=tmp_path / "local.toml",
+        allow_unsafe_backup_root=True,
+    )
+    written: list[bool] = []
+
+    def fake_batch(*args, **kwargs):
+        written.append(kwargs.get("execute") is True)
+        from mercury.backup.batch_runner import BackupBatchResult
+
+        return BackupBatchResult(
+            backup_kind="full",
+            execute=True,
+            sources=["android_permission_intel"],
+            executed_count=1,
+        )
+
+    monkeypatch.setattr("mercury.backup.interactive_menu.load_execution_policy", lambda: policy)
+    monkeypatch.setattr("mercury.backup.interactive_menu.run_backup_batch", fake_batch)
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.print_backup_batch_result",
+        lambda *args, **kwargs: None,
+    )
+    _run_backup(build_backup_plan(["android_permission_intel"]))
+    assert written == [True]
+
+
 def test_run_verify_menu_non_interactive(capsys: pytest.CaptureFixture[str]) -> None:
     run_verify_menu(interactive=False)
     out = capsys.readouterr().out

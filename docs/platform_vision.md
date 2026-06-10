@@ -9,7 +9,8 @@ Mercury is a **Fedora-first operations utility** for the Android security resear
 | **Erebus** | `erebus_threat_intel_prod` / `_dev` | VT enrichment, malware catalog, Permission Intel writes |
 | **Platform** | `android_permission_intel` | Shared permission authority (Erebus, ScytaleDroid, Iapetus) |
 | **ScytaleDroid** | `scytaledroid_core_prod` / `_dev` | APK static/dynamic analysis |
-| **ObsidianDroid** | `gecko_research_database_prod` / `_dev` | Malware ML/research (out of current Mercury milestone scope; visible only for operator awareness if discovered live) |
+| **ObsidianDroid** | `obsidiandroid_core_prod` | Malware ML/research (protected backup source; no automatic prod→dev sync) |
+| **ObsidianDroid (legacy)** | `gecko_research_database_prod` / `_dev` | Legacy Komodo/market-event naming — out of Mercury scope |
 | **Iapetus** | (future) | Deep-learning kernel — seed repo only |
 
 ## Mercury priorities (in order)
@@ -35,7 +36,7 @@ Mercury is a **Fedora-first operations utility** for the Android security resear
 
 - Read-only local MariaDB discovery
 - Classification of active platform databases
-- USB-backed full logical backups for `erebus_threat_intel_prod`, `scytaledroid_core_prod`, and `android_permission_intel`
+- USB-backed full logical backups for `erebus_threat_intel_prod`, `scytaledroid_core_prod`, `obsidiandroid_core_prod`, and `android_permission_intel`
 - Backup verification and protection reporting
 - Prod->dev sync readiness for the Erebus and ScytaleDroid pairs only
 

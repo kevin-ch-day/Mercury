@@ -8,6 +8,7 @@ from mercury.backup.backup_runner import BackupExecutionError, BackupExecutionRe
 from mercury.backup.manifest import BackupKind
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
 from mercury.database.core import classify_database
+from mercury.backup.live_inventory import fetch_live_server_database_names
 from mercury.database.backup_planning import build_backup_plan_from_inventory
 
 
@@ -31,7 +32,7 @@ def resolve_batch_sources(*, live: bool = False) -> list[str]:
     from mercury.database.discovery import discover_for_planning
 
     inventory = discover_for_planning(live=live)
-    plan = build_backup_plan_from_inventory(inventory)
+    plan = build_backup_plan_from_inventory(inventory, live=live)
     return list(plan.backup_sources)
 
 
@@ -70,7 +71,7 @@ def select_batch_sources(
 def run_backup_batch(
     kind: BackupKind,
     *,
-    execute: bool = False,
+    execute: bool = True,
     live: bool = True,
     policy: ExecutionPolicy | None = None,
     sources: list[str] | None = None,
@@ -84,6 +85,7 @@ def run_backup_batch(
         execute=execute,
         sources=batch_sources,
     )
+    server_names = fetch_live_server_database_names() if live else None
 
     for database in batch_sources:
         try:
@@ -93,6 +95,8 @@ def run_backup_batch(
                 execute=execute,
                 policy=resolved_policy,
                 dump_runner=dump_runner,
+                live=live,
+                server_names=server_names,
             )
         except BackupExecutionError as exc:
             batch.errors.append(f"{database}: {exc}")

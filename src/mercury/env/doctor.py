@@ -89,9 +89,9 @@ def _recommended_next_step(env, report: DoctorReport) -> str:
             return "./run.sh doctor --repair-plan"
         return recommended_next_step(env)
     if report.rebuild_complete:
-        if env.policy.live_execution_allowed():
-            return "./run.sh backup run --all --execute  # fresh backup of restored prod databases"
-        return "./run.sh backup run --all --dry-run  # review backup plan for restored prod databases"
+        if env.policy.backup_execution_allowed():
+            return "./run.sh backup all  # fresh backup of restored prod databases"
+        return "./run.sh backup plan  # review backup plan once USB backup root is ready"
     missing_sources = [db for db in report.source_databases if not db.present and db.name != "(discovery)"]
     if (
         missing_sources

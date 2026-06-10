@@ -99,7 +99,7 @@ def test_planned_restore_check_name_format() -> None:
 
 
 def test_cli_backup_batch_dry_run() -> None:
-    result = run_cli("backup", "batch", "--demo")
+    result = run_cli("backup", "batch", "--demo", "--dry-run")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "BACKUP BATCH" in result.stdout
 

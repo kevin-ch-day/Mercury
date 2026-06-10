@@ -14,13 +14,14 @@ from mercury.repo.path_repair import (
     rewrite_stale_repo_path,
 )
 from mercury.repo.usb_metadata import enrich_repo_definitions_from_usb
+from tests.conftest import STALE_OPERATOR_REPO_PATH, STALE_REPO_HOME_SUFFIX
 
 
 def test_rewrite_stale_repo_path_to_current_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr("mercury.repo.path_repair.Path.home", lambda: tmp_path / "linuxadmin")
-    stored = Path("/home/secadmin/Laughlin/GitHub/Mercury")
+    stored = STALE_OPERATOR_REPO_PATH
     effective = rewrite_stale_repo_path(stored)
-    assert effective == (tmp_path / "linuxadmin" / "GitHub" / "Mercury").resolve()
+    assert effective == (tmp_path / "linuxadmin" / STALE_REPO_HOME_SUFFIX).resolve()
 
 
 def test_resolve_effective_repo_path_prefers_existing(tmp_path: Path) -> None:
@@ -61,7 +62,7 @@ def test_detect_deploy_use_cases_includes_stale_repos_config(
             RepoDefinition(
                 key="mercury",
                 display_name="Mercury",
-                path=Path("/home/secadmin/Laughlin/GitHub/Mercury"),
+                path=STALE_OPERATOR_REPO_PATH,
             )
         ],
     )
@@ -152,6 +153,7 @@ def test_detect_deploy_use_cases_when_databases_already_on_server(
                 "skip_count": 3,
                 "verified_backup_count": 3,
                 "protected_source_count": 3,
+                "missing_source_count": 0,
                 "block_count": 0,
                 "summary_message": "Deployment not needed.",
                 "candidates": (),

@@ -24,7 +24,7 @@ from mercury.backup.terminal.batch import print_backup_batch_result
 from mercury.backup.terminal.bundle import print_database_bundle_plan
 from mercury.backup.terminal.verify import print_verify_menu_summary, run_verify_all_for_menu
 from mercury.backup.on_disk_index import build_on_disk_backup_list, latest_records_by_database
-from mercury.core.execution_policy import load_execution_policy
+from mercury.core.execution_policy import backup_mode_label, load_execution_policy
 from mercury.core.runtime import should_probe_database_status
 from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.terminal.format import format_bytes, format_human_datetime
@@ -197,17 +197,21 @@ def _backup_screen_rows(
 
 
 def _load_plan() -> BackupPlanDryRun:
-    inventory = discover_for_planning(live=should_probe_database_status())
-    return build_backup_plan_from_inventory(inventory)
+    live = should_probe_database_status()
+    inventory = discover_for_planning(live=live)
+    return build_backup_plan_from_inventory(inventory, live=live)
 
 
 def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
     if show_title:
         menu_display.open_screen(BACKUP_SCREEN_TITLE)
     policy = load_execution_policy()
-    live_allowed = policy.live_execution_allowed()
+    backup_ready = policy.backup_execution_allowed()
     display_screen.write_fields(
-        _storage_usage_fields(policy)
+        {
+            **_storage_usage_fields(policy),
+            "Backup mode": backup_mode_label(policy),
+        }
     )
     display_screen.write_blank()
     status_report = build_backup_status_report(live=should_probe_database_status())
@@ -229,7 +233,7 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
         if stale_count or unknown_count:
             display_screen.write_status(
                 "warn",
-                "Run full backup before workstation handoff: "
+                "Stale or unknown sources need a fresh full backup: "
                 f"{stale_count} stale, "
                 f"{unknown_count} unknown freshness.",
             )
@@ -240,21 +244,35 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
         ("3", "Verify source backups"),
         ("4", "Restore-check source backups"),
         ("5", "Write DB bundle and runbooks"),
+        ("6", "Preview backup plan"),
     ]
     if plan.backup_sources:
-        run_label = "Run full backup" if live_allowed else "Run full backup (live mode required)"
+        if backup_ready:
+            run_label = "Run full backup now"
+        else:
+            run_label = "Run full backup now (USB/config not ready)"
         options.insert(1, ("2", run_label))
     display_screen.write_blank()
     render_submenu(options, indent=0)
 
 
-def _run_backup(plan: BackupPlanDryRun) -> None:
-    policy = load_execution_policy()
-    execute = policy.live_execution_allowed()
+def _preview_backup_plan(plan: BackupPlanDryRun) -> None:
     batch = run_backup_batch(
         BACKUP_KIND_FULL,
-        execute=execute,
+        execute=False,
         live=should_probe_database_status(),
+        sources=list(plan.backup_sources),
+    )
+    print_backup_batch_result(batch, compact=True, menu=True)
+
+
+def _run_backup(plan: BackupPlanDryRun) -> None:
+    policy = load_execution_policy()
+    batch = run_backup_batch(
+        BACKUP_KIND_FULL,
+        execute=True,
+        live=should_probe_database_status(),
+        policy=policy,
         sources=list(plan.backup_sources),
     )
     print_backup_batch_result(batch, compact=True, menu=True)
@@ -322,6 +340,11 @@ def run_backup_menu(*, interactive: bool = True) -> None:
 
         if choice == "5":
             _write_backup_bundle()
+            show_title = pause_and_redraw()
+            continue
+
+        if choice == "6":
+            _preview_backup_plan(plan)
             show_title = pause_and_redraw()
             continue
 

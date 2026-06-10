@@ -8,6 +8,8 @@ alwaysApply: false
 
 Run: `.venv/bin/python -m pytest` from repo root (`pythonpath = ["src"]`).
 
+Subprocess CLI tests must use `tests.conftest.run_cli()` (or `subprocess_env()`), which prepends `src/` to `PYTHONPATH`. In-process imports use pytest's `pythonpath`; subprocess children do not unless you use those helpers or `pip install -e`.
+
 ## Fakes (prefer injection over monkeypatch)
 
 | Function | Inject | Purpose |
@@ -22,7 +24,9 @@ Patch at the **use site** module, e.g. `mercury.paths.OUTPUT_DIR`, not only `mer
 
 ## CLI subprocess tests
 
-`subprocess.run([sys.executable, "-m", "mercury.cli", ...])` spawns a fresh interpreter — in-process monkeypatch does not apply.
+Use `tests.conftest.run_cli()` — it prepends `src/` to `PYTHONPATH` for the child process. Do not call `subprocess.run([sys.executable, "-m", "mercury.cli", ...])` directly unless you also set `PYTHONPATH`.
+
+Live-execution policy tests assume Fedora via the autouse `_assume_fedora_platform_for_policy_tests` fixture. Platform refusal behavior is tested only in `tests/test_platform_policy.py`.
 
 ## Live MariaDB integration
 

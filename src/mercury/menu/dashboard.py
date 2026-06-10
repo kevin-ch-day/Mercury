@@ -11,10 +11,18 @@ from mercury.core.environment_status import (
     resolve_dashboard_blocker,
     storage_status_dashboard_label,
 )
-from mercury.core.execution_policy import load_execution_policy
+from mercury.core.execution_policy import backup_mode_label, destructive_ops_label, load_execution_policy
 from mercury.core.platform import detect_platform
 from mercury.core.runtime import should_probe_database_status
 from mercury.terminal.theme import dashboard_row
+
+
+def backup_mode_dashboard_label(policy) -> str:
+    """Main menu backup safety line."""
+    base = backup_mode_label(policy)
+    if policy.backup_execution_allowed():
+        return f"{base}; sync/deploy require confirmation"
+    return base
 
 
 def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
@@ -26,7 +34,7 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
 
     rows: list[str] = [
         dashboard_row("MariaDB", mariadb_dashboard_label(env.mariadb)),
-        dashboard_row("Execution mode", "LIVE" if policy.live_execution_allowed() else "DRY RUN"),
+        dashboard_row("Backup mode", backup_mode_dashboard_label(policy)),
         dashboard_row("Config", config_dashboard_label(env.config)),
         dashboard_row("Backup target", backup_target_dashboard_label(policy, env.usb)),
     ]

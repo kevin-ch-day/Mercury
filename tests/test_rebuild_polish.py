@@ -101,7 +101,10 @@ def test_doctor_recommends_fresh_backup_when_rebuild_complete() -> None:
         config=SimpleNamespace(),
         usb=SimpleNamespace(),
         mariadb=SimpleNamespace(connection_works=True),
-        policy=SimpleNamespace(live_execution_allowed=lambda: True),
+        policy=SimpleNamespace(
+            live_execution_allowed=lambda: True,
+            backup_execution_allowed=lambda: True,
+        ),
         source_databases=[
             SimpleNamespace(name="erebus_threat_intel_prod", present=True),
         ],
@@ -111,7 +114,7 @@ def test_doctor_recommends_fresh_backup_when_rebuild_complete() -> None:
     )
     report.rebuild_complete = _rebuild_is_complete(report)
     step = _recommended_next_step(SimpleNamespace(policy=report.policy), report)
-    assert "backup run --all --execute" in step
+    assert "backup all" in step
 
 
 def test_db_inventory_cli_alias_registered() -> None:
@@ -131,7 +134,10 @@ def test_build_rebuild_status_report_deploy_complete(
     monkeypatch.setattr(
         "mercury.core.environment_status.build_environment_status",
         lambda **kwargs: SimpleNamespace(
-            policy=SimpleNamespace(live_execution_allowed=lambda: True),
+            policy=SimpleNamespace(
+            live_execution_allowed=lambda: True,
+            backup_execution_allowed=lambda: True,
+        ),
             mariadb=SimpleNamespace(connection_works=True),
             permission_checks=[],
         ),
@@ -153,4 +159,4 @@ def test_build_rebuild_status_report_deploy_complete(
     )
     report = build_rebuild_status_report(probe_database=True)
     assert report.deploy_status == "complete"
-    assert "backup run" in report.recommended_next
+    assert "backup all" in report.recommended_next

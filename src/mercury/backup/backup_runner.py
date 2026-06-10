@@ -28,6 +28,10 @@ from mercury.backup.dump_planner import (
     build_planned_dump,
     select_dump_tool,
 )
+from mercury.backup.live_inventory import (
+    fetch_live_server_database_names,
+    live_source_missing_reason,
+)
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
 from mercury.backup.manifest_preview import exclusion_reason
 from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
@@ -148,6 +152,15 @@ def _artifact_filenames(
     return layout.full_dump_file, layout.schema_dump_file
 
 
+def _missing_source_refusal(
+    database: str,
+    *,
+    live: bool,
+    server_names: set[str] | None,
+) -> str | None:
+    return live_source_missing_reason(database, live=live, server_names=server_names)
+
+
 def plan_backup_execution(
     database: str,
     kind: BackupKind,
@@ -155,6 +168,8 @@ def plan_backup_execution(
     policy: ExecutionPolicy | None = None,
     date: str | None = None,
     timestamp: str | None = None,
+    live: bool = False,
+    server_names: set[str] | None = None,
 ) -> BackupExecutionResult:
     """Build a backup execution plan without writing files or contacting the server."""
     classification = assert_safe_backup_source(database)
@@ -190,12 +205,23 @@ def plan_backup_execution(
             else build_planned_dump(database, BACKUP_KIND_SCHEMA_ONLY)
         )
 
-    refusal = None if resolved.live_execution_allowed() else resolved.refusal_reason()
+    resolved_server_names = server_names
+    if live and resolved_server_names is None:
+        resolved_server_names = fetch_live_server_database_names()
+    missing_reason = _missing_source_refusal(
+        database,
+        live=live,
+        server_names=resolved_server_names,
+    )
+    if missing_reason:
+        refusal = missing_reason
+    else:
+        refusal = None
 
     return BackupExecutionResult(
         database=database,
         backup_kind=kind,
-        dry_run=resolved.dry_run or not resolved.live_actions_enabled,
+        dry_run=True,
         executed=False,
         refused=refusal is not None,
         refusal_reason=refusal,
@@ -211,7 +237,7 @@ def plan_backup_execution(
         safety_notes=[
             f"Source role: {classification.role.value}",
             "Backup reads from source database only; never restores into *_prod.",
-            "Dry-run by default unless live execution is explicitly enabled.",
+            "Preview plan only; use execute=True or menu/CLI backup run to write files.",
         ],
     )
 
@@ -227,12 +253,14 @@ def execute_backup(
     mariadb_config: MariaDbConnectionConfig | None = None,
     dump_runner: DumpRunner | None = None,
     now: datetime | None = None,
+    live: bool = False,
+    server_names: set[str] | None = None,
 ) -> BackupExecutionResult:
     """
     Plan or execute a logical backup.
 
-    When execute=False (default), returns a dry-run plan and writes nothing.
-    When execute=True, runs mariadb-dump only if live execution is permitted.
+    When execute=False, returns a preview plan and writes nothing.
+    When execute=True, runs mariadb-dump when the backup environment is valid.
     """
     from mercury.logging import get_logger
 
@@ -257,11 +285,11 @@ def execute_backup(
     try:
         tool = select_dump_tool()
     except RuntimeError as exc:
-        if execute and resolved.live_execution_allowed():
+        if execute and resolved.backup_execution_allowed():
             raise BackupExecutionError(str(exc)) from exc
         tool = "mariadb-dump"
 
-    if config is None and execute and resolved.live_execution_allowed():
+    if config is None and execute and resolved.backup_execution_allowed():
         config = load_mariadb_config()
 
     argv: list[str] = []
@@ -304,15 +332,36 @@ def execute_backup(
         ],
     )
 
+    resolved_server_names = server_names
+    if live and resolved_server_names is None:
+        resolved_server_names = fetch_live_server_database_names()
+
     if not execute:
+        missing_reason = _missing_source_refusal(
+            database,
+            live=live,
+            server_names=resolved_server_names,
+        )
         base_result.dry_run = True
-        base_result.refused = False
-        base_result.refusal_reason = resolved.refusal_reason()
-        base_result.safety_notes.append("Dry-run plan only; no files written.")
-        log.info("backup dry-run database=%s kind=%s", database, kind)
+        base_result.refused = missing_reason is not None
+        base_result.refusal_reason = missing_reason
+        base_result.safety_notes.append("Preview plan only; no files written.")
+        if missing_reason:
+            base_result.safety_notes.append(missing_reason)
+        log.info("backup preview database=%s kind=%s", database, kind)
         return base_result
 
-    refusal = resolved.refusal_reason()
+    missing_reason = _missing_source_refusal(
+        database,
+        live=live,
+        server_names=resolved_server_names,
+    )
+    if missing_reason:
+        refusal = missing_reason
+    elif not resolved.backup_execution_allowed():
+        refusal = resolved.backup_refusal_reason()
+    else:
+        refusal = None
     if refusal:
         base_result.refused = True
         base_result.refusal_reason = refusal
@@ -389,7 +438,7 @@ def execute_backup(
             schema_sha256=schema_sha if kind == BACKUP_KIND_FULL else None,
             schema_size_bytes=schema_size if kind == BACKUP_KIND_FULL else None,
             tool_used=tool,
-            live_actions_enabled=resolved.live_actions_enabled,
+            live_actions_enabled=resolved.backup_execution_allowed(),
             dry_run=False,
             notes="Logical backup produced by Mercury.",
             verified=False,

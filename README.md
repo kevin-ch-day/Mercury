@@ -1,8 +1,8 @@
 # Mercury
 
-**Mercury** is a Fedora-first **operations utility** for MariaDB backup, verification, restore-check, production-to-development sync, Git repository transfer bundles, and transfer manifests/runbooks on the Android security research platform.
+**Mercury** is a Fedora-first **operations utility** for MariaDB backup, verification, restore-check, production-to-development sync, Git repository transfer bundles, transfer manifests/runbooks, and **recovery deployment** of Mercury-managed database and repository artifacts onto a prepared Fedora host.
 
-For the current Fedora milestone, it protects the active source databases `android_permission_intel`, `erebus_threat_intel_prod`, and `scytaledroid_core_prod`, manages the dev sync targets `erebus_threat_intel_dev` and `scytaledroid_core_dev` as disposable refresh targets, and can inventory configured Git repositories plus write explicit Git bundles to the USB transfer media. It is not an AI tool, web app, or workstation rebuild utility.
+For the current Fedora milestone, it protects the active source databases `android_permission_intel`, `erebus_threat_intel_prod`, `scytaledroid_core_prod`, and `obsidiandroid_core_prod`, manages the dev sync targets `erebus_threat_intel_dev` and `scytaledroid_core_dev` as disposable refresh targets, and can inventory configured Git repositories plus write explicit Git bundles to the USB transfer media. It is not an AI tool, web app, or full Fedora workstation provisioning tool.
 
 Windows and non-Fedora Linux are for **seed planning / development** only; live Mercury operations target **Fedora**.
 
@@ -13,7 +13,8 @@ Windows and non-Fedora Linux are for **seed planning / development** only; live 
 - Transfer package: complete
 - Prod-to-dev sync: executed
 - Dirty repo warnings: recorded truthfully in manifests/state output
-- System rebuild scope: out of scope for Mercury
+- Recovery deployment: deploy verified USB backups and repo bundles onto a prepared Fedora host (not full OS bootstrap)
+- Full workstation provisioning: out of scope for Mercury
 
 ## Hard policy
 
@@ -124,7 +125,7 @@ mercury sync run [--live] [--source <prod>] [--target <dev>] [--execute]
 mercury sync all [--live] [--execute]
 ```
 
-`sync run --execute` restores verified backups into disposable dev targets. With no filter it processes all ready pairs; `--source` or `--target` limits execution to one pair. `sync all` is the explicit batch alias. For the current milestone, sync readiness only applies to `erebus_threat_intel_prod -> erebus_threat_intel_dev` and `scytaledroid_core_prod -> scytaledroid_core_dev`. `android_permission_intel` is backup-only and does not participate in sync pairing. Requires live mode and typing `SYNC DEV`.
+`sync run --execute` restores verified backups into disposable dev targets. With no filter it processes all ready pairs; `--source` or `--target` limits execution to one pair. `sync all` is the explicit batch alias. For the current milestone, sync readiness only applies to `erebus_threat_intel_prod -> erebus_threat_intel_dev` and `scytaledroid_core_prod -> scytaledroid_core_dev`. `android_permission_intel` and `obsidiandroid_core_prod` are backup-only and do not participate in sync pairing unless dev targets are explicitly configured. Requires live mode and typing `SYNC DEV`.
 
 ### Repository transfer
 
@@ -155,6 +156,20 @@ mercury restore-check cleanup [--execute]
 
 Restore-check runs into temporary `_restorecheck_*` databases only. Use `cleanup --execute` to drop them after validation.
 Successful restore-check runs now auto-drop the temporary `_restorecheck_*` database. If import or validation fails, Mercury preserves the temp database for debugging and prints the cleanup command.
+
+### Recovery deployment
+
+Mercury can **import verified USB database backups** and **restore configured Git repositories** onto a prepared Fedora/MariaDB host after hardware loss or migration. This is Mercury-managed artifact recovery — not Fedora package installation, systemd setup, or full workstation bootstrap.
+
+```bash
+mercury deploy status
+mercury deploy db --dry-run
+mercury deploy repos --from-github --dry-run
+mercury deploy system --dry-run
+mercury deploy use-cases
+```
+
+Live deploy requires the same gates as backup execution (`dry_run = false`, `live_actions_enabled = true`, Fedora host, USB-backed backup root). Menu: option **8 → Deploy to This System**.
 
 ## Setup
 
@@ -205,6 +220,7 @@ src/mercury/
   transfer/      combined database + repository transfer manifest/runbook
   sync/          prod→dev planning, readiness, execution
   restore/       restore-check planning and execution
+  deploy/        recovery deployment of verified USB DB backups and repo bundles
 ```
 
 Top-level compatibility shims under `src/mercury/*.py` remain for external callers only. New code should use the canonical subpackages (`mercury.backup.*`, `mercury.core.*`, `mercury.database.*`, `mercury.menu.*`, `mercury.terminal.*`).

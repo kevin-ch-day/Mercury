@@ -20,7 +20,7 @@ from mercury.database.core import (
     source_role_label,
 )
 from mercury.database.prod_dev_pairs import ProdDevPair, build_prod_dev_pairs, orphan_dev_databases
-from mercury.core.execution_policy import load_execution_policy
+from mercury.core.execution_policy import backup_mode_label, destructive_ops_label, load_execution_policy
 from mercury.core.runtime import operator_status
 from mercury.core.safety import MODE_SEED
 from mercury.terminal.format import format_human_datetime
@@ -61,6 +61,11 @@ def build_protection_report(*, live: bool = False, probe_database: bool = False)
     scoped_inventory = filter_inventory(inventory)
     ignored_out_of_scope_count = inventory.count - scoped_inventory.count
     names = [e.name for e in scoped_inventory.entries]
+    if live:
+        from mercury.database.core.scope import ACTIVE_BACKUP_SOURCE_DATABASES
+
+        names = sorted(set(names) | ACTIVE_BACKUP_SOURCE_DATABASES)
+
     projects = {e.name: e.project for e in scoped_inventory.entries if e.project}
 
     plan = build_backup_plan(names)
@@ -86,13 +91,14 @@ def build_protection_report(*, live: bool = False, probe_database: bool = False)
         policy=policy,
     )
     actions: list[str] = []
-    if policy.live_execution_allowed():
-        actions.append("Run: mercury backup run --db <prod> --kind full --execute")
+    if policy.backup_execution_allowed():
+        actions.append("Run: mercury backup run --db <prod> --kind full")
         actions.append("Then: mercury backup verify --db <prod> --update-manifest")
     else:
-        actions.append("Run: mercury backup run --db <prod> --kind full (dry-run plan)")
-        actions.append("Enable live_actions in config/local.toml before --execute")
-        actions.append("After backup: mercury backup verify --db <prod> --update-manifest")
+        actions.append("Run: mercury backup run --db <prod> --kind full --dry-run")
+        actions.append("Configure USB backup root and config/local.toml before writing backups")
+    if not policy.live_execution_allowed():
+        actions.append("Sync/deploy/restore require live_actions_enabled in config/local.toml")
     for pair in pairs:
         if not pair.dev_listed:
             actions.append(f"Add or discover dev target for prod: {pair.prod}")
@@ -103,7 +109,7 @@ def build_protection_report(*, live: bool = False, probe_database: bool = False)
     for name in review:
         actions.append(f"Manual review required: {name}")
     if not policy.live_execution_allowed():
-        actions.append("Dry-run mode: backup/sync execution requires explicit live enable.")
+        actions.append("Destructive actions (sync/deploy/restore) remain confirmation-gated.")
     if backup_status.stale_count or backup_status.unknown_freshness_count:
         actions.insert(
             0,
@@ -205,8 +211,8 @@ def format_protection_report(report: ProtectionReport, *, compact: bool = False)
 
     lines.append("")
     policy = load_execution_policy()
-    lines.append(f"Live actions enabled: {policy.live_actions_enabled}")
-    lines.append(f"Dry-run: {policy.dry_run}")
+    lines.append(f"Backup mode: {backup_mode_label(policy)}")
+    lines.append(f"Destructive ops: {destructive_ops_label(policy)}")
     return "\n".join(lines)
 
 

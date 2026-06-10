@@ -22,6 +22,7 @@ from mercury.database import (
 from mercury.core.safety import LIVE_ACTIONS_ENABLED, MODE_SEED
 from mercury.database.mariadb.session import SYSTEM_DATABASES, MariaDbServerProbe, _filter_user_databases
 from mercury.database.terminal.ping import print_server_probe
+from tests.conftest import run_cli, subprocess_env
 
 
 def test_filter_user_databases_excludes_system() -> None:
@@ -143,23 +144,14 @@ def test_live_and_demo_inventory_same_display_fields(
 
 
 def test_cli_discover_without_config_fails(tmp_path: Path) -> None:
-    import subprocess
-    import sys
-
     empty_config = tmp_path / "config"
     empty_config.mkdir()
     (empty_config / "local.toml").write_text("[mercury]\nmode='seed'\n", encoding="utf-8")
 
-    env = {**__import__("os").environ}
+    env = subprocess_env()
     env.pop("MERCURY_MARIADB_PASSWORD", None)
 
-    result = subprocess.run(
-        [sys.executable, "-m", "mercury.cli", "db", "discover"],
-        capture_output=True,
-        text=True,
-        cwd=str(tmp_path),
-        env=env,
-    )
+    result = run_cli("db", "discover", cwd=tmp_path, env=env)
     combined = result.stdout + result.stderr
     if (Path(__file__).resolve().parents[1] / "config" / "local.toml").exists():
         assert result.returncode == 0 or "demo" in combined.lower() or "local.toml" in combined.lower()

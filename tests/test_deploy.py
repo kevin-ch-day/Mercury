@@ -31,6 +31,7 @@ PROTECTED = (
     "erebus_threat_intel_prod",
     "scytaledroid_core_prod",
     "android_permission_intel",
+    "obsidiandroid_core_prod",
 )
 
 
@@ -114,6 +115,7 @@ def test_database_deploy_status_rows_describe_missing_databases(
         verified_backup_count=1,
         protected_source_count=1,
         on_server_count=0,
+        missing_source_count=1,
         import_count=1,
         skip_count=0,
         block_count=0,
@@ -124,7 +126,8 @@ def test_database_deploy_status_rows_describe_missing_databases(
     monkeypatch.setattr("mercury.deploy.menu_status.load_execution_policy", lambda: policy)
     monkeypatch.setattr("mercury.deploy.menu_status.build_deployment_snapshot", lambda **kwargs: snapshot)
     text = "\n".join(database_deploy_status_rows())
-    assert "0 of 1 on server; 1 to import" in text
+    assert "0 of 1 protected sources on server" in text
+    assert "1 missing" in text
     assert "DRY RUN" in text
     assert "Option 2" in text
 
@@ -221,7 +224,7 @@ def test_deploy_plan_from_verified_usb_backups(
     monkeypatch.setattr("mercury.deploy.plan.fetch_user_database_names", lambda _cfg: [])
     monkeypatch.setattr("mercury.deploy.preflight.fetch_user_database_names", lambda _cfg: [])
     plan = build_deployment_plan(policy=policy, execute=False)
-    assert len(plan.candidates) == 3
+    assert len(plan.candidates) == 4
     assert plan.mode == "dry-run"
     assert plan.planned_commands
 
@@ -257,7 +260,7 @@ def test_missing_source_dbs_do_not_block_deploy_planning(
         lambda _cfg: ["mysql", "information_schema"],
     )
     plan = build_deployment_plan(policy=policy, execute=False)
-    assert len(plan.candidates) == 3
+    assert len(plan.candidates) == 4
     assert not any("missing on server" in blocker.lower() for blocker in plan.blockers)
 
 
@@ -293,7 +296,7 @@ def test_existing_target_db_blocks_live_deploy_by_default(
         options=DeployOptions(skip_existing=True),
         execute=True,
     )
-    assert plan.skip_count == 3
+    assert plan.skip_count == 4
     assert plan.import_count == 0
 
 

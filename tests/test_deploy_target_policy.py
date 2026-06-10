@@ -61,7 +61,7 @@ def test_dry_run_skips_import_when_all_targets_exist_verified(
 
     plan = build_deployment_plan(policy=policy, execute=False)
     assert plan.import_count == 0
-    assert plan.skip_count == 3
+    assert plan.skip_count == 4
     assert not plan.planned_commands
     assert not any("gunzip -c" in command for command in plan.planned_commands)
     assert plan.deployment_needed is False
@@ -81,7 +81,7 @@ def test_dashboard_verified_backups_dry_run_no_import_actions(
     _classify_map(monkeypatch, {name: _verified_existing(name) for name in PROTECTED})
 
     plan = build_deployment_plan(policy=policy, execute=False)
-    assert len(plan.candidates) == 3
+    assert len(plan.candidates) == 4
     assert plan.planned_commands == []
     for candidate in plan.candidates:
         assert candidate.target_status == "exists_verified"
@@ -148,7 +148,7 @@ def test_missing_target_plans_create_and_import(
     _mock_server_names(monkeypatch, ["mysql", "information_schema"])
 
     plan = build_deployment_plan(policy=policy, execute=False)
-    assert plan.import_count == 3
+    assert plan.import_count == 4
     assert all(c.deploy_action == "CREATE_AND_IMPORT" for c in plan.candidates)
     assert all(c.target_status == "missing" for c in plan.candidates)
     assert any("gunzip -c" in command for command in plan.planned_commands)
@@ -167,6 +167,7 @@ def test_mixed_missing_and_existing_imports_only_missing(
         {
             "android_permission_intel": _verified_existing("android_permission_intel"),
             "erebus_threat_intel_prod": _verified_existing("erebus_threat_intel_prod"),
+            "obsidiandroid_core_prod": _verified_existing("obsidiandroid_core_prod"),
             "scytaledroid_core_prod": TargetDatabaseState(
                 status="missing",
                 exists_on_server=False,
@@ -177,7 +178,7 @@ def test_mixed_missing_and_existing_imports_only_missing(
 
     plan = build_deployment_plan(policy=policy, execute=False)
     assert plan.import_count == 1
-    assert plan.skip_count == 2
+    assert plan.skip_count == 3
     import_targets = {c.target_database for c in plan.candidates if c.deploy_action == "CREATE_AND_IMPORT"}
     assert import_targets == {"scytaledroid_core_prod"}
 
@@ -267,7 +268,7 @@ def test_live_batch_skips_existing_without_import(
         import_runner=fake_runner,
     )
     assert not calls
-    assert batch.skipped_count == 3
+    assert batch.skipped_count == 4
     assert batch.deployed_count == 0
 
 
@@ -285,8 +286,9 @@ def test_deployment_snapshot_dashboard_label_when_deploy_not_needed() -> None:
 
     snapshot = DeploymentSnapshot(
         verified_backup_count=3,
-        protected_source_count=3,
-        on_server_count=3,
+        protected_source_count=4,
+        on_server_count=4,
+        missing_source_count=0,
         import_count=0,
         skip_count=3,
         block_count=0,
@@ -295,8 +297,29 @@ def test_deployment_snapshot_dashboard_label_when_deploy_not_needed() -> None:
         candidates=(),
     )
     label = deployment_target_dashboard_label(snapshot)
-    assert "3 of 3 on server" in label
+    assert "4 of 4 protected sources on server" in label
     assert "deploy not needed" in label
+
+
+def test_deployment_snapshot_dashboard_label_when_protected_source_missing() -> None:
+    from mercury.deploy.snapshot import DeploymentSnapshot, deployment_target_dashboard_label
+
+    snapshot = DeploymentSnapshot(
+        verified_backup_count=3,
+        protected_source_count=4,
+        on_server_count=3,
+        missing_source_count=1,
+        import_count=0,
+        skip_count=3,
+        block_count=0,
+        deployment_needed=False,
+        summary_message="Deployment not needed.",
+        candidates=(),
+    )
+    label = deployment_target_dashboard_label(snapshot)
+    assert "3 of 4 protected sources on server" in label
+    assert "1 missing" in label
+    assert "deploy not needed" not in label
 
 
 def test_classify_missing_when_not_on_server() -> None:

@@ -49,6 +49,84 @@ def test_select_batch_sources_rejects_non_backup_source() -> None:
         select_batch_sources(selected=["erebus_threat_intel_dev"], live=False)
 
 
+def test_run_backup_batch_refuses_missing_live_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from mercury.backup.batch_runner import run_backup_batch
+    from mercury.core.safety import BACKUP_KIND_FULL
+
+    policy = ExecutionPolicy(
+        dry_run=True,
+        live_actions_enabled=False,
+        backup_root=tmp_path,
+        config_path=tmp_path / "local.toml",
+        allow_unsafe_backup_root=True,
+    )
+    monkeypatch.setattr(
+        "mercury.backup.batch_runner.fetch_live_server_database_names",
+        lambda: {
+            "erebus_threat_intel_prod",
+            "android_permission_intel",
+            "scytaledroid_core_prod",
+        },
+    )
+    monkeypatch.setattr(
+        "mercury.backup.batch_runner.resolve_batch_sources",
+        lambda live=False: [
+            "erebus_threat_intel_prod",
+            "android_permission_intel",
+            "scytaledroid_core_prod",
+            "obsidiandroid_core_prod",
+        ],
+    )
+
+    batch = run_backup_batch(
+        BACKUP_KIND_FULL,
+        execute=False,
+        live=True,
+        policy=policy,
+    )
+    obsidian = next(result for result in batch.results if result.database == "obsidiandroid_core_prod")
+    assert obsidian.refused is True
+    assert "not present on the MariaDB server" in (obsidian.refusal_reason or "")
+    assert batch.refused_count == 1
+    assert batch.dry_run_count == 3
+
+
+def test_build_backup_status_report_live_anchors_missing_configured_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mercury.database.core import DatabaseInventory, record_from_name
+    from mercury.database.core.scope import ACTIVE_BACKUP_SOURCE_DATABASES
+    from mercury.database.core.sources import SOURCE_LIVE
+
+    inventory = DatabaseInventory(
+        connection="connected",
+        entries=[
+            record_from_name("erebus_threat_intel_prod", SOURCE_LIVE, connected=True),
+            record_from_name("android_permission_intel", SOURCE_LIVE, connected=True),
+            record_from_name("scytaledroid_core_prod", SOURCE_LIVE, connected=True),
+        ],
+    )
+    monkeypatch.setattr(
+        "mercury.database.discovery.discover_for_planning",
+        lambda live=False: inventory,
+    )
+
+    report = build_backup_status_report(
+        live=True,
+        policy=ExecutionPolicy(
+            dry_run=False,
+            live_actions_enabled=True,
+            backup_root=tmp_path,
+            config_path=tmp_path / "local.toml",
+            allow_unsafe_backup_root=True,
+        ),
+    )
+    assert report.source_count == len(ACTIVE_BACKUP_SOURCE_DATABASES)
+    obsidian = next(entry for entry in report.entries if entry.database == "obsidiandroid_core_prod")
+    assert obsidian.protection_status == "missing"
+
+
 def test_build_backup_status_report_counts_verified_and_missing(tmp_path: Path) -> None:
     _write_verified_backup(
         tmp_path,

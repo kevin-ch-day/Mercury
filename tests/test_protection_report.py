@@ -7,7 +7,7 @@ from mercury.reporting.protection import build_protection_report, format_protect
 
 def test_report_lists_protected_prod_databases() -> None:
     report = build_protection_report()
-    assert report.inventory_count == 5
+    assert report.inventory_count == 6
     assert report.ignored_out_of_scope_count == 0
     assert "erebus_threat_intel_prod" in report.protected
     assert "android_permission_intel" in report.protected
@@ -83,8 +83,11 @@ def test_live_report_ignores_out_of_scope_databases(monkeypatch) -> None:
     report = build_protection_report(live=True)
     assert report.inventory_count == 5
     assert report.ignored_out_of_scope_count == 2
+    assert "obsidiandroid_core_prod" in report.protected
+    assert report.source_statuses.get("obsidiandroid_core_prod") == "missing"
     assert "droid_threat_intel_db_prod" not in report.not_protected
     assert "proofpoint_cti_db_dev" not in report.not_protected
+    assert "gecko_research_database_prod" not in report.protected
 
 
 def test_compact_report_does_not_truncate_shared_authority_source(capsys) -> None:

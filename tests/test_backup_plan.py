@@ -100,6 +100,43 @@ def test_backup_plan_displays_resolved_root_and_warning(
     assert f"future: {backup_root}/" in out
 
 
+def test_backup_plan_live_marks_missing_source_refused(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mercury.database.backup_planning import build_backup_plan
+
+    monkeypatch.setattr(
+        "mercury.backup.terminal.plan.fetch_live_server_database_names",
+        lambda: {
+            "erebus_threat_intel_prod",
+            "android_permission_intel",
+            "scytaledroid_core_prod",
+        },
+    )
+    monkeypatch.setattr(
+        "mercury.backup.terminal.plan.load_execution_policy",
+        lambda: ExecutionPolicy(
+            dry_run=True,
+            live_actions_enabled=False,
+            backup_root=REPO_ROOT / "backups",
+        ),
+    )
+    plan = build_backup_plan(
+        [
+            "erebus_threat_intel_prod",
+            "android_permission_intel",
+            "scytaledroid_core_prod",
+            "obsidiandroid_core_prod",
+        ]
+    )
+    print_backup_plan(plan, live=True)
+    out = capsys.readouterr().out
+    assert "obsidiandroid_core_prod" in out
+    assert "missing on server; backup refused" in out
+    assert "not present on the MariaDB server" in out
+
+
 def test_backup_plan_uses_one_timestamp_per_render(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -190,8 +227,8 @@ def test_print_backup_batch_result_menu_shows_result_table(capsys) -> None:
 
     print_backup_batch_result(batch, compact=True, menu=True)
     out = capsys.readouterr().out
-    assert "Execution mode" in out
-    assert "Executed" in out
+    assert "Backup mode" in out
+    assert "Written" in out
     assert "DATABASE" in out
     assert "RESULT" in out
     assert "BACKUP ID" in out

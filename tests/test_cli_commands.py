@@ -29,7 +29,7 @@ def test_status_default_scope_is_clean() -> None:
     result = run_cli("status")
     assert result.returncode == 0, result.stdout + result.stderr
     combined = result.stdout + result.stderr
-    assert "active scope: 5 databases" in combined.lower()
+    assert "active scope: 6 databases" in combined.lower()
     assert "random_test_db" not in combined
     assert "_restorecheck_" not in combined
 

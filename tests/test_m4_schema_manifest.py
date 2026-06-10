@@ -26,6 +26,7 @@ def test_schema_plan_includes_prod_databases() -> None:
     plan = build_schema_backup_plan_demo()
     assert "erebus_threat_intel_prod" in plan.sources
     assert "scytaledroid_core_prod" in plan.sources
+    assert "obsidiandroid_core_prod" in plan.sources
     assert "gecko_research_database_prod" not in plan.sources
 
 

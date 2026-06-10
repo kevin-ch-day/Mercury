@@ -13,7 +13,8 @@ def test_dashboard_rows_include_core_fields() -> None:
     rows = dashboard_rows(probe_database=False)
     text = "\n".join(rows)
     assert "MariaDB" in text
-    assert "Execution mode" in text
+    assert "Execution mode" not in text
+    assert "Backup mode" in text
     assert "Config" in text
     assert "Backup target" in text
     assert "Execution Safety" not in text

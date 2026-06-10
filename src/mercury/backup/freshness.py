@@ -57,6 +57,13 @@ SOURCE_ACTIVITY_PROBES: dict[str, list[tuple[str, str]]] = {
             "WHERE finished_at_utc IS NOT NULL",
         ),
     ],
+    "obsidiandroid_core_prod": [
+        (
+            "schema_migrations.applied_at",
+            "SELECT MAX(applied_at) FROM obsidiandroid_core_prod.schema_migrations "
+            "WHERE applied_at IS NOT NULL",
+        ),
+    ],
 }
 
 OPERATOR_FRESHNESS_GUIDANCE = (

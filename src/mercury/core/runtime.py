@@ -63,12 +63,15 @@ def operator_status(*, database_connected: bool | None = None, probe_database: b
     policy = load_execution_policy()
     backup_root = _backup_root_from_config()
 
-    if policy.dry_run or not policy.live_actions_enabled:
-        safety = "dry-run only"
-        mode = f"{MODE_SEED} / dry-run"
-    else:
-        safety = "live actions enabled"
+    if policy.backup_execution_allowed():
+        safety = "backups write to USB when sources are present"
         mode = "operational"
+    elif policy.dry_run or not policy.live_actions_enabled:
+        safety = "destructive actions require live_actions_enabled"
+        mode = f"{MODE_SEED} / guarded destructive ops"
+    else:
+        safety = "backup environment not ready"
+        mode = MODE_SEED
 
     if database_connected is None and probe_database:
         database_connected = _database_reachable()

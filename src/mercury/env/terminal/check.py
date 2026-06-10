@@ -12,6 +12,7 @@ from mercury.core.storage_status import (
 )
 from mercury.database.mariadb.session import MariaDbServerProbe
 from mercury.env.probe import EnvProbeResult
+from mercury.core.execution_policy import backup_mode_label, destructive_ops_label, load_execution_policy
 
 
 def connection_label(probe: MariaDbServerProbe) -> str:
@@ -31,8 +32,6 @@ def build_environment_check_fields(
     error: str | None = None,
 ) -> dict[str, dict[str, object]]:
     """Sectioned operator fields for menu option 1."""
-    from mercury.core.execution_policy import load_execution_policy
-
     policy = load_execution_policy()
     env_status = build_environment_status(probe_database=probe is not None or error is not None)
     usb = discover_usb_target()
@@ -49,13 +48,8 @@ def build_environment_check_fields(
             "repos.toml": "present" if env_status.config.repos_toml_present else "missing",
         },
         "Execution Safety": {
-            "Mode": "DRY RUN" if policy.dry_run else "LIVE",
-            "Live actions": "disabled" if not policy.live_actions_enabled else "enabled",
-            "Destructive sync": (
-                "blocked"
-                if policy.dry_run or not policy.live_actions_enabled
-                else "enabled for ready pairs with SYNC DEV confirmation"
-            ),
+            "Backup mode": backup_mode_label(policy),
+            "Sync/deploy/restore": destructive_ops_label(policy),
         },
     }
 

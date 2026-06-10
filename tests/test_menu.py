@@ -125,12 +125,12 @@ def test_menu_renders_without_crashing(capsys: pytest.CaptureFixture[str]) -> No
 @pytest.mark.parametrize(
     ("choice", "snippets"),
     [
-        ("1", ("USB Path", "LAST BACKUP", "Run full backup", "Restore-check source backups")),
+        ("1", ("USB Path", "LAST BACKUP", "Run full backup now", "Restore-check source backups")),
         ("2", ("ready", "blocked", "Recheck Database Sync Status")),
         ("3", ("REPORTS AND BACKUP HISTORY", "Backup root", "Show backup history", "Show protection status")),
         ("4", ("ENVIRONMENT CHECK", "Runtime", "Live mode guide")),
         ("5", ("Active scope:", "Backup sources:", "DATABASE", "ROLE", "Rescan inventory")),
-        ("6", ("LIVE MODE GUIDE", "Before enabling live writes", "How to enable live writes")),
+            ("6", ("OPERATOR SAFETY GUIDE", "Destructive actions", "Backups write to USB")),
         ("7", ("MERCURY DOCTOR", "Repo", "Recommended Next Step")),
         ("8", ("Deploy to This System", "Deploy databases", "Deploy repositories")),
     ],

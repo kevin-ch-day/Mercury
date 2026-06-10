@@ -20,12 +20,13 @@ Mercury safety policy:
 """.strip()
 
 SAFETY_NOTES = [
-    "Seed mode: dry-run only — no backup execution, restore, or dev sync.",
+    "Backups write to USB when MariaDB, config, and backup root are valid.",
     "Production (*_prod) and shared authority DBs are backup sources.",
     "Development (*_dev) DBs are excluded from backup; they are disposable refresh targets rebuilt from verified source backups.",
     "Never drop or overwrite *_prod.",
     "Verify source backups before any prod-to-dev sync so dev refresh never runs without source protection.",
     "Restore-check temp DBs (_restorecheck_*) are never backup sources.",
+    "Prod-to-dev sync, deploy, and restore require explicit confirmation and live_actions_enabled.",
     "Future backups: mariadb-dump/mysqldump logical full + schema-only (Fedora).",
 ]
 

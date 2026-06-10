@@ -66,6 +66,21 @@ def test_default_policy_is_dry_run_seed() -> None:
     assert policy.dry_run is True
     assert policy.live_actions_enabled is LIVE_ACTIONS_ENABLED
     assert policy.live_execution_allowed() is False
+    assert policy.backup_execution_allowed() is False
+
+
+def test_backup_mode_label_ignores_live_actions_toggle(tmp_path: Path) -> None:
+    policy = ExecutionPolicy(
+        dry_run=True,
+        live_actions_enabled=False,
+        backup_root=tmp_path / "backups",
+        config_path=tmp_path / "local.toml",
+        allow_unsafe_backup_root=True,
+    )
+    from mercury.core.execution_policy import backup_mode_label, destructive_ops_label
+
+    assert backup_mode_label(policy) == "writes to USB"
+    assert destructive_ops_label(policy) == "requires live_actions_enabled in config/local.toml"
 
 
 def test_live_execution_requires_non_repo_backup_root() -> None:
@@ -78,6 +93,8 @@ def test_live_execution_requires_non_repo_backup_root() -> None:
     reason = policy.refusal_reason()
     assert reason is not None
     assert "repo-local" in reason.lower()
+    assert policy.backup_refusal_reason() is not None
+    assert "repo-local" in policy.backup_refusal_reason().lower()
 
 
 def test_resolve_backup_root_accepts_absolute_usb_path(tmp_path: Path) -> None:
@@ -178,7 +195,31 @@ def test_dry_run_does_not_write_backup_files(tmp_path: Path) -> None:
     assert not leftover
 
 
-def test_live_execution_refused_without_enable(tmp_path: Path) -> None:
+def test_backup_executes_without_live_actions_toggle(tmp_path: Path) -> None:
+    policy = ExecutionPolicy(
+        dry_run=True,
+        live_actions_enabled=False,
+        backup_root=tmp_path / "backups",
+        config_path=tmp_path / "local.toml",
+        allow_unsafe_backup_root=True,
+    )
+    result = execute_backup(
+        "erebus_threat_intel_prod",
+        BACKUP_KIND_FULL,
+        execute=True,
+        policy=policy,
+        date=FIXED_DATE,
+        timestamp=FIXED_TS,
+        now=FIXED_NOW,
+        mariadb_config=_fake_mariadb_config(),
+        dump_runner=_fake_dump_runner,
+    )
+    assert result.executed is True
+    assert result.refused is False
+    assert list((tmp_path / "backups").rglob("*.sql.gz"))
+
+
+def test_backup_refused_when_environment_invalid(tmp_path: Path) -> None:
     policy = _dry_policy(tmp_path)
     result = execute_backup(
         "erebus_threat_intel_prod",
@@ -193,7 +234,6 @@ def test_live_execution_refused_without_enable(tmp_path: Path) -> None:
     assert result.refused is True
     assert result.executed is False
     assert result.refusal_reason is not None
-    assert "dry-run" in result.refusal_reason.lower() or "live actions" in result.refusal_reason.lower()
     assert not list(tmp_path.rglob("*.sql.gz"))
 
 
@@ -405,15 +445,23 @@ def test_verify_backup_artifacts_fails_without_manifest(tmp_path: Path) -> None:
     assert not result.manifest_exists
 
 
-def test_plan_backup_execution_marks_refusal_when_live_disabled(tmp_path: Path) -> None:
+def test_plan_backup_execution_preview_without_live_toggle(tmp_path: Path) -> None:
+    policy = ExecutionPolicy(
+        dry_run=True,
+        live_actions_enabled=False,
+        backup_root=tmp_path / "backups",
+        config_path=tmp_path / "local.toml",
+        allow_unsafe_backup_root=True,
+    )
     plan = plan_backup_execution(
         "erebus_threat_intel_prod",
         BACKUP_KIND_FULL,
-        policy=_dry_policy(tmp_path),
+        policy=policy,
         date=FIXED_DATE,
         timestamp=FIXED_TS,
     )
-    assert plan.refused is True
+    assert plan.refused is False
+    assert plan.dry_run is True
     assert plan.command
     assert "erebus_threat_intel_prod" in plan.command
 
@@ -446,7 +494,7 @@ def test_manifest_sha256_matches_artifact(tmp_path: Path) -> None:
     backup_dir = tmp_path / "backups" / FIXED_DATE / "erebus_threat_intel_prod"
     artifact = backup_dir / result.manifest.dump_file
     assert result.manifest.sha256 == sha256_file(artifact)
-def test_cli_backup_run_dry_run_default() -> None:
+def test_cli_backup_run_preview_with_dry_run_flag() -> None:
     result = run_cli(
         "backup",
         "run",
@@ -454,6 +502,7 @@ def test_cli_backup_run_dry_run_default() -> None:
         "erebus_threat_intel_prod",
         "--kind",
         "full",
+        "--dry-run",
     )
     assert result.returncode == 0
     assert "BACKUP EXECUTION" in result.stdout
@@ -512,7 +561,7 @@ def test_cli_backup_run_labels_relative_backup_directory(tmp_path: Path) -> None
     assert "\n  backup_directory:" not in out
 
 
-def test_cli_backup_run_execute_refused_in_seed() -> None:
+def test_cli_backup_run_execute_refused_without_usb_backup_root() -> None:
     result = run_cli(
         "backup",
         "run",
@@ -520,6 +569,6 @@ def test_cli_backup_run_execute_refused_in_seed() -> None:
         "erebus_threat_intel_prod",
         "--kind",
         "schema_only",
-        "--execute",
+        env={"MERCURY_BACKUP_ROOT": str(REPO_ROOT / "backups")},
     )
     assert result.returncode != 0

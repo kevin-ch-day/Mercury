@@ -3,6 +3,7 @@
 from mercury import output
 from mercury.terminal import screen as display_screen
 from mercury.terminal.table import Table, TableStyle
+from mercury.core.execution_policy import backup_mode_label, load_execution_policy
 from mercury.backup.batch_runner import BackupBatchResult
 
 
@@ -21,6 +22,13 @@ def _result_label(result) -> str:
     return "planned"
 
 
+def _batch_mode_label(batch: BackupBatchResult) -> str:
+    if batch.execute:
+        policy = load_execution_policy()
+        return backup_mode_label(policy) if batch.executed_count else "preview blocked or refused"
+    return "preview only"
+
+
 def print_backup_batch_result(
     batch: BackupBatchResult,
     *,
@@ -28,13 +36,12 @@ def print_backup_batch_result(
     menu: bool = False,
 ) -> None:
     if compact and menu:
-        mode = "LIVE" if batch.execute else "DRY RUN"
         display_screen.write_fields(
             {
-                "Execution mode": mode,
+                "Backup mode": _batch_mode_label(batch),
                 "Source databases": len(batch.sources),
-                "Executed": batch.executed_count,
-                "Dry-run": batch.dry_run_count,
+                "Written": batch.executed_count,
+                "Preview": batch.dry_run_count,
                 "Refused": batch.refused_count,
             }
         )
@@ -68,15 +75,17 @@ def print_backup_batch_result(
             display_screen.write_summary("Backups written. Next: verify source backups [3].")
         elif batch.dry_run_count:
             display_screen.write_blank()
-            display_screen.write_summary("Result: dry-run only; no files were written.")
+            display_screen.write_summary("Preview only; no files were written.")
+        elif batch.refused_count and batch.execute:
+            display_screen.write_blank()
+            display_screen.write_summary("No backups written. Check USB/config or missing sources.")
         return
 
     if compact:
         names = [result.database for result in batch.results]
-        mode = "LIVE" if batch.execute else "DRY RUN"
         display_screen.write_fields(
             {
-                "Execution mode": mode,
+                "Backup mode": _batch_mode_label(batch),
                 "Source databases": len(names),
             }
         )
@@ -119,4 +128,4 @@ def print_backup_batch_result(
 
     if batch.execute and batch.refused_count and not batch.executed_count:
         output.write()
-        output.write("Batch refused: enable live execution in config/local.toml or env.")
+        output.write("Batch refused: check USB backup root, config/local.toml, or missing sources.")

@@ -8,6 +8,7 @@ import pytest
 
 from mercury.deploy.repos.selection import resolve_repo_deploy_candidates
 from mercury.repo.config import RepoDefinition
+from tests.conftest import STALE_OPERATOR_REPO_PATH, STALE_REPO_HOME_SUFFIX
 
 
 def test_selection_rewrites_stale_repo_path_for_deploy(
@@ -19,7 +20,7 @@ def test_selection_rewrites_stale_repo_path_for_deploy(
         RepoDefinition(
             key="mercury",
             display_name="Mercury",
-            path=Path("/home/secadmin/Laughlin/GitHub/Mercury"),
+            path=STALE_OPERATOR_REPO_PATH,
             remote_url="https://github.com/example/Mercury.git",
         )
     ]
@@ -35,7 +36,7 @@ def test_selection_rewrites_stale_repo_path_for_deploy(
     )
     candidates = resolve_repo_deploy_candidates(source_mode="github")
     assert len(candidates) == 1
-    assert candidates[0].target_path == str((tmp_path / "linuxadmin" / "GitHub" / "Mercury").resolve())
+    assert candidates[0].target_path == str((tmp_path / "linuxadmin" / STALE_REPO_HOME_SUFFIX).resolve())
     assert candidates[0].configured_path is not None
 
 
@@ -55,13 +56,13 @@ def test_repo_path_missing_detail_skips_existing_effective_path(
     from mercury.repo.path_repair import repo_path_missing_detail
 
     home = tmp_path / "linuxadmin"
-    mercury = home / "GitHub" / "Mercury"
-    mercury.mkdir(parents=True)
+    effective = home / STALE_REPO_HOME_SUFFIX
+    effective.mkdir(parents=True)
     monkeypatch.setattr("mercury.repo.path_repair.Path.home", lambda: home)
 
     repo = RepoDefinition(
         key="mercury",
         display_name="Mercury",
-        path=Path("/home/secadmin/Laughlin/GitHub/Mercury"),
+        path=STALE_OPERATOR_REPO_PATH,
     )
     assert repo_path_missing_detail(repo) is None

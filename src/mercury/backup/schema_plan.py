@@ -34,7 +34,7 @@ def build_schema_backup_plan_live() -> SchemaBackupPlanDryRun:
     from mercury.database.discovery import discover
     from mercury.database.backup_planning import build_backup_plan_from_inventory
 
-    full_plan = build_backup_plan_from_inventory(discover("live"))
+    full_plan = build_backup_plan_from_inventory(discover("live"), live=True)
     return _schema_plan_from_backup_plan(full_plan)
 
 

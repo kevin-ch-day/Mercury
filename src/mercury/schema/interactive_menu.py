@@ -6,7 +6,7 @@ from mercury import output
 from mercury.menu import main_display as menu_display
 from mercury.menu import prompts as menu_prompts
 from mercury.terminal import screen as display_screen
-from mercury.core.execution_policy import load_execution_policy
+from mercury.core.execution_policy import backup_mode_label, load_execution_policy
 from mercury.core.runtime import should_probe_database_status
 from mercury.core.safety import BACKUP_KIND_SCHEMA_ONLY
 from mercury.database import MariaDbConfigError, MariaDbLiveError, try_load_mariadb_config
@@ -38,18 +38,18 @@ def _render_schema_screen(plan, *, show_title: bool) -> None:
     policy = load_execution_policy()
     print_schema_backup_plan(plan, compact=True, menu=True)
     display_screen.write_blank()
-    live_allowed = policy.live_execution_allowed()
-    run_label = "Run schema export" if live_allowed else "Run schema export (live mode required)"
+    live_allowed = policy.backup_execution_allowed()
+    run_label = "Run schema export now" if live_allowed else "Run schema export now (USB/config not ready)"
     render_submenu([("1", "Rescan plan"), ("2", run_label)])
 
 
 def _run_schema_export(plan) -> None:
     policy = load_execution_policy()
-    execute = policy.live_execution_allowed()
     batch = run_backup_batch(
         BACKUP_KIND_SCHEMA_ONLY,
-        execute=execute,
+        execute=True,
         live=should_probe_database_status(),
+        policy=policy,
         sources=list(plan.sources),
     )
     print_backup_batch_result(batch, compact=True, menu=True)

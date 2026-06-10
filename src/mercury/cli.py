@@ -194,7 +194,7 @@ def backup_plan(
         plan = build_demo_backup_plan()
     elif try_load_mariadb_config() is not None:
         try:
-            plan = build_backup_plan_from_inventory(discover("live"))
+            plan = build_backup_plan_from_inventory(discover("live"), live=True)
         except (MariaDbConfigError, MariaDbLiveError) as exc:
             typer.echo(f"Live discovery failed: {exc}")
             typer.echo("Falling back to config/catalog inventory.")
@@ -204,7 +204,7 @@ def backup_plan(
 
     from mercury.backup.terminal.plan import print_backup_plan
 
-    print_backup_plan(plan)
+    print_backup_plan(plan, live=not demo and try_load_mariadb_config() is not None)
 
     if sample_manifest:
         if not demo:
@@ -451,9 +451,9 @@ def backup_verify_cmd(
         help="Use latest backup directory under backup_root (default).",
     ),
     update_manifest: bool = typer.Option(
-        False,
-        "--update-manifest",
-        help="Set manifest verified=true when verification passes.",
+        True,
+        "--update-manifest/--no-update-manifest",
+        help="Set manifest verified=true when verification passes (default).",
     ),
 ) -> None:
     """Verify on-disk backup artifacts (manifest, dumps, checksums)."""
@@ -498,12 +498,12 @@ def backup_run_cmd(
         help="Backup kind: full or schema_only.",
     ),
     execute: bool = typer.Option(
-        False,
-        "--execute",
-        help="Execute backup (requires live actions explicitly enabled).",
+        True,
+        "--execute/--dry-run",
+        help="Execute backup (default). Use --dry-run to preview only.",
     ),
 ) -> None:
-    """Plan or execute a logical backup (dry-run by default)."""
+    """Execute a logical backup (use --dry-run to preview only)."""
     from mercury.backup.backup_runner import BackupExecutionError, execute_backup
     from mercury.backup.terminal.runner import print_backup_execution
     from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
@@ -514,7 +514,7 @@ def backup_run_cmd(
         raise typer.Exit(1)
 
     try:
-        result = execute_backup(db, normalized, execute=execute)  # type: ignore[arg-type]
+        result = execute_backup(db, normalized, execute=execute, live=True)  # type: ignore[arg-type]
     except BackupExecutionError as exc:
         typer.echo(str(exc))
         raise typer.Exit(1) from exc
@@ -527,7 +527,11 @@ def backup_run_cmd(
 @backup_app.command("batch")
 def backup_batch_cmd(
     kind: str = typer.Option("full", "--kind", help="Backup kind: full or schema_only."),
-    execute: bool = typer.Option(False, "--execute", help="Execute all backup sources."),
+    execute: bool = typer.Option(
+        True,
+        "--execute/--dry-run",
+        help="Execute all backup sources (default). Use --dry-run to preview only.",
+    ),
     db: list[str] = typer.Option(
         None,
         "--db",
@@ -539,7 +543,7 @@ def backup_batch_cmd(
         help="Use demo/catalog inventory instead of live server.",
     ),
 ) -> None:
-    """Plan or execute backups for all approved backup sources."""
+    """Execute backups for all approved backup sources (use --dry-run to preview)."""
     from mercury.backup.batch_runner import (
         BackupSourceSelectionError,
         run_backup_batch,
@@ -573,7 +577,11 @@ def backup_batch_cmd(
 @backup_app.command("all")
 def backup_all_cmd(
     kind: str = typer.Option("full", "--kind", help="Backup kind: full or schema_only."),
-    execute: bool = typer.Option(False, "--execute", help="Execute backups for active source databases."),
+    execute: bool = typer.Option(
+        True,
+        "--execute/--dry-run",
+        help="Execute backups for active source databases (default). Use --dry-run to preview.",
+    ),
     db: list[str] = typer.Option(
         None,
         "--db",
@@ -602,9 +610,9 @@ def backup_verify_all_cmd(
         help="Use demo/catalog backup sources instead of live inventory.",
     ),
     update_manifest: bool = typer.Option(
-        False,
-        "--update-manifest",
-        help="Set manifest verified=true when verification passes.",
+        True,
+        "--update-manifest/--no-update-manifest",
+        help="Set manifest verified=true when verification passes (default).",
     ),
 ) -> None:
     """Verify latest on-disk backup for each backup source."""

@@ -22,9 +22,9 @@ Guidance for AI coding agents (Cursor, ChatGPT, Codex) working in this repositor
 
 ## What Mercury is
 
-Mercury is a **Fedora-first Python CLI** for MariaDB backup, disaster recovery, schema export, verification, prod→dev sync planning, Git repository transfer bundles, and transfer manifests/runbooks on an Android security research platform.
+Mercury is a **Fedora-first Python CLI** for MariaDB backup, disaster recovery, schema export, verification, prod→dev sync planning, Git repository transfer bundles, transfer manifests/runbooks, and **recovery deployment** of Mercury-managed artifacts onto a prepared Fedora host.
 
-It is **not** an AI tool, web app, malware analyzer, or workstation/bootstrap utility.
+It is **not** an AI tool, web app, malware analyzer, or full workstation/Fedora bootstrap utility.
 
 **Production target:** Fedora for live operations. Windows and non-Fedora Linux are acceptable for seed planning/development only.
 
@@ -115,19 +115,21 @@ Use the project venv (`.venv/bin/python`), not system Python, when validating CL
 | Erebus | `erebus_threat_intel_prod` / `_dev` |
 | Platform | `android_permission_intel` (shared authority) |
 | ScytaleDroid | `scytaledroid_core_prod` / `_dev` |
+| ObsidianDroid | `obsidiandroid_core_prod` (backup-only; `_dev` not in sync scope unless configured) |
 
 For the current Fedora milestone, Mercury actively protects only:
 
 - `android_permission_intel`
 - `erebus_threat_intel_prod`
 - `scytaledroid_core_prod`
+- `obsidiandroid_core_prod`
 
 and plans prod→dev sync readiness only for:
 
 - `erebus_threat_intel_prod` -> `erebus_threat_intel_dev`
 - `scytaledroid_core_prod` -> `scytaledroid_core_dev`
 
-Out-of-scope databases such as `gecko_research_database_*`, `droid_threat_intel_db_prod`, and `proofpoint_cti_db_dev` may appear in live discovery for operator awareness, but they are excluded from backup/sync planning and do not count as blockers for this milestone.
+Out-of-scope databases such as `gecko_research_database_*` (legacy Komodo/market-event naming), `droid_threat_intel_db_*`, and `proofpoint_cti_db_dev` may appear in live discovery for operator awareness, but they are excluded from backup/sync planning and do not count as blockers for this milestone.
 
 Catalog reference: `src/mercury/database/core/catalog.py`  
 Classification: `src/mercury/database/core/classifier.py`

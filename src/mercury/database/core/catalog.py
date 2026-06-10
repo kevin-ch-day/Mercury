@@ -34,6 +34,11 @@ PLATFORM_CATALOG: list[CatalogEntry] = [
         project="ScytaleDroid",
         description="Disposable dev target.",
     ),
+    CatalogEntry(
+        name="obsidiandroid_core_prod",
+        project="ObsidianDroid",
+        description="Malware ML/research database (production; backup-only for this milestone).",
+    ),
 ]
 
 PLATFORM_DATABASES: list[str] = [entry.name for entry in PLATFORM_CATALOG]

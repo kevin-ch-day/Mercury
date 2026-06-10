@@ -86,6 +86,7 @@ def test_demo_catalog_matches_real_platform_databases() -> None:
         "android_permission_intel",
         "scytaledroid_core_prod",
         "scytaledroid_core_dev",
+        "obsidiandroid_core_prod",
     }
 
 # merged from test_discover_for_planning.py
@@ -106,12 +107,37 @@ def test_discover_for_planning_falls_back_to_demo_when_live_empty(monkeypatch) -
     sources = resolve_batch_sources(live=True)
     assert "erebus_threat_intel_prod" in sources
 
+
+def test_resolve_batch_sources_live_anchors_configured_missing_sources(monkeypatch) -> None:
+    from mercury.database.core import DatabaseInventory, record_from_name
+    from mercury.database.core.scope import ACTIVE_BACKUP_SOURCE_DATABASES
+    from mercury.database.core.sources import SOURCE_LIVE
+
+    inventory = DatabaseInventory(
+        connection="connected",
+        entries=[
+            record_from_name("erebus_threat_intel_prod", SOURCE_LIVE, connected=True),
+            record_from_name("android_permission_intel", SOURCE_LIVE, connected=True),
+            record_from_name("scytaledroid_core_prod", SOURCE_LIVE, connected=True),
+        ],
+    )
+    monkeypatch.setattr(
+        "mercury.database.discovery.discover_for_planning",
+        lambda live=False: inventory,
+    )
+
+    sources = resolve_batch_sources(live=True)
+    assert len(sources) == len(ACTIVE_BACKUP_SOURCE_DATABASES)
+    assert "obsidiandroid_core_prod" in sources
+    assert "gecko_research_database_prod" not in sources
+
 # merged from test_db_classifier.py
 @pytest.mark.parametrize(
     ("name", "role", "backup_source", "dev_target", "manual_review"),
     [
         ("erebus_threat_intel_prod", DatabaseRole.PRODUCTION, True, False, False),
         ("scytaledroid_core_prod", DatabaseRole.PRODUCTION, True, False, False),
+        ("obsidiandroid_core_prod", DatabaseRole.PRODUCTION, True, False, False),
         ("erebus_threat_intel_dev", DatabaseRole.DEVELOPMENT, False, True, False),
         ("gecko_research_database_dev", DatabaseRole.DEVELOPMENT, False, True, False),
         ("android_permission_intel", DatabaseRole.SHARED_AUTHORITY, True, False, False),

@@ -19,7 +19,7 @@ def config_status() -> dict[str, str]:
     platform_info = detect_platform()
 
     backup_root = str(policy.backup_root) if policy.backup_root else "not configured"
-    mode = "operational" if policy.live_execution_allowed() else "seed"
+    mode = "operational" if policy.backup_execution_allowed() else "seed"
 
     return {
         "databases.toml": (

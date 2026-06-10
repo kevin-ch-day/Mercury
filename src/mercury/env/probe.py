@@ -64,7 +64,7 @@ def probe_environment(*, check_database: bool = False, menu: bool = False) -> En
         db_probe = {"status": "see probe output below"}
 
     policy = load_execution_policy()
-    mode = MODE_SEED if policy.dry_run or not policy.live_actions_enabled else "operational"
+    mode = "operational" if policy.backup_execution_allowed() else MODE_SEED
 
     return EnvProbeResult(
         python_version=sys.version.split()[0],
@@ -75,7 +75,7 @@ def probe_environment(*, check_database: bool = False, menu: bool = False) -> En
         config_dir=str(CONFIG_DIR),
         output_dir=str(OUTPUT_DIR),
         mode=mode,
-        dry_run_only=policy.dry_run,
+        dry_run_only=not policy.backup_execution_allowed(),
         config_status=config_status(),
         notes=notes,
         database_probe=db_probe,

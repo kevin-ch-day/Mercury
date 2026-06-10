@@ -18,9 +18,11 @@ def test_out_of_scope_names() -> None:
     assert "android_permission_intel_dev" in OUT_OF_SCOPE_DATABASES
     assert "gecko_research_database_prod" in OUT_OF_SCOPE_DATABASES
     assert "gecko_research_database_dev" in OUT_OF_SCOPE_DATABASES
+    assert "obsidiandroid_core_dev" in OUT_OF_SCOPE_DATABASES
     assert "proofpoint_cti_db_dev" in OUT_OF_SCOPE_DATABASES
     assert "droid_threat_intel_db_dev" in OUT_OF_SCOPE_DATABASES
     assert "droid_threat_intel_db_prod" in OUT_OF_SCOPE_DATABASES
+    assert is_in_scope("obsidiandroid_core_prod")
     assert is_in_scope("erebus_threat_intel_dev")
     assert not is_in_scope("proofpoint_cti_db_dev")
     assert not is_in_scope("droid_threat_intel_db_prod")
@@ -33,6 +35,8 @@ def test_discover_demo_excludes_out_of_scope() -> None:
     assert "android_permission_intel_dev" not in names
     assert "gecko_research_database_prod" not in names
     assert "gecko_research_database_dev" not in names
+    assert "obsidiandroid_core_prod" in names
+    assert "obsidiandroid_core_dev" not in names
     assert "proofpoint_cti_db_dev" not in names
     assert "droid_threat_intel_db_dev" not in names
     assert "droid_threat_intel_db_prod" not in names
@@ -98,11 +102,14 @@ def test_prod_dev_pairs_skip_out_of_scope_dev_targets() -> None:
         "droid_threat_intel_db_dev",
         "erebus_threat_intel_prod",
         "erebus_threat_intel_dev",
+        "obsidiandroid_core_prod",
+        "obsidiandroid_core_dev",
     ]
     pairs = build_prod_dev_pairs(names)
     prod_names = {pair.prod for pair in pairs}
     assert "erebus_threat_intel_prod" in prod_names
     assert "droid_threat_intel_db_prod" not in prod_names
+    assert "obsidiandroid_core_prod" not in prod_names
 
 
 def test_orphan_dev_excludes_out_of_scope() -> None:
@@ -127,13 +134,14 @@ def test_fetch_active_scope_report_uses_one_query() -> None:
             ["erebus_threat_intel_prod", "1", "12", "1", "4096"],
             ["scytaledroid_core_dev", "0", "0", "0", "0"],
             ["scytaledroid_core_prod", "1", "22", "2", "8192"],
+            ["obsidiandroid_core_prod", "1", "8", "0", "2048"],
         ]
 
     report = fetch_active_scope_report(_ActiveScopeConfig(), rows_fn=rows_fn)
     assert len(calls) == 1
     assert "information_schema.schemata" in calls[0]
-    assert report.database_count == 5
-    assert report.present_count == 4
+    assert report.database_count == 6
+    assert report.present_count == 5
     assert report.missing_count == 1
     android = next(row for row in report.rows if row.name == "android_permission_intel")
     assert android.sync_role == "backup-only"
@@ -141,6 +149,8 @@ def test_fetch_active_scope_report_uses_one_query() -> None:
     assert prod.sync_role == "source+pair"
     dev = next(row for row in report.rows if row.name == "erebus_threat_intel_dev")
     assert dev.sync_role == "dev target"
+    obsidian = next(row for row in report.rows if row.name == "obsidiandroid_core_prod")
+    assert obsidian.sync_role == "backup-only"
 
 # merged from test_db_active_scope.py
 def test_print_active_scope_report_compact(capsys: pytest.CaptureFixture[str]) -> None:
@@ -152,6 +162,7 @@ def test_print_active_scope_report_compact(capsys: pytest.CaptureFixture[str]) -
             ["erebus_threat_intel_prod", "1", "12", "1", "4096"],
             ["scytaledroid_core_dev", "0", "0", "0", "0"],
             ["scytaledroid_core_prod", "1", "22", "2", "8192"],
+            ["obsidiandroid_core_prod", "1", "8", "0", "2048"],
         ],
     )
     print_active_scope_report(report, compact=True)

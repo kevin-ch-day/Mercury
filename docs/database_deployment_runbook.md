@@ -1,6 +1,8 @@
-# Database deployment runbook
+# Database recovery deployment runbook
 
-Deploy verified Mercury USB backups onto a **fresh Fedora/MariaDB** host after workstation rebuild.
+Import verified Mercury USB backups onto a **prepared Fedora/MariaDB host** after migration or hardware loss.
+
+Mercury recovery deployment assumes the host is already set up (MariaDB running, USB mount available). It is **not** prod→dev sync and **not** full workstation bootstrap.
 
 ## When to use
 
