@@ -16,6 +16,19 @@ Windows and non-Fedora Linux are for **seed planning / development** only; live 
 - Recovery deployment: deploy verified USB backups and repo bundles onto a prepared Fedora host (not full OS bootstrap)
 - Full workstation provisioning: out of scope for Mercury
 
+## Operator dashboard semantics
+
+The main menu separates **configured scope**, **MariaDB presence**, **on-disk protection**, and **sync readiness**:
+
+| Line | Meaning |
+|------|---------|
+| **Backup mode** | Whether backup writes to USB are allowed (environment checks), not global dry-run |
+| **USB backups** | Artifact-verified count vs configured protected sources; stale/unknown freshness called out separately |
+| **MariaDB targets** | Protected backup sources present on MariaDB vs `ACTIVE_BACKUP_SOURCE_DATABASES` (e.g. `3 of 4 protected sources on server; 1 missing`) |
+| **Sync pairs** | Ready/blocked prod→dev pairs only (Erebus + ScytaleDroid for this milestone) |
+
+Missing protected sources (e.g. `obsidiandroid_core_prod` not yet on MariaDB) appear in backup status/plan as **missing/refused**, not omitted from scope.
+
 ## Hard policy
 
 - Backup **production / source-of-truth** only (`*_prod`, `android_permission_intel`).
@@ -42,7 +55,8 @@ mercury config init
 mercury db ping                    # read-only server probe
 mercury db discover                # live inventory (needs config/local.toml)
 mercury status --live              # protection snapshot from live server
-mercury backup run --db erebus_threat_intel_prod --kind full   # dry-run plan
+mercury backup run --db erebus_threat_intel_prod --kind full   # writes to USB when environment is safe
+mercury backup run --db erebus_threat_intel_prod --kind full --dry-run   # preview only
 mercury repo status
 mercury transfer status --live
 python -m pytest
@@ -95,9 +109,9 @@ mercury database summary [--demo]
 ```bash
 mercury backup plan [--demo]             # live inventory when configured
 mercury backup schema-plan [--demo]
-mercury backup run --db <prod> --kind full|schema_only [--execute]
-mercury backup batch [--kind full|schema_only] [--execute] [--demo]
-mercury backup all [--kind full|schema_only] [--execute] [--demo]
+mercury backup run --db <prod> --kind full|schema_only [--dry-run]
+mercury backup batch [--kind full|schema_only] [--dry-run] [--demo]
+mercury backup all [--kind full|schema_only] [--dry-run] [--demo]
 mercury backup verify --db <prod> [--path DIR] [--update-manifest]
 mercury backup verify-all [--update-manifest] [--demo]
 mercury backup status [--db <source>] [--demo]
@@ -108,7 +122,12 @@ mercury backup list [--demo]
 mercury report preview --db <prod> --kind full|schema_only
 ```
 
-`backup run --execute` and `backup batch --execute` require `[mercury] dry_run = false` and `live_actions_enabled = true` in `config/local.toml`.
+**Backup writes** run when the backup environment is safe (Fedora host, `config/local.toml`, mounted USB backup root under `/mnt/MERCURY_DATA_USB/mercury_backups`). They do **not** require `dry_run = false` or `live_actions_enabled = true`.
+
+Use `--dry-run` on `backup run`, `backup batch`, or `backup all` to preview without writing files. The interactive menu uses **Run full backup now** for live writes and **Preview backup plan** for dry-run.
+
+**Destructive actions** (prod→dev sync, deploy, restore-check cleanup) additionally require `[mercury] dry_run = false` and `live_actions_enabled = true` in `config/local.toml`, plus confirmation where applicable (`SYNC DEV` for sync).
+
 For the current Fedora milestone, live backup execution also requires:
 - Fedora as the runtime host
 - the mounted USB-backed root under `/mnt/MERCURY_DATA_USB/mercury_backups`
@@ -169,7 +188,7 @@ mercury deploy system --dry-run
 mercury deploy use-cases
 ```
 
-Live deploy requires the same gates as backup execution (`dry_run = false`, `live_actions_enabled = true`, Fedora host, USB-backed backup root). Menu: option **8 → Deploy to This System**.
+Live deploy requires the same gates as sync/restore (`dry_run = false`, `live_actions_enabled = true`, Fedora host, USB-backed backup root). Menu: option **8 → Deploy to This System**.
 
 ## Setup
 
@@ -183,6 +202,7 @@ log_dir = "/mnt/MERCURY_DATA_USB/mercury_logs"
 repo_backup_root = "/mnt/MERCURY_DATA_USB/mercury_repo_backups"
 manifest_dir = "/mnt/MERCURY_DATA_USB/mercury_manifests"
 runbook_dir = "/mnt/MERCURY_DATA_USB/mercury_runbooks"
+# Backups write when USB + config are valid (see README). These flags gate sync/deploy/restore:
 dry_run = true
 live_actions_enabled = false
 

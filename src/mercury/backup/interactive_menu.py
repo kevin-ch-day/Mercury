@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from collections import Counter
 
 from mercury import output
 from mercury.menu import main_display as menu_display
@@ -15,16 +16,12 @@ from mercury.backup import (
     build_database_bundle_plan,
     write_database_bundle_plan,
 )
-from mercury.backup.freshness import (
-    OPERATOR_FRESHNESS_GUIDANCE,
-    artifact_status_label,
-    freshness_status_label,
-)
+from mercury.backup.freshness import FRESHNESS_STALE, FRESHNESS_UNKNOWN
 from mercury.backup.terminal.batch import print_backup_batch_result
 from mercury.backup.terminal.bundle import print_database_bundle_plan
 from mercury.backup.terminal.verify import print_verify_menu_summary, run_verify_all_for_menu
 from mercury.backup.on_disk_index import build_on_disk_backup_list, latest_records_by_database
-from mercury.core.execution_policy import backup_mode_label, load_execution_policy
+from mercury.core.execution_policy import load_execution_policy
 from mercury.core.runtime import should_probe_database_status
 from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.terminal.format import format_bytes, format_human_datetime
@@ -85,18 +82,24 @@ def _storage_usage_fields(policy) -> dict[str, str]:
 
 
 def _format_last_backup(created_at: str | None, backup_age: str | None = None) -> str:
-    when = format_human_datetime(created_at)
-    if when == "-" or not backup_age:
-        return when
-    return f"{when} ({backup_age})"
+    _ = backup_age
+    return format_human_datetime(created_at)
 
 
-def _artifact_and_freshness(entry) -> tuple[str, str]:
+def _status_label(entry) -> str:
     if entry is None:
-        return "missing", "unknown"
-    artifact = artifact_status_label(entry.protection_status)
-    freshness = freshness_status_label(getattr(entry, "freshness", "unknown"))
-    return artifact, freshness
+        return "Missing"
+    if entry.protection_status != "verified":
+        if entry.protection_status == "missing":
+            return "Missing"
+        if entry.protection_status == "failed":
+            return "Unverified"
+        return "Warning"
+    if getattr(entry, "freshness", None) == FRESHNESS_STALE:
+        return "Stale"
+    if getattr(entry, "freshness", None) == FRESHNESS_UNKNOWN:
+        return "Unknown"
+    return "Fresh"
 
 
 def _backup_screen_rows(
@@ -107,7 +110,6 @@ def _backup_screen_rows(
     in_scope_names = [entry.name for entry in plan.classifications]
     pairs = build_prod_dev_pairs(in_scope_names)
     paired_prod_names = {pair.prod for pair in pairs}
-    paired_dev_names = {pair.expected_dev for pair in pairs}
     latest_records = {
         record.database: record
         for record in latest_records_by_database(
@@ -127,49 +129,32 @@ def _backup_screen_rows(
         if classification.role == DatabaseRole.SHARED_AUTHORITY:
             entry = status_entries.get(name)
             record = latest_records.get(name)
-            artifact, freshness = _artifact_and_freshness(entry)
             rows.append(
                 [
                     name,
-                    artifact,
-                    freshness,
+                    _status_label(entry),
+                    format_bytes(record.size_bytes) if record and record.size_bytes is not None else "-",
                     _format_last_backup(
                         record.created_at if record else None,
                         entry.backup_age if entry else None,
                     ),
-                    "n/a",
                 ]
             )
 
     for pair in pairs:
         entry = status_entries.get(pair.prod)
         record = latest_records.get(pair.prod)
-        artifact, freshness = _artifact_and_freshness(entry)
         rows.append(
             [
                 pair.prod,
-                artifact,
-                freshness,
+                _status_label(entry),
+                format_bytes(record.size_bytes) if record and record.size_bytes is not None else "-",
                 _format_last_backup(
                     record.created_at if record else None,
                     entry.backup_age if entry else None,
                 ),
-                pair.expected_dev,
             ]
         )
-        if pair.dev_listed:
-            rows.append([pair.expected_dev, "skip", "-", "refresh target"])
-
-    # Fallback for any unexpected in-scope dev exclusions not covered by pair logic.
-    extra_dev_targets = sorted(
-        item.name
-        for item in plan.excluded
-        if item.role == DatabaseRole.DEVELOPMENT.value
-        and "Out of active Mercury scope" not in item.reason
-        and item.name not in paired_dev_names
-    )
-    for name in extra_dev_targets:
-        rows.append([name, "skip", "-", "refresh target"])
 
     extra_prod_sources = sorted(
         name
@@ -179,21 +164,27 @@ def _backup_screen_rows(
     for name in extra_prod_sources:
         entry = status_entries.get(name)
         record = latest_records.get(name)
-        artifact, freshness = _artifact_and_freshness(entry)
         rows.append(
             [
                 name,
-                artifact,
-                freshness,
+                _status_label(entry),
+                format_bytes(record.size_bytes) if record and record.size_bytes is not None else "-",
                 _format_last_backup(
                     record.created_at if record else None,
                     entry.backup_age if entry else None,
                 ),
-                "n/a",
             ]
         )
 
     return rows
+
+
+def _status_counts(rows: list[list[str]]) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    for row in rows:
+        if len(row) >= 2:
+            counts[row[1]] += 1
+    return counts
 
 
 def _load_plan() -> BackupPlanDryRun:
@@ -208,10 +199,7 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
     policy = load_execution_policy()
     backup_ready = policy.backup_execution_allowed()
     display_screen.write_fields(
-        {
-            **_storage_usage_fields(policy),
-            "Backup mode": backup_mode_label(policy),
-        }
+        _storage_usage_fields(policy)
     )
     display_screen.write_blank()
     status_report = build_backup_status_report(live=should_probe_database_status())
@@ -219,24 +207,29 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
     rows = _backup_screen_rows(plan, status_entries=status_entries)
     if rows:
         table = Table.from_headers(
-            ["DATABASE", "ARTIFACT", "FRESHNESS", "LAST BACKUP", "TARGET"],
+            ["DATABASE", "STATUS", "SIZE", "LAST BACKUP"],
             rows,
             style=TableStyle(indent=0),
-            min_col_widths=[30, 10, 10, 22, 18],
-            max_col_widths=[36, 12, 12, 28, 28],
+            min_col_widths=[30, 10, 10, 30],
+            max_col_widths=[36, 12, 12, 48],
         )
         display_screen.write_structured_table(table)
         display_screen.write_blank()
-        display_screen.write_summary(OPERATOR_FRESHNESS_GUIDANCE)
-        stale_count = status_report.stale_count
-        unknown_count = status_report.unknown_freshness_count
-        if stale_count or unknown_count:
+        counts = _status_counts(rows)
+        problem_parts: list[str] = []
+        for label in ("Stale", "Unknown", "Missing", "Unverified", "Warning"):
+            count = counts.get(label, 0)
+            if count:
+                problem_parts.append(f"{count} {label.lower()}")
+        if problem_parts:
             display_screen.write_status(
                 "warn",
-                "Stale or unknown sources need a fresh full backup: "
-                f"{stale_count} stale, "
-                f"{unknown_count} unknown freshness.",
+                "Fresh full backup needed before workstation handoff: "
+                + ", ".join(problem_parts)
+                + ".",
             )
+        else:
+            display_screen.write_summary("All visible source backups are artifact-verified and fresh.")
     else:
         display_screen.write_status("warn", "No databases in active backup scope.")
     options: list[tuple[str, str]] = [
@@ -283,8 +276,8 @@ def _run_verify_sources() -> None:
     print_verify_menu_summary(summary)
     display_screen.write_blank()
     display_screen.write_summary(
-        f"Verified {summary.verified}, missing {summary.missing}, failed {summary.failed}. "
-        "Manifests updated where verification passed."
+        f"Verification complete — {summary.verified} verified, "
+        f"{summary.missing} missing, {summary.failed} failed."
     )
 
 

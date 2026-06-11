@@ -81,6 +81,12 @@ def run_deploy_menu() -> None:
     _run_deploy_menu()
 
 
+def run_recovery_menu() -> None:
+    from mercury.recovery.interactive_menu import run_recovery_menu as _run_recovery_menu
+
+    _run_recovery_menu()
+
+
 # Re-export interactive loop (implementation in menu.loop).
 from mercury.menu.loop import MenuResult, handle_menu_choice, run_menu  # noqa: E402
 

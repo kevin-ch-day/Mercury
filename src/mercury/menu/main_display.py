@@ -96,9 +96,9 @@ MENU_SECTIONS: list[tuple[str, list[MenuItem]]] = [
             MenuItem("3", "Reports and backup history"),
             MenuItem("4", "Environment details"),
             MenuItem("5", "Database inventory"),
-            MenuItem("6", "Live mode guide"),
-            MenuItem("7", "System doctor / repair guide"),
-            MenuItem("8", "Deploy to this system"),
+            MenuItem("6", "System doctor / repair guide"),
+            MenuItem("7", "System Deployment"),
+            MenuItem("8", "Disaster Recovery"),
         ],
     ),
 ]

@@ -99,8 +99,8 @@ def _seed_all_verified(policy: ExecutionPolicy) -> None:
 
 def test_deploy_lane_appears_in_menu() -> None:
     keys = {item.key for _section, items in menu_display.MENU_SECTIONS for item in items}
-    assert "8" in keys
-    assert menu_actions()["8"].title == "Deploy to this system"
+    assert "7" in keys
+    assert menu_actions()["7"].title == "System Deployment"
 
 
 def test_database_deploy_status_rows_describe_missing_databases(

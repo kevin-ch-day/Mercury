@@ -65,7 +65,7 @@ def repository_deploy_status_rows() -> list[str]:
 
 
 def deploy_hub_status_rows() -> list[str]:
-    """Operator snapshot for the Deploy to This System hub."""
+    """Operator snapshot for the System Deployment hub."""
     policy = load_execution_policy()
     db_snapshot = build_deployment_snapshot(policy=policy, execute=False)
     repo_plan = build_repo_deploy_plan(execute=False, source_mode="auto")
@@ -75,16 +75,13 @@ def deploy_hub_status_rows() -> list[str]:
         if not c.exists_on_system and c.source != "none"
     )
     rows = [
-        dashboard_row("Databases to import", str(db_snapshot.import_count)),
-        dashboard_row("Repositories to deploy", str(repo_count)),
-        dashboard_row(
-            "Execution mode",
-            "LIVE" if policy.live_execution_allowed() else "DRY RUN",
-        ),
+        dashboard_row("Purpose", "Deploy Mercury-managed databases and artifacts onto a new Fedora system or VM."),
+        dashboard_row("Host readiness", "ready for live deploy" if policy.live_execution_allowed() else "planning only until host is fully ready"),
+        dashboard_row("Deployable sources", f"{db_snapshot.verified_backup_count} verified backup(s) available"),
+        dashboard_row("Repository artifacts", f"{repo_count} repo(s) ready to deploy"),
     ]
     if not db_snapshot.deployment_needed and repo_count == 0:
-        rows.append(dashboard_row("Status", "System deployment not needed"))
-        rows.append(dashboard_row("Next step", "./run.sh db inventory"))
+        rows.append(dashboard_row("Deployment plan", "no import needed on this host"))
     else:
-        rows.append(dashboard_row("Next step", "Option 3 — full system dry-run plan"))
+        rows.append(dashboard_row("Deployment plan", f"{db_snapshot.import_count} DB import(s) planned; {repo_count} repo deploy candidate(s)"))
     return rows

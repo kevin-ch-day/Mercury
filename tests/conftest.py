@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
@@ -104,6 +105,10 @@ def subprocess_env(extra: dict[str, str] | None = None) -> dict[str, str]:
     src = str(SRC_ROOT)
     existing = merged.get("PYTHONPATH", "")
     merged["PYTHONPATH"] = src if not existing else f"{src}{os.pathsep}{existing}"
+    merged.setdefault(
+        ENV_STATE_ROOT,
+        tempfile.mkdtemp(prefix="mercury-pytest-state-"),
+    )
     if extra:
         merged.update(extra)
     return merged

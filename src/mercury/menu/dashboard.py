@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from mercury.core.environment_status import (
     backup_target_dashboard_label,
+    backup_root_unsafe_reason,
     build_environment_status,
     config_dashboard_label,
     mariadb_dashboard_label,
@@ -14,6 +15,7 @@ from mercury.core.environment_status import (
 from mercury.core.execution_policy import backup_mode_label, destructive_ops_label, load_execution_policy
 from mercury.core.platform import detect_platform
 from mercury.core.runtime import should_probe_database_status
+from mercury.core.storage_status import backup_root_free_space_label
 from mercury.terminal.theme import dashboard_row
 
 
@@ -32,12 +34,14 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     policy = env.policy
     config_initialized = env.config.initialized
 
-    rows: list[str] = [
-        dashboard_row("MariaDB", mariadb_dashboard_label(env.mariadb)),
-        dashboard_row("Backup mode", backup_mode_dashboard_label(policy)),
-        dashboard_row("Config", config_dashboard_label(env.config)),
-        dashboard_row("Backup target", backup_target_dashboard_label(policy, env.usb)),
-    ]
+    rows: list[str] = []
+    if env.config.initialized and env.mariadb.connection_works is True:
+        rows.append(dashboard_row("Backup target", _backup_target_summary(policy, env)))
+    else:
+        rows.append(dashboard_row("MariaDB", mariadb_dashboard_label(env.mariadb)))
+        rows.append(dashboard_row("Config", config_dashboard_label(env.config)))
+        rows.append(dashboard_row("Backup target", _backup_target_summary(policy, env)))
+    rows.append(dashboard_row("Backup mode", backup_mode_dashboard_label(policy)))
     platform_info = detect_platform()
     if not platform_info.is_fedora:
         rows.append(dashboard_row("Platform", platform_info.support_label))
@@ -61,6 +65,9 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     unknown_names: set[str] = set()
     verified_names: set[str] = set()
     source_names: set[str] = set()
+    missing_count = 0
+    failed_count = 0
+    unknown_only_count = 0
     ready = 0
     blocked = 0
     deploy_complete = False
@@ -76,9 +83,15 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             config_initialized=False,
         )
     else:
-        verified_names, source_names, stale_names, unknown_names = _verified_source_summary(
-            live=probe and env.mariadb.connection_works is True
-        )
+        (
+            verified_names,
+            source_names,
+            stale_names,
+            unknown_names,
+            missing_count,
+            failed_count,
+            unknown_only_count,
+        ) = _verified_source_summary(live=probe and env.mariadb.connection_works is True)
         ready, blocked, sync_blocker = _sync_readiness_summary(
             live=probe and env.mariadb.connection_works is True,
             verified_names=verified_names,
@@ -87,32 +100,31 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
         deploy_line = _deploy_target_summary(live=probe and env.mariadb.connection_works is True)
         deploy_status_line = _deploy_status_line(live=probe and env.mariadb.connection_works is True)
         deploy_complete = "deploy not needed" in deploy_line.lower()
-        blocker = resolve_dashboard_blocker(
+        blocker = _resolve_environment_readiness(
             setup_blocker=env.primary_setup_blocker,
+            config_initialized=True,
             verified_names=verified_names,
             source_names=source_names,
             sync_blocker=sync_blocker,
-            config_initialized=True,
             deploy_complete=deploy_complete,
+            stale_count=len(stale_names),
+            missing_count=missing_count,
+            failed_count=failed_count,
+            unknown_only_count=unknown_only_count,
         )
-        source_line = f"{len(verified_names)} of {len(source_names)} verified"
-        sync_line = f"{ready} ready, {blocked} need dev targets"
-
-    source_summary = source_line
-    if config_initialized:
-        source_summary = f"{len(verified_names)} of {len(source_names)} artifact-verified"
-        if stale_names:
-            source_summary += f"; {len(stale_names)} stale"
-        if unknown_names:
-            source_summary += f"; {len(unknown_names)} freshness unknown"
+        present_count = max(0, len(source_names) - missing_count)
+        source_line = f"{present_count} of {len(source_names)} on server"
+        if missing_count:
+            source_line += f"; {missing_count} missing"
+        sync_line = f"{ready} approved pairs ready"
+        if blocked:
+            sync_line += f"; {blocked} blocked"
 
     rows.extend(
         [
-            dashboard_row("USB backups", source_summary),
-            dashboard_row("MariaDB targets", deploy_line if config_initialized else "skipped until config initialized"),
-            dashboard_row("Deploy status", deploy_status_line if config_initialized else "skipped until config initialized"),
-            dashboard_row("Sync pairs", sync_line),
-            dashboard_row("Environment", blocker),
+            dashboard_row("Protected sources", source_line),
+            dashboard_row("Sync readiness", sync_line),
+            dashboard_row("Protection", blocker),
         ]
     )
     if config_initialized and deploy_complete and sync_blocker not in {"None.", ""}:
@@ -129,13 +141,73 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     return rows
 
 
+def _backup_target_summary(policy, env) -> str:
+    base = backup_target_dashboard_label(policy, env.usb)
+    if policy.backup_root_state() == "usb-mounted":
+        free_space = backup_root_free_space_label(policy)
+        if free_space:
+            return f"{base} · {free_space} free"
+    if env.config.initialized:
+        reason = backup_root_unsafe_reason(policy, config=env.config, usb=env.usb)
+        if reason and "unsafe" not in base.lower() and reason not in base:
+            return f"{base} · {reason}"
+    return base
+
+
 def setup_hint_lines(*, probe_database: bool | None = None) -> list[str]:
     probe = should_probe_database_status() if probe_database is None else probe_database
     env = build_environment_status(probe_database=probe)
     return list(env.setup_hints)
 
 
-def _verified_source_summary(*, live: bool) -> tuple[set[str], set[str], set[str], set[str]]:
+def _resolve_environment_readiness(
+    *,
+    setup_blocker: str | None,
+    config_initialized: bool,
+    verified_names: set[str],
+    source_names: set[str],
+    sync_blocker: str,
+    deploy_complete: bool,
+    stale_count: int,
+    missing_count: int,
+    failed_count: int,
+    unknown_only_count: int,
+) -> str:
+    base = resolve_dashboard_blocker(
+        setup_blocker=setup_blocker,
+        verified_names=verified_names,
+        source_names=source_names,
+        sync_blocker=sync_blocker,
+        config_initialized=config_initialized,
+        deploy_complete=deploy_complete,
+    )
+    if setup_blocker or not config_initialized:
+        return base
+
+    protection_parts: list[str] = []
+    if stale_count:
+        protection_parts.append(_pluralized(stale_count, "stale backup"))
+    if missing_count:
+        protection_parts.append(_pluralized(missing_count, "protected source missing"))
+    if failed_count:
+        protection_parts.append(_pluralized(failed_count, "backup verification failure"))
+    if unknown_only_count:
+        protection_parts.append(_pluralized(unknown_only_count, "unknown freshness state"))
+    if protection_parts:
+        return f"Protection incomplete: {'; '.join(protection_parts)}"
+    return base
+
+
+def _pluralized(count: int, singular: str) -> str:
+    if count == 1:
+        return f"1 {singular}"
+    return f"{count} {singular}s"
+
+
+def _verified_source_summary(
+    *,
+    live: bool,
+) -> tuple[set[str], set[str], set[str], set[str], int, int, int]:
     try:
         from mercury.backup.batch_runner import resolve_batch_sources
         from mercury.backup.status import build_backup_status_report
@@ -149,9 +221,18 @@ def _verified_source_summary(*, live: bool) -> tuple[set[str], set[str], set[str
         }
         stale = {entry.database for entry in report.entries if entry.freshness == "stale"}
         unknown = {entry.database for entry in report.entries if entry.freshness == "unknown"}
-        return verified, sources, stale, unknown
+        unknown_only_count = max(0, report.unknown_freshness_count - report.missing_count)
+        return (
+            verified,
+            sources,
+            stale,
+            unknown,
+            report.missing_count,
+            report.failed_count,
+            unknown_only_count,
+        )
     except Exception:
-        return set(), set(), set(), set()
+        return set(), set(), set(), set(), 0, 0, 0
 
 
 def _deploy_status_line(*, live: bool) -> str:

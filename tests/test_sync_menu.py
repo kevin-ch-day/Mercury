@@ -67,7 +67,7 @@ def test_sync_submenu_shows_prepare_when_blocked(
     report = _sample_report()
     labels = [label for _key, label in _sync_submenu_options(report)]
     assert any("Prepare production backups" in label for label in labels)
-    assert any("live mode required" in label for label in labels)
+    assert any("preview only" in label for label in labels)
     assert not any(label.startswith("Sync all ready pairs") for label in labels)
 
 
@@ -95,20 +95,49 @@ def test_prepare_dry_run_shows_live_mode_hint(
     _prepare_production_backups(_sample_report())
     out = capsys.readouterr().out
     assert "Result: dry-run only; no files were written." in out
-    assert "Live mode guide" in out
+    assert "Enable sync execution in config/local.toml" in out
 
 
 def test_sync_submenu_shows_sync_when_ready() -> None:
     report = _sample_report(ready=1, blocked=1)
-    labels = [label for _key, label in _sync_submenu_options(report)]
-    assert any(label.startswith("Sync All Ready Databases") for label in labels)
+    policy = ExecutionPolicy(
+        dry_run=True,
+        live_actions_enabled=False,
+        backup_root=Path("/tmp/backups"),
+        config_path=None,
+        allow_unsafe_backup_root=True,
+    )
+    import mercury.sync.interactive_menu as sync_menu
+
+    original = sync_menu.load_execution_policy
+    sync_menu.load_execution_policy = lambda: policy
+    try:
+        labels = [label for _key, label in _sync_submenu_options(report)]
+    finally:
+        sync_menu.load_execution_policy = original
+    assert any(label.startswith("Preview All Ready Databases") for label in labels)
 
 
 def test_sync_submenu_shows_single_pair_option_when_multiple_ready() -> None:
-    report = _sample_report(ready=2, blocked=0)
-    labels = [label for _key, label in _sync_submenu_options(report)]
-    assert any(label.startswith("Sync All Ready Databases") for label in labels)
-    assert any(label.startswith("Sync One Ready Pair") for label in labels)
+    report = _sample_report(ready=1, blocked=1)
+    policy = ExecutionPolicy(
+        dry_run=True,
+        live_actions_enabled=False,
+        backup_root=Path("/tmp/backups"),
+        config_path=None,
+        allow_unsafe_backup_root=True,
+    )
+    import mercury.sync.interactive_menu as sync_menu
+
+    original = sync_menu.load_execution_policy
+    sync_menu.load_execution_policy = lambda: policy
+    try:
+        report = _sample_report(ready=2, blocked=0)
+        labels = [label for _key, label in _sync_submenu_options(report)]
+    finally:
+        sync_menu.load_execution_policy = original
+    assert any(label.startswith("Preview All Ready Databases") for label in labels)
+    assert any(label.startswith("Preview One Ready Pair") for label in labels)
 
 
 def test_run_sync_menu_non_interactive(
@@ -116,6 +145,16 @@ def test_run_sync_menu_non_interactive(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr("mercury.sync.interactive_menu._load_report", lambda: _sample_report())
+    monkeypatch.setattr(
+        "mercury.sync.interactive_menu.load_execution_policy",
+        lambda: ExecutionPolicy(
+            dry_run=True,
+            live_actions_enabled=False,
+            backup_root=Path("/tmp/backups"),
+            config_path=None,
+            allow_unsafe_backup_root=True,
+        ),
+    )
     run_sync_menu(interactive=False)
     out = capsys.readouterr().out
     assert "Backup root:" in out
@@ -127,6 +166,7 @@ def test_run_sync_menu_non_interactive(
     assert "erebus_threat_intel" in out
     assert "Recheck Database Sync Status" in out
     assert "Prepare production backups" in out
+    assert "preview only" in out.lower()
     assert "CLI:" not in out
     assert "[0] Return" not in out
     assert "Choose an action below" not in out
@@ -161,3 +201,24 @@ def test_run_sync_ready_shows_compact_confirmation(
     out = capsys.readouterr().out
     assert "overwrite development targets only" in out
     assert "Sync cancelled." in out
+
+
+def test_print_sync_batch_result_marks_preview_only(capsys: pytest.CaptureFixture[str]) -> None:
+    from mercury.sync.sync_runner import SyncBatchResult, SyncExecutionResult
+    from mercury.sync.terminal.runner import print_sync_batch_result
+
+    batch = SyncBatchResult(
+        results=[
+            SyncExecutionResult(
+                source="erebus_threat_intel_prod",
+                target="erebus_threat_intel_dev",
+                executed=False,
+                dry_run=True,
+                message="Would restore erebus_threat_intel_prod backup into erebus_threat_intel_dev.",
+            )
+        ]
+    )
+    print_sync_batch_result(batch, compact=True)
+    out = capsys.readouterr().out
+    assert "Preview only" in out
+    assert "Would restore" not in out

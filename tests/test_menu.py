@@ -20,7 +20,9 @@ def test_render_menu_text_shows_database_status_when_configured() -> None:
 
     text = render_menu_text()
     if should_probe_database_status():
-        assert "MariaDB" in text and "[ok]" in text
+        assert "Backup target" in text
+        assert "Protected sources" in text
+        assert "Sync readiness" in text
     else:
         assert "MariaDB" in text and "[!!]" in text
 
@@ -39,6 +41,9 @@ def test_run_menu_redisplay_after_choice(monkeypatch: pytest.MonkeyPatch, capsys
     assert out.count("[4] Environment details") >= 2
     assert "Rescan" in out
     assert "LIVE MODE GUIDE" not in out
+    assert "[6] Live mode guide" not in out
+    assert "[7] System Deployment" in out
+    assert "[8] Disaster Recovery" in out
     assert "Press any key to continue" not in out
     assert "[0] Return" not in out
     assert "Exiting Mercury" in out
@@ -128,11 +133,11 @@ def test_menu_renders_without_crashing(capsys: pytest.CaptureFixture[str]) -> No
         ("1", ("USB Path", "LAST BACKUP", "Run full backup now", "Restore-check source backups")),
         ("2", ("ready", "blocked", "Recheck Database Sync Status")),
         ("3", ("REPORTS AND BACKUP HISTORY", "Backup root", "Show backup history", "Show protection status")),
-        ("4", ("ENVIRONMENT CHECK", "Runtime", "Live mode guide")),
+        ("4", ("ENVIRONMENT CHECK", "Runtime", "Backup Storage")),
         ("5", ("Active scope:", "Backup sources:", "DATABASE", "ROLE", "Rescan inventory")),
-            ("6", ("OPERATOR SAFETY GUIDE", "Destructive actions", "Backups write to USB")),
-        ("7", ("MERCURY DOCTOR", "Repo", "Recommended Next Step")),
-        ("8", ("Deploy to This System", "Deploy databases", "Deploy repositories")),
+        ("6", ("MERCURY DOCTOR", "Repo", "Recommended Next Step")),
+        ("7", ("System Deployment", "Check host readiness", "Build deployment plan", "Deploy selected databases")),
+        ("8", ("Disaster Recovery", "RESTORE-CHECK", "Protected sources", "Latest safe backup")),
     ],
 )
 def test_handle_menu_action(
@@ -152,11 +157,11 @@ def test_handle_menu_action(
     if choice == "3":
         monkeypatch.setattr("mercury.reporting.interactive_menu.read_reports_choice", lambda: "0")
     if choice == "6":
-        monkeypatch.setattr("mercury.menu.prompts.wait_for_continue", lambda *args, **kwargs: None)
-    if choice == "7":
         monkeypatch.setattr("mercury.env.interactive_menu.read_submenu_choice", lambda: "0")
-    if choice == "8":
+    if choice == "7":
         monkeypatch.setattr("mercury.deploy.interactive_menu.read_deploy_choice", lambda: "0")
+    if choice == "8":
+        monkeypatch.setattr("mercury.recovery.interactive_menu.read_recovery_choice", lambda: "0")
     assert handle_menu_choice(choice) == "continue"
     out = capsys.readouterr().out.lower()
     matched = sum(1 for snippet in snippets if snippet.lower() in out)
@@ -199,10 +204,14 @@ def test_render_main_menu_matches_simple_layout() -> None:
     assert menu_display.MENU_SUBTITLE in text
     assert "\nMain Menu\n" in text
     assert "Backup target" in text
-    assert "USB backups" in text
+    assert "Protected sources" in text
+    assert "Sync readiness" in text
+    assert "Protection" in text
     assert "Execution Safety" not in text
     assert "─" in text
     assert "      [1] Backup source databases" in text
+    assert "      [7] System Deployment" in text
+    assert "      [8] Disaster Recovery" in text
     assert "      [0] Exit" in text
     assert "Core workflows" not in text
     assert "Diagnostics" not in text
@@ -213,7 +222,7 @@ def test_render_main_menu_body_omits_title_block() -> None:
     body = menu_display.render_main_menu_body()
     assert menu_display.MENU_TITLE not in body
     assert "Main Menu" in body
-    assert "MariaDB" in body
+    assert "Backup target" in body
     assert "      [1] Backup source databases" in body
 
 # merged from test_menu_display.py
@@ -221,4 +230,3 @@ def test_render_menu_help_lists_shortcuts() -> None:
     help_text = menu_display.render_menu_help()
     assert "Operator console help" in help_text
     assert "0 or q to exit" in help_text
-

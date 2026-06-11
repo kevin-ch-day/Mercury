@@ -57,8 +57,8 @@ def run_verify_menu(*, interactive: bool = True) -> None:
         if choice == "2":
             summary = run_verify_all_for_menu(update_manifest=True)
             display_screen.write_summary(
-                f"Verified {summary.verified}, missing {summary.missing}, failed {summary.failed}. "
-                "Manifests updated where verification passed."
+                f"Verification complete — {summary.verified} verified, "
+                f"{summary.missing} missing, {summary.failed} failed."
             )
             show_title = pause_and_redraw()
             continue

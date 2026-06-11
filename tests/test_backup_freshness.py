@@ -15,23 +15,22 @@ from mercury.backup.freshness import (
     assess_backup_freshness,
     parse_backup_timestamp,
 )
-from mercury.backup.interactive_menu import _artifact_and_freshness, _backup_screen_rows
+from mercury.backup.interactive_menu import _backup_screen_rows, _status_label
 from mercury.backup.status import build_backup_status_report
 from mercury.core.execution_policy import ExecutionPolicy
 from mercury.database.backup_planning import build_backup_plan
 
 
-def test_verified_artifact_is_not_labeled_current() -> None:
-    artifact, freshness = _artifact_and_freshness(
+def test_verified_unknown_status_is_not_labeled_fresh() -> None:
+    status = _status_label(
         type(
             "Entry",
             (),
             {"protection_status": "verified", "freshness": FRESHNESS_UNKNOWN},
         )()
     )
-    assert artifact == "verified"
-    assert artifact != "current"
-    assert freshness == "unknown"
+    assert status == "Unknown"
+    assert status != "Fresh"
 
 
 def test_assess_backup_freshness_marks_stale_when_activity_after_backup() -> None:
@@ -104,6 +103,7 @@ def test_backup_screen_rows_never_use_current_label(
                 {
                     "database": "android_permission_intel",
                     "created_at": "2026-06-09T03:01:26+00:00",
+                    "size_bytes": 10465313,
                 },
             )()
         ],
@@ -140,8 +140,7 @@ def test_backup_screen_rows_never_use_current_label(
     rows = _backup_screen_rows(plan)
     flattened = " ".join(value for row in rows for value in row)
     assert "current" not in flattened
-    assert "verified" in flattened
-    assert "stale" in flattened
+    assert "Stale" in flattened
 
 
 def test_build_backup_status_report_includes_freshness_fields(

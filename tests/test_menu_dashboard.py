@@ -12,21 +12,18 @@ from mercury.menu.dashboard import _sync_readiness_summary, dashboard_rows
 def test_dashboard_rows_include_core_fields() -> None:
     rows = dashboard_rows(probe_database=False)
     text = "\n".join(rows)
-    assert "MariaDB" in text
+    assert "Backup target" in text
     assert "Execution mode" not in text
     assert "Backup mode" in text
-    assert "Config" in text
-    assert "Backup target" in text
     assert "Execution Safety" not in text
 
 
 def test_dashboard_rows_include_extended_stats() -> None:
     rows = dashboard_rows(probe_database=False)
     text = "\n".join(rows)
-    assert "USB backups" in text
-    assert "MariaDB targets" in text
-    assert "Sync pairs" in text
-    assert "Environment" in text
+    assert "Protected sources" in text
+    assert "Sync readiness" in text
+    assert "Protection" in text
 
 
 def test_dashboard_rows_warn_on_repo_local_backup_root(monkeypatch) -> None:
@@ -78,6 +75,64 @@ def test_dashboard_rows_show_platform_when_not_fedora(monkeypatch) -> None:
     )
     rows = dashboard_rows(probe_database=False)
     assert any("Platform" in row and "Windows seed-only" in row for row in rows)
+
+
+def test_dashboard_rows_show_protection_incomplete_when_stale_and_missing(monkeypatch) -> None:
+    from mercury.core.environment_status import ConfigSetupStatus, UsbDiscovery
+
+    policy = ExecutionPolicy(
+        dry_run=False,
+        live_actions_enabled=True,
+        backup_root=REPO_ROOT / "backups",
+        config_path=REPO_ROOT / "config" / "local.toml",
+        allow_unsafe_backup_root=True,
+    )
+    env = SimpleNamespace(
+        policy=policy,
+        config=ConfigSetupStatus(True, True, True),
+        usb=UsbDiscovery(REPO_ROOT / "mnt" / "MERCURY_DATA_USB", True, True, None),
+        mariadb=SimpleNamespace(
+            connection_works=True,
+            config_present=True,
+            mariadb_client_found=True,
+            mysqldump_found=True,
+            service_active=True,
+            service_state="active",
+            socket_available=True,
+            connection_error=None,
+        ),
+        primary_setup_blocker=None,
+        setup_hints=(),
+        permission_checks=(),
+        repairable_blockers=(),
+        has_repairable_blockers=False,
+    )
+    monkeypatch.setattr("mercury.menu.dashboard.build_environment_status", lambda **kwargs: env)
+    monkeypatch.setattr(
+        "mercury.menu.dashboard._verified_source_summary",
+        lambda **kwargs: (
+            {"erebus_threat_intel_prod", "scytaledroid_core_prod", "android_permission_intel"},
+            {
+                "erebus_threat_intel_prod",
+                "scytaledroid_core_prod",
+                "android_permission_intel",
+                "obsidiandroid_core_prod",
+            },
+            {"android_permission_intel"},
+            {"obsidiandroid_core_prod"},
+            1,
+            0,
+            0,
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.menu.dashboard._sync_readiness_summary",
+        lambda **kwargs: (2, 0, "None."),
+    )
+    text = "\n".join(dashboard_rows(probe_database=True))
+    assert "Protected sources" in text
+    assert "3 of 4 on server; 1 missing" in text
+    assert "Protection incomplete: 1 stale backup; 1 protected source missing" in text
 
 
 def test_sync_readiness_summary_reports_none_verified() -> None:

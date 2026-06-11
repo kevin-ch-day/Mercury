@@ -36,13 +36,23 @@ def run_verify_all_for_menu(*, update_manifest: bool = False) -> VerifyMenuSumma
     from mercury.core.execution_policy import load_execution_policy
     from mercury.core.runtime import should_probe_database_status
     from mercury.backup.verification import verify_backup_directory
-    from mercury.database.core import source_role_label
+    from mercury.database.core.classifier import DatabaseRole, classify_database
+
+    def _role_label(database: str) -> str:
+        role = classify_database(database).role
+        if role == DatabaseRole.SHARED_AUTHORITY:
+            return "shared"
+        if role == DatabaseRole.PRODUCTION:
+            return "prod"
+        if role == DatabaseRole.DEVELOPMENT:
+            return "dev"
+        return role.value
 
     policy = load_execution_policy()
     sources = resolve_batch_sources(live=should_probe_database_status())
     summary = VerifyMenuSummary()
     for database in sources:
-        source_role = source_role_label(database)
+        source_role = _role_label(database)
         backup_dir = find_latest_backup_directory(policy.backup_root, database)
         if backup_dir is None:
             summary.missing += 1
@@ -66,21 +76,19 @@ def run_verify_all_for_menu(*, update_manifest: bool = False) -> VerifyMenuSumma
 def print_verify_menu_summary(summary: VerifyMenuSummary) -> None:
     display_screen.write_fields(
         {
-            "verified": summary.verified,
-            "missing": summary.missing,
-            "failed": summary.failed,
+            "Verified": summary.verified,
+            "Missing": summary.missing,
+            "Failed": summary.failed,
         }
     )
     if summary.rows:
         display_screen.write_blank()
         display_screen.write_compact_table(
-            ["DATABASE", "SOURCE ROLE", "STATUS"],
+            ["DATABASE", "ROLE", "STATUS"],
             summary.rows,
-            min_col_widths=[28, 12, 10],
-            max_col_widths=[36, 24, 24],
+            min_col_widths=[30, 8, 10],
+            max_col_widths=[36, 10, 16],
         )
-        display_screen.write_blank()
-        display_screen.write_summary(shared_authority_note())
     elif summary.missing == 0 and summary.failed == 0 and summary.verified == 0:
         display_screen.write_status("warn", "No backup sources configured.")
 

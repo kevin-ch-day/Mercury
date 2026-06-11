@@ -112,6 +112,23 @@ def read_database_backup_rows(*, state_root: Path | None = None) -> list[dict[st
         return list(csv.DictReader(handle))
 
 
+def read_operation_rows(*, state_root: Path | None = None) -> list[dict[str, Any]]:
+    """Load operation ledger rows from JSONL."""
+    root = (state_root or resolve_state_root()).expanduser().resolve()
+    path = root / OPERATIONS_JSONL
+    if not path.is_file():
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return rows
+
+
 def read_operator_database_backup_rows(*, state_root: Path | None = None) -> list[dict[str, str]]:
     """Operator-facing ledger rows with pytest/temp paths excluded."""
     return [
@@ -119,6 +136,80 @@ def read_operator_database_backup_rows(*, state_root: Path | None = None) -> lis
         for row in read_database_backup_rows(state_root=state_root)
         if is_operator_ledger_path(row.get("backup_path"))
     ]
+
+
+def read_operator_operation_rows(*, state_root: Path | None = None) -> list[dict[str, Any]]:
+    """Operator-facing operation rows with pytest/temp paths excluded."""
+    return [
+        row
+        for row in read_operation_rows(state_root=state_root)
+        if _operation_payload_is_operator_visible(row)
+    ]
+
+
+def read_operator_repo_bundle_rows(*, state_root: Path | None = None) -> list[dict[str, str]]:
+    return [
+        row
+        for row in _read_csv_rows(REPO_BUNDLES_CSV, state_root=state_root)
+        if is_operator_ledger_path(row.get("bundle_path"))
+    ]
+
+
+def read_operator_transfer_package_rows(*, state_root: Path | None = None) -> list[dict[str, str]]:
+    return [
+        row
+        for row in _read_csv_rows(TRANSFER_PACKAGES_CSV, state_root=state_root)
+        if is_operator_ledger_path(row.get("manifest_path"))
+        and is_operator_ledger_path(row.get("runbook_path"))
+    ]
+
+
+def read_operator_sync_event_rows(*, state_root: Path | None = None) -> list[dict[str, str]]:
+    return [
+        row
+        for row in _read_csv_rows(SYNC_EVENTS_CSV, state_root=state_root)
+        if is_operator_ledger_path(row.get("backup_directory"))
+    ]
+
+
+def _read_csv_rows(filename: str, *, state_root: Path | None = None) -> list[dict[str, str]]:
+    root = (state_root or resolve_state_root()).expanduser().resolve()
+    path = root / filename
+    if not path.is_file():
+        return []
+    with path.open(encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _operation_payload_is_operator_visible(row: dict[str, Any]) -> bool:
+    path_keys = (
+        "backup_directory_path",
+        "backup_directory",
+        "backup_path",
+        "bundle_path",
+        "manifest_path",
+        "runbook_path",
+        "path",
+    )
+    for key in path_keys:
+        if not is_operator_ledger_path(_coerce_string(row.get(key))):
+            return False
+    list_path_keys = (
+        "pruned_bundle_paths",
+        "pruned_manifest_paths",
+        "pruned_runbook_paths",
+    )
+    for key in list_path_keys:
+        value = row.get(key)
+        if isinstance(value, list) and any(not is_operator_ledger_path(_coerce_string(item)) for item in value):
+            return False
+    return True
+
+
+def _coerce_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)
 
 
 def _ensure_state_root(state_root: Path | None = None) -> Path | None:
@@ -276,9 +367,17 @@ def record_restore_check_result(
         return
     backup_dir = Path(result.dump_path).resolve().parent
     manifest = _load_manifest_payload(backup_dir)
-    status = "passed" if result.executed else "failed"
+    status = (
+        "verification_failed"
+        if result.verification_passed is False
+        else "passed" if result.executed else "failed"
+    )
     root = _append_operation(
-        "restore_check_passed" if result.executed else "restore_check_failed",
+        (
+            "restore_check_verification_failed"
+            if result.verification_passed is False
+            else "restore_check_passed" if result.executed else "restore_check_failed"
+        ),
         {
             "database": result.source_database,
             "target_database": result.target_database,
@@ -430,7 +529,11 @@ def record_sync_batch_execution(batch, *, state_root: Path | None = None) -> Non
     for result in batch.results:
         if not (result.executed or result.refused):
             continue
-        status = "executed" if result.executed else "refused"
+        status = (
+            "verification_failed"
+            if getattr(result, "verification_passed", None) is False
+            else "executed" if result.executed else "refused"
+        )
         payload = {
             "source": result.source,
             "target": result.target,

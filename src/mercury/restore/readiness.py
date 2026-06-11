@@ -63,6 +63,7 @@ class TargetCompletenessEntry(BaseModel):
     blockers: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+    target_database: str | None = None
 
 
 class TargetCompletenessReport(BaseModel):
@@ -162,14 +163,34 @@ def build_target_completeness_entry(
 
     Read-only: inspects information_schema and parses backup artifacts only.
     """
-    classification = classify_database(database)
+    return build_target_completeness_entry_against_backup(
+        source_database=database,
+        target_database=database,
+        live=live,
+        config=config,
+        inspect_fn=inspect_fn,
+        scalars_fn=scalars_fn,
+    )
+
+
+def build_target_completeness_entry_against_backup(
+    *,
+    source_database: str,
+    target_database: str,
+    live: bool = True,
+    config: MariaDbConnectionConfig | None = None,
+    inspect_fn=None,
+    scalars_fn=None,
+) -> TargetCompletenessEntry:
+    """Compare a live target database against the latest verified backup of a source database."""
+    classification = classify_database(source_database)
     policy = load_execution_policy()
-    entry = TargetCompletenessEntry(database=database)
+    entry = TargetCompletenessEntry(database=source_database, target_database=target_database)
     entry.notes.append("Read-only target completeness check; no restore executed.")
 
     if not classification.backup_source:
         entry.completeness_status = "not_applicable"
-        entry.blockers.append(f"'{database}' is not an approved production backup source.")
+        entry.blockers.append(f"'{source_database}' is not an approved production backup source.")
         return entry
 
     if policy.backup_root_is_within_repo() and not policy.allow_unsafe_backup_root:
@@ -178,7 +199,7 @@ def build_target_completeness_entry(
             "Backup root is repo-local fallback; configure USB-backed backups before deployment checks."
         )
 
-    backup_dir = find_latest_backup_directory(policy.backup_root, database)
+    backup_dir = find_latest_backup_directory(policy.backup_root, source_database)
     if backup_dir is None:
         entry.completeness_status = "backup_unavailable"
         entry.blockers.append("No on-disk backup found for production source.")
@@ -186,7 +207,7 @@ def build_target_completeness_entry(
 
     verify = verify_backup_artifacts(
         backup_dir,
-        database=database,
+        database=source_database,
         backup_kind=BACKUP_KIND_FULL,
     )
     entry.backup_directory = str(backup_dir)
@@ -224,7 +245,7 @@ def build_target_completeness_entry(
         return entry
 
     inspect = inspect_fn or inspect_database_on_server
-    inspect_result = inspect(database, cfg)
+    inspect_result = inspect(target_database, cfg)
     if inspect_result.error:
         entry.completeness_status = "unknown"
         entry.warnings.append(f"Live inspect failed: {inspect_result.error}")
@@ -234,7 +255,7 @@ def build_target_completeness_entry(
     entry.live_exists = inspect_result.exists_on_server
     if not inspect_result.exists_on_server:
         entry.completeness_status = "missing_target"
-        entry.blockers.append(f"Target database '{database}' not found on server.")
+        entry.blockers.append(f"Target database '{target_database}' not found on server.")
         return entry
 
     entry.live_table_count = inspect_result.table_count
@@ -242,11 +263,11 @@ def build_target_completeness_entry(
     if inspect_result.table_count is not None and inspect_result.view_count is not None:
         entry.live_object_count = inspect_result.table_count + inspect_result.view_count
 
-    canonical = canonical_tables_for(database)
+    canonical = canonical_tables_for(source_database)
     if canonical:
         try:
-            live_tables = set(fetch_live_base_table_names(database, cfg, scalars_fn=scalars_fn))
-        except Exception as exc:  # noqa: BLE001 — surface as warning, keep read-only path
+            live_tables = set(fetch_live_base_table_names(target_database, cfg, scalars_fn=scalars_fn))
+        except Exception as exc:  # noqa: BLE001
             entry.warnings.append(f"Could not list live base tables: {exc}")
             live_tables = set()
         entry.missing_critical_tables = [name for name in canonical if name not in live_tables]
@@ -294,7 +315,7 @@ def build_target_completeness_entry(
     from mercury.logging.events import log_target_completeness
 
     log_target_completeness(
-        database=database,
+        database=target_database,
         status=entry.completeness_status,
         live_objects=entry.live_object_count,
         backup_objects=entry.backup_object_count,

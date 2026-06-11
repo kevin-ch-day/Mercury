@@ -1,5 +1,8 @@
 """Tests for pure display formatting helpers."""
 
+import os
+import time
+
 from mercury import display_format
 
 
@@ -38,14 +41,34 @@ def test_format_report_header() -> None:
 
 
 def test_format_human_datetime_from_iso() -> None:
-    assert (
-        display_format.format_human_datetime("2026-06-09T15:01:26+00:00")
-        == "6/9/2026 3:01 PM"
-    )
+    original_tz = os.environ.get("TZ")
+    try:
+        os.environ["TZ"] = "America/Chicago"
+        time.tzset()
+        assert (
+            display_format.format_human_datetime("2026-06-09T15:01:26+00:00")
+            == "6/9/2026 10:01 AM CDT"
+        )
+    finally:
+        if original_tz is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = original_tz
+        time.tzset()
 
 
 def test_format_human_datetime_from_datetime() -> None:
     from datetime import datetime, timezone
 
-    value = datetime(2026, 6, 9, 3, 1, 26, tzinfo=timezone.utc)
-    assert display_format.format_human_datetime(value) == "6/9/2026 3:01 AM"
+    original_tz = os.environ.get("TZ")
+    try:
+        os.environ["TZ"] = "America/Chicago"
+        time.tzset()
+        value = datetime(2026, 6, 9, 3, 1, 26, tzinfo=timezone.utc)
+        assert display_format.format_human_datetime(value) == "6/8/2026 10:01 PM CDT"
+    finally:
+        if original_tz is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = original_tz
+        time.tzset()

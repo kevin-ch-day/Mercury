@@ -51,12 +51,27 @@ Schema-only uses planned `*.schema.sql.gz` files. Full verified backups are **re
 - `mercury report preview --db <name> --kind full|schema_only` — Markdown report preview
 - No `mariadb-dump` execution, no live connections, `live_actions = false`
 
-For live execution, Mercury requires:
+## Live backup execution
+
+Backup writes are allowed when Mercury’s backup environment checks pass:
+
+- Fedora runtime host
+- `config/local.toml` present with USB-backed `backup_root`
+- mounted USB under `/mnt/MERCURY_DATA_USB/mercury_backups`
+- sufficient free space on the backup root
+- source database present on MariaDB (missing protected sources are refused, not silently skipped)
+
+Use `--dry-run` on CLI backup commands or **Preview backup plan** in the menu to plan without writing files.
+
+**Verification** is safe by default and may update manifests/ledger when checks pass.
+
+## Destructive live execution
+
+Prod→dev sync, deploy, restore-check cleanup, and similar destructive actions additionally require:
 
 - `[mercury] dry_run = false`
 - `[mercury] live_actions_enabled = true`
-- a Fedora runtime host
-- a mounted USB-backed root under `/mnt/MERCURY_DATA_USB/mercury_backups`
+- confirmation phrases where applicable (`SYNC DEV` for sync)
 
 ## Retention
 

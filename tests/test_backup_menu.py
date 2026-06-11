@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import time
 
 import pytest
 
@@ -62,24 +64,24 @@ def test_run_backup_menu_non_interactive(
     assert "Usage:" in out
     assert "Status:" not in out
     assert "Mode:" not in out
+    assert "Backup mode:" not in out
     assert "Action:" not in out
     assert "DATABASE" in out
-    assert "ARTIFACT" in out
-    assert "FRESHNESS" in out
+    assert "STATUS" in out
+    assert "SIZE" in out
     assert "LAST BACKUP" in out
-    assert "TARGET" in out
-    assert "Artifact verified" in out
+    assert "ARTIFACT" not in out
+    assert "FRESHNESS" not in out
     assert "android_permission_intel" in out
-    assert "n/a" in out
     assert "erebus_threat_intel_prod" in out
-    assert "erebus_threat_intel_dev" in out
-    assert "refresh target" in out
+    assert "erebus_threat_intel_dev" not in out
+    assert "refresh target" not in out
     assert "dev target exists" not in out
     assert "PLAN" not in out
     assert "android_permission_intel" in out
-    assert "skip" in out
     assert "excluded" not in out
     assert "Ignored databases:" not in out
+    assert "Fresh full backup needed before workstation handoff" in out
     assert "\n[1] Refresh" in out
     assert "\n[2] Run full backup now" in out
     assert "\n[3] Verify source backups" in out
@@ -87,6 +89,91 @@ def test_run_backup_menu_non_interactive(
     assert "\n[5] Write DB bundle and runbooks" in out
     assert "Verify on-disk backups" not in out
     assert "\n[6] Preview backup plan" in out
+
+
+def test_backup_menu_warning_summary_uses_visible_status_labels(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    from mercury.backup.interactive_menu import _render_backup_screen
+    from mercury.database.backup_planning import build_backup_plan
+
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.build_prod_dev_pairs",
+        lambda names: [],
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.latest_records_by_database",
+        lambda listing: [
+            type(
+                "Record",
+                (),
+                {
+                    "database": "android_permission_intel",
+                    "created_at": "2026-06-09T15:01:26+00:00",
+                    "size_bytes": 10465313,
+                },
+            )()
+        ],
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.build_on_disk_backup_list",
+        lambda _root: object(),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.build_backup_status_report",
+        lambda live=False: type(
+            "Report",
+            (),
+            {
+                "entries": [
+                    type(
+                        "Entry",
+                        (),
+                        {
+                            "database": "android_permission_intel",
+                            "protection_status": "verified",
+                            "freshness": "unknown",
+                            "backup_age": None,
+                        },
+                    )(),
+                    type(
+                        "Entry",
+                        (),
+                        {
+                            "database": "obsidiandroid_core_prod",
+                            "protection_status": "missing",
+                            "freshness": "unknown",
+                            "backup_age": None,
+                        },
+                    )(),
+                ],
+                "stale_count": 0,
+                "unknown_freshness_count": 2,
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.load_execution_policy",
+        lambda: type(
+            "Policy",
+            (),
+            {
+                "backup_root": tmp_path / "backups",
+                "backup_execution_allowed": lambda self=None: True,
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu._storage_usage_fields",
+        lambda policy: {"USB Path": str(tmp_path / "backups")},
+    )
+
+    plan = build_backup_plan(["android_permission_intel", "obsidiandroid_core_prod"])
+    _render_backup_screen(plan, show_title=False)
+    out = capsys.readouterr().out
+    assert "Fresh full backup needed before workstation handoff: 1 unknown, 1 missing." in out
 
 
 def test_backup_menu_uses_human_last_backup_format(
@@ -109,6 +196,7 @@ def test_backup_menu_uses_human_last_backup_format(
                 {
                     "database": "android_permission_intel",
                     "created_at": "2026-06-09T15:01:26+00:00",
+                    "size_bytes": 10465313,
                 },
             )()
         ],
@@ -156,11 +244,23 @@ def test_backup_menu_uses_human_last_backup_format(
         lambda policy: {"USB Path": "/tmp/backups"},
     )
 
-    plan = build_backup_plan(["android_permission_intel"])
-    _render_backup_screen(plan, show_title=False)
-    out = capsys.readouterr().out
-    assert "3:01 PM" in out
-    assert "1h ago" in out
+    original_tz = os.environ.get("TZ")
+    try:
+        os.environ["TZ"] = "America/Chicago"
+        time.tzset()
+        plan = build_backup_plan(["android_permission_intel"])
+        _render_backup_screen(plan, show_title=False)
+        out = capsys.readouterr().out
+        assert "6/9/2026 10:01 AM CDT" in out
+        assert "1h ago" not in out
+        assert "MiB" in out
+        assert "Backup mode:" not in out
+    finally:
+        if original_tz is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = original_tz
+        time.tzset()
 
 
 # merged from test_verify_menu.py
@@ -207,6 +307,74 @@ def test_run_verify_menu_non_interactive(capsys: pytest.CaptureFixture[str]) -> 
     assert "verified" in out
     assert "Rescan" in out
     assert "Verify all" in out
-    assert "SOURCE ROLE" in out
-    assert "shared authority source" in out
+    assert "ROLE" in out
+    assert "SOURCE ROLE" not in out
+    assert "shared" in out
+    assert "shared authority source" not in out
+    assert "Shared authority databases are backup-only" not in out
     assert "Actions" not in out
+
+
+@pytest.mark.parametrize(
+    ("entry", "expected"),
+    [
+        (
+            type(
+                "Entry",
+                (),
+                {"protection_status": "verified", "freshness": "fresh"},
+            )(),
+            "Fresh",
+        ),
+        (
+            type(
+                "Entry",
+                (),
+                {"protection_status": "verified", "freshness": "stale"},
+            )(),
+            "Stale",
+        ),
+        (
+            type(
+                "Entry",
+                (),
+                {"protection_status": "verified", "freshness": "unknown"},
+            )(),
+            "Unknown",
+        ),
+        (
+            type(
+                "Entry",
+                (),
+                {"protection_status": "missing", "freshness": "unknown"},
+            )(),
+            "Missing",
+        ),
+        (
+            type(
+                "Entry",
+                (),
+                {"protection_status": "failed", "freshness": "unknown"},
+            )(),
+            "Unverified",
+        ),
+        (
+            type(
+                "Entry",
+                (),
+                {"protection_status": "untrusted root", "freshness": "unknown"},
+            )(),
+            "Warning",
+        ),
+    ],
+)
+def test_status_label_mapping(entry, expected: str) -> None:
+    from mercury.backup.interactive_menu import _status_label
+
+    assert _status_label(entry) == expected
+
+
+def test_status_label_mapping_for_missing_entry() -> None:
+    from mercury.backup.interactive_menu import _status_label
+
+    assert _status_label(None) == "Missing"

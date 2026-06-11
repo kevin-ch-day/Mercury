@@ -34,6 +34,10 @@ class RestoreExecutionResult(BaseModel):
     commands: list[str] = Field(default_factory=list)
     cleanup_dropped: bool = False
     cleanup_command: str | None = None
+    verification_passed: bool | None = None
+    verification_detail: str | None = None
+    verification_issues: list[str] = Field(default_factory=list)
+    target_table_count: int | None = None
 
 
 def assert_safe_restore_target(database: str) -> None:
@@ -85,6 +89,23 @@ def _default_import_runner(
     run_compressed_sql_import(argv, env, dump_path, strip_definer=True)
 
 
+def _verify_restore_target(
+    target_database: str,
+    *,
+    manifest_path: Path,
+    config: MariaDbConnectionConfig,
+    row_fn=None,
+):
+    from mercury.deploy.verification import verify_deployed_database
+
+    return verify_deployed_database(
+        target_database,
+        manifest_path=manifest_path,
+        config=config,
+        row_fn=row_fn,
+    )
+
+
 def execute_restore_into_database(
     *,
     target_database: str,
@@ -96,6 +117,7 @@ def execute_restore_into_database(
     cleanup_after_success: bool = False,
     config: MariaDbConnectionConfig | None = None,
     import_runner: ImportRunner | None = None,
+    inspect_row_fn=None,
 ) -> RestoreExecutionResult:
     """Plan or run ``gunzip -c dump | mariadb target`` for verified backups."""
     assert_safe_restore_target(target_database)
@@ -173,7 +195,37 @@ def execute_restore_into_database(
 
     cleanup_dropped = False
     message = f"Restored {source_database} into {target_database}."
-    if cleanup_command:
+    verification_passed: bool | None = None
+    verification_detail: str | None = None
+    verification_issues: list[str] = []
+    target_table_count: int | None = None
+
+    manifest_path = dump_path.parent / "manifest.json"
+    if manifest_path.is_file():
+        post = _verify_restore_target(
+            target_database,
+            manifest_path=manifest_path,
+            config=cfg,
+            row_fn=inspect_row_fn,
+        )
+        verification_passed = post.verified
+        verification_detail = post.detail
+        verification_issues = list(post.issues)
+        target_table_count = post.table_count
+        if not post.verified:
+            issue_text = "; ".join(post.issues) if post.issues else "post-import verification failed"
+            if cleanup_command:
+                message = (
+                    f"Imported {source_database} into {target_database}, but restore-check verification failed: "
+                    f"{issue_text}. Temporary restore-check database preserved for debugging."
+                )
+            else:
+                message = (
+                    f"Imported {source_database} into {target_database}, but target verification failed: "
+                    f"{issue_text}."
+                )
+
+    if cleanup_command and verification_passed is not False:
         try:
             _execute_client_sql(cfg, cleanup_command)
             cleanup_dropped = True
@@ -196,6 +248,10 @@ def execute_restore_into_database(
         commands=commands,
         cleanup_dropped=cleanup_dropped,
         cleanup_command=cleanup_command,
+        verification_passed=verification_passed,
+        verification_detail=verification_detail,
+        verification_issues=verification_issues,
+        target_table_count=target_table_count,
     )
     from mercury.state.ledger import record_restore_check_result
 

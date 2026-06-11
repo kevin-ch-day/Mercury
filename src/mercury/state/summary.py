@@ -14,6 +14,10 @@ from mercury.state.ledger import (
     SYNC_EVENTS_CSV,
     TRANSFER_PACKAGES_CSV,
     read_operator_database_backup_rows,
+    read_operator_operation_rows,
+    read_operator_repo_bundle_rows,
+    read_operator_sync_event_rows,
+    read_operator_transfer_package_rows,
     resolve_state_root,
 )
 
@@ -48,11 +52,11 @@ def build_state_summary(*, state_root: Path | None = None) -> StateSummary:
     return StateSummary(
         state_root=root,
         source=source,
-        operations=_count_jsonl(root / OPERATIONS_JSONL),
+        operations=len(read_operator_operation_rows(state_root=root)),
         database_backup_rows=len(read_operator_database_backup_rows(state_root=root)),
-        repo_bundle_rows=_count_rows(root / REPO_BUNDLES_CSV),
-        transfer_package_rows=_count_rows(root / TRANSFER_PACKAGES_CSV),
-        sync_event_rows=_count_rows(root / SYNC_EVENTS_CSV),
+        repo_bundle_rows=len(read_operator_repo_bundle_rows(state_root=root)),
+        transfer_package_rows=len(read_operator_transfer_package_rows(state_root=root)),
+        sync_event_rows=len(read_operator_sync_event_rows(state_root=root)),
     )
 
 

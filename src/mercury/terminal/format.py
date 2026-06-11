@@ -6,7 +6,7 @@ No I/O — safe to use in tests, reports, and string builders.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterable
 
 
@@ -22,7 +22,7 @@ def format_bytes(value: int) -> str:
 
 
 def format_human_datetime(value: str | datetime | None) -> str:
-    """Human-friendly terminal timestamp like ``6/9/2026 3:01 PM``."""
+    """Human-friendly local terminal timestamp like ``6/9/2026 10:01 AM CDT``."""
     if value is None:
         return "-"
     if isinstance(value, datetime):
@@ -33,9 +33,41 @@ def format_human_datetime(value: str | datetime | None) -> str:
         except ValueError:
             return value
 
-    hour = instant.hour % 12 or 12
-    suffix = "AM" if instant.hour < 12 else "PM"
-    return f"{instant.month}/{instant.day}/{instant.year} {hour}:{instant.minute:02d} {suffix}"
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=timezone.utc)
+    local_instant = instant.astimezone()
+
+    hour = local_instant.hour % 12 or 12
+    suffix = "AM" if local_instant.hour < 12 else "PM"
+    tz_label = local_instant.tzname() or "local"
+    return (
+        f"{local_instant.month}/{local_instant.day}/{local_instant.year} "
+        f"{hour}:{local_instant.minute:02d} {suffix} {tz_label}"
+    )
+
+
+def format_compact_human_datetime(value: str | datetime | None) -> str:
+    """Compact local timestamp for narrow operator tables like ``6/9 10:01 AM``."""
+    if value is None:
+        return "-"
+    if isinstance(value, datetime):
+        instant = value
+    else:
+        try:
+            instant = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return value
+
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=timezone.utc)
+    local_instant = instant.astimezone()
+
+    hour = local_instant.hour % 12 or 12
+    suffix = "AM" if local_instant.hour < 12 else "PM"
+    return (
+        f"{local_instant.month}/{local_instant.day} "
+        f"{hour}:{local_instant.minute:02d} {suffix}"
+    )
 
 
 def short_path(path: str, *, max_len: int = 52) -> str:

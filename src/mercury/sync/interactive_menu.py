@@ -60,18 +60,16 @@ def _sync_submenu_options(report: SyncReadinessReport) -> list[tuple[str, str]]:
     if _blocked_prod_sources(report):
         label = "Prepare production backups"
         if not live_allowed:
-            label = f"{label} (live mode required)"
+            label = f"{label} (preview only)"
         options.append(("2", label))
     if _ready_entries(report):
-        sync_label = "Sync All Ready Databases"
-        if not live_allowed:
-            sync_label = f"{sync_label} (live mode required)"
+        sync_label = "Sync All Ready Databases" if live_allowed else "Preview All Ready Databases"
         options.append(("2" if not _blocked_prod_sources(report) else "3", sync_label))
         if report.ready_count > 1:
-            single_label = "Sync One Ready Pair"
-            if not live_allowed:
-                single_label = f"{single_label} (live mode required)"
+            single_label = "Sync One Ready Pair" if live_allowed else "Preview One Ready Pair"
             options.append(("3" if not _blocked_prod_sources(report) else "4", single_label))
+    verify_key = "4" if not _blocked_prod_sources(report) else "5"
+    options.append((verify_key, "Verify Dev Targets Against Prod Backups"))
     return options
 
 
@@ -82,7 +80,12 @@ def _render_sync_screen(report: SyncReadinessReport, *, show_title: bool) -> Non
     if not live_allowed and report.blocked_count > 0:
         display_screen.write_status(
             "warn",
-            "Live mode is required for backup preparation and sync. Open [6] Live mode guide from the main menu.",
+            "Sync execution is disabled in config; preview only until destructive sync is enabled.",
+        )
+    elif not live_allowed and report.ready_count > 0:
+        display_screen.write_status(
+            "warn",
+            "Sync execution is disabled in config; ready pairs can be previewed only.",
         )
     print_sync_readiness_report(report, compact=True, menu=True)
     display_screen.write_blank()
@@ -111,8 +114,8 @@ def _prepare_production_backups(report: SyncReadinessReport) -> None:
         display_screen.write_summary("Result: dry-run only; no files were written.")
         display_screen.write_bullets(
             [
-                "Enable live mode: main menu [6] Live mode guide",
-                "Then run Prepare again here, verify with [3], and sync ready pairs",
+                "Enable sync execution in config/local.toml when ready.",
+                "Then run Prepare again here, verify with [3], and sync ready pairs.",
             ]
         )
         return
@@ -198,6 +201,16 @@ def _refresh_report(report: SyncReadinessReport) -> SyncReadinessReport:
     return refreshed if refreshed is not None else report
 
 
+def _verify_sync_targets() -> None:
+    from mercury.sync.verification import build_sync_verification_report
+    from mercury.sync.terminal.verification import print_sync_verification_report
+
+    print_sync_verification_report(
+        build_sync_verification_report(live=should_probe_database_status()),
+        compact=True,
+    )
+
+
 def run_sync_menu(*, interactive: bool = True) -> None:
     """Show sync readiness and an action submenu until the user returns."""
     report = _load_report()
@@ -243,6 +256,11 @@ def run_sync_menu(*, interactive: bool = True) -> None:
         if (choice == "3" and not blocked_present) or (choice == "4" and blocked_present):
             _run_sync_for_one_ready(report)
             report = _refresh_report(report)
+            show_title = pause_and_redraw()
+            continue
+
+        if (choice == "4" and not blocked_present) or (choice == "5" and blocked_present):
+            _verify_sync_targets()
             show_title = pause_and_redraw()
             continue
 

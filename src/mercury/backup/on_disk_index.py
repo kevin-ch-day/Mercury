@@ -74,6 +74,7 @@ class OnDiskBackupRecord(BaseModel):
     schema_file: str | None = None
     verified: bool = False
     created_at: str | None = None
+    size_bytes: int | None = None
 
 
 class OnDiskBackupList(BaseModel):
@@ -127,6 +128,7 @@ def build_on_disk_backup_list(backup_root: Path) -> OnDiskBackupList:
                 schema_file=manifest.schema_file,
                 verified=manifest.verified,
                 created_at=manifest.created_at.isoformat(),
+                size_bytes=manifest.size_bytes,
             )
         )
 

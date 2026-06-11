@@ -911,6 +911,17 @@ def sync_all_cmd(
     sync_run_cmd(live=live, execute=execute, source=None, target=None)
 
 
+@sync_app.command("verify")
+def sync_verify_cmd(
+    live: bool = typer.Option(True, "--live/--demo", help="Use live inventory."),
+) -> None:
+    """Read-only verification of dev targets against verified prod backup baselines."""
+    from mercury.sync.verification import build_sync_verification_report
+    from mercury.sync.terminal.verification import print_sync_verification_report
+
+    print_sync_verification_report(build_sync_verification_report(live=live), compact=True)
+
+
 @deploy_app.command("db")
 def deploy_db_cmd(
     database: list[str] | None = typer.Option(
@@ -1198,7 +1209,7 @@ def restore_check_run_cmd(
         raise typer.Exit(1) from exc
 
     print_restore_execution_result(result)
-    if not result.executed:
+    if not result.executed or result.verification_passed is False:
         raise typer.Exit(1)
 
 
