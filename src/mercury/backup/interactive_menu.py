@@ -54,8 +54,33 @@ def read_backup_choice() -> str | None:
 
 
 def _storage_usage_fields(policy) -> dict[str, str]:
+    from mercury.core.environment_status import discover_usb_target
+
+    usb = discover_usb_target()
     root = policy.backup_root.resolve()
-    fields: dict[str, str] = {"USB Path": str(root)}
+    state = policy.backup_root_state()
+    fields: dict[str, str] = {
+        "Backup root": str(root),
+        "Environment": _backup_target_label(policy),
+    }
+    if usb.quick_mount_command and not usb.mounted:
+        from mercury.repair.usb import USB_REPAIR_COMMAND
+
+        fields["Mount fix"] = USB_REPAIR_COMMAND
+
+    if not root.exists():
+        fields["Used"] = "n/a"
+        fields["Total"] = "n/a"
+        fields["Free"] = "n/a"
+        fields["Usage"] = "n/a"
+        if state == "missing path":
+            fields["Status"] = "path missing — mount USB first"
+        elif state == "usb not mounted":
+            fields["Status"] = "USB not mounted"
+        else:
+            fields["Status"] = state.replace("-", " ")
+        return fields
+
     try:
         usage = shutil.disk_usage(root)
     except OSError:
@@ -63,7 +88,7 @@ def _storage_usage_fields(policy) -> dict[str, str]:
         fields["Total"] = "unknown"
         fields["Free"] = "unknown"
         fields["Usage"] = "unknown"
-        fields["Status"] = "warning"
+        fields["Status"] = "unavailable"
         return fields
 
     used_percent = 0.0 if usage.total == 0 else (usage.used / usage.total) * 100.0
@@ -71,13 +96,16 @@ def _storage_usage_fields(policy) -> dict[str, str]:
         status = "critical"
     elif used_percent >= 85.0:
         status = "warning"
-    else:
+    elif state == "usb-mounted":
         status = "ok"
+    else:
+        status = state.replace("-", " ")
 
     fields["Used"] = format_bytes(usage.used)
     fields["Total"] = format_bytes(usage.total)
     fields["Free"] = format_bytes(usage.free)
     fields["Usage"] = f"{used_percent:.0f}%"
+    fields["Status"] = status
     return fields
 
 
@@ -245,6 +273,10 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
         else:
             run_label = "Run full backup now (USB/config not ready)"
         options.insert(1, ("2", run_label))
+    from mercury.repair.startup import usb_repair_needed
+
+    if usb_repair_needed():
+        options.append(("7", "Repair USB mount and permissions"))
     display_screen.write_blank()
     render_submenu(options, indent=0)
 
@@ -338,6 +370,14 @@ def run_backup_menu(*, interactive: bool = True) -> None:
 
         if choice == "6":
             _preview_backup_plan(plan)
+            show_title = pause_and_redraw()
+            continue
+
+        if choice == "7":
+            from mercury.repair.startup import run_usb_repair_flow
+
+            run_usb_repair_flow(interactive=True, default_yes=True)
+            plan = _load_plan()
             show_title = pause_and_redraw()
             continue
 

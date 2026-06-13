@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 import os
+import shutil
 import subprocess
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -103,36 +105,53 @@ def _default_dump_runner(
     output_path: Path,
     _config: MariaDbConnectionConfig,
 ) -> None:
-    """Run mariadb-dump piped to gzip -c."""
+    """Run mariadb-dump, compressing with gzip CLI or Python gzip."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("wb") as handle:
-        dump_proc = subprocess.Popen(
-            argv,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
-        )
-        assert dump_proc.stdout is not None
-        gzip_proc = subprocess.Popen(
-            ["gzip", "-c"],
-            stdin=dump_proc.stdout,
-            stdout=handle,
-            stderr=subprocess.PIPE,
-            env=env,
-        )
-        dump_proc.stdout.close()
-        gzip_stderr = gzip_proc.communicate()[1]
-        dump_stderr = dump_proc.communicate()[1]
-        if dump_proc.returncode != 0:
-            detail = (dump_stderr or b"").decode("utf-8", errors="replace").strip()
-            raise BackupExecutionError(
-                f"mariadb-dump failed (exit {dump_proc.returncode}): {detail or 'unknown error'}"
+    if shutil.which("gzip"):
+        with output_path.open("wb") as handle:
+            dump_proc = subprocess.Popen(
+                argv,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
             )
-        if gzip_proc.returncode != 0:
-            detail = (gzip_stderr or b"").decode("utf-8", errors="replace").strip()
-            raise BackupExecutionError(
-                f"gzip failed (exit {gzip_proc.returncode}): {detail or 'unknown error'}"
+            assert dump_proc.stdout is not None
+            gzip_proc = subprocess.Popen(
+                ["gzip", "-c"],
+                stdin=dump_proc.stdout,
+                stdout=handle,
+                stderr=subprocess.PIPE,
+                env=env,
             )
+            dump_proc.stdout.close()
+            gzip_stderr = gzip_proc.communicate()[1]
+            dump_stderr = dump_proc.communicate()[1]
+            if dump_proc.returncode != 0:
+                detail = (dump_stderr or b"").decode("utf-8", errors="replace").strip()
+                raise BackupExecutionError(
+                    f"mariadb-dump failed (exit {dump_proc.returncode}): {detail or 'unknown error'}"
+                )
+            if gzip_proc.returncode != 0:
+                detail = (gzip_stderr or b"").decode("utf-8", errors="replace").strip()
+                raise BackupExecutionError(
+                    f"gzip failed (exit {gzip_proc.returncode}): {detail or 'unknown error'}"
+                )
+        return
+
+    result = subprocess.run(
+        argv,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or b"").decode("utf-8", errors="replace").strip()
+        raise BackupExecutionError(
+            f"mariadb-dump failed (exit {result.returncode}): {detail or 'unknown error'}"
+        )
+    with gzip.open(output_path, "wb") as handle:
+        handle.write(result.stdout or b"")
 
 
 def _command_display(argv: list[str]) -> str:

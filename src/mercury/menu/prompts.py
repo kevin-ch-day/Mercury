@@ -112,7 +112,10 @@ def is_valid_menu_choice(raw: str) -> bool:
 
 def invalid_choice_message(raw: str) -> str:
     """Standard invalid-selection message for the current menu layout."""
-    return f"Invalid choice: {raw!r}. Enter {menu_option_range_label()} or q to exit."
+    from mercury.repair.startup import main_menu_invalid_choice_suffix
+
+    extra = main_menu_invalid_choice_suffix()
+    return f"Invalid choice: {raw!r}. Enter {menu_option_range_label()}{extra} or q to exit."
 
 
 def read_menu_option() -> str | None:

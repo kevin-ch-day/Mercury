@@ -42,7 +42,8 @@ app.add_typer(restore_app, name="restore-check")
 app.add_typer(deploy_app, name="deploy")
 app.add_typer(report_app, name="report")
 app.add_typer(logs_app, name="logs")
-app.add_typer(state_app, name="state")
+repair_app = typer.Typer(help="Host repair helpers.")
+app.add_typer(repair_app, name="repair")
 
 
 @app.callback()
@@ -1309,6 +1310,43 @@ def config_init_cmd(
     output.heading("Initialize local config")
     for line in init_local_config(force=force):
         output.item(line)
+
+
+@config_app.command("repair-local")
+def config_repair_local_cmd() -> None:
+    """Add missing USB artifact paths to config/local.toml without overwriting settings."""
+    from mercury.config.init import repair_local_config_paths
+
+    output.heading("Repair local config")
+    for line in repair_local_config_paths():
+        output.item(line)
+
+
+@repair_app.command("usb")
+def repair_usb_cmd(
+    apply: bool = typer.Option(
+        False,
+        "--apply",
+        help="Run the sudo USB repair script (mount, layout, ownership, enable boot mount).",
+    ),
+) -> None:
+    """Describe or apply one-shot Mercury USB mount and ownership repair."""
+    from mercury.repair.usb import USB_REPAIR_COMMAND, describe_usb_repair
+
+    output.heading("Mercury USB repair")
+    for line in describe_usb_repair():
+        output.item(line)
+    output.write("")
+    output.item(f"Command: {USB_REPAIR_COMMAND}")
+    if not apply:
+        output.write("")
+        output.item("Review scripts/repair-mercury-usb.sh, then run the command above.")
+        return
+
+    from mercury.repair.startup import run_usb_repair_flow
+
+    if not run_usb_repair_flow(interactive=False):
+        raise typer.Exit(1)
 
 
 @app.command("doctor")

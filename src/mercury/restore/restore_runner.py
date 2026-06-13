@@ -82,11 +82,39 @@ def _default_import_runner(
     env: dict[str, str],
     dump_path: Path,
     _config: MariaDbConnectionConfig,
-    _target: str,
+    target: str,
+    *,
+    source_database: str,
 ) -> None:
     from mercury.database.mariadb.import_stream import run_compressed_sql_import
 
-    run_compressed_sql_import(argv, env, dump_path, strip_definer=True)
+    run_compressed_sql_import(
+        argv,
+        env,
+        dump_path,
+        strip_definer=True,
+        rewrite_database=(source_database, target),
+    )
+
+
+def _make_import_runner(source_database: str, target_database: str) -> ImportRunner:
+    def runner(
+        argv: list[str],
+        env: dict[str, str],
+        dump_path: Path,
+        config: MariaDbConnectionConfig,
+        target: str,
+    ) -> None:
+        _default_import_runner(
+            argv,
+            env,
+            dump_path,
+            config,
+            target,
+            source_database=source_database,
+        )
+
+    return runner
 
 
 def _verify_restore_target(
@@ -167,7 +195,7 @@ def execute_restore_into_database(
         cfg = load_mariadb_config()
 
     import_argv = build_import_argv(cfg, target_database)
-    runner = import_runner or _default_import_runner
+    runner = import_runner or _make_import_runner(source_database, target_database)
 
     try:
         if recreate_target:

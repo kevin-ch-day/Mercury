@@ -18,13 +18,14 @@ from mercury.sync.sync_runner import run_sync_batch
 from mercury.sync.selection import select_sync_entries
 from mercury.sync.terminal.runner import print_sync_batch_result
 from mercury.sync.readiness import SyncReadinessReport, build_sync_readiness_report
-from mercury.sync.terminal.readiness import print_sync_readiness_report
+from mercury.sync.terminal.readiness import _pair_route_label, print_sync_readiness_report
 from mercury.sync.sync_plan import build_sync_plan_demo
 from mercury.reporting.terminal.plan import print_sync_plan
 from mercury.backup.verification import verify_backup_directory
 from mercury.backup.terminal.verify import print_verification_result
 
 SYNC_SCREEN_TITLE = "Production sync readiness"
+SYNC_SCREEN_SUBTITLE = "Refresh development databases from verified production USB backups only."
 
 
 def read_sync_choice() -> str | None:
@@ -53,22 +54,39 @@ def _ready_entries(report: SyncReadinessReport):
     return [entry for entry in report.entries if entry.ready_for_sync_planning]
 
 
+def _recommended_option_suffix(report: SyncReadinessReport, *, live_allowed: bool) -> str:
+    if report.ready_count and not report.blocked_count:
+        return " (recommended)"
+    if report.ready_count and report.blocked_count and live_allowed:
+        return " (ready pairs only)"
+    if report.blocked_count and not report.ready_count:
+        return " (recommended)"
+    return ""
+
+
 def _sync_submenu_options(report: SyncReadinessReport) -> list[tuple[str, str]]:
     policy = load_execution_policy()
     live_allowed = policy.live_execution_allowed()
     options: list[tuple[str, str]] = [("1", "Recheck Database Sync Status")]
-    if _blocked_prod_sources(report):
+    blocked = _blocked_prod_sources(report)
+    ready = _ready_entries(report)
+    if blocked:
         label = "Prepare production backups"
         if not live_allowed:
             label = f"{label} (preview only)"
-        options.append(("2", label))
-    if _ready_entries(report):
+        options.append(("2", f"{label}{_recommended_option_suffix(report, live_allowed=live_allowed)}"))
+    if ready:
         sync_label = "Sync All Ready Databases" if live_allowed else "Preview All Ready Databases"
-        options.append(("2" if not _blocked_prod_sources(report) else "3", sync_label))
+        sync_key = "2" if not blocked else "3"
+        suffix = " (recommended)" if report.ready_count and not report.blocked_count else ""
+        if report.ready_count and report.blocked_count and live_allowed:
+            suffix = " (ready pairs only)"
+        options.append((sync_key, f"{sync_label}{suffix}"))
         if report.ready_count > 1:
             single_label = "Sync One Ready Pair" if live_allowed else "Preview One Ready Pair"
-            options.append(("3" if not _blocked_prod_sources(report) else "4", single_label))
-    verify_key = "4" if not _blocked_prod_sources(report) else "5"
+            single_key = "3" if not blocked else "4"
+            options.append((single_key, single_label))
+    verify_key = "4" if not blocked else "5"
     options.append((verify_key, "Verify Dev Targets Against Prod Backups"))
     return options
 
@@ -76,6 +94,8 @@ def _sync_submenu_options(report: SyncReadinessReport) -> list[tuple[str, str]]:
 def _render_sync_screen(report: SyncReadinessReport, *, show_title: bool) -> None:
     if show_title:
         menu_display.open_screen(SYNC_SCREEN_TITLE)
+        display_screen.write_summary(SYNC_SCREEN_SUBTITLE)
+        display_screen.write_blank()
     live_allowed = load_execution_policy().live_execution_allowed()
     if not live_allowed and report.blocked_count > 0:
         display_screen.write_status(
@@ -87,7 +107,7 @@ def _render_sync_screen(report: SyncReadinessReport, *, show_title: bool) -> Non
             "warn",
             "Sync execution is disabled in config; ready pairs can be previewed only.",
         )
-    print_sync_readiness_report(report, compact=True, menu=True)
+    print_sync_readiness_report(report, compact=True, menu=True, live_allowed=live_allowed)
     display_screen.write_blank()
     render_submenu(_sync_submenu_options(report), indent=0)
 
@@ -143,7 +163,19 @@ def _run_sync_for_ready(report: SyncReadinessReport) -> None:
     policy = load_execution_policy()
     execute = policy.live_execution_allowed()
     if execute:
-        display_screen.write_summary("This will overwrite development targets only.")
+        display_screen.write_blank()
+        display_screen.write_summary("Prod→dev sync will overwrite these development databases:")
+        for entry in ready:
+            age = f" · backup {entry.backup_age}" if entry.backup_age else ""
+            fresh = f" · {entry.backup_freshness}" if entry.backup_freshness else ""
+            display_screen.write_status("warn", f"{_pair_route_label(entry)}{age}{fresh}")
+        display_screen.write_bullets(
+            [
+                "Production databases are never modified.",
+                "Each dev target is dropped and recreated from its verified USB backup.",
+            ]
+        )
+        display_screen.write_blank()
         if not menu_prompts.ask_confirmation_phrase(
             SYNC_DEV_CONFIRMATION_PHRASE,
             action="sync into dev",
@@ -166,13 +198,13 @@ def _run_sync_for_one_ready(report: SyncReadinessReport) -> None:
 
     rows = []
     for index, entry in enumerate(ready, start=1):
-        rows.append([str(index), entry.prod, entry.expected_dev])
+        backup = entry.backup_age or "—"
+        rows.append([str(index), entry.project or "—", _pair_route_label(entry), backup])
     display_screen.write_blank()
     display_screen.write_compact_table(
-        ["#", "SOURCE", "TARGET"],
+        ["#", "PROJECT", "PROD → DEV", "BACKUP"],
         rows,
-        min_col_widths=[2, 28, 28],
-        max_col_widths=[2, 36, 36],
+        min_col_widths=[2, 10, 24, 10],
     )
     choice = menu_prompts.ask_stripped("\nPair number to sync: ")
     if choice is None or not choice:

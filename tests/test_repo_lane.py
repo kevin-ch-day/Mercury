@@ -109,8 +109,8 @@ def test_execute_repo_bundle_plan_writes_bundle_manifest_and_runbook(
     plan = build_repo_bundle_plan(statuses, settings)
     state_root = tmp_path / "state"
 
-    monkeypatch.setattr("mercury.repo.bundle.REQUIRED_BACKUP_MOUNT", usb_root)
-    monkeypatch.setattr(Path, "is_mount", lambda self: self == usb_root)
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_usb_mount", lambda **kwargs: usb_root)
+    monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
     monkeypatch.setattr("mercury.state.ledger.resolve_state_root", lambda policy=None: state_root)
 
     executed = execute_repo_bundle_plan(plan)
@@ -167,8 +167,8 @@ def test_execute_repo_bundle_plan_prunes_older_repo_artifacts_after_success(
             return cls.current.astimezone(tz)
 
     monkeypatch.setattr("mercury.repo.bundle.datetime", _FakeDateTime)
-    monkeypatch.setattr("mercury.repo.bundle.REQUIRED_BACKUP_MOUNT", usb_root)
-    monkeypatch.setattr(Path, "is_mount", lambda self: self == usb_root)
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_usb_mount", lambda **kwargs: usb_root)
+    monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
     monkeypatch.setattr("mercury.state.ledger.resolve_state_root", lambda policy=None: state_root)
 
     first_plan = build_repo_bundle_plan(statuses, settings)

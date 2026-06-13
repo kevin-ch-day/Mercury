@@ -158,11 +158,11 @@ def test_run_sync_menu_non_interactive(
     run_sync_menu(interactive=False)
     out = capsys.readouterr().out
     assert "Backup root:" in out
-    assert "STATUS" in out
-    assert "REASON" in out
-    assert "DATABASE" in out
+    assert "erebus_threat_intel → erebus_threat_intel" in out
+    assert "Pairs:" in out
+    assert "PROD → DEV" in out
+    assert "backup stale" in out or "missing backup" in out or "Run full backup" in out
     assert "blocked" in out
-    assert "missing verified backup" in out
     assert "erebus_threat_intel" in out
     assert "Recheck Database Sync Status" in out
     assert "Prepare production backups" in out
@@ -199,7 +199,8 @@ def test_run_sync_ready_shows_compact_confirmation(
 
     _run_sync_for_ready(_sample_report(ready=2, blocked=0))
     out = capsys.readouterr().out
-    assert "overwrite development targets only" in out
+    assert "Prod→dev sync will overwrite these development databases" in out
+    assert "erebus_threat_intel → erebus_threat_intel" in out
     assert "Sync cancelled." in out
 
 

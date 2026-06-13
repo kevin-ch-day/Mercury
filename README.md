@@ -1,10 +1,10 @@
 # Mercury
 
-**Mercury** is a Fedora-first **operations utility** for MariaDB backup, verification, restore-check, production-to-development sync, Git repository transfer bundles, transfer manifests/runbooks, and **recovery deployment** of Mercury-managed database and repository artifacts onto a prepared Fedora host.
+**Mercury** is a **Fedora- and Windows-supported** operations utility for MariaDB backup, verification, restore-check, production-to-development sync, Git repository transfer bundles, transfer manifests/runbooks, and **recovery deployment** of Mercury-managed database and repository artifacts onto a prepared host.
 
-For the current Fedora milestone, it protects the active source databases `android_permission_intel`, `erebus_threat_intel_prod`, `scytaledroid_core_prod`, and `obsidiandroid_core_prod`, manages the dev sync targets `erebus_threat_intel_dev` and `scytaledroid_core_dev` as disposable refresh targets, and can inventory configured Git repositories plus write explicit Git bundles to the USB transfer media. It is not an AI tool, web app, or full Fedora workstation provisioning tool.
+For the current milestone, it protects the active source databases `android_permission_intel`, `erebus_threat_intel_prod`, `scytaledroid_core_prod`, and `obsidiandroid_core_prod`, manages the dev sync targets `erebus_threat_intel_dev` and `scytaledroid_core_dev` as disposable refresh targets, and can inventory configured Git repositories plus write explicit Git bundles to the USB transfer media. It is not an AI tool, web app, or full workstation provisioning tool.
 
-Windows and non-Fedora Linux are for **seed planning / development** only; live Mercury operations target **Fedora**.
+**Fedora** and **Windows** are supported for live Mercury operations when MariaDB tools, `config/local.toml`, and the MERCURY_DATA_USB layout are configured. Non-Fedora Linux remains seed planning / development only.
 
 ## Current v1 status
 
@@ -52,6 +52,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[mariadb,dev]"
 
 mercury config init
+mercury config repair-local   # add missing USB paths to existing local.toml
 mercury db ping                    # read-only server probe
 mercury db discover                # live inventory (needs config/local.toml)
 mercury status --live              # protection snapshot from live server
@@ -76,6 +77,15 @@ sudo dnf install python3-hatchling python3-pydantic python3-rich python3-typer p
 rm -rf .venv
 python3 -m venv --system-site-packages .venv
 .venv/bin/pip install --no-build-isolation -e ".[mariadb,dev]"
+```
+
+Windows (PowerShell):
+
+```powershell
+cd C:\path\to\Mercury
+.\run.ps1                        # interactive menu (creates .venv on first run)
+mercury config init
+mercury doctor --repair-plan     # USB path setup when drive is connected
 ```
 
 ## CLI commands
@@ -122,15 +132,15 @@ mercury backup list [--demo]
 mercury report preview --db <prod> --kind full|schema_only
 ```
 
-**Backup writes** run when the backup environment is safe (Fedora host, `config/local.toml`, mounted USB backup root under `/mnt/MERCURY_DATA_USB/mercury_backups`). They do **not** require `dry_run = false` or `live_actions_enabled = true`.
+**Backup writes** run when the backup environment is safe (Fedora or Windows host, `config/local.toml`, USB backup root under the MERCURY_DATA_USB layout). They do **not** require `dry_run = false` or `live_actions_enabled = true`.
 
 Use `--dry-run` on `backup run`, `backup batch`, or `backup all` to preview without writing files. The interactive menu uses **Run full backup now** for live writes and **Preview backup plan** for dry-run.
 
 **Destructive actions** (prod→dev sync, deploy, restore-check cleanup) additionally require `[mercury] dry_run = false` and `live_actions_enabled = true` in `config/local.toml`, plus confirmation where applicable (`SYNC DEV` for sync).
 
-For the current Fedora milestone, live backup execution also requires:
-- Fedora as the runtime host
-- the mounted USB-backed root under `/mnt/MERCURY_DATA_USB/mercury_backups`
+Live backup execution also requires:
+- Fedora or Windows as the runtime host
+- a configured USB-backed root (Linux default: `/mnt/MERCURY_DATA_USB/mercury_backups`; Windows: set `[mercury].usb_mount` or rely on auto-detect when the drive has `mercury_backups/` and `mercury_logs/`)
 
 Repo-local `backups/` remains development-only and does not count as production protection in live/operator mode.
 `backup status` reports the latest protection state for active source databases using on-disk manifests and verification checks. `backup bundle --execute` writes database transfer manifests and restore notes to the configured USB-backed manifest/runbook paths.
@@ -188,7 +198,7 @@ mercury deploy system --dry-run
 mercury deploy use-cases
 ```
 
-Live deploy requires the same gates as sync/restore (`dry_run = false`, `live_actions_enabled = true`, Fedora host, USB-backed backup root). Menu: option **8 → Deploy to This System**.
+Live deploy requires the same gates as sync/restore (`dry_run = false`, `live_actions_enabled = true`, Fedora or Windows host, USB-backed backup root). Menu: option **7 → System Deployment**.
 
 ## Setup
 
@@ -224,6 +234,39 @@ password_env = "MERCURY_MARIADB_PASSWORD"
 
 ```bash
 export MERCURY_MARIADB_PASSWORD='your-password'
+```
+
+### Windows
+
+Install **Python 3.12+**, **MariaDB client tools** (`mariadb`, `mariadb-dump` or `mysql`/`mysqldump` on PATH), and **Git for Windows**. Format the USB drive with the Mercury folder layout (`mercury_backups/`, `mercury_logs/`, etc.) or run `mercury config init` after the drive is connected.
+
+```toml
+# config/local.toml
+[mercury]
+usb_mount = "E:/MERCURY_DATA_USB"
+backup_root = "E:/MERCURY_DATA_USB/mercury_backups"
+log_dir = "E:/MERCURY_DATA_USB/mercury_logs"
+repo_backup_root = "E:/MERCURY_DATA_USB/mercury_repo_backups"
+manifest_dir = "E:/MERCURY_DATA_USB/mercury_manifests"
+runbook_dir = "E:/MERCURY_DATA_USB/mercury_runbooks"
+dry_run = true
+live_actions_enabled = false
+
+[mariadb]
+host = "127.0.0.1"
+port = 3306
+user = "mercury"
+password_env = "MERCURY_MARIADB_PASSWORD"
+use_client = true
+ssl_disabled = true
+```
+
+Mercury auto-detects a drive letter when `mercury_backups/` and `mercury_logs/` exist at the root (e.g. `E:/`). Override with `[mercury].usb_mount` or `MERCURY_USB_MOUNT`. Use TCP/password for local or remote MariaDB on Windows (unix socket auth is Linux-only).
+
+```powershell
+python -m mercury.cli menu
+python -m mercury.cli env check
+python -m mercury.cli doctor
 ```
 
 ## Project layout

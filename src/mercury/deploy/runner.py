@@ -46,18 +46,6 @@ def _execute_client_sql(config: MariaDbConnectionConfig, sql: str) -> None:
         raise BackupExecutionError(str(exc)) from exc
 
 
-def _default_import_runner(
-    argv: list[str],
-    env: dict[str, str],
-    dump_path: Path,
-    _config: MariaDbConnectionConfig,
-    _target: str,
-) -> None:
-    from mercury.database.mariadb.import_stream import run_compressed_sql_import
-
-    run_compressed_sql_import(argv, env, dump_path, strip_definer=True)
-
-
 def resolve_deployment_report_dir(policy: ExecutionPolicy) -> Path:
     root = policy.backup_root.resolve()
     if root.name == "mercury_backups":
@@ -169,8 +157,26 @@ def execute_deployment_for_candidate(
     if cfg is None:
         cfg = load_mariadb_config()
     sql = sql_runner or _execute_client_sql
-    runner = import_runner or _default_import_runner
     import_argv = build_import_argv(cfg, candidate.target_database)
+
+    def _rewrite_import_runner(
+        argv: list[str],
+        env: dict[str, str],
+        dump_path: Path,
+        config: MariaDbConnectionConfig,
+        target: str,
+    ) -> None:
+        from mercury.database.mariadb.import_stream import run_compressed_sql_import
+
+        run_compressed_sql_import(
+            argv,
+            env,
+            dump_path,
+            strip_definer=True,
+            rewrite_database=(candidate.source_database, target),
+        )
+
+    runner = import_runner or _rewrite_import_runner
 
     try:
         for command in commands:

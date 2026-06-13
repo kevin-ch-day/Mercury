@@ -252,3 +252,39 @@ def test_record_restore_check_verification_failure_uses_failed_status(tmp_path: 
     csv_text = (state_root / DATABASE_BACKUPS_CSV).read_text(encoding="utf-8")
     assert "restore_check,full,erebus_threat_intel_prod-full-20260611_120000" in csv_text
     assert "verification_failed" in csv_text
+
+
+def test_record_sync_batch_execution_records_executed_pairs(tmp_path: Path) -> None:
+    from mercury.state.ledger import OPERATIONS_JSONL, SYNC_EVENTS_CSV, record_sync_batch_execution
+    from mercury.sync.sync_runner import SyncBatchResult, SyncExecutionResult
+
+    batch = SyncBatchResult(
+        results=[
+            SyncExecutionResult(
+                source="erebus_threat_intel_prod",
+                target="erebus_threat_intel_dev",
+                executed=True,
+                dry_run=False,
+                message="Restored erebus_threat_intel_prod into erebus_threat_intel_dev.",
+                backup_dir="/tmp/backups/erebus",
+            ),
+            SyncExecutionResult(
+                source="scytaledroid_core_prod",
+                target="scytaledroid_core_dev",
+                dry_run=True,
+                message="Would restore scytaledroid_core_prod backup into scytaledroid_core_dev.",
+            ),
+        ],
+        executed_count=1,
+    )
+
+    state_root = tmp_path / "state"
+    record_sync_batch_execution(batch, state_root=state_root)
+
+    operations = (state_root / OPERATIONS_JSONL).read_text(encoding="utf-8")
+    assert "sync_executed" in operations
+    assert "erebus_threat_intel_prod" in operations
+
+    csv_text = (state_root / SYNC_EVENTS_CSV).read_text(encoding="utf-8")
+    assert "erebus_threat_intel_prod,erebus_threat_intel_dev,executed" in csv_text
+    assert "scytaledroid_core_prod" not in csv_text

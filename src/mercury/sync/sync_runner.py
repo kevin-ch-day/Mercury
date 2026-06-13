@@ -17,6 +17,7 @@ class SyncExecutionResult(BaseModel):
     target: str
     executed: bool = False
     dry_run: bool = True
+    refused: bool = False
     backup_dir: str | None = None
     message: str = ""
     verification_passed: bool | None = None
@@ -46,10 +47,11 @@ def run_sync_batch(
                 SyncExecutionResult(
                     source=entry.prod,
                     target=entry.expected_dev,
-                backup_dir=entry.latest_backup_dir,
-                message=reason,
-                verification_passed=None,
-            )
+                    backup_dir=entry.latest_backup_dir,
+                    message=reason,
+                    refused=True,
+                    verification_passed=None,
+                )
             )
         batch.refused_count = len(entries)
         return batch
@@ -61,6 +63,7 @@ def run_sync_batch(
                     source=entry.prod,
                     target=entry.expected_dev,
                     message="Blocked — rescan readiness or prepare backups first.",
+                    refused=True,
                     verification_passed=None,
                 )
             )
@@ -75,6 +78,7 @@ def run_sync_batch(
                     target=entry.expected_dev,
                     backup_dir=entry.latest_backup_dir,
                     message="Verified backup dump file not found on disk.",
+                    refused=True,
                     verification_passed=None,
                 )
             )
@@ -96,6 +100,7 @@ def run_sync_batch(
                 target=entry.expected_dev,
                 executed=restore.executed,
                 dry_run=restore.dry_run,
+                refused=restore.refused,
                 backup_dir=entry.latest_backup_dir,
                 message=restore.message,
                 verification_passed=restore.verification_passed,

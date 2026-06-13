@@ -24,6 +24,12 @@ def print_doctor_report(report: DoctorReport) -> None:
     usb = report.usb
     output.field("mount", str(usb.mount_path))
     output.field("mounted", "yes" if usb.mounted else "no")
+    if getattr(usb, "device_attached", False):
+        output.field("device", "attached")
+    elif not usb.mounted:
+        output.field("device", "not detected")
+    if getattr(usb, "quick_mount_command", None):
+        output.field("mount command", usb.quick_mount_command)
     output.field("layout", "ready" if usb.mercury_layout_present else "incomplete or absent")
     for check in report.permission_checks:
         if str(check.path).startswith(str(usb.mount_path)):
@@ -90,8 +96,36 @@ def print_doctor_report(report: DoctorReport) -> None:
     output.write("")
     output.write("Recommended Next Step")
     output.item(report.recommended_next_step)
-    if report.blockers or any(check.needs_repair for check in report.permission_checks):
-        output.item("Run: ./run.sh doctor --repair-plan")
+    if _repair_plan_warranted(report):
+        from mercury.repair.usb import USB_REPAIR_COMMAND
+
+        output.item(f"Quick USB fix: {USB_REPAIR_COMMAND}")
+        output.item("Detailed steps: ./run.sh doctor --repair-plan")
+
+
+def _repair_plan_warranted(report: DoctorReport) -> bool:
+    if any(check.needs_repair for check in report.permission_checks):
+        return True
+    repairable = {
+        "local config not initialized",
+        "USB backup mount not detected",
+    }
+    if any(
+        any(token in blocker for token in repairable)
+        for blocker in report.blockers
+    ):
+        return True
+    if any("missing USB artifact paths" in warning for warning in report.warnings):
+        return True
+    if any("prefer a dedicated unix_socket" in warning for warning in report.warnings):
+        return True
+    if any("not writable" in blocker for blocker in report.blockers):
+        return True
+    if any("MariaDB auth failed" in blocker for blocker in report.blockers):
+        return True
+    if any("service is not running" in blocker for blocker in report.blockers):
+        return True
+    return False
 
 
 def print_repair_plan(report: DoctorReport) -> None:

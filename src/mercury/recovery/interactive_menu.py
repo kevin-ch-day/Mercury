@@ -7,7 +7,7 @@ from pathlib import Path
 
 from mercury.backup.freshness import FRESHNESS_STALE, FRESHNESS_UNKNOWN
 from mercury.backup.status import BackupStatusEntry, BackupStatusReport, build_backup_status_report
-from mercury.core.execution_policy import REQUIRED_BACKUP_MOUNT
+from mercury.core.usb_mount import resolve_usb_mount
 from mercury.core.runtime import should_probe_database_status
 from mercury.menu import main_display as menu_display
 from mercury.menu import prompts as menu_prompts
@@ -61,7 +61,8 @@ def _latest_restore_check_status() -> dict[str, str]:
 
 
 def _latest_runbook(pattern: str) -> Path | None:
-    root = REQUIRED_BACKUP_MOUNT / "mercury_runbooks"
+    usb_mount = resolve_usb_mount()
+    root = usb_mount / "mercury_runbooks"
     if not root.is_dir():
         return None
     matches = sorted(root.glob(pattern))
@@ -152,7 +153,7 @@ def _render_recovery_screen(data: RecoveryScreenData, *, show_title: bool) -> No
             "Protected sources": report.source_count,
             "Verified backups": report.verified_count,
             "Latest safe backup": _latest_verified_backup(report),
-            "Recovery runbooks": str(REQUIRED_BACKUP_MOUNT / "mercury_runbooks"),
+            "Recovery runbooks": str(resolve_usb_mount() / "mercury_runbooks"),
         }
     )
     display_screen.write_blank()

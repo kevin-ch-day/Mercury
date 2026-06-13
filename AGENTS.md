@@ -22,11 +22,11 @@ Guidance for AI coding agents (Cursor, ChatGPT, Codex) working in this repositor
 
 ## What Mercury is
 
-Mercury is a **Fedora-first Python CLI** for MariaDB backup, disaster recovery, schema export, verification, prod→dev sync planning, Git repository transfer bundles, transfer manifests/runbooks, and **recovery deployment** of Mercury-managed artifacts onto a prepared Fedora host.
+Mercury is a **Fedora- and Windows-supported Python CLI** for MariaDB backup, disaster recovery, schema export, verification, prod→dev sync planning, Git repository transfer bundles, transfer manifests/runbooks, and **recovery deployment** of Mercury-managed artifacts onto a prepared host.
 
-It is **not** an AI tool, web app, malware analyzer, or full workstation/Fedora bootstrap utility.
+It is **not** an AI tool, web app, malware analyzer, or full workstation/OS bootstrap utility.
 
-**Production target:** Fedora for live operations. Windows and non-Fedora Linux are acceptable for seed planning/development only.
+**Production targets:** Fedora and Windows for live operations when MariaDB tools, `config/local.toml`, and the MERCURY_DATA_USB layout are configured. Non-Fedora Linux remains seed planning/development only.
 
 ## Non-negotiable safety policy
 
@@ -46,14 +46,15 @@ Policy constants live in `src/mercury/core/safety.py`. Execution gates live in `
 
 ## Current development phase
 
-**Seed / dry-run** is still the default runtime mode:
+**Seed / guarded destructive ops** is still the default for sync/deploy/restore:
 
 - Planning, discovery, manifests, and reports are implemented.
 - Live **read-only** server access works (`db ping`, `db discover`, `db inspect`, `db access`).
-- Backup **execution** exists but is gated (`backup run --execute` requires `dry_run=false` and `live_actions_enabled=true`).
-- Prod→dev **sync execution** and restore-check execution exist but are gated the same way (`sync run --execute`, `restore-check run --execute`).
-- Menu and CLI default to dry-run; live writes require explicit policy in `config/local.toml` or env vars.
-- Live execution is Fedora-only; unsupported hosts remain seed/status only even when dry-run is disabled.
+- **Backup writes** run when the backup environment is safe (Fedora/Windows, USB-backed `backup_root`, config present). They do **not** require `dry_run=false` or `live_actions_enabled=true`.
+- Prod→dev **sync**, **deploy**, and destructive restore-check cleanup require `dry_run=false`, `live_actions_enabled=true`, and confirmation (`SYNC DEV` for sync).
+- Menu and CLI default backup execution when the environment is ready; use `--dry-run` or **Preview backup plan** for dry-run.
+- Live execution is supported on **Fedora and Windows**; other Linux hosts remain seed/status only.
+- USB mount detection: when the MERCURY_DATA_USB drive is plugged in but unmounted, `./run.sh doctor --repair-plan` suggests `sudo systemctl start mnt-MERCURY_DATA_USB.mount` when fstab is configured.
 
 ## Repository layout
 

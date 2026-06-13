@@ -32,6 +32,7 @@ class SyncReadinessEntry(BaseModel):
     backup_verified: bool = False
     backup_id: str | None = None
     backup_freshness: str | None = None
+    backup_age: str | None = None
     ready_for_sync_planning: bool = False
     blockers: list[str] = Field(default_factory=list)
 
@@ -86,6 +87,7 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
         backup_verified = False
         backup_id: str | None = None
         backup_freshness: str | None = None
+        backup_age: str | None = None
         latest_dir: str | None = None
 
         if backup_dir is None:
@@ -95,6 +97,11 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
             verify = verify_backup_artifacts(backup_dir, database=pair.prod, backup_kind=BACKUP_KIND_FULL)
             backup_verified = verify.verified
             backup_id = verify.backup_id
+            created_at = _load_backup_created_at(backup_dir)
+            if created_at:
+                from mercury.backup.freshness import format_backup_age, parse_backup_timestamp
+
+                backup_age = format_backup_age(parse_backup_timestamp(created_at))
             if not verify.verified:
                 blockers.append(
                     "Latest backup is not artifact-verified (manifest/checksum/size/role)."
@@ -134,6 +141,7 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
                 backup_verified=backup_verified,
                 backup_id=backup_id,
                 backup_freshness=backup_freshness,
+                backup_age=backup_age,
                 ready_for_sync_planning=ready,
                 blockers=blockers,
             )

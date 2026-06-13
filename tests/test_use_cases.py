@@ -108,9 +108,9 @@ def test_cli_sync_readiness() -> None:
     result = run_cli("sync", "readiness")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Backup root:" in result.stdout
-    assert "DATABASE" in result.stdout
-    assert "STATUS" in result.stdout
-    assert "REASON" in result.stdout
+    assert "PROJECT" in result.stdout
+    assert "PROD → DEV" in result.stdout
+    assert "SYNC" in result.stdout
     assert "erebus_threat_intel" in result.stdout
 
 

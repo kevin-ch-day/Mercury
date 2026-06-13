@@ -25,6 +25,12 @@ def handle_menu_choice(choice: str) -> MenuResult:
         return "empty"
     if not normalized:
         return "empty"
+    if normalized in {"r", "repair"}:
+        from mercury.repair.startup import run_usb_repair_flow
+
+        run_usb_repair_flow(interactive=True, default_yes=True)
+        log_menu_action(choice=normalized, title="Repair USB", result="continue")
+        return "continue"
     if normalized == "0":
         menu_display.write_summary("Exiting Mercury.")
         log_menu_action(choice=normalized, title="Exit", result="exit")
@@ -45,6 +51,11 @@ def handle_menu_choice(choice: str) -> MenuResult:
 def run_menu(interactive: bool = True, *, render_menu_text: Callable[[], str] | None = None) -> None:
     """Show the Mercury menu. In interactive mode, loop until exit."""
     render = render_menu_text or _default_render_menu_text
+    if interactive:
+        from mercury.repair.startup import maybe_prompt_usb_repair_at_startup
+
+        maybe_prompt_usb_repair_at_startup()
+
     output.write(render())
 
     if not interactive:

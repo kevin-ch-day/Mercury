@@ -72,7 +72,8 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     blocked = 0
     deploy_complete = False
     if not config_initialized:
-        source_line = "skipped until config initialized"
+        mariadb_line = "skipped until config initialized"
+        backup_line = "skipped until config initialized"
         sync_line = "skipped until config initialized"
         deploy_line = "skipped until config initialized"
         blocker = resolve_dashboard_blocker(
@@ -113,16 +114,20 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             unknown_only_count=unknown_only_count,
         )
         present_count = max(0, len(source_names) - missing_count)
-        source_line = f"{present_count} of {len(source_names)} on server"
+        backup_line = f"{len(verified_names)} of {len(source_names)} verified on USB"
         if missing_count:
-            source_line += f"; {missing_count} missing"
+            backup_line += f"; {missing_count} without backup"
+        if failed_count:
+            backup_line += f"; {failed_count} failed"
+        mariadb_line = deploy_line
         sync_line = f"{ready} approved pairs ready"
         if blocked:
             sync_line += f"; {blocked} blocked"
 
     rows.extend(
         [
-            dashboard_row("Protected sources", source_line),
+            dashboard_row("MariaDB sources", mariadb_line),
+            dashboard_row("USB backups", backup_line),
             dashboard_row("Sync readiness", sync_line),
             dashboard_row("Protection", blocker),
         ]
@@ -132,8 +137,15 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
 
         if not sync_blocker_is_rebuild_blocker(sync_blocker, deploy_complete=True):
             rows.append(dashboard_row("Sync blocker", sync_blocker))
-    if env.has_repairable_blockers:
-        rows.append(dashboard_row("Repair", "Run ./run.sh doctor --repair-plan"))
+    if env.repairable_blockers or env.usb.repair_banner:
+        from mercury.repair.usb import USB_REPAIR_COMMAND
+
+        rows.append(
+            dashboard_row(
+                "USB repair",
+                f"Enter r at main menu or run {USB_REPAIR_COMMAND}",
+            )
+        )
     elif env.setup_hints:
         rows.append(dashboard_row("Setup", env.setup_hints[0]))
         for hint in env.setup_hints[1:]:

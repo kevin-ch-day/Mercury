@@ -21,7 +21,8 @@ def test_dashboard_rows_include_core_fields() -> None:
 def test_dashboard_rows_include_extended_stats() -> None:
     rows = dashboard_rows(probe_database=False)
     text = "\n".join(rows)
-    assert "Protected sources" in text
+    assert "MariaDB sources" in text
+    assert "USB backups" in text
     assert "Sync readiness" in text
     assert "Protection" in text
 
@@ -74,7 +75,7 @@ def test_dashboard_rows_show_platform_when_not_fedora(monkeypatch) -> None:
         lambda: PlatformInfo(system="Windows", release="11"),
     )
     rows = dashboard_rows(probe_database=False)
-    assert any("Platform" in row and "Windows seed-only" in row for row in rows)
+    assert any("Platform" in row and "Windows supported" in row for row in rows)
 
 
 def test_dashboard_rows_show_protection_incomplete_when_stale_and_missing(monkeypatch) -> None:
@@ -129,9 +130,14 @@ def test_dashboard_rows_show_protection_incomplete_when_stale_and_missing(monkey
         "mercury.menu.dashboard._sync_readiness_summary",
         lambda **kwargs: (2, 0, "None."),
     )
+    monkeypatch.setattr(
+        "mercury.menu.dashboard._deploy_target_summary",
+        lambda **kwargs: "3 of 4 protected sources on server; 1 missing",
+    )
     text = "\n".join(dashboard_rows(probe_database=True))
-    assert "Protected sources" in text
-    assert "3 of 4 on server; 1 missing" in text
+    assert "MariaDB sources" in text
+    assert "USB backups" in text
+    assert "3 of 4 protected sources on server; 1 missing" in text
     assert "Protection incomplete: 1 stale backup; 1 protected source missing" in text
 
 

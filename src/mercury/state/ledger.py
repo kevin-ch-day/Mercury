@@ -9,7 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from mercury.core.execution_policy import REQUIRED_BACKUP_MOUNT, ExecutionPolicy, load_execution_policy
+from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
+from mercury.core.usb_mount import usb_mount_is_active
 from mercury.core.paths import DATA_DIR
 
 STATE_DIRNAME = "mercury_state"
@@ -87,10 +88,10 @@ def resolve_state_root(policy: ExecutionPolicy | None = None) -> Path:
 
     resolved_policy = policy or load_execution_policy()
     if (
-        REQUIRED_BACKUP_MOUNT.is_mount()
+        usb_mount_is_active(resolved_policy.usb_mount)
         and resolved_policy.backup_root_is_under_required_mount()
     ):
-        return REQUIRED_BACKUP_MOUNT / STATE_DIRNAME
+        return resolved_policy.usb_mount / STATE_DIRNAME
     return DATA_DIR
 
 

@@ -184,8 +184,8 @@ def test_write_transfer_bundle_writes_manifest_and_runbook(
         latest_transfer_manifest_path=str(manifest_path),
         latest_transfer_runbook_path=str(runbook_path),
     )
-    monkeypatch.setattr("mercury.transfer.bundle.REQUIRED_BACKUP_MOUNT", usb_root)
-    monkeypatch.setattr(Path, "is_mount", lambda self: self == usb_root)
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_usb_mount", lambda **kwargs: usb_root)
+    monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
     monkeypatch.setattr("mercury.state.ledger.resolve_state_root", lambda policy=None: state_root)
 
     written = write_transfer_bundle(bundle)

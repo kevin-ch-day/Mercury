@@ -7,11 +7,12 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from mercury.core.execution_policy import (
-    REQUIRED_BACKUP_MOUNT,
-    ExecutionPolicy,
-    _path_is_mount,
-    load_execution_policy,
+from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
+from mercury.core.usb_mount import (
+    DEFAULT_USB_MOUNT,
+    mercury_layout_present,
+    resolve_usb_mount,
+    usb_mount_is_active,
 )
 from mercury.core.path_permissions import PathPermissionCheck
 from mercury.core.setup_paths import assess_mercury_path_permissions
@@ -19,8 +20,7 @@ from mercury.core.paths import DATABASES_LOCAL, LOCAL_CONFIG, REPOS_LOCAL
 from mercury.core.storage_status import backup_root_summary_label
 from mercury.database.mariadb.probe import probe_client_tooling
 
-DEFAULT_USB_BACKUP_ROOT = REQUIRED_BACKUP_MOUNT / "mercury_backups"
-MERCURY_USB_MARKERS = ("mercury_backups", "mercury_logs")
+DEFAULT_USB_BACKUP_ROOT = DEFAULT_USB_MOUNT / "mercury_backups"
 MARIADB_SOCKET = Path("/var/lib/mysql/mysql.sock")
 
 
@@ -52,6 +52,10 @@ class UsbDiscovery:
     mounted: bool
     mercury_layout_present: bool
     suggested_backup_root: Path | None
+    device_attached: bool = False
+    placeholder_mount_point: bool = False
+    quick_mount_command: str | None = None
+    repair_banner: str | None = None
 
 
 @dataclass(frozen=True)
@@ -102,15 +106,24 @@ def assess_config_setup() -> ConfigSetupStatus:
     )
 
 
-def discover_usb_target(*, mount_path: Path = REQUIRED_BACKUP_MOUNT) -> UsbDiscovery:
-    mounted = mount_path.exists() and _path_is_mount(mount_path)
-    layout_present = mounted and all((mount_path / marker).is_dir() for marker in MERCURY_USB_MARKERS)
-    suggested = (mount_path / "mercury_backups") if layout_present else None
+def discover_usb_target(*, mount_path: Path | None = None) -> UsbDiscovery:
+    from mercury.core.usb_device import probe_usb_device, usb_repair_banner
+
+    resolved_mount = mount_path or resolve_usb_mount()
+    device = probe_usb_device(mount_path=resolved_mount)
+    mounted = resolved_mount.exists() and usb_mount_is_active(resolved_mount)
+    layout_present = mounted and mercury_layout_present(resolved_mount)
+    suggested = (resolved_mount / "mercury_backups") if layout_present else None
+    banner = usb_repair_banner(device)
     return UsbDiscovery(
-        mount_path=mount_path,
+        mount_path=resolved_mount,
         mounted=mounted,
         mercury_layout_present=layout_present,
         suggested_backup_root=suggested,
+        device_attached=device.device_attached,
+        placeholder_mount_point=device.placeholder_mount_point,
+        quick_mount_command=device.quick_mount_command,
+        repair_banner=banner,
     )
 
 
@@ -122,6 +135,10 @@ def _socket_available(path: Path = MARIADB_SOCKET) -> bool:
 
 
 def _systemd_service_state(unit: str = "mariadb") -> str:
+    from mercury.core.platform import detect_platform
+
+    if detect_platform().is_windows:
+        return "n/a (Windows service)"
     try:
         proc = subprocess.run(
             ["systemctl", "is-active", unit],
@@ -313,11 +330,19 @@ def backup_root_unsafe_reason(
             return "USB mounted but backup_root still points at repo"
         return "repo-local path is dev-only, not production protection"
     if state == "usb not mounted":
+        from mercury.repair.usb import USB_REPAIR_COMMAND
+
+        if usb.device_attached or usb.placeholder_mount_point:
+            return f"USB plugged in but not mounted — run: {USB_REPAIR_COMMAND}"
         return "configured USB backup root is not mounted"
     if state == "missing path":
+        from mercury.repair.usb import USB_REPAIR_COMMAND
+
+        if usb.device_attached or usb.placeholder_mount_point:
+            return f"backup paths missing — run: {USB_REPAIR_COMMAND}"
         return "configured backup_root path does not exist"
     if state == "unsafe path":
-        return f"backup_root must be under {REQUIRED_BACKUP_MOUNT}"
+        return f"backup_root must be under {policy.usb_mount}"
     if state == "low free space":
         return "USB backup root has less than 20 GB free"
     return "unsafe"
@@ -350,10 +375,12 @@ def resolve_dashboard_blocker(
 
 
 def recommended_next_step(env: EnvironmentStatus) -> str:
+    from mercury.repair.usb import USB_REPAIR_COMMAND
+
     if not env.config.local_toml_present:
         return "./run.sh config init"
-    if env.repairable_blockers:
-        return "./run.sh doctor --repair-plan"
+    if env.repairable_blockers or env.usb.repair_banner:
+        return USB_REPAIR_COMMAND
     if env.mariadb.connection_works is False:
         return "./run.sh doctor --repair-plan"
     if env.primary_setup_blocker:
@@ -396,11 +423,23 @@ def _resolve_primary_setup_blocker(
 ) -> str | None:
     if not config.local_toml_present:
         if usb.mercury_layout_present:
-            return "Local config not initialized — USB target detected at /mnt/MERCURY_DATA_USB."
+            return f"Local config not initialized — USB target detected at {usb.mount_path}."
         return "Local config not initialized — run: ./run.sh config init."
 
     for check in permission_checks:
         if check.needs_repair:
+            if (
+                not usb.mounted
+                and (usb.device_attached or usb.placeholder_mount_point)
+                and not check.exists
+            ):
+                from mercury.repair.usb import USB_REPAIR_COMMAND
+
+                return f"USB plugged in but not mounted — run: {USB_REPAIR_COMMAND}"
+            if check.needs_repair and check.path.exists():
+                from mercury.repair.usb import USB_REPAIR_COMMAND
+
+                return f"USB Mercury paths not writable by {getpass.getuser()} — run: {USB_REPAIR_COMMAND}"
             return f"USB Mercury paths not writable by {getpass.getuser()} — {check.label}."
 
     if policy.backup_root_is_within_repo() and usb.mercury_layout_present:
@@ -435,7 +474,13 @@ def _build_setup_hints(
     elif config.missing_labels:
         hints.append(f"Run: ./run.sh config init  (missing: {', '.join(config.missing_labels)})")
     if has_repairable:
-        hints.append("Run: ./run.sh doctor --repair-plan")
+        from mercury.repair.usb import USB_REPAIR_COMMAND
+
+        hints.append(f"Run: {USB_REPAIR_COMMAND}")
+    elif usb.quick_mount_command and not usb.mounted:
+        from mercury.repair.usb import USB_REPAIR_COMMAND
+
+        hints.append(f"Run: {USB_REPAIR_COMMAND}")
     if usb.mercury_layout_present and (not config.local_toml_present or primary_setup_blocker):
         hints.append(f"USB backup layout detected at {usb.mount_path}.")
     return tuple(hints)

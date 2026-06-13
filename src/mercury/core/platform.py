@@ -31,25 +31,28 @@ class PlatformInfo:
         if self.is_fedora:
             return "Fedora supported"
         if self.is_windows:
-            return "Windows seed-only"
+            return "Windows supported"
         if self.is_linux:
             return "Linux non-Fedora"
         return f"{self.system} unsupported"
 
     @property
     def allows_live_execution(self) -> bool:
-        return self.is_fedora
+        return self.is_fedora or self.is_windows
 
     @property
     def operator_note(self) -> str:
         if self.is_fedora:
             return "Fedora detected — primary Mercury runtime."
         if self.is_windows:
-            return "Windows detected — seed planning/status only; live Fedora workflows are not supported."
+            return (
+                "Windows detected — full Mercury workflows supported when MariaDB tools, "
+                "config/local.toml, and the MERCURY_DATA_USB layout are configured."
+            )
         if self.is_linux:
             distro = self.distro_name or self.distro_id or "Linux"
             return f"{distro} detected — Mercury is Fedora-first; verify paths and tooling before live use."
-        return f"{self.system} detected — Mercury targets Fedora for live operations."
+        return f"{self.system} detected — Mercury targets Fedora or Windows for live operations."
 
 
 def _parse_os_release(path: Path = Path("/etc/os-release")) -> tuple[str | None, str | None]:

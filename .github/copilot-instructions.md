@@ -1,6 +1,6 @@
 # Mercury — ChatGPT / Codex / Copilot instructions
 
-This repo is a **Fedora-first Python CLI** for MariaDB backup, DR, and prod→dev sync on a security research platform.
+This repo is a **Fedora- and Windows-supported Python CLI** for MariaDB backup, DR, and prod→dev sync on a security research platform.
 
 ## Required reading
 
@@ -12,9 +12,10 @@ This repo is a **Fedora-first Python CLI** for MariaDB backup, DR, and prod→de
 
 - Backup only `*_prod` and `android_permission_intel`. Never `*_dev`.
 - Never drop/overwrite/restore into `*_prod`.
-- Dry-run default; live writes need explicit config gates.
-- Live execution is supported only on Fedora; Windows and non-Fedora Linux are seed/status only.
-- Live backup execution for the current Fedora milestone requires the mounted USB root under `/mnt/MERCURY_DATA_USB/mercury_backups`; repo-local backups do not count as production protection.
+- **Backup writes** require a safe USB-backed environment; **sync/deploy/restore** additionally require explicit live-action gates.
+- Live execution is supported on **Fedora and Windows** when configured; non-Fedora Linux is seed/status only.
+- Live backup execution requires the USB layout under `[mercury].backup_root` (Linux default `/mnt/MERCURY_DATA_USB/mercury_backups`); repo-local `backups/` is dev-only.
+- When USB is plugged in but unmounted, doctor repair plan suggests `sudo systemctl start mnt-MERCURY_DATA_USB.mount` (fstab) or mount-by-label.
 - Live SQL: read-only only.
 
 ## Stack

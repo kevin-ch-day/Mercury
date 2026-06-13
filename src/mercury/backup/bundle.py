@@ -9,7 +9,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from mercury.backup.status import BackupStatusEntry, build_backup_status_report
-from mercury.core.execution_policy import REQUIRED_BACKUP_MOUNT
+from mercury.core.usb_mount import assert_operator_usb_path
 from mercury.repo.config import load_repo_bundle_settings
 
 
@@ -107,13 +107,7 @@ def build_database_bundle_plan(
 
 
 def _ensure_usb_path(path: Path) -> None:
-    resolved = path.expanduser().resolve()
-    try:
-        resolved.relative_to(REQUIRED_BACKUP_MOUNT)
-    except ValueError as exc:
-        raise ValueError(f"path is not under {REQUIRED_BACKUP_MOUNT}: {resolved}") from exc
-    if not REQUIRED_BACKUP_MOUNT.is_mount():
-        raise ValueError(f"required USB mount is not active: {REQUIRED_BACKUP_MOUNT}")
+    assert_operator_usb_path(path)
 
 
 def _entry_manifest_payload(plan: DatabaseBundlePlan, entry: DatabaseBundleEntry) -> dict[str, object]:

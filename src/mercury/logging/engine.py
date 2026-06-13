@@ -116,7 +116,8 @@ def configure_logging(
         return None
 
     resolved_dir = resolve_log_dir(override=log_dir)
-    from mercury.core.path_permissions import check_path_permission, chown_repair_command
+    from mercury.core.path_permissions import check_path_permission
+    from mercury.core.usb_device import log_directory_repair_hint
 
     log_check = check_path_permission(resolved_dir, label="log directory")
     if log_check.needs_repair:
@@ -125,7 +126,7 @@ def configure_logging(
         _error_log_file = None
         _database_log_file = None
         _backup_log_file = None
-        repair = chown_repair_command(resolved_dir) if resolved_dir.exists() else "./run.sh doctor --repair-plan"
+        repair = log_directory_repair_hint(resolved_dir, permission_detail=log_check.detail)
         print(
             f"Mercury: cannot write logs under {resolved_dir} ({log_check.detail}). "
             f"Continuing without file logging. Repair: {repair}",
@@ -135,6 +136,8 @@ def configure_logging(
     try:
         resolved_dir.mkdir(parents=True, exist_ok=True)
     except PermissionError:
+        from mercury.repair.usb import USB_REPAIR_COMMAND
+
         _configured = True
         _log_file = None
         _error_log_file = None
@@ -142,7 +145,7 @@ def configure_logging(
         _backup_log_file = None
         print(
             f"Mercury: cannot write logs to {resolved_dir} (permission denied). "
-            "Continuing without file logging. Run: ./run.sh doctor --repair-plan",
+            f"Continuing without file logging. Repair: {USB_REPAIR_COMMAND}",
             file=sys.stderr,
         )
         return None
@@ -182,6 +185,8 @@ def configure_logging(
         error_logger.setLevel(logging.DEBUG)
         error_logger.propagate = True
     except PermissionError:
+        from mercury.repair.usb import USB_REPAIR_COMMAND
+
         clear_logger(LOGGER_NAME)
         clear_logger(DATABASE_LOGGER_NAME)
         clear_logger(BACKUP_LOGGER_NAME)
@@ -192,7 +197,7 @@ def configure_logging(
         _backup_log_file = None
         print(
             f"Mercury: cannot write logs under {resolved_dir} (permission denied). "
-            "Continuing without file logging. Run: ./run.sh doctor --repair-plan",
+            f"Continuing without file logging. Repair: {USB_REPAIR_COMMAND}",
             file=sys.stderr,
         )
         return None

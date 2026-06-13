@@ -12,21 +12,23 @@ import tomllib
 from mercury.core.paths import LOCAL_CONFIG, REPO_ROOT
 from mercury.core.platform import detect_platform
 from mercury.core.safety import DRY_RUN_ONLY, LIVE_ACTIONS_ENABLED
+from mercury.core.usb_mount import (
+    DEFAULT_USB_MOUNT,
+    resolve_usb_mount,
+    usb_mount_is_active,
+    usb_mount_label,
+)
 
 ENV_DRY_RUN = "MERCURY_DRY_RUN"
 ENV_LIVE_ACTIONS = "MERCURY_LIVE_ACTIONS"
 ENV_BACKUP_ROOT = "MERCURY_BACKUP_ROOT"
 ENV_ALLOW_UNSAFE_BACKUP_ROOT = "MERCURY_ALLOW_UNSAFE_BACKUP_ROOT"
-REQUIRED_BACKUP_MOUNT = Path("/mnt/MERCURY_DATA_USB")
+REQUIRED_BACKUP_MOUNT = DEFAULT_USB_MOUNT
 MIN_FREE_BYTES = 20 * 1024 * 1024 * 1024
 
 
 def _disk_usage(path: Path) -> shutil._ntuple_diskusage:
     return shutil.disk_usage(path)
-
-
-def _path_is_mount(path: Path) -> bool:
-    return path.is_mount()
 
 
 def _env_bool(name: str) -> bool | None:
@@ -56,6 +58,7 @@ class ExecutionPolicy:
     backup_root: Path
     config_path: Path | None = None
     allow_unsafe_backup_root: bool = False
+    usb_mount: Path = REQUIRED_BACKUP_MOUNT
 
     def backup_root_is_within_repo(self) -> bool:
         try:
@@ -72,13 +75,13 @@ class ExecutionPolicy:
 
     def backup_root_is_under_required_mount(self) -> bool:
         try:
-            self.backup_root.resolve().relative_to(REQUIRED_BACKUP_MOUNT.resolve())
+            self.backup_root.resolve().relative_to(self.usb_mount.resolve())
             return True
         except ValueError:
             return False
 
     def required_mount_is_active(self) -> bool:
-        return _path_is_mount(REQUIRED_BACKUP_MOUNT)
+        return usb_mount_is_active(self.usb_mount)
 
     def backup_root_free_bytes(self) -> int | None:
         try:
@@ -105,26 +108,22 @@ class ExecutionPolicy:
     def backup_environment_refusal(self) -> str | None:
         """Environment checks for backup writes (platform, USB, config)."""
         platform_info = detect_platform()
+        mount_label = usb_mount_label(self.usb_mount)
         if not platform_info.allows_live_execution:
-            if platform_info.is_windows:
-                return (
-                    "Mercury backup execution is not supported on Windows. "
-                    "Use Windows for seed planning/status only and run backups on Fedora."
-                )
             if platform_info.is_linux:
                 distro = platform_info.distro_name or platform_info.distro_id or "Linux"
                 return (
-                    f"Mercury backup execution is supported only on Fedora. {distro} was detected. "
-                    "Use non-Fedora Linux for seed planning/status only, or run backups on Fedora."
+                    f"Mercury backup execution is supported on Fedora and Windows. {distro} was detected. "
+                    "Use non-Fedora Linux for seed planning/status only, or run backups on Fedora or Windows."
                 )
             return (
-                f"Mercury backup execution is supported only on Fedora. {platform_info.system} was detected. "
+                f"Mercury backup execution is supported on Fedora and Windows. {platform_info.system} was detected. "
                 "Use this host for seed planning/status only."
             )
         if self.config_path is None:
             return (
                 "Backup execution requires config/local.toml. Run: mercury config init "
-                "and set [mercury].backup_root to /mnt/MERCURY_DATA_USB/mercury_backups."
+                f"and set [mercury].backup_root under {mount_label}."
             )
         if self.allow_unsafe_backup_root:
             return None
@@ -132,22 +131,22 @@ class ExecutionPolicy:
         if self.backup_root_is_within_repo():
             return (
                 "Refusing backup execution with a repo-local backup_root: "
-                f"{resolved}. Configure [mercury].backup_root under /mnt/MERCURY_DATA_USB."
+                f"{resolved}. Configure [mercury].backup_root under {mount_label}."
             )
         if not self.backup_root_exists():
             return (
                 "Refusing backup execution because backup_root does not exist: "
-                f"{resolved}. Create /mnt/MERCURY_DATA_USB/mercury_backups on the mounted USB first."
+                f"{resolved}. Create {mount_label}/mercury_backups on the USB first."
             )
         if not self.backup_root_is_under_required_mount():
             return (
                 "Refusing backup execution because backup_root is not under "
-                f"{REQUIRED_BACKUP_MOUNT}: {resolved}"
+                f"{self.usb_mount}: {resolved}"
             )
         if not self.required_mount_is_active():
             return (
                 "Refusing backup execution because the required USB mount is not active: "
-                f"{REQUIRED_BACKUP_MOUNT}"
+                f"{self.usb_mount}"
             )
         free_bytes = self.backup_root_free_bytes()
         if free_bytes is None:
@@ -241,6 +240,7 @@ def load_execution_policy(
     dry_run_override: bool | None = None,
     live_actions_override: bool | None = None,
     backup_root_override: Path | None = None,
+    usb_mount_override: Path | None = None,
 ) -> ExecutionPolicy:
     """
     Resolve execution policy.
@@ -275,6 +275,7 @@ def load_execution_policy(
     if live_actions_override is not None:
         live_actions = live_actions_override
 
+    usb_mount = usb_mount_override or resolve_usb_mount(local_config=config_path)
     backup_root = backup_root_override or resolve_backup_root(local_config=config_path)
 
     return ExecutionPolicy(
@@ -283,4 +284,5 @@ def load_execution_policy(
         backup_root=backup_root,
         config_path=config_path if config_path.exists() else None,
         allow_unsafe_backup_root=allow_unsafe_backup_root,
+        usb_mount=usb_mount,
     )

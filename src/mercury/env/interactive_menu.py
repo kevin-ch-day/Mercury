@@ -56,12 +56,15 @@ def _render_env_screen(*, show_title: bool) -> None:
     probe, error = _probe_database()
     print_environment_check(env, probe, error=error)
     display_screen.write_blank()
+    options: list[tuple[str, str]] = [("1", "Rescan")]
+    from mercury.repair.startup import usb_repair_needed
+
+    if usb_repair_needed():
+        options.append(("2", "Repair USB mount and permissions"))
     output.write(
         menu_display.render_option_menu(
             title="Actions",
-            options=[
-                ("1", "Rescan"),
-            ],
+            options=options,
             bottom_label="Back",
         )
     )
@@ -123,6 +126,13 @@ def run_env_menu(*, interactive: bool = True) -> None:
             show_title = pause_and_redraw()
             continue
 
+        if choice == "2":
+            from mercury.repair.startup import run_usb_repair_flow
+
+            run_usb_repair_flow(interactive=True, default_yes=True)
+            show_title = pause_and_redraw()
+            continue
+
         output.write(menu_prompts.invalid_choice_message(choice))
 
 
@@ -143,13 +153,18 @@ def run_doctor_menu(*, interactive: bool = True) -> None:
         report = run_doctor(probe_database=True)
         print_doctor_report(report)
         display_screen.write_blank()
+        options: list[tuple[str, str]] = [
+            ("1", "Show repair plan"),
+            ("2", "Rescan"),
+        ]
+        from mercury.repair.startup import usb_repair_needed
+
+        if usb_repair_needed():
+            options.append(("3", "Repair USB mount and permissions"))
         output.write(
             menu_display.render_option_menu(
                 title="Actions",
-                options=[
-                    ("1", "Show repair plan"),
-                    ("2", "Rescan"),
-                ],
+                options=options,
                 bottom_label="Back",
             )
         )
@@ -165,6 +180,12 @@ def run_doctor_menu(*, interactive: bool = True) -> None:
             continue
         if choice == "2":
             display_screen.write_summary("Rescanned environment.")
+            show_title = pause_and_redraw()
+            continue
+        if choice == "3":
+            from mercury.repair.startup import run_usb_repair_flow
+
+            run_usb_repair_flow(interactive=True, default_yes=True)
             show_title = pause_and_redraw()
             continue
         output.write(menu_prompts.invalid_choice_message(choice))

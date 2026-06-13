@@ -237,14 +237,20 @@ def render_menu_help() -> str:
 
 def _main_menu_body_lines(*, probe_database: bool | None = None) -> list[str]:
     rule = rule_line()
-    return [
+    lines = [
         "Main Menu",
         rule,
         *dashboard_panel(dashboard_rows(probe_database=probe_database)),
         rule,
         *_flat_menu_item_lines(),
-        "",
     ]
+    from mercury.repair.startup import main_menu_usb_repair_hint
+
+    hint = main_menu_usb_repair_hint()
+    if hint:
+        lines.extend(["", hint])
+    lines.append("")
+    return lines
 
 
 def render_main_menu_body(*, probe_database: bool | None = None) -> str:
@@ -253,10 +259,11 @@ def render_main_menu_body(*, probe_database: bool | None = None) -> str:
 
 
 def render_main_menu(*, probe_database: bool | None = None) -> str:
+    probe = should_probe_database_status() if probe_database is None else probe_database
     lines = [
         MENU_TITLE,
         MENU_SUBTITLE,
         "",
-        *_main_menu_body_lines(probe_database=probe_database),
     ]
+    lines.extend(_main_menu_body_lines(probe_database=probe))
     return "\n".join(lines)

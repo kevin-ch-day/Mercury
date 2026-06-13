@@ -21,7 +21,7 @@ def test_render_menu_text_shows_database_status_when_configured() -> None:
     text = render_menu_text()
     if should_probe_database_status():
         assert "Backup target" in text
-        assert "Protected sources" in text
+        assert "MariaDB sources" in text
         assert "Sync readiness" in text
     else:
         assert "MariaDB" in text and "[!!]" in text
@@ -34,6 +34,7 @@ def test_run_menu_redisplay_after_choice(monkeypatch: pytest.MonkeyPatch, capsys
         lambda _prompt="": next(inputs),
     )
     monkeypatch.setattr("mercury.env.interactive_menu.read_env_choice", lambda: "0")
+    monkeypatch.setattr("mercury.repair.startup.maybe_prompt_usb_repair_at_startup", lambda: None)
 
     run_menu(interactive=True)
     out = capsys.readouterr().out
@@ -55,6 +56,7 @@ def test_run_menu_invalid_choice_does_not_redisplay(monkeypatch: pytest.MonkeyPa
         "mercury.menu.prompts.ask",
         lambda _prompt="": next(inputs),
     )
+    monkeypatch.setattr("mercury.repair.startup.maybe_prompt_usb_repair_at_startup", lambda: None)
 
     run_menu(interactive=True)
     out = capsys.readouterr().out
@@ -72,6 +74,7 @@ def test_run_menu_loop_with_injected_renderer(
         "mercury.menu.prompts.ask",
         lambda _prompt="": next(inputs),
     )
+    monkeypatch.setattr("mercury.repair.startup.maybe_prompt_usb_repair_at_startup", lambda: None)
 
     run_menu(interactive=True, render_menu_text=lambda: next(renders))
     out = capsys.readouterr().out
@@ -204,7 +207,7 @@ def test_render_main_menu_matches_simple_layout() -> None:
     assert menu_display.MENU_SUBTITLE in text
     assert "\nMain Menu\n" in text
     assert "Backup target" in text
-    assert "Protected sources" in text
+    assert "MariaDB sources" in text
     assert "Sync readiness" in text
     assert "Protection" in text
     assert "Execution Safety" not in text

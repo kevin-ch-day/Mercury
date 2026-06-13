@@ -78,6 +78,19 @@ fi
 
 require_mercury
 
+if [[ "${1:-}" == "repair-usb" ]]; then
+  REPAIR_SCRIPT="$ROOT/scripts/repair-mercury-usb.sh"
+  if [[ ! -f "$REPAIR_SCRIPT" ]]; then
+    echo "Missing repair script: $REPAIR_SCRIPT" >&2
+    exit 1
+  fi
+  chmod +x "$REPAIR_SCRIPT"
+  if [[ "${EUID}" -eq 0 ]]; then
+    exec "$REPAIR_SCRIPT"
+  fi
+  exec sudo "$REPAIR_SCRIPT"
+fi
+
 if [[ $# -eq 0 ]]; then
   exec "$VENV/bin/mercury" menu
 fi

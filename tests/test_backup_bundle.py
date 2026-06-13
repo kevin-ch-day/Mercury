@@ -57,8 +57,8 @@ def test_write_database_bundle_plan_writes_manifest_and_runbook(
         "android_permission_intel-full-20260608_120000",
     )
 
-    monkeypatch.setattr("mercury.backup.bundle.REQUIRED_BACKUP_MOUNT", usb_root)
-    monkeypatch.setattr(Path, "is_mount", lambda self: self.resolve() == usb_root.resolve())
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_usb_mount", lambda **kwargs: usb_root)
+    monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
     monkeypatch.setattr(
         "mercury.backup.bundle.load_repo_bundle_settings",
         lambda: type(

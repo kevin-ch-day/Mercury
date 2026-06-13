@@ -11,7 +11,8 @@ from pydantic import BaseModel, Field
 
 from mercury.backup.on_disk_index import build_on_disk_backup_list, latest_records_by_database
 from mercury.backup.verification import verify_backup_artifacts
-from mercury.core.execution_policy import REQUIRED_BACKUP_MOUNT, load_execution_policy
+from mercury.core.execution_policy import load_execution_policy
+from mercury.core.usb_mount import assert_operator_usb_path, resolve_usb_mount
 from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.reporting.protection import build_protection_report
 from mercury.repo import inspect_repositories, load_repo_bundle_settings, load_repo_definitions
@@ -75,13 +76,7 @@ def _transfer_output_paths(settings: RepoBundleSettings, stamp: str) -> tuple[Pa
 
 
 def _ensure_usb_path(path: Path) -> None:
-    resolved = path.expanduser().resolve()
-    try:
-        resolved.relative_to(REQUIRED_BACKUP_MOUNT)
-    except ValueError as exc:
-        raise ValueError(f"path is not under {REQUIRED_BACKUP_MOUNT}: {resolved}") from exc
-    if not REQUIRED_BACKUP_MOUNT.is_mount():
-        raise ValueError(f"required USB mount is not active: {REQUIRED_BACKUP_MOUNT}")
+    assert_operator_usb_path(path)
 
 
 def _latest_transfer_artifact(directory: Path, pattern: str) -> Path | None:
@@ -170,7 +165,7 @@ def build_transfer_bundle(*, live: bool = False) -> TransferBundle:
         host=socket.gethostname(),
         mode="live" if live else "seed",
         backup_root=str(policy.backup_root),
-        required_usb_mount=str(REQUIRED_BACKUP_MOUNT),
+        required_usb_mount=str(resolve_usb_mount()),
         manifest_dir=str(settings.manifest_dir),
         runbook_dir=str(settings.runbook_dir),
         database_entries=database_entries,

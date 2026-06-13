@@ -3,8 +3,9 @@
 [mercury]
 mode = "seed"
 # Fedora example: /var/backups/mercury
-# Stable USB mount example: /mnt/MERCURY_DATA_USB/mercury_backups
-# Repo-local "backups" is fine for development only; live backups must use the USB mount.
+# Stable USB mount example: /mnt/MERCURY_DATA_USB/mercury_backups (Linux)
+# Windows example: usb_mount = "E:/MERCURY_DATA_USB" then paths like E:/MERCURY_DATA_USB/mercury_backups
+# usb_mount = "E:/MERCURY_DATA_USB"
 backup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"
 dry_run = true
 # Explicit gate for mariadb-dump execution and backup file writes

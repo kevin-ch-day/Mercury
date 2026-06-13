@@ -117,8 +117,7 @@ def test_live_execution_refuses_unmounted_usb_root(tmp_path: Path, monkeypatch: 
     usb_mount = tmp_path / "mnt" / "MERCURY_DATA_USB"
     backup_root = usb_mount / "mercury_backups"
     backup_root.mkdir(parents=True)
-    monkeypatch.setattr(core.execution_policy, "REQUIRED_BACKUP_MOUNT", usb_mount)
-    monkeypatch.setattr(core.execution_policy, "_path_is_mount", lambda path: False)
+    monkeypatch.setattr("mercury.core.execution_policy.usb_mount_is_active", lambda path, **kwargs: False)
     usage = namedtuple("usage", "total used free")(100, 10, 50 * 1024 * 1024 * 1024)
     monkeypatch.setattr(core.execution_policy, "_disk_usage", lambda path: usage)
     policy = ExecutionPolicy(
@@ -126,6 +125,7 @@ def test_live_execution_refuses_unmounted_usb_root(tmp_path: Path, monkeypatch: 
         live_actions_enabled=True,
         backup_root=backup_root,
         config_path=tmp_path / "local.toml",
+        usb_mount=usb_mount,
     )
     reason = policy.refusal_reason()
     assert reason is not None
@@ -139,8 +139,7 @@ def test_live_execution_accepts_mounted_usb_root(tmp_path: Path, monkeypatch: py
     usb_mount = tmp_path / "mnt" / "MERCURY_DATA_USB"
     backup_root = usb_mount / "mercury_backups"
     backup_root.mkdir(parents=True)
-    monkeypatch.setattr(core.execution_policy, "REQUIRED_BACKUP_MOUNT", usb_mount)
-    monkeypatch.setattr(core.execution_policy, "_path_is_mount", lambda path: True)
+    monkeypatch.setattr("mercury.core.execution_policy.usb_mount_is_active", lambda path, **kwargs: True)
     usage = namedtuple("usage", "total used free")(100, 10, 50 * 1024 * 1024 * 1024)
     monkeypatch.setattr(core.execution_policy, "_disk_usage", lambda path: usage)
     policy = ExecutionPolicy(
@@ -148,6 +147,7 @@ def test_live_execution_accepts_mounted_usb_root(tmp_path: Path, monkeypatch: py
         live_actions_enabled=True,
         backup_root=backup_root,
         config_path=tmp_path / "local.toml",
+        usb_mount=usb_mount,
     )
     assert policy.refusal_reason() is None
 
@@ -159,8 +159,7 @@ def test_live_execution_refuses_low_free_space(tmp_path: Path, monkeypatch: pyte
     usb_mount = tmp_path / "mnt" / "MERCURY_DATA_USB"
     backup_root = usb_mount / "mercury_backups"
     backup_root.mkdir(parents=True)
-    monkeypatch.setattr(core.execution_policy, "REQUIRED_BACKUP_MOUNT", usb_mount)
-    monkeypatch.setattr(core.execution_policy, "_path_is_mount", lambda path: True)
+    monkeypatch.setattr("mercury.core.execution_policy.usb_mount_is_active", lambda path, **kwargs: True)
     usage = namedtuple("usage", "total used free")(100, 10, 5 * 1024 * 1024 * 1024)
     monkeypatch.setattr(core.execution_policy, "_disk_usage", lambda path: usage)
     policy = ExecutionPolicy(
@@ -168,6 +167,7 @@ def test_live_execution_refuses_low_free_space(tmp_path: Path, monkeypatch: pyte
         live_actions_enabled=True,
         backup_root=backup_root,
         config_path=tmp_path / "local.toml",
+        usb_mount=usb_mount,
     )
     reason = policy.refusal_reason()
     assert reason is not None

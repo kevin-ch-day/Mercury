@@ -83,8 +83,7 @@ def test_discover_usb_target_detects_mounted_layout(monkeypatch, tmp_path: Path)
     mount.mkdir(parents=True)
     (mount / "mercury_backups").mkdir()
     (mount / "mercury_logs").mkdir()
-    monkeypatch.setattr("mercury.core.environment_status.REQUIRED_BACKUP_MOUNT", mount)
-    monkeypatch.setattr("mercury.core.environment_status._path_is_mount", lambda path: True)
+    monkeypatch.setattr("mercury.core.environment_status.usb_mount_is_active", lambda path, **kwargs: True)
 
     usb = discover_usb_target(mount_path=mount)
     assert usb.mounted is True
@@ -158,8 +157,7 @@ def test_build_environment_status_prioritizes_setup_blocker(monkeypatch, tmp_pat
     monkeypatch.setattr("mercury.core.environment_status.LOCAL_CONFIG", tmp_path / "missing-local.toml")
     monkeypatch.setattr("mercury.core.environment_status.DATABASES_LOCAL", tmp_path / "missing-databases.toml")
     monkeypatch.setattr("mercury.core.environment_status.REPOS_LOCAL", tmp_path / "missing-repos.toml")
-    monkeypatch.setattr("mercury.core.environment_status.REQUIRED_BACKUP_MOUNT", mount)
-    monkeypatch.setattr("mercury.core.environment_status._path_is_mount", lambda path: True)
+    monkeypatch.setattr("mercury.core.environment_status.usb_mount_is_active", lambda path, **kwargs: True)
     monkeypatch.setattr(
         "mercury.core.environment_status.load_execution_policy",
         lambda: ExecutionPolicy(
@@ -479,6 +477,7 @@ def test_doctor_repair_plan_includes_chown_commands(tmp_path: Path) -> None:
     )
     plan = build_repair_plan(report)
     text = "\n".join(cmd for _title, cmds in plan for cmd in cmds)
+    assert "repair-usb" in text
     assert "chown" in text
     assert "mercury_logs" in text
 
@@ -545,7 +544,8 @@ def test_doctor_repair_plan_usb_not_mounted() -> None:
     )
     plan = build_repair_plan(report)
     text = "\n".join(cmd for _title, cmds in plan for cmd in cmds)
-    assert "mount LABEL=MERCURY_DATA_USB" in text
+    assert "repair-usb" in text
+    assert "mercury_backups" in text
     assert "config init" in text
 
 # from test_doctor.py

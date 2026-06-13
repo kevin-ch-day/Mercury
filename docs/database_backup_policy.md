@@ -55,11 +55,13 @@ Schema-only uses planned `*.schema.sql.gz` files. Full verified backups are **re
 
 Backup writes are allowed when Mercury’s backup environment checks pass:
 
-- Fedora runtime host
+- Fedora or Windows runtime host
 - `config/local.toml` present with USB-backed `backup_root`
-- mounted USB under `/mnt/MERCURY_DATA_USB/mercury_backups`
+- mounted USB layout (`mercury_backups/`, `mercury_logs/`, … under configured `usb_mount` or Linux default `/mnt/MERCURY_DATA_USB`)
 - sufficient free space on the backup root
 - source database present on MariaDB (missing protected sources are refused, not silently skipped)
+
+If the USB drive is plugged in but unmounted, run `./run.sh doctor --repair-plan` (Linux) for mount and directory setup commands.
 
 Use `--dry-run` on CLI backup commands or **Preview backup plan** in the menu to plan without writing files.
 

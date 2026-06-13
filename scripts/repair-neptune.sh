@@ -3,27 +3,20 @@
 # Mercury never executes these steps automatically.
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 USER_NAME="${SUDO_USER:-${USER:-linuxadmin}}"
-USB="/mnt/MERCURY_DATA_USB"
 
 echo "Mercury Neptune repair helper"
 echo "Target user: ${USER_NAME}"
 echo
 
 if [[ "${EUID}" -ne 0 ]]; then
-  echo "Re-run with sudo so ownership and MariaDB grants can be applied:"
+  echo "Re-run with sudo so mount, ownership, and MariaDB grants can be applied:"
   echo "  sudo $0"
   exit 1
 fi
 
-for dir in mercury_logs mercury_backups mercury_manifests mercury_state \
-  mercury_repo_backups mercury_restore_checks mercury_runbooks; do
-  path="${USB}/${dir}"
-  if [[ -d "${path}" ]]; then
-    echo "chown ${USER_NAME}:${USER_NAME} ${path}"
-    chown -R "${USER_NAME}:${USER_NAME}" "${path}"
-  fi
-done
+"${ROOT}/scripts/repair-mercury-usb.sh"
 
 echo
 echo "Applying MariaDB deployment grants for ${USER_NAME}..."
@@ -38,4 +31,4 @@ EOF
 
 echo
 echo "Done. Verify with:"
-echo "  sudo -u ${USER_NAME} bash -lc 'cd /home/linuxadmin/GitHub/Mercury && ./run.sh doctor && ./run.sh deploy db --dry-run'"
+echo "  sudo -u ${USER_NAME} bash -lc 'cd \"${ROOT}\" && ./run.sh doctor'"

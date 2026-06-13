@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from mercury.core.execution_policy import REQUIRED_BACKUP_MOUNT
+from mercury.core.usb_mount import assert_operator_usb_path
 from mercury.deploy.plan import build_deployment_plan
 from mercury.deploy.repos.build_plan import build_repo_deploy_plan
 from mercury.deploy.target_status import target_status_label
@@ -170,13 +170,8 @@ def write_system_deploy_runbook(plan: SystemDeployPlan) -> Path:
     settings = load_repo_bundle_settings()
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     path = settings.runbook_dir / f"system_deployment_runbook_{stamp}.md"
+    assert_operator_usb_path(path)
     resolved = path.expanduser().resolve()
-    try:
-        resolved.relative_to(REQUIRED_BACKUP_MOUNT)
-    except ValueError as exc:
-        raise ValueError(f"path is not under {REQUIRED_BACKUP_MOUNT}: {resolved}") from exc
-    if not REQUIRED_BACKUP_MOUNT.is_mount():
-        raise ValueError(f"required USB mount is not active: {REQUIRED_BACKUP_MOUNT}")
     resolved.parent.mkdir(parents=True, exist_ok=True)
     resolved.write_text(_runbook_text(plan), encoding="utf-8")
     return resolved

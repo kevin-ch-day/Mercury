@@ -7,8 +7,8 @@ import tomllib
 
 from pydantic import BaseModel
 
-from mercury.core.execution_policy import REQUIRED_BACKUP_MOUNT
 from mercury.core.paths import LOCAL_CONFIG, REPOS_EXAMPLE, REPOS_LOCAL
+from mercury.core.usb_mount import resolve_usb_mount
 
 
 def _home_github_candidates() -> list[tuple[str, str, str]]:
@@ -26,9 +26,9 @@ def _home_github_candidates() -> list[tuple[str, str, str]]:
     return found
 
 
-DEFAULT_REPO_BACKUP_ROOT = REQUIRED_BACKUP_MOUNT / "mercury_repo_backups"
-DEFAULT_MANIFEST_DIR = REQUIRED_BACKUP_MOUNT / "mercury_manifests"
-DEFAULT_RUNBOOK_DIR = REQUIRED_BACKUP_MOUNT / "mercury_runbooks"
+DEFAULT_REPO_BACKUP_ROOT = resolve_usb_mount() / "mercury_repo_backups"
+DEFAULT_MANIFEST_DIR = resolve_usb_mount() / "mercury_manifests"
+DEFAULT_RUNBOOK_DIR = resolve_usb_mount() / "mercury_runbooks"
 DEFAULT_LOCAL_REPO_CANDIDATES: list[tuple[str, str, str]] = [
     ("mercury", "Mercury", "{home}/GitHub/Mercury"),
     ("erebus_engine", "Erebus Engine", "{home}/GitHub/erebus-engine-fedora"),

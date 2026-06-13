@@ -86,7 +86,13 @@ def _rebuild_is_complete(report: DoctorReport) -> bool:
 def _recommended_next_step(env, report: DoctorReport) -> str:
     if report.blockers:
         if any("not writable" in blocker for blocker in report.blockers):
-            return "./run.sh doctor --repair-plan"
+            from mercury.repair.usb import USB_REPAIR_COMMAND
+
+            return USB_REPAIR_COMMAND
+        if any("not mounted" in blocker for blocker in report.blockers):
+            from mercury.repair.usb import USB_REPAIR_COMMAND
+
+            return USB_REPAIR_COMMAND
         return recommended_next_step(env)
     if report.rebuild_complete:
         if env.policy.backup_execution_allowed():
@@ -134,25 +140,65 @@ def build_repair_plan(report: DoctorReport) -> list[tuple[str, list[str]]]:
     user = report.current_user
     mount = usb.mount_path
 
+    from mercury.repair.usb import USB_REPAIR_COMMAND
+
     if config.missing_labels:
         sections.append(("Create local config", ["./run.sh config init"]))
+
+    if config.local_toml_present:
+        from mercury.config.init import missing_mercury_usb_artifact_keys
+
+        missing_paths = missing_mercury_usb_artifact_keys()
+        if missing_paths:
+            sections.append(
+                (
+                    "Complete local.toml USB artifact paths",
+                    ["./run.sh config repair-local"],
+                )
+            )
 
     if not usb.mounted:
         sections.append(
             (
-                "Mount Mercury USB (requires sudo)",
+                "Repair Mercury USB (one command, requires sudo)",
                 [
-                    f"sudo mkdir -p {mount}",
-                    f"sudo mount LABEL=MERCURY_DATA_USB {mount}",
+                    USB_REPAIR_COMMAND,
+                    "This mounts the drive, creates mercury_* directories, fixes ownership, and enables boot mount.",
+                    f"Manual fallback: {usb.quick_mount_command or f'sudo mount LABEL=MERCURY_DATA_USB {mount}'}",
                     f"findmnt {mount}",
                 ],
             )
         )
+        if not getattr(usb, "device_attached", False):
+            sections.append(
+                (
+                    "USB device not detected",
+                    [
+                        "Connect the MERCURY_DATA_USB drive, then re-run ./run.sh doctor --repair-plan",
+                    ],
+                )
+            )
+        elif not usb.quick_mount_command:
+            sections.append(
+                (
+                    "Optional: persist USB mount in /etc/fstab (review before applying)",
+                    [
+                        f'LABEL=MERCURY_DATA_USB  {mount}  ext4  defaults,nofail  0  2',
+                    ],
+                )
+            )
+
+    if not usb.mercury_layout_present:
+        from mercury.core.setup_paths import MERCURY_USB_DIR_LABELS
+
+        layout_paths = " ".join(str(mount / dirname) for dirname, _label in MERCURY_USB_DIR_LABELS)
         sections.append(
             (
-                "Optional: persist USB mount in /etc/fstab (review before applying)",
+                "Prepare Mercury USB directories (after mount, requires sudo)",
                 [
-                    f'LABEL=MERCURY_DATA_USB  {mount}  ext4  defaults,nofail  0  2',
+                    f"sudo mkdir -p {layout_paths}",
+                    f'sudo chown -R "{user}:{user}" {mount}/mercury_*',
+                    f"ls -la {mount}",
                 ],
             )
         )
@@ -173,8 +219,9 @@ def build_repair_plan(report: DoctorReport) -> list[tuple[str, list[str]]]:
         sections.append(
             (
                 "Fix USB ownership (requires sudo)",
-                [chown_repair_command(path) for path in chown_targets]
-                + ["Optional one-shot helper: sudo ./scripts/repair-neptune.sh"],
+                [USB_REPAIR_COMMAND]
+                + [chown_repair_command(path) for path in chown_targets]
+                + ["Optional full host helper: sudo ./scripts/repair-neptune.sh"],
             )
         )
 
@@ -413,13 +460,8 @@ def _collect_blockers(env, report: DoctorReport) -> list[str]:
             continue
         blockers.append(label)
     missing_sources = [db for db in report.source_databases if not db.present and db.name != "(discovery)"]
-    backups_cover_sources = (
-        report.verified_backup_count == report.verified_backup_total
-        and report.verified_backup_total > 0
-    )
-    if missing_sources and not backups_cover_sources:
-        for db_check in missing_sources:
-            blockers.append(f"Source database missing on server: {db_check.name}")
+    # Missing MariaDB sources are operator/data lifecycle issues — warnings only, not repair-plan blockers.
+    _ = missing_sources
     return blockers
 
 
@@ -429,11 +471,32 @@ def _collect_warnings(env, report: DoctorReport) -> list[str]:
         warnings.append("USB target detected but local config is missing")
     if env.policy.backup_root_is_within_repo() and env.config.local_toml_present:
         warnings.append("Repo-local backup_root is dev-only and never safe for live mode")
+    if env.config.local_toml_present:
+        from mercury.config.init import missing_mercury_usb_artifact_keys
+
+        missing_paths = missing_mercury_usb_artifact_keys()
+        if missing_paths:
+            warnings.append(
+                "local.toml missing USB artifact paths ("
+                + ", ".join(missing_paths)
+                + ") — run: ./run.sh config repair-local"
+            )
+    usb = getattr(env, "usb", None)
+    if usb is not None and not usb.mounted and getattr(usb, "device_attached", False):
+        command = getattr(usb, "quick_mount_command", None)
+        if command:
+            warnings.append(f"USB drive attached but not mounted — run: {command}")
     if env.mariadb.configured_user == "root" and report.current_user != "root":
-        warnings.append(
-            f'MariaDB user is "root" but Mercury runs as {report.current_user}; '
-            "Fedora socket auth will fail unless run via sudo"
-        )
+        if env.mariadb.connection_works is True:
+            warnings.append(
+                f'MariaDB user is "root" but Mercury runs as {report.current_user}; '
+                "connection works today — prefer a dedicated unix_socket user (see repair plan)."
+            )
+        else:
+            warnings.append(
+                f'MariaDB user is "root" but Mercury runs as {report.current_user}; '
+                "Fedora socket auth will fail unless run via sudo"
+            )
     from mercury.repo import load_repo_definitions
     from mercury.repo.path_repair import repo_path_missing_detail, summarize_stale_repo_paths
 

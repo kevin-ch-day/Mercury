@@ -56,9 +56,21 @@ def _usb_writable_check(policy, env) -> PreflightCheck | None:
 
 
 def _disk_space_check(required_bytes: int) -> PreflightCheck:
-    mysql_dir = Path("/var/lib/mysql")
+    from mercury.core.platform import detect_platform
+
+    candidates: list[Path]
+    if detect_platform().is_windows:
+        candidates = [
+            Path("C:/ProgramData/MariaDB"),
+            Path("C:/Program Files/MariaDB"),
+            Path("C:/"),
+        ]
+    else:
+        candidates = [Path("/var/lib/mysql"), Path("/")]
+
+    mysql_dir = next((path for path in candidates if path.exists()), candidates[-1])
     try:
-        usage = shutil.disk_usage(mysql_dir if mysql_dir.exists() else Path("/"))
+        usage = shutil.disk_usage(mysql_dir)
     except OSError as exc:
         return PreflightCheck(
             label="Disk space",
