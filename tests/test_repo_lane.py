@@ -211,6 +211,7 @@ def test_print_repo_bundle_plan_includes_state_summary(
         source="repo-local fallback",
         operations=4,
         database_backup_rows=1,
+        database_bundle_rows=1,
         repo_bundle_rows=1,
         transfer_package_rows=0,
         sync_event_rows=0,

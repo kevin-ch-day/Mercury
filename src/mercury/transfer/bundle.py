@@ -17,14 +17,17 @@ from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.reporting.protection import build_protection_report
 from mercury.repo import inspect_repositories, load_repo_bundle_settings, load_repo_definitions
 from mercury.repo.config import RepoBundleSettings
+from mercury.repo.manifest_index import latest_repo_manifest_entries
 from mercury.repo.status import RepoStatus
 from mercury.sync.readiness import SyncReadinessReport, build_sync_readiness_report
+from mercury.state.ledger import record_transfer_bundle_written
 
 
 class TransferDatabaseEntry(BaseModel):
     database: str
     source_role: str
     verified: bool
+    freshness: str | None = None
     backup_id: str | None = None
     backup_directory: str | None = None
 
@@ -59,6 +62,11 @@ class TransferBundle(BaseModel):
     runbook_dir: str
     database_entries: list[TransferDatabaseEntry] = Field(default_factory=list)
     repo_entries: list[TransferRepoEntry] = Field(default_factory=list)
+    verified_source_count: int = 0
+    missing_source_count: int = 0
+    failed_source_count: int = 0
+    stale_source_count: int = 0
+    unknown_freshness_source_count: int = 0
     ready_sync_pairs: int = 0
     blocked_sync_pairs: int = 0
     dirty_repo_names: list[str] = Field(default_factory=list)
@@ -82,9 +90,6 @@ def _ensure_usb_path(path: Path) -> None:
 def _latest_transfer_artifact(directory: Path, pattern: str) -> Path | None:
     candidates = sorted(directory.glob(pattern))
     return candidates[-1] if candidates else None
-
-
-from mercury.repo.manifest_index import latest_repo_manifest_entries
 
 
 def build_transfer_bundle(*, live: bool = False) -> TransferBundle:
@@ -112,6 +117,7 @@ def build_transfer_bundle(*, live: bool = False) -> TransferBundle:
                 database=database,
                 source_role=source_role,
                 verified=verified,
+                freshness=protection.source_freshness.get(database),
                 backup_id=record.backup_id if record else None,
                 backup_directory=record.directory if record else None,
             )
@@ -170,6 +176,11 @@ def build_transfer_bundle(*, live: bool = False) -> TransferBundle:
         runbook_dir=str(settings.runbook_dir),
         database_entries=database_entries,
         repo_entries=repo_entries,
+        verified_source_count=protection.verified_source_count,
+        missing_source_count=protection.missing_source_count,
+        failed_source_count=protection.failed_source_count,
+        stale_source_count=protection.stale_source_count,
+        unknown_freshness_source_count=protection.unknown_freshness_source_count,
         ready_sync_pairs=readiness.ready_count,
         blocked_sync_pairs=readiness.blocked_count,
         dirty_repo_names=dirty_repo_names,
@@ -201,6 +212,7 @@ def _runbook_text(bundle: TransferBundle) -> str:
                 f"- {entry.database}",
                 f"  role: {entry.source_role}",
                 f"  verified: {entry.verified}",
+                f"  freshness: {entry.freshness or 'unknown'}",
                 f"  backup_id: {entry.backup_id or 'missing'}",
                 f"  backup_directory: {entry.backup_directory or 'missing'}",
             ]
@@ -258,7 +270,5 @@ def write_transfer_bundle(bundle: TransferBundle) -> TransferBundle:
     runbook_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(bundle.model_dump_json(indent=2) + "\n", encoding="utf-8")
     runbook_path.write_text(_runbook_text(bundle), encoding="utf-8")
-    from mercury.state.ledger import record_transfer_bundle_written
-
     record_transfer_bundle_written(bundle)
     return bundle

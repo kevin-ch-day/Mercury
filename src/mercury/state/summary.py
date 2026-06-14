@@ -7,13 +7,9 @@ from pathlib import Path
 
 from mercury import output
 from mercury.state.ledger import (
-    DATABASE_BACKUPS_CSV,
-    OPERATIONS_JSONL,
-    REPO_BUNDLES_CSV,
     STATE_DIRNAME,
-    SYNC_EVENTS_CSV,
-    TRANSFER_PACKAGES_CSV,
     read_operator_database_backup_rows,
+    read_operator_database_bundle_rows,
     read_operator_operation_rows,
     read_operator_repo_bundle_rows,
     read_operator_sync_event_rows,
@@ -28,22 +24,10 @@ class StateSummary:
     source: str
     operations: int
     database_backup_rows: int
+    database_bundle_rows: int
     repo_bundle_rows: int
     transfer_package_rows: int
     sync_event_rows: int
-
-
-def _count_rows(path: Path) -> int:
-    if not path.exists():
-        return 0
-    lines = path.read_text(encoding="utf-8").splitlines()
-    return max(0, len(lines) - 1)
-
-
-def _count_jsonl(path: Path) -> int:
-    if not path.exists():
-        return 0
-    return len([line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()])
 
 
 def build_state_summary(*, state_root: Path | None = None) -> StateSummary:
@@ -54,6 +38,7 @@ def build_state_summary(*, state_root: Path | None = None) -> StateSummary:
         source=source,
         operations=len(read_operator_operation_rows(state_root=root)),
         database_backup_rows=len(read_operator_database_backup_rows(state_root=root)),
+        database_bundle_rows=len(read_operator_database_bundle_rows(state_root=root)),
         repo_bundle_rows=len(read_operator_repo_bundle_rows(state_root=root)),
         transfer_package_rows=len(read_operator_transfer_package_rows(state_root=root)),
         sync_event_rows=len(read_operator_sync_event_rows(state_root=root)),
@@ -66,6 +51,7 @@ def print_state_summary(summary: StateSummary) -> None:
     output.field("source", summary.source)
     output.field("operations", summary.operations)
     output.field("database_backups", summary.database_backup_rows)
+    output.field("database_bundles", summary.database_bundle_rows)
     output.field("repo_bundles", summary.repo_bundle_rows)
     output.field("transfer_packages", summary.transfer_package_rows)
     output.field("sync_events", summary.sync_event_rows)

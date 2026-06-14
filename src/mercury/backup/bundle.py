@@ -9,8 +9,10 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from mercury.backup.status import BackupStatusEntry, build_backup_status_report
+from mercury.backup.package_status import database_bundle_package_status
 from mercury.core.usb_mount import assert_operator_usb_path
 from mercury.repo.config import load_repo_bundle_settings
+from mercury.state.ledger import record_database_bundle_written
 
 
 class DatabaseBundleEntry(BaseModel):
@@ -19,6 +21,8 @@ class DatabaseBundleEntry(BaseModel):
     protection_status: str
     backup_id: str | None = None
     backup_directory: str | None = None
+    backup_age: str | None = None
+    freshness: str | None = None
     planned_manifest_path: Path
     planned_runbook_path: Path
     issues: list[str] = Field(default_factory=list)
@@ -35,6 +39,8 @@ class DatabaseBundlePlan(BaseModel):
     verified_count: int
     missing_count: int
     failed_count: int
+    stale_count: int = 0
+    unknown_freshness_count: int = 0
     entries: list[DatabaseBundleEntry] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
@@ -84,6 +90,8 @@ def build_database_bundle_plan(
                 protection_status=entry.protection_status,
                 backup_id=entry.backup_id,
                 backup_directory=entry.backup_directory,
+                backup_age=entry.backup_age,
+                freshness=entry.freshness,
                 planned_manifest_path=manifest_path,
                 planned_runbook_path=runbook_path,
                 issues=list(entry.issues),
@@ -101,6 +109,8 @@ def build_database_bundle_plan(
         verified_count=report.verified_count,
         missing_count=report.missing_count,
         failed_count=report.failed_count,
+        stale_count=report.stale_count,
+        unknown_freshness_count=report.unknown_freshness_count,
         entries=entries,
         warnings=list(report.warnings),
     )
@@ -108,6 +118,17 @@ def build_database_bundle_plan(
 
 def _ensure_usb_path(path: Path) -> None:
     assert_operator_usb_path(path)
+
+
+def bundle_package_status(plan: DatabaseBundlePlan) -> str:
+    return database_bundle_package_status(
+        source_count=plan.source_count,
+        verified_count=plan.verified_count,
+        missing_count=plan.missing_count,
+        failed_count=plan.failed_count,
+        stale_count=plan.stale_count,
+        unknown_freshness_count=plan.unknown_freshness_count,
+    )
 
 
 def _entry_manifest_payload(plan: DatabaseBundlePlan, entry: DatabaseBundleEntry) -> dict[str, object]:
@@ -118,6 +139,8 @@ def _entry_manifest_payload(plan: DatabaseBundlePlan, entry: DatabaseBundleEntry
         "protection_status": entry.protection_status,
         "backup_id": entry.backup_id,
         "backup_directory": entry.backup_directory,
+        "backup_age": entry.backup_age,
+        "freshness": entry.freshness,
         "manifest_path": str(entry.planned_manifest_path),
         "runbook_path": str(entry.planned_runbook_path),
         "issues": entry.issues,
@@ -134,6 +157,9 @@ def _index_manifest_payload(plan: DatabaseBundlePlan) -> dict[str, object]:
         "verified_count": plan.verified_count,
         "missing_count": plan.missing_count,
         "failed_count": plan.failed_count,
+        "stale_count": plan.stale_count,
+        "unknown_freshness_count": plan.unknown_freshness_count,
+        "package_status": bundle_package_status(plan),
         "warnings": plan.warnings,
         "databases": [
             {
@@ -142,6 +168,8 @@ def _index_manifest_payload(plan: DatabaseBundlePlan) -> dict[str, object]:
                 "protection_status": entry.protection_status,
                 "backup_id": entry.backup_id,
                 "backup_directory": entry.backup_directory,
+                "backup_age": entry.backup_age,
+                "freshness": entry.freshness,
                 "manifest_path": str(entry.planned_manifest_path),
                 "runbook_path": str(entry.planned_runbook_path),
                 "issues": entry.issues,
@@ -159,6 +187,8 @@ def _entry_runbook_text(entry: DatabaseBundleEntry) -> str:
         f"Protection status: {entry.protection_status}",
         f"Backup ID: {entry.backup_id or 'missing'}",
         f"Backup directory: {entry.backup_directory or 'missing'}",
+        f"Backup age: {entry.backup_age or 'unknown'}",
+        f"Freshness: {entry.freshness or 'unknown'}",
         "",
         "Recommended sequence:",
     ]
@@ -197,6 +227,9 @@ def _index_runbook_text(plan: DatabaseBundlePlan) -> str:
         f"Verified: {plan.verified_count}",
         f"Missing: {plan.missing_count}",
         f"Failed: {plan.failed_count}",
+        f"Stale: {plan.stale_count}",
+        f"Unknown freshness: {plan.unknown_freshness_count}",
+        f"Package status: {bundle_package_status(plan)}",
         "",
         "Databases:",
     ]
@@ -208,6 +241,8 @@ def _index_runbook_text(plan: DatabaseBundlePlan) -> str:
                 f"  protection_status: {entry.protection_status}",
                 f"  backup_id: {entry.backup_id or 'missing'}",
                 f"  backup_directory: {entry.backup_directory or 'missing'}",
+                f"  backup_age: {entry.backup_age or 'unknown'}",
+                f"  freshness: {entry.freshness or 'unknown'}",
                 f"  manifest: {entry.planned_manifest_path}",
                 f"  restore note: {entry.planned_runbook_path}",
             ]
@@ -219,6 +254,7 @@ def _index_runbook_text(plan: DatabaseBundlePlan) -> str:
             "- A database is not protected until verification passes.",
             "- Restore-check uses disposable _restorecheck_* databases only.",
             "- Prod-to-dev sync requires verified full backups for production sync sources.",
+            "- Stale or unknown freshness means the USB backup may lag live source activity; run full backup before handoff.",
             "",
         ]
     )
@@ -257,4 +293,5 @@ def write_database_bundle_plan(plan: DatabaseBundlePlan) -> DatabaseBundlePlan:
         _index_runbook_text(plan),
         encoding="utf-8",
     )
+    record_database_bundle_written(plan)
     return plan

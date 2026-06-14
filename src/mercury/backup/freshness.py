@@ -73,6 +73,42 @@ OPERATOR_FRESHNESS_GUIDANCE = (
 )
 
 
+def backup_entry_status_label(entry) -> str:
+    """Operator-facing backup row status for menus and recovery screens."""
+    if entry is None:
+        return "Missing"
+    protection_status = getattr(entry, "protection_status", None)
+    if protection_status != "verified":
+        if protection_status == "missing":
+            return "Missing"
+        if protection_status == "failed":
+            return "Unverified"
+        return "Warning"
+    freshness = getattr(entry, "freshness", None)
+    if freshness == FRESHNESS_STALE:
+        return "Stale"
+    if freshness == FRESHNESS_UNKNOWN:
+        return "Unknown"
+    return "Fresh"
+
+
+def menu_handoff_problem_summary(problem_parts: list[str]) -> str:
+    return (
+        "Fresh full backup needed before workstation handoff: "
+        + ", ".join(problem_parts)
+        + "."
+    )
+
+
+def protection_handoff_action_item(*, include_sync: bool = True) -> str:
+    message = (
+        "Run full backup for stale or unknown-freshness sources before workstation handoff"
+    )
+    if include_sync:
+        return message + " or prod→dev sync."
+    return message + "."
+
+
 class BackupFreshnessAssessment(BaseModel):
     database: str
     backup_at: datetime | None = None
@@ -153,6 +189,30 @@ def freshness_status_label(freshness: str) -> str:
     if freshness == FRESHNESS_STALE:
         return "stale"
     return "unknown"
+
+
+def display_artifact_status_label(protection_status: str) -> str:
+    return artifact_status_label(protection_status).title()
+
+
+def display_freshness_label(freshness: str | None) -> str:
+    if not freshness:
+        return "—"
+    return freshness_status_label(freshness).title()
+
+
+def handoff_freshness_warning(*, stale_count: int = 0, unknown_count: int = 0) -> str | None:
+    if not stale_count and not unknown_count:
+        return None
+    parts: list[str] = []
+    if stale_count:
+        parts.append(f"{stale_count} stale")
+    if unknown_count:
+        parts.append(f"{unknown_count} unknown freshness")
+    return (
+        f"{' and '.join(parts)} verified backup(s) — bundle documents current USB state "
+        "but handoff should wait for fresh full backups."
+    )
 
 
 def fetch_latest_source_activity_at(

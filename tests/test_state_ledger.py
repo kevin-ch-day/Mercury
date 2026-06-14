@@ -109,11 +109,17 @@ def test_build_state_summary_counts_files(tmp_path: Path) -> None:
         "timestamp,source\n2026-06-09T00:00:00+00:00,erebus_threat_intel_prod\n",
         encoding="utf-8",
     )
+    (state_root / "database_bundles.csv").write_text(
+        "timestamp,index_manifest_path,index_runbook_path\n"
+        "2026-06-09T00:00:00+00:00,/mnt/MERCURY_DATA_USB/mercury_manifests/index.json,/mnt/MERCURY_DATA_USB/mercury_runbooks/index.md\n",
+        encoding="utf-8",
+    )
 
     summary = build_state_summary(state_root=state_root)
     assert summary.source == "usb"
     assert summary.operations == 2
     assert summary.database_backup_rows == 1
+    assert summary.database_bundle_rows == 1
     assert summary.repo_bundle_rows == 1
     assert summary.transfer_package_rows == 1
     assert summary.sync_event_rows == 1
@@ -122,6 +128,7 @@ def test_build_state_summary_counts_files(tmp_path: Path) -> None:
 def test_build_state_summary_ignores_pytest_generated_operator_debris(tmp_path: Path) -> None:
     from mercury.state.ledger import (
         DATABASE_BACKUPS_CSV,
+        DATABASE_BUNDLES_CSV,
         OPERATIONS_JSONL,
         REPO_BUNDLES_CSV,
         SYNC_EVENTS_CSV,
@@ -171,10 +178,17 @@ def test_build_state_summary_ignores_pytest_generated_operator_debris(tmp_path: 
         "2026-06-09T00:00:01+00:00,erebus_threat_intel_prod,erebus_threat_intel_dev,executed,/tmp/pytest-of-secadmin/pytest-1/erebus,ok\n",
         encoding="utf-8",
     )
+    (state_root / DATABASE_BUNDLES_CSV).write_text(
+        "timestamp,index_manifest_path,index_runbook_path,source_count,verified_count,missing_count,failed_count,stale_count,unknown_freshness_count,package_status,warnings\n"
+        "2026-06-09T00:00:00+00:00,/mnt/MERCURY_DATA_USB/mercury_manifests/index.json,/mnt/MERCURY_DATA_USB/mercury_runbooks/index.md,1,1,0,0,0,0,complete,\n"
+        "2026-06-09T00:00:01+00:00,/tmp/pytest-of-secadmin/pytest-1/index.json,/tmp/pytest-of-secadmin/pytest-1/index.md,1,1,0,0,0,0,complete,\n",
+        encoding="utf-8",
+    )
 
     summary = build_state_summary(state_root=state_root)
     assert summary.operations == 1
     assert summary.database_backup_rows == 1
+    assert summary.database_bundle_rows == 1
     assert summary.repo_bundle_rows == 1
     assert summary.transfer_package_rows == 1
     assert summary.sync_event_rows == 1

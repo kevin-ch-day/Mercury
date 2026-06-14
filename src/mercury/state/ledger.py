@@ -11,12 +11,13 @@ from typing import Any
 
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
 from mercury.core.usb_mount import usb_mount_is_active
-from mercury.core.paths import DATA_DIR
+from mercury.backup.package_status import database_bundle_package_status
 
 STATE_DIRNAME = "mercury_state"
 OPERATIONS_JSONL = "operations.jsonl"
 DATABASE_BACKUPS_CSV = "database_backups.csv"
 REPO_BUNDLES_CSV = "repo_bundles.csv"
+DATABASE_BUNDLES_CSV = "database_bundles.csv"
 TRANSFER_PACKAGES_CSV = "transfer_packages.csv"
 SYNC_EVENTS_CSV = "sync_events.csv"
 
@@ -51,6 +52,20 @@ REPO_BUNDLE_FIELDS = [
     "bundle_path",
     "bundle_verified",
     "bundle_size_bytes",
+    "warnings",
+]
+
+DATABASE_BUNDLE_FIELDS = [
+    "timestamp",
+    "index_manifest_path",
+    "index_runbook_path",
+    "source_count",
+    "verified_count",
+    "missing_count",
+    "failed_count",
+    "stale_count",
+    "unknown_freshness_count",
+    "package_status",
     "warnings",
 ]
 
@@ -153,6 +168,15 @@ def read_operator_repo_bundle_rows(*, state_root: Path | None = None) -> list[di
         row
         for row in _read_csv_rows(REPO_BUNDLES_CSV, state_root=state_root)
         if is_operator_ledger_path(row.get("bundle_path"))
+    ]
+
+
+def read_operator_database_bundle_rows(*, state_root: Path | None = None) -> list[dict[str, str]]:
+    return [
+        row
+        for row in _read_csv_rows(DATABASE_BUNDLES_CSV, state_root=state_root)
+        if is_operator_ledger_path(row.get("index_manifest_path"))
+        and is_operator_ledger_path(row.get("index_runbook_path"))
     ]
 
 
@@ -483,6 +507,63 @@ def record_repo_bundle_retention(plan, *, state_root: Path | None = None) -> Non
                 },
             ),
         )
+
+
+def record_database_bundle_written(plan, *, state_root: Path | None = None) -> None:
+    package_status = database_bundle_package_status(
+        source_count=plan.source_count,
+        verified_count=plan.verified_count,
+        missing_count=plan.missing_count,
+        failed_count=plan.failed_count,
+        stale_count=plan.stale_count,
+        unknown_freshness_count=plan.unknown_freshness_count,
+    )
+    root = _append_operation(
+        "database_bundle_written",
+        {
+            "index_manifest_path": str(plan.planned_index_manifest_path),
+            "index_runbook_path": str(plan.planned_index_runbook_path),
+            "source_count": plan.source_count,
+            "verified_count": plan.verified_count,
+            "missing_count": plan.missing_count,
+            "failed_count": plan.failed_count,
+            "stale_count": plan.stale_count,
+            "unknown_freshness_count": plan.unknown_freshness_count,
+            "package_status": package_status,
+            "warnings": plan.warnings,
+            "databases": [
+                {
+                    "database": entry.database,
+                    "manifest_path": str(entry.planned_manifest_path),
+                    "runbook_path": str(entry.planned_runbook_path),
+                    "protection_status": entry.protection_status,
+                    "freshness": entry.freshness,
+                    "backup_id": entry.backup_id,
+                }
+                for entry in plan.entries
+            ],
+        },
+        state_root=state_root,
+    )
+    if root is None:
+        return
+    _append_csv(
+        root / DATABASE_BUNDLES_CSV,
+        DATABASE_BUNDLE_FIELDS,
+        {
+            "timestamp": _timestamp(),
+            "index_manifest_path": str(plan.planned_index_manifest_path),
+            "index_runbook_path": str(plan.planned_index_runbook_path),
+            "source_count": plan.source_count,
+            "verified_count": plan.verified_count,
+            "missing_count": plan.missing_count,
+            "failed_count": plan.failed_count,
+            "stale_count": plan.stale_count,
+            "unknown_freshness_count": plan.unknown_freshness_count,
+            "package_status": package_status,
+            "warnings": " | ".join(plan.warnings),
+        },
+    )
 
 
 def record_transfer_bundle_written(bundle, *, state_root: Path | None = None) -> None:

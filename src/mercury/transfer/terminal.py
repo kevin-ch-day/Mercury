@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.backup.freshness import display_freshness_label, handoff_freshness_warning
+from mercury.backup.package_status import database_bundle_package_status
 from mercury.terminal import screen as display_screen
 from mercury.terminal.table import Table, TableStyle
 from mercury.transfer.bundle import TransferBundle
@@ -10,7 +12,16 @@ from mercury.state.summary import build_state_summary
 
 def print_transfer_bundle(bundle: TransferBundle, *, executed: bool = False) -> None:
     state = build_state_summary()
-    verified_sources = sum(1 for entry in bundle.database_entries if entry.verified)
+    verified_sources = bundle.verified_source_count
+    source_count = len(bundle.database_entries)
+    database_package = database_bundle_package_status(
+        source_count=source_count,
+        verified_count=verified_sources,
+        missing_count=bundle.missing_source_count,
+        failed_count=bundle.failed_source_count,
+        stale_count=bundle.stale_source_count,
+        unknown_freshness_count=bundle.unknown_freshness_source_count,
+    )
     dirty_repos = sum(1 for entry in bundle.repo_entries if entry.dirty and not entry.error)
     repo_errors = sum(1 for entry in bundle.repo_entries if entry.error)
     repo_bundles_verified = all(
@@ -21,7 +32,6 @@ def print_transfer_bundle(bundle: TransferBundle, *, executed: bool = False) -> 
         for entry in bundle.repo_entries
         if not entry.error
     ) if bundle.repo_entries else False
-    database_package = "complete" if bundle.database_entries and verified_sources == len(bundle.database_entries) else "partial"
     repository_package = "complete"
     if repo_errors or not repo_bundles_present or not repo_bundles_verified:
         repository_package = "partial"
@@ -32,8 +42,13 @@ def print_transfer_bundle(bundle: TransferBundle, *, executed: bool = False) -> 
     display_screen.write_fields(
         {
             "Mode": bundle.mode.upper(),
-            "Database sources": len(bundle.database_entries),
+            "Database sources": source_count,
             "Verified sources": verified_sources,
+            "Freshness": (
+                f"{bundle.stale_source_count} stale · {bundle.unknown_freshness_source_count} unknown"
+                if source_count
+                else "—"
+            ),
             "Configured repos": len(bundle.repo_entries),
             "Dirty repos": dirty_repos,
             "Repo errors": repo_errors,
@@ -46,6 +61,7 @@ def print_transfer_bundle(bundle: TransferBundle, *, executed: bool = False) -> 
             "Transfer package": "complete" if transfer_complete else "partial",
             "State root": str(state.state_root),
             "State ops": state.operations,
+            "State bundles": state.database_bundle_rows,
         }
     )
 
@@ -53,21 +69,29 @@ def print_transfer_bundle(bundle: TransferBundle, *, executed: bool = False) -> 
         display_screen.write_blank()
         display_screen.write_structured_table(
             Table.from_headers(
-                ["DATABASE", "ROLE", "VERIFIED", "BACKUP ID"],
+                ["DATABASE", "ROLE", "VERIFIED", "FRESH", "BACKUP ID"],
                 [
                     [
                         entry.database,
                         entry.source_role,
                         "yes" if entry.verified else "no",
+                        display_freshness_label(entry.freshness),
                         entry.backup_id or "missing",
                     ]
                     for entry in bundle.database_entries
                 ],
                 style=TableStyle(indent=0),
-                min_col_widths=[28, 18, 8, 18],
-                max_col_widths=[36, 20, 8, 40],
+                min_col_widths=[28, 18, 8, 8, 28],
             )
         )
+
+    freshness_warning = handoff_freshness_warning(
+        stale_count=bundle.stale_source_count,
+        unknown_count=bundle.unknown_freshness_source_count,
+    )
+    if freshness_warning:
+        display_screen.write_blank()
+        display_screen.write_status("warn", freshness_warning)
 
     if bundle.repo_entries:
         display_screen.write_blank()

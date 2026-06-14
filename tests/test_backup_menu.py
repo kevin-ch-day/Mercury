@@ -378,3 +378,43 @@ def test_status_label_mapping_for_missing_entry() -> None:
     from mercury.backup.interactive_menu import _status_label
 
     assert _status_label(None) == "Missing"
+
+
+def test_write_backup_bundle_cancelled(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mercury.backup.bundle import DatabaseBundlePlan
+    from mercury.backup.interactive_menu import _write_backup_bundle
+
+    plan = DatabaseBundlePlan(
+        generated_at="2026-06-09T00:00:00+00:00",
+        backup_root=Path("/tmp/backups"),
+        manifest_dir=Path("/tmp/manifests"),
+        runbook_dir=Path("/tmp/runbooks"),
+        planned_index_manifest_path=Path("/tmp/manifests/index.json"),
+        planned_index_runbook_path=Path("/tmp/runbooks/index.md"),
+        source_count=1,
+        verified_count=1,
+        missing_count=0,
+        failed_count=0,
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.build_database_bundle_plan",
+        lambda live: plan,
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.print_database_bundle_plan",
+        lambda plan, executed=False: None,
+    )
+    monkeypatch.setattr(
+        "mercury.menu.prompts.ask_yes_no",
+        lambda prompt, default=True: False,
+    )
+
+    def _fail_write(plan):  # noqa: ARG001
+        raise AssertionError("write should not run when cancelled")
+
+    monkeypatch.setattr("mercury.backup.interactive_menu.write_database_bundle_plan", _fail_write)
+    _write_backup_bundle()
+    assert "cancelled" in capsys.readouterr().out.lower()

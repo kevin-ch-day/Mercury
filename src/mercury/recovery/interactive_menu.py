@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from mercury.backup.freshness import FRESHNESS_STALE, FRESHNESS_UNKNOWN
+from mercury.backup.freshness import FRESHNESS_STALE, backup_entry_status_label
 from mercury.backup.status import BackupStatusEntry, BackupStatusReport, build_backup_status_report
 from mercury.core.usb_mount import resolve_usb_mount
 from mercury.core.runtime import should_probe_database_status
@@ -33,17 +33,7 @@ def read_recovery_choice() -> str | None:
 
 
 def _status_label(entry: BackupStatusEntry) -> str:
-    if entry.protection_status == "missing":
-        return "Missing"
-    if entry.protection_status == "failed":
-        return "Unverified"
-    if entry.protection_status != "verified":
-        return "Warning"
-    if entry.freshness == FRESHNESS_STALE:
-        return "Stale"
-    if entry.freshness == FRESHNESS_UNKNOWN:
-        return "Unknown"
-    return "Fresh"
+    return backup_entry_status_label(entry)
 
 
 def _latest_restore_check_status() -> dict[str, str]:

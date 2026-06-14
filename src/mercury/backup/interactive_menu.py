@@ -16,7 +16,7 @@ from mercury.backup import (
     build_database_bundle_plan,
     write_database_bundle_plan,
 )
-from mercury.backup.freshness import FRESHNESS_STALE, FRESHNESS_UNKNOWN
+from mercury.backup.freshness import backup_entry_status_label, menu_handoff_problem_summary
 from mercury.backup.terminal.batch import print_backup_batch_result
 from mercury.backup.terminal.bundle import print_database_bundle_plan
 from mercury.backup.terminal.verify import print_verify_menu_summary, run_verify_all_for_menu
@@ -115,19 +115,7 @@ def _format_last_backup(created_at: str | None, backup_age: str | None = None) -
 
 
 def _status_label(entry) -> str:
-    if entry is None:
-        return "Missing"
-    if entry.protection_status != "verified":
-        if entry.protection_status == "missing":
-            return "Missing"
-        if entry.protection_status == "failed":
-            return "Unverified"
-        return "Warning"
-    if getattr(entry, "freshness", None) == FRESHNESS_STALE:
-        return "Stale"
-    if getattr(entry, "freshness", None) == FRESHNESS_UNKNOWN:
-        return "Unknown"
-    return "Fresh"
+    return backup_entry_status_label(entry)
 
 
 def _backup_screen_rows(
@@ -252,9 +240,7 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
         if problem_parts:
             display_screen.write_status(
                 "warn",
-                "Fresh full backup needed before workstation handoff: "
-                + ", ".join(problem_parts)
-                + ".",
+                menu_handoff_problem_summary(problem_parts),
             )
         else:
             display_screen.write_summary("All visible source backups are artifact-verified and fresh.")
@@ -314,9 +300,13 @@ def _run_verify_sources() -> None:
 
 
 def _write_backup_bundle() -> None:
+    from mercury.menu.prompts import ask_yes_no
+
     plan = build_database_bundle_plan(live=should_probe_database_status())
     print_database_bundle_plan(plan, executed=False)
-    display_screen.write_blank()
+    if ask_yes_no("Write manifest and runbook files to USB?", default=True) is not True:
+        display_screen.write_summary("Bundle write cancelled.")
+        return
     try:
         write_database_bundle_plan(plan)
     except ValueError as exc:

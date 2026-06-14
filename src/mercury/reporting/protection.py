@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 
 from mercury.backup.status import build_backup_status_report
+from mercury.backup.freshness import protection_handoff_action_item
 from mercury.database import (
     BackupPlanDryRun,
     DatabaseInventory,
@@ -111,10 +112,7 @@ def build_protection_report(*, live: bool = False, probe_database: bool = False)
     if not policy.live_execution_allowed():
         actions.append("Destructive actions (sync/deploy/restore) remain confirmation-gated.")
     if backup_status.stale_count or backup_status.unknown_freshness_count:
-        actions.insert(
-            0,
-            "Run full backup for stale or unknown-freshness sources before workstation handoff or prod→dev sync.",
-        )
+        actions.insert(0, protection_handoff_action_item(include_sync=True))
 
     return ProtectionReport(
         generated_at=datetime.now(timezone.utc).isoformat(),

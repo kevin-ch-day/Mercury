@@ -736,8 +736,8 @@ def backup_bundle_cmd(
     except BackupSourceSelectionError as exc:
         typer.echo(str(exc))
         raise typer.Exit(1) from exc
-    print_database_bundle_plan(plan, executed=False)
     if not execute:
+        print_database_bundle_plan(plan, executed=False)
         return
     try:
         write_database_bundle_plan(plan)

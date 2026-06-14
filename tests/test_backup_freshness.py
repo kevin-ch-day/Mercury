@@ -216,6 +216,65 @@ def test_artifact_status_label_maps_verified_without_current_wording() -> None:
     assert artifact_status_label("verified") != "current"
 
 
+def test_display_status_labels() -> None:
+    from mercury.backup.freshness import (
+        backup_entry_status_label,
+        display_artifact_status_label,
+        display_freshness_label,
+        menu_handoff_problem_summary,
+        protection_handoff_action_item,
+    )
+
+    assert display_artifact_status_label("failed") == "Unverified"
+    assert display_freshness_label("stale") == "Stale"
+    assert display_freshness_label(None) == "—"
+    assert backup_entry_status_label(None) == "Missing"
+    assert menu_handoff_problem_summary(["1 stale"]) == (
+        "Fresh full backup needed before workstation handoff: 1 stale."
+    )
+    assert "prod→dev sync" in protection_handoff_action_item(include_sync=True)
+
+
+def test_print_backup_status_report_uses_display_labels(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mercury.backup.status import BackupStatusEntry, BackupStatusReport
+    from mercury.backup.terminal.status import print_backup_status_report
+
+    report = BackupStatusReport(
+        backup_root=str(tmp_path / "backups"),
+        backup_root_state="usb-mounted",
+        source_count=1,
+        verified_count=1,
+        missing_count=0,
+        failed_count=0,
+        stale_count=1,
+        unknown_freshness_count=0,
+        entries=[
+            BackupStatusEntry(
+                database="erebus_threat_intel_prod",
+                role="prod",
+                protection_status="verified",
+                backup_id="erebus-full-1",
+                backup_directory=str(tmp_path / "backups" / "erebus"),
+                backup_created_at="2026-06-08T12:00:00+00:00",
+                freshness="stale",
+                backup_age="2d ago",
+                recommend_full_backup=True,
+                issues=[],
+            )
+        ],
+        warnings=[],
+    )
+    print_backup_status_report(report)
+    out = capsys.readouterr().out
+    assert "Verified" in out
+    assert "Stale" in out
+    assert "handoff should wait for fresh full backups" in out
+    assert "Artifact verified means backup files pass checksum" in out
+
+
 def test_restore_readiness_complete_while_freshness_stale(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

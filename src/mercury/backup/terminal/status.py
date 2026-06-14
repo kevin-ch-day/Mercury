@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from mercury.backup.freshness import (
+    OPERATOR_FRESHNESS_GUIDANCE,
+    display_artifact_status_label,
+    display_freshness_label,
+    handoff_freshness_warning,
+)
 from mercury.backup.status import BackupStatusReport
 from mercury.terminal import screen as display_screen
 
@@ -26,8 +32,8 @@ def print_backup_status_report(report: BackupStatusReport) -> None:
         [
             entry.database,
             entry.role,
-            entry.protection_status,
-            entry.freshness,
+            display_artifact_status_label(entry.protection_status),
+            display_freshness_label(entry.freshness),
             entry.backup_age or "—",
             entry.backup_id or "—",
         ]
@@ -48,9 +54,13 @@ def print_backup_status_report(report: BackupStatusReport) -> None:
         for warning in report.warnings:
             display_screen.write_status("warn", warning)
 
-    display_screen.write_blank()
-    display_screen.write_summary(
-        "Artifact verified = checksum/manifest checks passed. "
-        "Freshness compares backup time to latest read-only source DB activity. "
-        "manifest.json verified=false is normal until mercury backup verify --update-manifest."
+    freshness_warning = handoff_freshness_warning(
+        stale_count=report.stale_count,
+        unknown_count=report.unknown_freshness_count,
     )
+    if freshness_warning:
+        display_screen.write_blank()
+        display_screen.write_status("warn", freshness_warning)
+
+    display_screen.write_blank()
+    display_screen.write_summary(OPERATOR_FRESHNESS_GUIDANCE)

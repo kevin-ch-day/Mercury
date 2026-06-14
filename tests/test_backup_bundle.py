@@ -94,6 +94,7 @@ def test_write_database_bundle_plan_writes_manifest_and_runbook(
 
     payload = json.loads(written.planned_index_manifest_path.read_text(encoding="utf-8"))
     assert payload["verified_count"] == 1
+    assert payload["package_status"] in {"complete", "complete with warnings"}
     assert payload["databases"][0]["database"] == "android_permission_intel"
 
     runbook = written.planned_index_runbook_path.read_text(encoding="utf-8")
@@ -127,6 +128,7 @@ def test_print_database_bundle_plan_includes_state_summary(
         source="repo-local fallback",
         operations=5,
         database_backup_rows=3,
+        database_bundle_rows=0,
         repo_bundle_rows=0,
         transfer_package_rows=0,
         sync_event_rows=0,
@@ -142,6 +144,8 @@ def test_print_database_bundle_plan_includes_state_summary(
         verified_count=1,
         missing_count=0,
         failed_count=0,
+        stale_count=0,
+        unknown_freshness_count=0,
         entries=[
             DatabaseBundleEntry(
                 database="android_permission_intel",
@@ -159,3 +163,153 @@ def test_print_database_bundle_plan_includes_state_summary(
     out = capsys.readouterr().out
     assert "State root" in out
     assert "State ops" in out
+    assert "Package" in out
+
+
+def test_print_database_bundle_plan_written_shows_artifact_paths(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    from mercury.backup.bundle import DatabaseBundleEntry, DatabaseBundlePlan
+    from mercury.backup.terminal.bundle import print_database_bundle_plan
+
+    manifest_dir = tmp_path / "usb" / "mercury_manifests"
+    runbook_dir = tmp_path / "usb" / "mercury_runbooks"
+    stamp_date = "2026-06-09"
+    stamp = "20260609_120000"
+    plan = DatabaseBundlePlan(
+        generated_at="2026-06-09T00:00:00+00:00",
+        backup_root=tmp_path / "backups",
+        manifest_dir=manifest_dir,
+        runbook_dir=runbook_dir,
+        planned_index_manifest_path=manifest_dir / stamp_date / f"database_transfer_manifest_{stamp}.json",
+        planned_index_runbook_path=runbook_dir / stamp_date / f"database_transfer_runbook_{stamp}.md",
+        source_count=1,
+        verified_count=1,
+        missing_count=0,
+        failed_count=0,
+        stale_count=1,
+        unknown_freshness_count=0,
+        entries=[
+            DatabaseBundleEntry(
+                database="erebus_threat_intel_prod",
+                role="prod",
+                protection_status="verified",
+                backup_id="erebus_threat_intel_prod-full-20260608_120000",
+                backup_directory=str(tmp_path / "backups" / "erebus_threat_intel_prod"),
+                backup_age="2d ago",
+                freshness="stale",
+                planned_manifest_path=manifest_dir / stamp_date / f"erebus_{stamp}.db_manifest.json",
+                planned_runbook_path=runbook_dir / stamp_date / f"erebus_{stamp}.restore.md",
+            )
+        ],
+        warnings=[],
+    )
+    print_database_bundle_plan(plan, executed=True)
+    out = capsys.readouterr().out
+    assert "Bundle written to USB." in out
+    assert "MANIFEST" in out
+    assert "RUNBOOK" in out
+    assert f"{stamp_date}/erebus_{stamp}.db_manifest.json" in out
+    assert "Run full backup before handoff for stale source(s)" in out
+
+
+def test_database_bundle_package_status_matrix() -> None:
+    from mercury.backup.package_status import database_bundle_package_status
+
+    assert database_bundle_package_status(
+        source_count=0,
+        verified_count=0,
+        missing_count=0,
+        failed_count=0,
+    ) == "empty"
+    assert database_bundle_package_status(
+        source_count=4,
+        verified_count=0,
+        missing_count=4,
+        failed_count=0,
+    ) == "partial"
+    assert database_bundle_package_status(
+        source_count=2,
+        verified_count=2,
+        missing_count=0,
+        failed_count=0,
+    ) == "complete"
+    assert database_bundle_package_status(
+        source_count=2,
+        verified_count=2,
+        missing_count=0,
+        failed_count=0,
+        stale_count=1,
+    ) == "complete with warnings"
+    assert database_bundle_package_status(
+        source_count=2,
+        verified_count=1,
+        missing_count=1,
+        failed_count=0,
+    ) == "partial"
+
+
+def test_handoff_freshness_warning() -> None:
+    from mercury.backup.freshness import handoff_freshness_warning
+
+    assert handoff_freshness_warning(stale_count=1) is not None
+    assert "stale" in handoff_freshness_warning(stale_count=1, unknown_count=1)
+    assert handoff_freshness_warning() is None
+
+
+def test_write_database_bundle_plan_records_ledger(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    usb_root = tmp_path / "usb"
+    manifest_dir = usb_root / "mercury_manifests"
+    runbook_dir = usb_root / "mercury_runbooks"
+    backup_root = usb_root / "mercury_backups"
+    state_root = tmp_path / "state"
+    manifest_dir.mkdir(parents=True)
+    runbook_dir.mkdir(parents=True)
+    backup_root.mkdir(parents=True)
+
+    _write_verified_backup(
+        backup_root,
+        "android_permission_intel",
+        "android_permission_intel-full-20260608_120000",
+    )
+
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_usb_mount", lambda **kwargs: usb_root)
+    monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
+    monkeypatch.setattr("mercury.state.ledger.resolve_state_root", lambda policy=None: state_root)
+    monkeypatch.setattr(
+        "mercury.backup.bundle.load_repo_bundle_settings",
+        lambda: type(
+            "Settings",
+            (),
+            {
+                "manifest_dir": manifest_dir,
+                "runbook_dir": runbook_dir,
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.status.load_execution_policy",
+        lambda: type(
+            "Policy",
+            (),
+            {
+                "backup_root": backup_root,
+                "backup_root_state": lambda self=None: "usb-mounted",
+                "backup_root_is_within_repo": lambda self=None: False,
+                "allow_unsafe_backup_root": True,
+            },
+        )(),
+    )
+
+    plan = build_database_bundle_plan(live=False, selected=["android_permission_intel"])
+    write_database_bundle_plan(plan)
+
+    operations = (state_root / "operations.jsonl").read_text(encoding="utf-8")
+    assert "database_bundle_written" in operations
+    csv_text = (state_root / "database_bundles.csv").read_text(encoding="utf-8")
+    assert "database_transfer_manifest_" in csv_text
+    assert "complete" in csv_text

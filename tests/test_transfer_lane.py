@@ -53,6 +53,15 @@ def test_build_transfer_bundle_aggregates_database_and_repo_state(
                 "erebus_threat_intel_prod",
             ],
             shared_authority=["android_permission_intel"],
+            verified_source_count=2,
+            missing_source_count=0,
+            failed_source_count=0,
+            stale_source_count=0,
+            unknown_freshness_source_count=0,
+            source_freshness={
+                "android_permission_intel": "fresh",
+                "erebus_threat_intel_prod": "fresh",
+            },
         ),
     )
     monkeypatch.setattr(
@@ -126,6 +135,8 @@ def test_build_transfer_bundle_aggregates_database_and_repo_state(
     assert bundle.host == "fedora"
     assert len(bundle.database_entries) == 2
     assert bundle.database_entries[0].verified is True
+    assert bundle.verified_source_count == 2
+    assert bundle.stale_source_count == 0
     assert len(bundle.repo_entries) == 1
     assert bundle.repo_entries[0].repo_name == "Mercury"
     assert bundle.repo_entries[0].warning is not None
@@ -236,6 +247,7 @@ def test_print_transfer_bundle_uses_planned_and_written_labels(capsys: pytest.Ca
         source="usb",
         operations=7,
         database_backup_rows=3,
+        database_bundle_rows=0,
         repo_bundle_rows=2,
         transfer_package_rows=1,
         sync_event_rows=0,
@@ -256,3 +268,48 @@ def test_print_transfer_bundle_uses_planned_and_written_labels(capsys: pytest.Ca
     assert "Transfer manifest written:" in written_out
     assert "Transfer runbook written:" in written_out
     assert "Transfer package written to USB." in written_out
+
+
+def test_print_transfer_bundle_stale_database_package_shows_warnings(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mercury.transfer.terminal import print_transfer_bundle
+
+    bundle = TransferBundle(
+        generated_at="2026-06-09T00:00:00+00:00",
+        host="fedora",
+        mode="live",
+        backup_root="/mnt/MERCURY_DATA_USB/mercury_backups",
+        required_usb_mount="/mnt/MERCURY_DATA_USB",
+        manifest_dir="/mnt/MERCURY_DATA_USB/mercury_manifests",
+        runbook_dir="/mnt/MERCURY_DATA_USB/mercury_runbooks",
+        database_entries=[
+            TransferDatabaseEntry(
+                database="erebus_threat_intel_prod",
+                source_role="production source",
+                verified=True,
+                freshness="stale",
+                backup_id="erebus-full-1",
+                backup_directory="/mnt/MERCURY_DATA_USB/mercury_backups/erebus",
+            )
+        ],
+        repo_entries=[],
+        verified_source_count=1,
+        missing_source_count=0,
+        failed_source_count=0,
+        stale_source_count=1,
+        unknown_freshness_source_count=0,
+        ready_sync_pairs=0,
+        blocked_sync_pairs=1,
+        dirty_repo_names=[],
+        warnings=[],
+        transfer_manifest_path="/mnt/MERCURY_DATA_USB/mercury_manifests/transfer_manifest.json",
+        transfer_runbook_path="/mnt/MERCURY_DATA_USB/mercury_runbooks/transfer_runbook.md",
+    )
+    print_transfer_bundle(bundle, executed=False)
+    out = capsys.readouterr().out
+    assert "Database package: complete with warnings" in out
+    assert "1 stale" in out
+    assert "handoff should wait for fresh full backups" in out
+    assert "FRESH" in out
+    assert "Stale" in out
