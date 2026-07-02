@@ -42,6 +42,7 @@ app.add_typer(restore_app, name="restore-check")
 app.add_typer(deploy_app, name="deploy")
 app.add_typer(report_app, name="report")
 app.add_typer(logs_app, name="logs")
+app.add_typer(state_app, name="state")
 repair_app = typer.Typer(help="Host repair helpers.")
 app.add_typer(repair_app, name="repair")
 
@@ -164,6 +165,23 @@ def state_summary() -> None:
     from mercury.state.summary import build_state_summary, print_state_summary
 
     print_state_summary(build_state_summary())
+
+
+@state_app.command("handoff-history")
+def state_handoff_history_cmd(
+    limit: int = typer.Option(
+        12,
+        "--limit",
+        min=1,
+        max=50,
+        help="Maximum handoff history rows to show.",
+    ),
+) -> None:
+    """Show recent handoff events recorded on the USB state ledger."""
+    from mercury.handoff.history import build_handoff_history
+    from mercury.handoff.terminal import print_handoff_history
+
+    print_handoff_history(build_handoff_history(limit=limit))
 
 
 @backup_app.command("plan")
@@ -385,11 +403,119 @@ def transfer_status_cmd(
         "--live",
         help="Use live database inventory and live sync readiness.",
     ),
+    seed: bool = typer.Option(
+        False,
+        "--seed",
+        help="Use catalog/seed inventory instead of live probes.",
+    ),
 ) -> None:
     """Show one combined transfer summary for database and repository lanes."""
     from mercury.transfer import build_transfer_bundle, print_transfer_bundle
+    from mercury.transfer.bundle import resolve_transfer_live
 
-    print_transfer_bundle(build_transfer_bundle(live=live))
+    print_transfer_bundle(build_transfer_bundle(live=resolve_transfer_live(live=live, seed=seed)))
+
+
+@transfer_app.command("handoff")
+def transfer_handoff_cmd(
+    live: bool = typer.Option(
+        False,
+        "--live",
+        help="Use live database inventory and live sync readiness.",
+    ),
+    seed: bool = typer.Option(
+        False,
+        "--seed",
+        help="Use catalog/seed inventory instead of live probes.",
+    ),
+    run: bool = typer.Option(
+        False,
+        "--run",
+        help="Run the guided handoff wizard instead of showing the checklist only.",
+    ),
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="With --run, execute each wizard phase (default is dry-run planning).",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="With --run, write partial bundles/manifests without freshness prompts.",
+    ),
+    from_phase: str | None = typer.Option(
+        None,
+        "--from-phase",
+        help="With --run, start at one wizard phase: backup, verify, repo_bundle, db_bundle, transfer.",
+    ),
+    through_phase: str | None = typer.Option(
+        None,
+        "--through-phase",
+        help="With --run, stop after one wizard phase: backup, verify, repo_bundle, db_bundle, transfer.",
+    ),
+) -> None:
+    """Show workstation handoff readiness, or run the guided handoff wizard."""
+    from mercury.handoff import build_handoff_checklist, print_handoff_checklist, run_guided_handoff_wizard
+    from mercury.handoff.terminal import print_handoff_wizard_result
+    from mercury.transfer.bundle import resolve_transfer_live
+
+    use_live = resolve_transfer_live(live=live, seed=seed)
+    if run:
+        try:
+            result = run_guided_handoff_wizard(
+                live=use_live,
+                execute=execute,
+                force=force,
+                start_phase=from_phase,
+                end_phase=through_phase,
+            )
+        except ValueError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(code=2) from exc
+        print_handoff_wizard_result(result)
+        if execute and result.final_handoff_status not in {"complete", "complete with warnings"}:
+            raise typer.Exit(code=1)
+        return
+    print_handoff_checklist(build_handoff_checklist(live=use_live))
+
+
+@transfer_app.command("receive")
+def transfer_receive_cmd(
+    live: bool = typer.Option(
+        False,
+        "--live",
+        help="Use live database inventory when contextualizing USB artifacts.",
+    ),
+    seed: bool = typer.Option(
+        False,
+        "--seed",
+        help="Use catalog/seed inventory instead of live probes.",
+    ),
+) -> None:
+    """Show the receiving-workstation guide for imported USB media."""
+    from mercury.handoff.receiver import build_receiver_handoff_guide
+    from mercury.handoff.terminal import print_receiver_handoff_guide
+    from mercury.transfer.bundle import resolve_transfer_live
+
+    use_live = resolve_transfer_live(live=live, seed=seed)
+    print_receiver_handoff_guide(checklist=build_receiver_handoff_guide(live=use_live))
+
+
+@transfer_app.command("history")
+def transfer_history_cmd(
+    limit: int = typer.Option(
+        12,
+        "--limit",
+        min=1,
+        max=50,
+        help="Maximum handoff history rows to show.",
+    ),
+) -> None:
+    """Show recent handoff-related events from the USB state ledger."""
+    from mercury.handoff.history import build_handoff_history
+    from mercury.handoff.terminal import print_handoff_history
+
+    print_handoff_history(build_handoff_history(limit=limit))
 
 
 @transfer_app.command("write")
@@ -399,19 +525,36 @@ def transfer_write_cmd(
         "--live",
         help="Use live database inventory and live sync readiness.",
     ),
+    seed: bool = typer.Option(
+        False,
+        "--seed",
+        help="Use catalog/seed inventory instead of live probes.",
+    ),
     execute: bool = typer.Option(
         False,
         "--execute",
         help="Write the combined transfer manifest and runbook to the USB target.",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Write even when handoff readiness is partial or has freshness warnings.",
+    ),
 ) -> None:
     """Plan or write one combined transfer manifest and runbook."""
+    from mercury.core.handoff_status import handoff_write_cli_error, handoff_write_requires_force
     from mercury.transfer import build_transfer_bundle, print_transfer_bundle, write_transfer_bundle
+    from mercury.transfer.bundle import handoff_status_for_bundle, resolve_transfer_live
 
-    bundle = build_transfer_bundle(live=live)
+    use_live = resolve_transfer_live(live=live, seed=seed)
+    bundle = build_transfer_bundle(live=use_live)
     if not execute:
         print_transfer_bundle(bundle, executed=False)
         return
+    handoff_status = handoff_status_for_bundle(bundle)
+    if handoff_write_requires_force(handoff_status) and not force:
+        typer.echo(handoff_write_cli_error(handoff_status))
+        raise typer.Exit(1)
     try:
         bundle = write_transfer_bundle(bundle)
     except ValueError as exc:
@@ -722,6 +865,11 @@ def backup_bundle_cmd(
         "--execute",
         help="Write database manifest and restore runbook files to the USB target.",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Write even when handoff package is partial or has freshness warnings.",
+    ),
 ) -> None:
     """Plan or write one database transfer manifest/runbook set for active source backups."""
     from mercury.backup import (
@@ -730,6 +878,8 @@ def backup_bundle_cmd(
         write_database_bundle_plan,
     )
     from mercury.backup.batch_runner import BackupSourceSelectionError
+    from mercury.backup.bundle import bundle_package_status
+    from mercury.core.handoff_status import handoff_write_cli_error, handoff_write_requires_force
 
     try:
         plan = build_database_bundle_plan(live=not demo, selected=db)
@@ -739,6 +889,10 @@ def backup_bundle_cmd(
     if not execute:
         print_database_bundle_plan(plan, executed=False)
         return
+    package_status = bundle_package_status(plan)
+    if handoff_write_requires_force(package_status) and not force:
+        typer.echo(handoff_write_cli_error(package_status))
+        raise typer.Exit(1)
     try:
         write_database_bundle_plan(plan)
     except ValueError as exc:

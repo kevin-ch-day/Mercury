@@ -76,6 +76,7 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
         backup_line = "skipped until config initialized"
         sync_line = "skipped until config initialized"
         deploy_line = "skipped until config initialized"
+        handoff_line = "skipped until config initialized"
         blocker = resolve_dashboard_blocker(
             setup_blocker=env.primary_setup_blocker,
             verified_names=set(),
@@ -119,15 +120,50 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             backup_line += f"; {missing_count} without backup"
         if failed_count:
             backup_line += f"; {failed_count} failed"
+        if stale_names:
+            backup_line += f"; {len(stale_names)} stale"
+        if unknown_names:
+            backup_line += f"; {len(unknown_names)} unknown freshness"
         mariadb_line = deploy_line
         sync_line = f"{ready} approved pairs ready"
         if blocked:
             sync_line += f"; {blocked} blocked"
+        if stale_names or missing_count or failed_count:
+            handoff_line = "partial — menu [9] or h for checklist"
+        elif unknown_names:
+            handoff_line = "warnings — menu [9] guided wizard"
+        elif verified_names and len(verified_names) == len(source_names):
+            handoff_line = "backup lane ok — menu [9] handoff wizard"
+        else:
+            handoff_line = "incomplete"
+        latest_handoff_status: str | None = None
+        latest_transfer_at: str | None = None
+        try:
+            from mercury.state.summary import build_state_summary
+
+            state = build_state_summary()
+            latest_transfer_at = state.latest_transfer_at
+            latest_handoff_status = state.latest_handoff_status
+        except OSError:
+            state = None
+        from mercury.handoff.display import handoff_dashboard_line
+
+        handoff_line = handoff_dashboard_line(
+            verified_count=len(verified_names),
+            source_count=len(source_names),
+            stale_count=len(stale_names),
+            missing_count=missing_count,
+            failed_count=failed_count,
+            unknown_count=len(unknown_names),
+            latest_handoff_status=latest_handoff_status,
+            latest_transfer_at=latest_transfer_at,
+        )
 
     rows.extend(
         [
             dashboard_row("MariaDB sources", mariadb_line),
             dashboard_row("USB backups", backup_line),
+            dashboard_row("Handoff readiness", handoff_line),
             dashboard_row("Sync readiness", sync_line),
             dashboard_row("Protection", blocker),
         ]

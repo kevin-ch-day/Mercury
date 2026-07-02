@@ -9,7 +9,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from mercury.backup.status import BackupStatusEntry, build_backup_status_report
-from mercury.backup.package_status import database_bundle_package_status
+from mercury.core.handoff_status import database_bundle_package_status
 from mercury.core.usb_mount import assert_operator_usb_path
 from mercury.repo.config import load_repo_bundle_settings
 from mercury.state.ledger import record_database_bundle_written

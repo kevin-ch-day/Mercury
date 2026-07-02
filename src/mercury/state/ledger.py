@@ -10,8 +10,9 @@ from pathlib import Path
 from typing import Any
 
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
+from mercury.core.paths import DATA_DIR
 from mercury.core.usb_mount import usb_mount_is_active
-from mercury.backup.package_status import database_bundle_package_status
+from mercury.core.handoff_status import database_bundle_package_status
 
 STATE_DIRNAME = "mercury_state"
 OPERATIONS_JSONL = "operations.jsonl"
@@ -80,6 +81,10 @@ TRANSFER_PACKAGE_FIELDS = [
     "sync_ready",
     "sync_blocked",
     "actual_sync_state",
+    "handoff_status",
+    "database_package",
+    "repository_package",
+    "stale_source_count",
     "warnings",
 ]
 
@@ -567,6 +572,15 @@ def record_database_bundle_written(plan, *, state_root: Path | None = None) -> N
 
 
 def record_transfer_bundle_written(bundle, *, state_root: Path | None = None) -> None:
+    from mercury.transfer.bundle import (
+        database_package_status_for_bundle,
+        handoff_status_for_bundle,
+        repository_package_status_for_bundle,
+    )
+
+    handoff_status = handoff_status_for_bundle(bundle)
+    database_package = database_package_status_for_bundle(bundle)
+    repository_package = repository_package_status_for_bundle(bundle)
     root = _append_operation(
         "transfer_bundle_written",
         {
@@ -579,6 +593,10 @@ def record_transfer_bundle_written(bundle, *, state_root: Path | None = None) ->
             "sync_ready": bundle.ready_sync_pairs,
             "sync_blocked": bundle.blocked_sync_pairs,
             "actual_sync_state": "deferred",
+            "handoff_status": handoff_status,
+            "database_package": database_package,
+            "repository_package": repository_package,
+            "stale_source_count": bundle.stale_source_count,
             "warnings": bundle.warnings,
         },
         state_root=state_root,
@@ -599,8 +617,32 @@ def record_transfer_bundle_written(bundle, *, state_root: Path | None = None) ->
             "sync_ready": bundle.ready_sync_pairs,
             "sync_blocked": bundle.blocked_sync_pairs,
             "actual_sync_state": "deferred",
+            "handoff_status": handoff_status,
+            "database_package": database_package,
+            "repository_package": repository_package,
+            "stale_source_count": bundle.stale_source_count,
             "warnings": " | ".join(bundle.warnings),
         },
+    )
+
+
+def record_handoff_wizard_run(result, *, state_root: Path | None = None) -> None:
+    """Append a guided handoff wizard summary to the portable ledger."""
+    _append_operation(
+        "handoff_wizard_run",
+        {
+            "final_handoff_status": result.final_handoff_status,
+            "cancelled": result.cancelled,
+            "phases": [
+                {
+                    "phase": phase.phase,
+                    "status": phase.status,
+                    "summary": phase.summary,
+                }
+                for phase in result.phases
+            ],
+        },
+        state_root=state_root,
     )
 
 

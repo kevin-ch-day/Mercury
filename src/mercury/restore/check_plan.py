@@ -79,6 +79,22 @@ def build_restore_check_plan(prod_database: str) -> RestoreCheckPlan:
         if manifest_path.exists():
             data = json.loads(manifest_path.read_text(encoding="utf-8"))
             dump_file = data.get("dump_file")
+            backup_created_at = data.get("created_at")
+        else:
+            backup_created_at = None
+
+        if backup_verified and should_probe_database_status():
+            from mercury.backup.freshness import backup_stale_handoff_blocker, parse_backup_timestamp
+
+            stale_detail = backup_stale_handoff_blocker(
+                prod_database,
+                backup_at=parse_backup_timestamp(
+                    str(backup_created_at) if backup_created_at else None
+                ),
+                live=True,
+            )
+            if stale_detail:
+                blockers.append(stale_detail)
 
     commands: list[str] = []
     if dump_file and backup_dir is not None:

@@ -87,6 +87,12 @@ def run_recovery_menu() -> None:
     _run_recovery_menu()
 
 
+def run_handoff_menu() -> None:
+    from mercury.handoff.interactive_menu import run_handoff_menu as _run_handoff_menu
+
+    _run_handoff_menu()
+
+
 # Re-export interactive loop (implementation in menu.loop).
 from mercury.menu.loop import MenuResult, handle_menu_choice, run_menu  # noqa: E402
 

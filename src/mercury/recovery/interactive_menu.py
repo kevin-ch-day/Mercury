@@ -9,6 +9,9 @@ from mercury.backup.freshness import FRESHNESS_STALE, backup_entry_status_label
 from mercury.backup.status import BackupStatusEntry, BackupStatusReport, build_backup_status_report
 from mercury.core.usb_mount import resolve_usb_mount
 from mercury.core.runtime import should_probe_database_status
+from mercury.handoff.display import handoff_pipeline_line, handoff_status_kind
+from mercury.handoff.receiver import build_receiver_handoff_guide
+from mercury.handoff.snapshot import build_handoff_snapshot
 from mercury.menu import main_display as menu_display
 from mercury.menu import prompts as menu_prompts
 from mercury.menu.subscreen import pause_and_redraw, read_submenu_choice, render_submenu
@@ -138,11 +141,19 @@ def _render_recovery_screen(data: RecoveryScreenData, *, show_title: bool) -> No
     if show_title:
         menu_display.open_screen(RECOVERY_SCREEN_TITLE)
     report = data.report
+    checklist = build_handoff_snapshot(live=should_probe_database_status()).checklist
+    display_screen.write_status(
+        handoff_status_kind(checklist.handoff_status),
+        f"Handoff readiness: {checklist.handoff_status}",
+    )
+    display_screen.write_blank()
     display_screen.write_fields(
         {
+            "Pipeline": handoff_pipeline_line(checklist),
             "Protected sources": report.source_count,
             "Verified backups": report.verified_count,
             "Latest safe backup": _latest_verified_backup(report),
+            "Latest transfer on USB": checklist.latest_transfer_age or "none",
             "Recovery runbooks": str(resolve_usb_mount() / "mercury_runbooks"),
         }
     )
@@ -163,9 +174,23 @@ def _render_recovery_screen(data: RecoveryScreenData, *, show_title: bool) -> No
         display_screen.write_hint(f"Latest transfer runbook: {data.latest_transfer_runbook}")
     elif data.latest_database_runbook:
         display_screen.write_hint(f"Latest database runbook: {data.latest_database_runbook}")
-    display_screen.write_hint("Emergency next step: use Backup Operations for stale sources, then use restore-check or System Deployment as needed.")
+    display_screen.write_hint(
+        "Emergency next step: open Workstation handoff [9] or press h, then restore-check or System Deployment."
+    )
+    if checklist.handoff_status == "complete":
+        display_screen.write_hint(
+            "USB handoff is complete — use [3] for the receiving-workstation guide on the target host."
+        )
     display_screen.write_blank()
-    render_submenu([("1", "Refresh")], indent=0)
+    render_submenu(
+        [
+            ("1", "Refresh"),
+            ("2", "Open workstation handoff"),
+            ("3", "Receiving workstation guide"),
+            ("4", "Open system deployment"),
+        ],
+        indent=0,
+    )
 
 
 def run_recovery_menu(*, interactive: bool = True) -> None:
@@ -185,6 +210,26 @@ def run_recovery_menu(*, interactive: bool = True) -> None:
             display_screen.write_summary(
                 f"Refreshed — {data.report.verified_count} verified, {data.report.missing_count} missing."
             )
+            show_title = pause_and_redraw()
+            continue
+        if choice == "2":
+            from mercury.handoff.interactive_menu import run_handoff_menu
+
+            run_handoff_menu(interactive=True)
+            data = _load_recovery_screen()
+            show_title = pause_and_redraw()
+            continue
+        if choice == "3":
+            from mercury.handoff.terminal import print_receiver_handoff_guide
+
+            print_receiver_handoff_guide(checklist=build_receiver_handoff_guide())
+            show_title = pause_and_redraw()
+            continue
+        if choice == "4":
+            from mercury.deploy.interactive_menu import run_deploy_menu
+
+            run_deploy_menu(interactive=True)
+            data = _load_recovery_screen()
             show_title = pause_and_redraw()
             continue
         menu_display.write_status("fail", menu_prompts.invalid_choice_message(choice))

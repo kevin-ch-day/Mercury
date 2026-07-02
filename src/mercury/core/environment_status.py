@@ -385,6 +385,19 @@ def recommended_next_step(env: EnvironmentStatus) -> str:
         return "./run.sh doctor --repair-plan"
     if env.primary_setup_blocker:
         return "./run.sh doctor"
+    if env.mariadb.connection_works is True:
+        from mercury.core.runtime import should_probe_database_status
+
+        if should_probe_database_status():
+            from mercury.backup.status import build_backup_status_report
+
+            report = build_backup_status_report(live=True)
+            if report.missing_count or report.failed_count:
+                return "./run.sh backup run --kind full --execute"
+            if report.stale_count or report.unknown_freshness_count:
+                return "./run.sh backup run --kind full --execute  # refresh stale USB backups"
+            if report.source_count and report.verified_count == report.source_count:
+                return "./run.sh transfer handoff --run --execute  # USB backups fresh — guided handoff"
     return "./run.sh menu"
 
 

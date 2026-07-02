@@ -123,6 +123,7 @@ def test_build_state_summary_counts_files(tmp_path: Path) -> None:
     assert summary.repo_bundle_rows == 1
     assert summary.transfer_package_rows == 1
     assert summary.sync_event_rows == 1
+    assert summary.latest_transfer_manifest == "/tmp/transfer.json"
 
 
 def test_build_state_summary_ignores_pytest_generated_operator_debris(tmp_path: Path) -> None:
@@ -192,6 +193,28 @@ def test_build_state_summary_ignores_pytest_generated_operator_debris(tmp_path: 
     assert summary.repo_bundle_rows == 1
     assert summary.transfer_package_rows == 1
     assert summary.sync_event_rows == 1
+
+
+def test_resolve_state_root_falls_back_to_data_dir(tmp_path: Path, monkeypatch) -> None:
+    from mercury.core.paths import DATA_DIR
+    from mercury.state.ledger import resolve_state_root
+
+    monkeypatch.delenv("MERCURY_STATE_ROOT", raising=False)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(
+        "mercury.state.ledger.load_execution_policy",
+        lambda: type(
+            "Policy",
+            (),
+            {
+                "usb_mount": tmp_path / "usb",
+                "backup_root_is_under_required_mount": lambda: False,
+            },
+        )(),
+    )
+    monkeypatch.setattr("mercury.state.ledger.usb_mount_is_active", lambda *args, **kwargs: False)
+
+    assert resolve_state_root() == DATA_DIR
 
 
 def test_is_operator_ledger_path_filters_pytest_temp_dirs() -> None:

@@ -99,6 +99,11 @@ MENU_SECTIONS: list[tuple[str, list[MenuItem]]] = [
             MenuItem("6", "System doctor / repair guide"),
             MenuItem("7", "System Deployment"),
             MenuItem("8", "Disaster Recovery"),
+            MenuItem(
+                "9",
+                "Workstation handoff",
+                "USB checklist, guided wizard, and transfer write",
+            ),
         ],
     ),
 ]
@@ -210,7 +215,14 @@ def render_option_menu(
 def _sectioned_menu_item_lines() -> list[str]:
     lines: list[str] = []
     for item in iter_menu_items():
-        lines.append(menu_item_line(item.key, item.title, indent=len(MENU_ITEM_INDENT)))
+        lines.append(
+            menu_item_line(
+                item.key,
+                item.title,
+                blurb=item.blurb,
+                indent=len(MENU_ITEM_INDENT),
+            )
+        )
     lines.append(format_menu_bottom_option(MENU_EXIT_LABEL))
     return lines
 
@@ -223,11 +235,14 @@ def render_menu_help() -> str:
     """Compact on-demand help for menu shortcuts."""
     rule = rule_line()
     keys = [item.key for item in iter_menu_items()]
-    key_label = f"{keys[0]}-{keys[-1]}" if keys else "1-8"
+    key_label = f"{keys[0]}-{keys[-1]}" if keys else "1-9"
     lines = [
         rule,
         body_label("Operator console help"),
         help_line(f"Enter {key_label} for actions, 0 or q to exit."),
+        help_line("Shortcut: h opens workstation handoff (menu 9)."),
+        help_line("Handoff: menu 9 [2] guided wizard · [11] receiver guide · ./run.sh transfer receive"),
+        help_line("Recovery: menu 8 for DR status; complete handoff USB uses transfer receive on receiver."),
         "",
         help_line("For full detail, run the matching CLI command (e.g. ./run.sh db discover)."),
         rule,

@@ -64,7 +64,9 @@ _COVERAGE_RE = re.compile(r"^(\d+)/(\d+)\s+source databases$")
 _STATUS_WORDS: dict[str, str] = {
     "ready": OK,
     "verified": OK,
+    "complete": OK,
     "blocked": WARN,
+    "partial": WARN,
     "missing": WARN,
     "unverified": WARN,
     "failed": FAIL,

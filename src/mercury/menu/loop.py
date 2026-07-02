@@ -31,6 +31,12 @@ def handle_menu_choice(choice: str) -> MenuResult:
         run_usb_repair_flow(interactive=True, default_yes=True)
         log_menu_action(choice=normalized, title="Repair USB", result="continue")
         return "continue"
+    if normalized in {"h", "handoff"}:
+        from mercury.handoff.interactive_menu import run_handoff_menu
+
+        run_handoff_menu(interactive=True)
+        log_menu_action(choice=normalized, title="Workstation handoff", result="continue")
+        return "continue"
     if normalized == "0":
         menu_display.write_summary("Exiting Mercury.")
         log_menu_action(choice=normalized, title="Exit", result="exit")

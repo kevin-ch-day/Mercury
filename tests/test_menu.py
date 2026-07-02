@@ -27,6 +27,17 @@ def test_render_menu_text_shows_database_status_when_configured() -> None:
         assert "MariaDB" in text and "[!!]" in text
 
 
+def test_menu_handoff_shortcut_runs_handoff_menu(monkeypatch: pytest.MonkeyPatch) -> None:
+    called = {"handoff": False}
+
+    def _fake_handoff(**kwargs) -> None:
+        called["handoff"] = True
+
+    monkeypatch.setattr("mercury.handoff.interactive_menu.run_handoff_menu", _fake_handoff)
+    assert interactive_handle_choice("h") == "continue"
+    assert called["handoff"] is True
+
+
 def test_run_menu_redisplay_after_choice(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     inputs = iter(["4", "0"])
     monkeypatch.setattr(
@@ -45,13 +56,14 @@ def test_run_menu_redisplay_after_choice(monkeypatch: pytest.MonkeyPatch, capsys
     assert "[6] Live mode guide" not in out
     assert "[7] System Deployment" in out
     assert "[8] Disaster Recovery" in out
+    assert "[9] Workstation handoff" in out
     assert "Press any key to continue" not in out
     assert "[0] Return" not in out
     assert "Exiting Mercury" in out
 
 
 def test_run_menu_invalid_choice_does_not_redisplay(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    inputs = iter(["9", "0"])
+    inputs = iter(["99", "0"])
     monkeypatch.setattr(
         "mercury.menu.prompts.ask",
         lambda _prompt="": next(inputs),
@@ -233,3 +245,4 @@ def test_render_menu_help_lists_shortcuts() -> None:
     help_text = menu_display.render_menu_help()
     assert "Operator console help" in help_text
     assert "0 or q to exit" in help_text
+    assert "transfer receive" in help_text

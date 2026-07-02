@@ -234,6 +234,10 @@ def test_restore_check_plan_includes_target_completeness_without_blocking_restor
         "mercury.restore.readiness.fetch_live_base_table_names",
         lambda *_args, **_kwargs: [f"table_{index:03d}" for index in range(20)],
     )
+    monkeypatch.setattr(
+        "mercury.backup.freshness.backup_stale_handoff_blocker",
+        lambda database, **kwargs: None,
+    )
 
     plan = build_restore_check_plan("erebus_threat_intel_prod")
     assert plan.allowed is True
@@ -303,6 +307,45 @@ def test_restore_readiness_should_fail_on_live_backup_unavailable() -> None:
     )
     assert restore_readiness_should_fail(report, live=True) is True
     assert restore_readiness_should_fail(report, live=False) is False
+
+
+def test_restore_check_plan_blocks_stale_backup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    table_names = list(EREBUS_CANONICAL_TABLES) + [
+        f"table_{index:03d}" for index in range(125 - len(EREBUS_CANONICAL_TABLES))
+    ]
+    _write_verified_backup(
+        tmp_path,
+        database="erebus_threat_intel_prod",
+        table_names=table_names,
+        view_count=76,
+    )
+    monkeypatch.setattr(
+        "mercury.restore.check_plan.load_execution_policy",
+        lambda: ExecutionPolicy(
+            dry_run=True,
+            live_actions_enabled=False,
+            backup_root=tmp_path,
+            allow_unsafe_backup_root=True,
+        ),
+    )
+    monkeypatch.setattr("mercury.restore.check_plan.should_probe_database_status", lambda: True)
+    monkeypatch.setattr(
+        "mercury.backup.freshness.backup_stale_handoff_blocker",
+        lambda database, **kwargs: (
+            f"Latest verified backup for '{database}' is stale relative to live source activity."
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.restore.check_plan.build_target_completeness_entry",
+        lambda _database: None,
+    )
+
+    plan = build_restore_check_plan("erebus_threat_intel_prod")
+    assert plan.allowed is False
+    assert any("stale" in blocker.lower() for blocker in plan.blockers)
 
 
 def test_cli_restore_check_readiness_fails_when_live_backup_missing(tmp_path: Path) -> None:

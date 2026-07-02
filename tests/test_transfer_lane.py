@@ -208,6 +208,8 @@ def test_write_transfer_bundle_writes_manifest_and_runbook(
     assert manifest["repo_entries"][0]["bundle_verified"] is True
     runbook = Path(written.transfer_runbook_path).read_text(encoding="utf-8")
     assert "Mercury transfer runbook" in runbook
+    assert "Handoff readiness:" in runbook
+    assert "Receiving workstation checklist:" in runbook
     assert "Actual sync: deferred" in runbook
     assert "Dirty repos not fully captured by Git bundles: Mercury" in runbook
     assert "Git bundles include committed history only" in runbook
@@ -255,10 +257,14 @@ def test_print_transfer_bundle_uses_planned_and_written_labels(capsys: pytest.Ca
 
     print_transfer_bundle(bundle, executed=False)
     planned_out = capsys.readouterr().out
+    assert "Transfer Package" in planned_out
+    assert "Pipeline:" in planned_out
     assert "Latest transfer manifest:" in planned_out
     assert "Latest transfer runbook:" in planned_out
     assert "Database package" in planned_out
     assert "Repository package" in planned_out
+    assert "Handoff readiness" in planned_out
+    assert "Latest on USB" in planned_out
     assert "Actual sync" in planned_out
     assert "State root" in planned_out
     assert "State ops" in planned_out
@@ -309,6 +315,7 @@ def test_print_transfer_bundle_stale_database_package_shows_warnings(
     print_transfer_bundle(bundle, executed=False)
     out = capsys.readouterr().out
     assert "Database package: complete with warnings" in out
+    assert "Handoff readiness: complete with warnings" in out
     assert "1 stale" in out
     assert "handoff should wait for fresh full backups" in out
     assert "FRESH" in out

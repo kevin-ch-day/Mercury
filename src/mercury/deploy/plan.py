@@ -131,6 +131,26 @@ def build_deployment_plan(
                 warnings.append(message)
             continue
 
+        from mercury.core.runtime import should_probe_database_status
+
+        if should_probe_database_status():
+            from mercury.backup.freshness import backup_stale_handoff_blocker, parse_backup_timestamp
+
+            backup_at = parse_backup_timestamp(candidate.created_at)
+            stale_detail = backup_stale_handoff_blocker(
+                candidate.source_database,
+                backup_at=backup_at,
+                live=True,
+            )
+            if stale_detail:
+                if execute:
+                    block_count += 1
+                    candidate.deploy_action = "BLOCKED"
+                    candidate.skip_reason = stale_detail
+                    blockers.append(stale_detail)
+                    continue
+                warnings.append(stale_detail)
+
         import_count += 1
         planned_commands.extend(action_plan.commands)
 

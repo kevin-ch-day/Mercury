@@ -428,6 +428,10 @@ def test_deployment_report_written_after_successful_mock_deploy(
         ).DeploymentPreflight(hostname="test", ready=True),
     )
     monkeypatch.setattr("mercury.deploy.plan.fetch_user_database_names", lambda _cfg: [])
+    monkeypatch.setattr(
+        "mercury.backup.freshness.backup_stale_handoff_blocker",
+        lambda database, **kwargs: None,
+    )
 
     def fake_sql(_cfg, sql: str) -> None:
         return None
@@ -612,3 +616,55 @@ def test_doctor_grant_repair_sql_for_fresh_rebuild(monkeypatch: pytest.MonkeyPat
     assert "option 8" in text
     assert "GRANT CREATE" in text
     assert deployment_grant_repair_sql("linuxadmin")[1].startswith("GRANT CREATE")
+
+
+def test_deploy_plan_blocks_stale_backup_on_live_execute(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    policy = ExecutionPolicy(
+        dry_run=False,
+        live_actions_enabled=True,
+        backup_root=_usb_policy(tmp_path).backup_root,
+        config_path=tmp_path / "local.toml",
+        allow_unsafe_backup_root=True,
+    )
+    _write_verified_backup(
+        policy.backup_root,
+        "erebus_threat_intel_prod",
+        backup_id="stale-backup",
+        created_at="2026-06-09T12:00:00+00:00",
+    )
+    monkeypatch.setattr("mercury.core.runtime.should_probe_database_status", lambda: True)
+    monkeypatch.setattr(
+        "mercury.backup.freshness.backup_stale_handoff_blocker",
+        lambda database, **kwargs: f"Latest verified backup for '{database}' is stale relative to live source activity.",
+    )
+    monkeypatch.setattr(
+        "mercury.deploy.plan.fetch_user_database_names",
+        lambda _cfg: [],
+    )
+    monkeypatch.setattr(
+        "mercury.deploy.plan.classify_target_database",
+        lambda database, **kwargs: __import__(
+            "mercury.deploy.target_status", fromlist=["TargetDatabaseState"]
+        ).TargetDatabaseState(
+            status="missing",
+            exists_on_server=False,
+            detail="missing",
+            table_count=0,
+        ),
+    )
+    plan = build_deployment_plan(
+        policy=policy,
+        execute=True,
+        databases=["erebus_threat_intel_prod"],
+    )
+    assert plan.import_count == 0
+    assert any("stale" in blocker.lower() for blocker in plan.blockers)
+
+
+def test_handoff_lane_appears_in_menu() -> None:
+    keys = {item.key for _section, items in menu_display.MENU_SECTIONS for item in items}
+    assert "9" in keys
+    assert menu_actions()["9"].title == "Workstation handoff"

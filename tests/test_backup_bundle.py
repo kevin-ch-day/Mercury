@@ -215,7 +215,11 @@ def test_print_database_bundle_plan_written_shows_artifact_paths(
 
 
 def test_database_bundle_package_status_matrix() -> None:
-    from mercury.backup.package_status import database_bundle_package_status
+    from mercury.core.handoff_status import (
+        combine_handoff_status,
+        database_bundle_package_status,
+        handoff_write_requires_force,
+    )
 
     assert database_bundle_package_status(
         source_count=0,
@@ -248,6 +252,80 @@ def test_database_bundle_package_status_matrix() -> None:
         missing_count=1,
         failed_count=0,
     ) == "partial"
+    assert combine_handoff_status("complete", "partial") == "partial"
+    assert combine_handoff_status("complete with warnings", "complete") == "complete with warnings"
+    assert handoff_write_requires_force("complete") is False
+    assert handoff_write_requires_force("complete with warnings") is True
+
+
+def test_backup_bundle_execute_requires_force_for_partial(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "mercury.backup.status.load_execution_policy",
+        lambda: type(
+            "Policy",
+            (),
+            {
+                "backup_root": tmp_path / "backups",
+                "backup_root_state": lambda self=None: "usb-mounted",
+                "backup_root_is_within_repo": lambda self=None: False,
+                "allow_unsafe_backup_root": True,
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.status.select_batch_sources",
+        lambda live=False, selected=None: ["android_permission_intel"],
+    )
+    monkeypatch.setattr(
+        "mercury.backup.bundle.build_backup_status_report",
+        lambda **kwargs: type(
+            "Report",
+            (),
+            {
+                "backup_root": str(tmp_path / "backups"),
+                "backup_root_state": "usb-mounted",
+                "source_count": 1,
+                "verified_count": 0,
+                "missing_count": 1,
+                "failed_count": 0,
+                "stale_count": 0,
+                "unknown_freshness_count": 0,
+                "entries": [],
+                "warnings": [],
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.bundle.load_repo_bundle_settings",
+        lambda: type(
+            "Settings",
+            (),
+            {
+                "manifest_dir": tmp_path / "manifests",
+                "runbook_dir": tmp_path / "runbooks",
+            },
+        )(),
+    )
+    result = run_cli(
+        "backup",
+        "bundle",
+        "--execute",
+        env={
+            "MERCURY_BACKUP_ROOT": str(tmp_path / "backups"),
+            "MERCURY_ALLOW_UNSAFE_BACKUP_ROOT": "1",
+        },
+    )
+    assert result.returncode == 1
+    assert "partial" in result.stdout + result.stderr
+
+
+def test_state_summary_cli() -> None:
+    result = run_cli("state", "summary")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "database_bundles" in result.stdout
 
 
 def test_handoff_freshness_warning() -> None:

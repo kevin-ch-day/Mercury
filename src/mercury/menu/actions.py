@@ -25,6 +25,7 @@ def menu_actions() -> dict[str, MenuAction]:
         run_doctor_menu,
         run_deploy_menu,
         run_recovery_menu,
+        run_handoff_menu,
     )
 
     runners: dict[str, Callable[[], None]] = {
@@ -36,6 +37,7 @@ def menu_actions() -> dict[str, MenuAction]:
         "6": run_doctor_menu,
         "7": run_deploy_menu,
         "8": run_recovery_menu,
+        "9": run_handoff_menu,
     }
     return {
         item.key: MenuAction(key=item.key, title=item.title, runner=runners[item.key])

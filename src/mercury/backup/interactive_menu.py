@@ -263,6 +263,7 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
 
     if usb_repair_needed():
         options.append(("7", "Repair USB mount and permissions"))
+    options.append(("8", "Open workstation handoff (main menu 9)"))
     display_screen.write_blank()
     render_submenu(options, indent=0)
 
@@ -287,6 +288,10 @@ def _run_backup(plan: BackupPlanDryRun) -> None:
         sources=list(plan.backup_sources),
     )
     print_backup_batch_result(batch, compact=True, menu=True)
+    if batch.executed_count:
+        display_screen.write_summary(
+            "Next: use [3] Verify source backups to set manifest verified flags on USB."
+        )
 
 
 def _run_verify_sources() -> None:
@@ -300,11 +305,16 @@ def _run_verify_sources() -> None:
 
 
 def _write_backup_bundle() -> None:
+    from mercury.backup.bundle import bundle_package_status
+    from mercury.core.handoff_status import handoff_write_ack_prompt, handoff_write_requires_force
     from mercury.menu.prompts import ask_yes_no
 
     plan = build_database_bundle_plan(live=should_probe_database_status())
     print_database_bundle_plan(plan, executed=False)
-    if ask_yes_no("Write manifest and runbook files to USB?", default=True) is not True:
+    package_status = bundle_package_status(plan)
+    prompt = handoff_write_ack_prompt(package_status)
+    default_yes = not handoff_write_requires_force(package_status)
+    if ask_yes_no(prompt, default=default_yes) is not True:
         display_screen.write_summary("Bundle write cancelled.")
         return
     try:
@@ -367,6 +377,14 @@ def run_backup_menu(*, interactive: bool = True) -> None:
             from mercury.repair.startup import run_usb_repair_flow
 
             run_usb_repair_flow(interactive=True, default_yes=True)
+            plan = _load_plan()
+            show_title = pause_and_redraw()
+            continue
+
+        if choice == "8":
+            from mercury.handoff.interactive_menu import run_handoff_menu
+
+            run_handoff_menu(interactive=True)
             plan = _load_plan()
             show_title = pause_and_redraw()
             continue

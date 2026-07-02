@@ -87,6 +87,7 @@ def test_run_backup_menu_non_interactive(
     assert "\n[3] Verify source backups" in out
     assert "\n[4] Restore-check source backups" in out
     assert "\n[5] Write DB bundle and runbooks" in out
+    assert "\n[8] Open workstation handoff (main menu 9)" in out
     assert "Verify on-disk backups" not in out
     assert "\n[6] Preview backup plan" in out
 

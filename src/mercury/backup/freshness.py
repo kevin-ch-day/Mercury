@@ -201,6 +201,23 @@ def display_freshness_label(freshness: str | None) -> str:
     return freshness_status_label(freshness).title()
 
 
+def backup_stale_handoff_blocker(
+    database: str,
+    *,
+    backup_at: datetime | None,
+    live: bool = True,
+) -> str | None:
+    """Return a blocker message when a verified backup is stale for live operations."""
+    if not live:
+        return None
+    assessment = assess_backup_freshness(database, backup_at=backup_at, live=live)
+    if assessment.freshness == FRESHNESS_STALE:
+        return (
+            f"Latest verified backup for '{database}' is stale relative to live source activity."
+        )
+    return None
+
+
 def handoff_freshness_warning(*, stale_count: int = 0, unknown_count: int = 0) -> str | None:
     if not stale_count and not unknown_count:
         return None

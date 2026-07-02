@@ -77,6 +77,58 @@ class TransferBundle(BaseModel):
     latest_transfer_runbook_path: str | None = None
 
 
+def database_package_status_for_bundle(bundle: TransferBundle) -> str:
+    from mercury.core.handoff_status import database_bundle_package_status
+
+    return database_bundle_package_status(
+        source_count=len(bundle.database_entries),
+        verified_count=bundle.verified_source_count,
+        missing_count=bundle.missing_source_count,
+        failed_count=bundle.failed_source_count,
+        stale_count=bundle.stale_source_count,
+        unknown_freshness_count=bundle.unknown_freshness_source_count,
+    )
+
+
+def repository_package_status_for_bundle(bundle: TransferBundle) -> str:
+    if not bundle.repo_entries:
+        return "complete"
+    dirty_repos = sum(1 for entry in bundle.repo_entries if entry.dirty and not entry.error)
+    repo_errors = sum(1 for entry in bundle.repo_entries if entry.error)
+    repo_bundles_verified = all(
+        entry.bundle_verified for entry in bundle.repo_entries if not entry.error and entry.bundle_path
+    )
+    repo_bundles_present = all(
+        entry.bundle_path and entry.repo_manifest_path and entry.repo_runbook_path
+        for entry in bundle.repo_entries
+        if not entry.error
+    ) if bundle.repo_entries else False
+    if repo_errors or not repo_bundles_present or not repo_bundles_verified:
+        return "partial"
+    if dirty_repos:
+        return "complete with warnings"
+    return "complete"
+
+
+def handoff_status_for_bundle(bundle: TransferBundle) -> str:
+    from mercury.core.handoff_status import combine_handoff_status
+
+    return combine_handoff_status(
+        database_package_status_for_bundle(bundle),
+        repository_package_status_for_bundle(bundle),
+    )
+
+
+def resolve_transfer_live(*, live: bool = False, seed: bool = False) -> bool:
+    from mercury.core.runtime import should_probe_database_status
+
+    if seed:
+        return False
+    if live:
+        return True
+    return should_probe_database_status()
+
+
 def _transfer_output_paths(settings: RepoBundleSettings, stamp: str) -> tuple[Path, Path]:
     manifest_path = settings.manifest_dir / f"transfer_manifest_{stamp}.json"
     runbook_path = settings.runbook_dir / f"transfer_runbook_{stamp}.md"
@@ -193,16 +245,34 @@ def build_transfer_bundle(*, live: bool = False) -> TransferBundle:
 
 
 def _runbook_text(bundle: TransferBundle) -> str:
+    db_package = database_package_status_for_bundle(bundle)
+    repo_package = repository_package_status_for_bundle(bundle)
+    handoff_status = handoff_status_for_bundle(bundle)
     lines = [
         "# Mercury transfer runbook",
         "",
         f"Generated: {bundle.generated_at}",
         f"Host: {bundle.host}",
         f"Mode: {bundle.mode}",
+        f"Handoff readiness: {handoff_status}",
+        f"Database package: {db_package}",
+        f"Repository package: {repo_package}",
+        f"Verified sources: {bundle.verified_source_count} of {len(bundle.database_entries)}",
+        f"Stale sources: {bundle.stale_source_count}",
+        f"Unknown freshness: {bundle.unknown_freshness_source_count}",
+        f"Missing sources: {bundle.missing_source_count}",
         f"USB mount: {bundle.required_usb_mount}",
         f"Database backup root: {bundle.backup_root}",
         f"Manifest dir: {bundle.manifest_dir}",
         f"Runbook dir: {bundle.runbook_dir}",
+        "",
+        "Receiving workstation checklist:",
+        "1. Mount this USB and confirm mercury_backups, mercury_manifests, and mercury_runbooks are present.",
+        "2. Install Mercury and run ./run.sh config init on the receiving host.",
+        "3. Run ./run.sh deploy system to import verified USB database backups.",
+        "4. Run ./run.sh deploy repos --from-usb for repository bundles.",
+        "5. Open the latest database_transfer_runbook and per-database restore notes before any live restore.",
+        "6. Run restore-check drills against verified backups before relying on production paths.",
         "",
         "Database restore inputs:",
     ]
