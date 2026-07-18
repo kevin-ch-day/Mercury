@@ -123,7 +123,7 @@ def log_directory_repair_hint(
     *,
     permission_detail: str | None = None,
 ) -> str:
-    """Suggest mount or ownership repair when USB-backed logging is unavailable."""
+    """Suggest mount or ownership repair when operator-storage logging is unavailable."""
     from mercury.core.path_permissions import chown_repair_command
 
     resolved = log_dir.expanduser().resolve()

@@ -24,7 +24,7 @@ mercury db discover --demo
 mercury config init
 ```
 
-USB backup root for the first Mercury transfer/backup run:
+Operator backup root for the first Mercury transfer/backup run:
 
 ```toml
 [mercury]

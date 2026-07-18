@@ -103,10 +103,22 @@ def _append_mercury_keys(text: str, additions: dict[str, str]) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
+def missing_storage_section(*, local_config: Path | None = None) -> bool:
+    """True when local.toml has no [storage] section yet."""
+    config_path = local_config or LOCAL_CONFIG
+    if not config_path.exists():
+        return True
+    import tomllib
+
+    with config_path.open("rb") as handle:
+        data = tomllib.load(handle)
+    return not isinstance(data.get("storage"), dict)
+
+
 def repair_local_config_paths() -> list[str]:
     """
-    Add missing USB artifact paths to an existing local.toml without overwriting
-    operator settings.
+    Add missing operator-storage artifact paths to an existing local.toml without overwriting
+    operator settings. Also ensure a baseline [storage] section exists when absent.
     """
     if not LOCAL_CONFIG.exists():
         return ["local.toml: not found — run: mercury config init"]
@@ -116,21 +128,73 @@ def repair_local_config_paths() -> list[str]:
     if not isinstance(mercury, dict):
         return ["local.toml: [mercury] section missing — run: mercury config init"]
 
-    missing = missing_mercury_usb_artifact_keys()
-    if not missing:
-        return ["local.toml: all USB artifact paths already present"]
-
-    mount = _resolve_usb_mount_for_repair(mercury)
-    paths = default_usb_path_replacements(mount)
-    additions = {key: paths[key] for key in missing}
+    notes: list[str] = []
     text = LOCAL_CONFIG.read_text(encoding="utf-8")
-    LOCAL_CONFIG.write_text(_append_mercury_keys(text, additions), encoding="utf-8")
 
-    notes = [f"local.toml: added {key} = {paths[key]!r}" for key in missing]
+    if missing_storage_section():
+        storage_block = _default_storage_toml_block(mercury)
+        text = text.rstrip() + "\n\n" + storage_block
+        notes.append("local.toml: added baseline [storage] section (active_write_role=legacy)")
+
+    missing = missing_mercury_usb_artifact_keys()
+    if missing:
+        mount = _resolve_usb_mount_for_repair(mercury)
+        paths = default_usb_path_replacements(mount)
+        additions = {key: paths[key] for key in missing}
+        text = _append_mercury_keys(text, additions)
+        notes.extend(f"local.toml: added {key} = {paths[key]!r}" for key in missing)
+    elif not notes:
+        notes.append("local.toml: all operator-storage artifact paths already present")
+
+    LOCAL_CONFIG.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+
     usb = discover_usb_target()
     if usb.mercury_layout_present:
         notes.extend(_ensure_usb_layout(usb.mount_path))
     return notes
+
+
+def _default_storage_toml_block(mercury: dict[str, object]) -> str:
+    """Minimal [storage] block aligned with current transitional USB writer."""
+    from mercury.core.storage_roles import (
+        DEFAULT_LEGACY_LABEL,
+        DEFAULT_LEGACY_UUID,
+        DEFAULT_PRIMARY_LABEL,
+        DEFAULT_PRIMARY_MOUNT,
+        DEFAULT_PRIMARY_UUID,
+    )
+
+    backup_root = mercury.get("backup_root")
+    legacy_mount = "/mnt/MERCURY_DATA_USB"
+    if backup_root and str(backup_root).strip():
+        backup = Path(str(backup_root).strip()).expanduser()
+        if backup.name == "mercury_backups":
+            legacy_mount = str(backup.parent)
+    return f"""# Added by config repair-local — writers remain on legacy until cutover.
+[storage]
+active_write_role = "legacy"
+migration_state = "not_started"
+
+[storage.primary]
+role = "canonical"
+label = "{DEFAULT_PRIMARY_LABEL}"
+mount_path = "{DEFAULT_PRIMARY_MOUNT}"
+filesystem_uuid = "{DEFAULT_PRIMARY_UUID}"
+filesystem_type = "ext4"
+writable = true
+
+[storage.legacy]
+role = "transition_source"
+label = "{DEFAULT_LEGACY_LABEL}"
+mount_path = "{legacy_mount}"
+filesystem_uuid = "{DEFAULT_LEGACY_UUID}"
+filesystem_type = "ext4"
+writable = true
+
+[storage.space_policy]
+minimum_free_bytes = 21474836480
+minimum_free_percent = 10
+"""
 
 
 def init_local_config(*, force: bool = False) -> list[str]:
@@ -163,12 +227,12 @@ def init_local_config(*, force: bool = False) -> list[str]:
     if usb.mercury_layout_present:
         results.extend(_ensure_usb_layout(usb.mount_path))
         results.append(
-            f"USB backup layout detected at {usb.mount_path} — "
+            f"Operator backup layout detected at {usb.mount_path} — "
             f"local.toml uses {mount_label} paths."
         )
     elif LOCAL_CONFIG.exists():
         results.append(
-            "USB backup mount not detected — local.toml uses temporary repo-local paths "
+            "Operator backup mount not detected — local.toml uses temporary repo-local paths "
             "(dev/dry-run only; not production protection)."
         )
     return results
@@ -188,7 +252,7 @@ def _customize_created_local_config(path) -> list[str]:
         )
     else:
         text = _apply_usb_paths(text, usb.mount_path)
-        notes.append(f"local.toml: using {usb.mount_path} paths from mounted USB.")
+        notes.append(f"local.toml: using {usb.mount_path} paths from mounted operator storage.")
 
     if 'user = "root"' in text and os_user != "root":
         text = text.replace('user = "root"', f'user = "{os_user}"', 1)
@@ -209,6 +273,11 @@ def _apply_usb_paths(text: str, mount_path) -> str:
     paths = default_usb_path_replacements(mount_path)
     for old, template in _USB_PATH_REPLACEMENTS:
         text = text.replace(old, template.format(**paths))
+    # Keep [storage.legacy] aligned with the active transitional USB mount.
+    text = text.replace(
+        'mount_path = "/mnt/MERCURY_DATA_USB"',
+        f'mount_path = "{Path(mount_path).resolve()}"',
+    )
     return text
 
 

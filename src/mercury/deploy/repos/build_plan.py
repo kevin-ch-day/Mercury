@@ -36,7 +36,7 @@ def build_repo_deploy_plan(
     safety_notes = [
         "Repository deployment clones into configured paths from config/repos.toml.",
         "Existing git repositories are skipped by default; nothing is deleted or overwritten.",
-        "USB git bundles capture committed history only (no dirty/untracked files).",
+        "Operator-storage git bundles capture committed history only (no dirty/untracked files).",
     ]
 
     if execute and not resolved.live_execution_allowed():

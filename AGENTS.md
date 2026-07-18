@@ -164,16 +164,20 @@ use_client = false
 
 Then: `export MERCURY_MARIADB_PASSWORD=...`
 
-**Live backup execution (explicit only):**
+**Operator storage backup root (legacy USB until cutover):**
 
 ```toml
 [mercury]
-dry_run = false
-live_actions_enabled = true
+# Backup writes use environment checks (Fedora/Windows + mounted operator root).
+# dry_run / live_actions_enabled gate sync, deploy, and restore — not routine backups.
 backup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"
+
+[storage]
+active_write_role = "legacy"
+migration_state = "not_started"
 ```
 
-For the first live milestone, Mercury also requires the USB mount under `/mnt/MERCURY_DATA_USB` to be active. Repo-local `backups/` are development artifacts only and do not count as production protection in live/operator mode.
+For the first live milestone, Mercury also requires the active write mount (today: `/mnt/MERCURY_DATA_USB`) to be active. Repo-local `backups/` are development artifacts only and do not count as production protection in live/operator mode. Inspect roots with `mercury storage status`; plan migration with `mercury storage migrate-plan` (dry-run only).
 
 Never commit passwords or `config/local.toml`.
 
@@ -200,12 +204,22 @@ mercury db inspect --name <db>           # tables/views/size (read-only)
 mercury db access                        # catalog vs server presence
 mercury status                           # protection report (demo inventory)
 mercury status --live                    # protection report from live server
-mercury backup run --db <prod> --kind full          # dry-run plan (default)
-mercury backup run --db <prod> --kind full --execute  # gated live dump
+mercury backup run --db <prod> --kind full           # execute when environment is ready
+mercury backup run --db <prod> --kind full --dry-run # preview only
 mercury backup verify --db <prod> [--update-manifest]  # verify on-disk artifacts
+mercury storage status                   # primary vs legacy roots (observe-only)
+mercury storage validate                 # mount/UUID checks for configured roots
+mercury storage migrate-plan             # dry-run legacy→primary inventory (no copies)
+mercury storage migrate-plan --update-state  # mark migration_state=planned when ready
+mercury storage migrate-run              # dry-run copy preview (default; resumes via ledger)
+mercury storage migrate-run --execute    # copy to primary; type MIGRATE PRIMARY
+mercury storage migrate-quarantine       # dry-run: list primary conflict moves
+mercury storage migrate-verify [--update-state]  # verify copy equality (no cutover)
+mercury storage cutover-readiness        # read-only checklist (never switches writers)
 mercury menu
 ```
 
+Until storage cutover, routine writers still target the transitional USB (`active_write_role=legacy`). Prefer `MERCURY_LEGACY_MOUNT` / `MERCURY_PRIMARY_MOUNT` over deprecated `MERCURY_USB_MOUNT`. Storage migration menu: Doctor → Open storage migration menu.
 ## Code conventions
 
 - **Python 3.12+**, type hints, Pydantic models for structured data.

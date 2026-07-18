@@ -85,7 +85,7 @@ def test_print_handoff_checklist_shows_steps(capsys: pytest.CaptureFixture[str])
             repository_package="partial",
             steps=[
                 HandoffStep(
-                    label="USB backup root",
+                    label="Operator backup root",
                     status="ok",
                     detail="/mnt/usb",
                 )
@@ -96,7 +96,7 @@ def test_print_handoff_checklist_shows_steps(capsys: pytest.CaptureFixture[str])
     assert "Workstation Handoff" in out
     assert "Handoff readiness" in out
     assert "Readiness checklist" in out
-    assert "USB backup root" in out
+    assert "Operator backup root" in out
 
 
 def test_handoff_checklist_recommended_actions_deduplicates() -> None:

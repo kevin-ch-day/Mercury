@@ -157,7 +157,7 @@ def run_handoff_verify_phase(*, execute: bool = True) -> HandoffWizardPhaseResul
     return HandoffWizardPhaseResult(
         phase="verify",
         status="ok",
-        summary=f"All {summary.verified} source backup(s) verified on USB.",
+        summary=f"All {summary.verified} source backup(s) verified on operator storage.",
     )
 
 
@@ -166,7 +166,7 @@ def run_handoff_repo_bundle_phase(*, execute: bool = True) -> HandoffWizardPhase
         return HandoffWizardPhaseResult(
             phase="repo_bundle",
             status="skipped",
-            summary="Would write repository bundles to USB.",
+            summary="Would write repository bundles to operator storage.",
         )
     from mercury.repo.config import load_repo_bundle_settings, load_repo_definitions
     from mercury.repo.status import inspect_repositories
@@ -185,7 +185,7 @@ def run_handoff_repo_bundle_phase(*, execute: bool = True) -> HandoffWizardPhase
         return HandoffWizardPhaseResult(
             phase="repo_bundle",
             status="skipped",
-            summary=f"Would write {len(plan.entries)} repository bundle(s) to USB.",
+            summary=f"Would write {len(plan.entries)} repository bundle(s) to operator storage.",
         )
     try:
         execute_repo_bundle_plan(plan)
@@ -205,7 +205,7 @@ def run_handoff_repo_bundle_phase(*, execute: bool = True) -> HandoffWizardPhase
             detail="; ".join(errors[:3]),
         )
     dirty = sum(1 for entry in plan.entries if entry.dirty)
-    summary = f"Wrote {len(plan.entries)} repository bundle(s) to USB."
+    summary = f"Wrote {len(plan.entries)} repository bundle(s) to operator storage."
     if dirty:
         summary += f" {dirty} repo(s) were dirty at bundle time."
     return HandoffWizardPhaseResult(phase="repo_bundle", status="ok", summary=summary)

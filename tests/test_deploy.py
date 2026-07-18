@@ -1,4 +1,4 @@
-"""Tests for database deployment from verified USB backups."""
+"""Tests for database deployment from verified operator-storage backups."""
 
 from __future__ import annotations
 
@@ -188,7 +188,12 @@ def test_deploy_preflight_blocked_when_usb_backup_root_missing(
     monkeypatch.setattr("mercury.deploy.preflight.fetch_user_database_names", lambda _cfg: [])
     preflight = run_deployment_preflight(policy=policy, probe_database=False)
     assert not preflight.ready
-    assert any("repo-local" in detail.lower() or "usb" in detail.lower() for detail in preflight.blockers)
+    assert any(
+        "repo-local" in detail.lower()
+        or "usb" in detail.lower()
+        or "operator backup root" in detail.lower()
+        for detail in preflight.blockers
+    )
 
 
 def test_deploy_preflight_blocked_when_mariadb_unavailable(

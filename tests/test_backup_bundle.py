@@ -207,7 +207,7 @@ def test_print_database_bundle_plan_written_shows_artifact_paths(
     )
     print_database_bundle_plan(plan, executed=True)
     out = capsys.readouterr().out
-    assert "Bundle written to USB." in out
+    assert "Bundle written to operator storage." in out
     assert "MANIFEST" in out
     assert "RUNBOOK" in out
     assert f"{stamp_date}/erebus_{stamp}.db_manifest.json" in out
@@ -245,6 +245,13 @@ def test_database_bundle_package_status_matrix() -> None:
         missing_count=0,
         failed_count=0,
         stale_count=1,
+    ) == "complete with warnings"
+    assert database_bundle_package_status(
+        source_count=4,
+        verified_count=3,
+        missing_count=0,
+        failed_count=0,
+        absent_count=1,
     ) == "complete with warnings"
     assert database_bundle_package_status(
         source_count=2,

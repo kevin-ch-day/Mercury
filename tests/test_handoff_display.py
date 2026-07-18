@@ -51,6 +51,11 @@ def test_handoff_dashboard_line_reflects_backup_lane_state() -> None:
         source_count=4,
         latest_transfer_at="2 days ago",
     )
+    assert "[--] ready with absent" in handoff_dashboard_line(
+        verified_count=3,
+        source_count=4,
+        absent_count=1,
+    )
 
 
 def test_handoff_wizard_plan_line_respects_start_phase() -> None:

@@ -37,7 +37,7 @@ VERIFICATION_SEED_STATUS: list[str] = [
 MANIFEST_VERIFIED_STAMP_NOTE = (
     "manifest.json verified is written false at backup time and only becomes true after "
     "mercury backup verify --update-manifest (or Verify menu option 2). Live protection status "
-    "uses checksum/artifact checks and USB mercury_state/database_backups.csv verify events."
+    "uses checksum/artifact checks and operator mercury_state/database_backups.csv verify events."
 )
 
 

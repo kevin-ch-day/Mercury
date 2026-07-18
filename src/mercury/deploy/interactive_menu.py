@@ -187,7 +187,7 @@ def _render_db_menu(*, show_title: bool) -> None:
     ]
     render_submenu(options)
     if policy.live_execution_allowed():
-        display_screen.write_hint("Option 3 imports verified USB backups into MariaDB.")
+        display_screen.write_hint("Option 3 imports verified operator-storage backups into MariaDB.")
 
 
 def _render_repo_menu(*, show_title: bool) -> None:
@@ -199,7 +199,7 @@ def _render_repo_menu(*, show_title: bool) -> None:
             ("1", "Show configured repository status"),
             ("2", "Dry-run repository deploy plan"),
             ("3", "Deploy missing repos from GitHub"),
-            ("4", "Deploy missing repos from USB bundles"),
+            ("4", "Deploy missing repos from operator-storage bundles"),
             ("5", "Preflight checks"),
         ]
     )

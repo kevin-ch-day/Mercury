@@ -124,7 +124,12 @@ def test_build_backup_status_report_live_anchors_missing_configured_source(
     )
     assert report.source_count == len(ACTIVE_BACKUP_SOURCE_DATABASES)
     obsidian = next(entry for entry in report.entries if entry.database == "obsidiandroid_core_prod")
-    assert obsidian.protection_status == "missing"
+    assert obsidian.protection_status == "absent"
+    assert report.absent_count >= 1
+    assert report.missing_count == 0 or all(
+        entry.protection_status != "missing" or entry.database != "obsidiandroid_core_prod"
+        for entry in report.entries
+    )
 
 
 def test_build_backup_status_report_counts_verified_and_missing(tmp_path: Path) -> None:

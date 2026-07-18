@@ -64,7 +64,7 @@ def operator_status(*, database_connected: bool | None = None, probe_database: b
     backup_root = _backup_root_from_config()
 
     if policy.backup_execution_allowed():
-        safety = "backups write to USB when sources are present"
+        safety = "backups write to operator storage when sources are present"
         mode = "operational"
     elif policy.dry_run or not policy.live_actions_enabled:
         safety = "destructive actions require live_actions_enabled"

@@ -1,14 +1,26 @@
-"""Configured repository inventory and USB output settings."""
+"""Configured repository inventory and operator storage output settings."""
 
 from __future__ import annotations
 
 from pathlib import Path
 import tomllib
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from mercury.core.paths import LOCAL_CONFIG, REPOS_EXAMPLE, REPOS_LOCAL
 from mercury.core.usb_mount import resolve_usb_mount
+
+
+def default_repo_backup_root() -> Path:
+    return resolve_usb_mount() / "mercury_repo_backups"
+
+
+def default_manifest_dir() -> Path:
+    return resolve_usb_mount() / "mercury_manifests"
+
+
+def default_runbook_dir() -> Path:
+    return resolve_usb_mount() / "mercury_runbooks"
 
 
 def _home_github_candidates() -> list[tuple[str, str, str]]:
@@ -26,9 +38,11 @@ def _home_github_candidates() -> list[tuple[str, str, str]]:
     return found
 
 
-DEFAULT_REPO_BACKUP_ROOT = resolve_usb_mount() / "mercury_repo_backups"
-DEFAULT_MANIFEST_DIR = resolve_usb_mount() / "mercury_manifests"
-DEFAULT_RUNBOOK_DIR = resolve_usb_mount() / "mercury_runbooks"
+# Lazy callables preferred; module-level Paths remain for backward-compatible imports.
+DEFAULT_REPO_BACKUP_ROOT = default_repo_backup_root()
+DEFAULT_MANIFEST_DIR = default_manifest_dir()
+DEFAULT_RUNBOOK_DIR = default_runbook_dir()
+
 DEFAULT_LOCAL_REPO_CANDIDATES: list[tuple[str, str, str]] = [
     ("mercury", "Mercury", "{home}/GitHub/Mercury"),
     ("erebus_engine", "Erebus Engine", "{home}/GitHub/erebus-engine-fedora"),
@@ -57,9 +71,9 @@ class RepoSelectionError(ValueError):
 
 
 class RepoBundleSettings(BaseModel):
-    repo_backup_root: Path = DEFAULT_REPO_BACKUP_ROOT
-    manifest_dir: Path = DEFAULT_MANIFEST_DIR
-    runbook_dir: Path = DEFAULT_RUNBOOK_DIR
+    repo_backup_root: Path = Field(default_factory=default_repo_backup_root)
+    manifest_dir: Path = Field(default_factory=default_manifest_dir)
+    runbook_dir: Path = Field(default_factory=default_runbook_dir)
 
 
 def discover_local_repo_definitions() -> list[RepoDefinition]:
@@ -234,13 +248,13 @@ def load_repo_bundle_settings(path: Path | None = None) -> RepoBundleSettings:
 
     return RepoBundleSettings(
         repo_backup_root=Path(
-            str(section.get("repo_backup_root") or DEFAULT_REPO_BACKUP_ROOT)
+            str(section.get("repo_backup_root") or default_repo_backup_root())
         ).expanduser(),
         manifest_dir=Path(
-            str(section.get("manifest_dir") or DEFAULT_MANIFEST_DIR)
+            str(section.get("manifest_dir") or default_manifest_dir())
         ).expanduser(),
         runbook_dir=Path(
-            str(section.get("runbook_dir") or DEFAULT_RUNBOOK_DIR)
+            str(section.get("runbook_dir") or default_runbook_dir())
         ).expanduser(),
     )
 

@@ -1,4 +1,4 @@
-"""Models for fresh-system database deployment from verified USB backups."""
+"""Models for fresh-system database deployment from verified operator-storage backups."""
 
 from __future__ import annotations
 

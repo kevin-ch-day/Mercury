@@ -1,4 +1,4 @@
-"""Execute database deployment from verified USB backups."""
+"""Execute database deployment from verified operator-storage backups."""
 
 from __future__ import annotations
 

@@ -45,12 +45,12 @@ def _usb_writable_check(policy, env) -> PreflightCheck | None:
         if check.needs_repair:
             blocked_paths.append(dirname)
     if not blocked_paths:
-        return PreflightCheck(label="USB writability", level="ready", detail="operator-writable")
+        return PreflightCheck(label="Operator storage writability", level="ready", detail="operator-writable")
     names = ", ".join(blocked_paths)
     return PreflightCheck(
-        label="USB writability",
+        label="Operator storage writability",
         level="blocked",
-        detail=f"USB paths not writable by current user: {names}",
+        detail=f"Operator storage paths not writable by current user: {names}",
         live_only=True,
     )
 
@@ -133,14 +133,19 @@ def run_deployment_preflight(
     elif resolved.backup_root_state() != "usb-mounted":
         checks.append(
             PreflightCheck(
-                label="USB backup root",
+                label="Operator backup root",
                 level="blocked",
-                detail=f"USB backup root not ready ({resolved.backup_root_state()})",
+                detail=f"Operator backup root not ready ({resolved.backup_root_state()})",
             )
         )
     else:
-        checks.append(PreflightCheck(label="USB backup root", level="ready", detail="mounted and configured"))
-
+        checks.append(
+            PreflightCheck(
+                label="Operator backup root",
+                level="ready",
+                detail="mounted and configured",
+            )
+        )
     usb_writable = _usb_writable_check(resolved, env)
     if usb_writable is not None:
         checks.append(usb_writable)
@@ -197,7 +202,7 @@ def run_deployment_preflight(
             PreflightCheck(
                 label="Verified backups",
                 level="blocked",
-                detail="No verified full backups found for protected sources on USB",
+                detail="No verified full backups found for protected sources on operator storage",
             )
         )
     else:

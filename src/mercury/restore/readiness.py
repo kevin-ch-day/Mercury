@@ -196,7 +196,7 @@ def build_target_completeness_entry_against_backup(
     if policy.backup_root_is_within_repo() and not policy.allow_unsafe_backup_root:
         entry.completeness_status = "unknown"
         entry.warnings.append(
-            "Backup root is repo-local fallback; configure USB-backed backups before deployment checks."
+            "Backup root is repo-local fallback; configure operator-storage backups before deployment checks."
         )
 
     backup_dir = find_latest_backup_directory(policy.backup_root, source_database)

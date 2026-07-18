@@ -84,7 +84,11 @@ def test_live_report_ignores_out_of_scope_databases(monkeypatch) -> None:
     assert report.inventory_count == 5
     assert report.ignored_out_of_scope_count == 2
     assert "obsidiandroid_core_prod" in report.protected
-    assert report.source_statuses.get("obsidiandroid_core_prod") == "missing"
+    assert report.source_statuses.get("obsidiandroid_core_prod") == "absent"
+    assert report.absent_source_count >= 1
+    assert report.missing_source_count == 0 or "obsidiandroid_core_prod" not in {
+        name for name, status in report.source_statuses.items() if status == "missing"
+    }
     assert "droid_threat_intel_db_prod" not in report.not_protected
     assert "proofpoint_cti_db_dev" not in report.not_protected
     assert "gecko_research_database_prod" not in report.protected

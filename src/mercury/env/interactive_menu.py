@@ -80,7 +80,8 @@ def _print_live_mode_guide() -> None:
     output.write(_guide_field("Config file", config_path))
     output.write("")
     output.write("Backups")
-    output.write("Backups write to USB when MariaDB, config, and the USB backup root are valid.")
+    output.write("Backups write to operator storage when MariaDB, config, and the backup root are valid.")
+    output.write("Inspect primary vs legacy roots with: ./run.sh storage status")
     output.write("Use Backup Operations -> Run full backup now, or: ./run.sh backup all")
     output.write("Use Preview backup plan or ./run.sh backup plan --dry-run to preview only.")
     output.write("")
@@ -156,11 +157,12 @@ def run_doctor_menu(*, interactive: bool = True) -> None:
         options: list[tuple[str, str]] = [
             ("1", "Show repair plan"),
             ("2", "Rescan"),
+            ("3", "Open storage migration menu"),
         ]
         from mercury.repair.startup import usb_repair_needed
 
         if usb_repair_needed():
-            options.append(("3", "Repair USB mount and permissions"))
+            options.append(("4", "Repair USB mount and permissions"))
         output.write(
             menu_display.render_option_menu(
                 title="Actions",
@@ -183,6 +185,12 @@ def run_doctor_menu(*, interactive: bool = True) -> None:
             show_title = pause_and_redraw()
             continue
         if choice == "3":
+            from mercury.storage.interactive_menu import run_storage_menu
+
+            run_storage_menu(interactive=True)
+            show_title = pause_and_redraw()
+            continue
+        if choice == "4":
             from mercury.repair.startup import run_usb_repair_flow
 
             run_usb_repair_flow(interactive=True, default_yes=True)

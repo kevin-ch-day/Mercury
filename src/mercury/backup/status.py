@@ -45,6 +45,7 @@ class BackupStatusReport(BaseModel):
     failed_count: int = 0
     stale_count: int = 0
     unknown_freshness_count: int = 0
+    absent_count: int = 0
     entries: list[BackupStatusEntry] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
@@ -78,6 +79,18 @@ def _load_backup_created_at(backup_dir: Path) -> str | None:
     return str(created_at) if created_at else None
 
 
+def _live_server_database_names(*, live: bool) -> set[str] | None:
+    """Return live server DB names when probing; None when offline/unavailable."""
+    if not live:
+        return None
+    try:
+        from mercury.backup.live_inventory import fetch_live_server_database_names
+
+        return set(fetch_live_server_database_names())
+    except Exception:
+        return None
+
+
 def build_backup_status_report(
     *,
     live: bool = False,
@@ -88,18 +101,38 @@ def build_backup_status_report(
     resolved_policy = policy or load_execution_policy()
     sources = select_batch_sources(selected=selected, live=live)
     warning = _untrusted_root_warning(resolved_policy)
+    server_names = _live_server_database_names(live=live)
 
     verified_count = 0
     missing_count = 0
     failed_count = 0
     stale_count = 0
     unknown_freshness_count = 0
+    absent_count = 0
     entries: list[BackupStatusEntry] = []
+    warnings: list[str] = [warning] if warning else []
 
     for database in sources:
         role = _role_label(database)
         backup_dir = find_latest_backup_directory(resolved_policy.backup_root, database)
+        absent_on_server = server_names is not None and database not in server_names
+
         if backup_dir is None:
+            if absent_on_server:
+                entries.append(
+                    BackupStatusEntry(
+                        database=database,
+                        role=role,
+                        protection_status="absent",
+                        recommend_full_backup=False,
+                        issues=[
+                            "Database is not present on this MariaDB server; "
+                            "backup cannot run until it is created or restored."
+                        ],
+                    )
+                )
+                absent_count += 1
+                continue
             entries.append(
                 BackupStatusEntry(
                     database=database,
@@ -116,7 +149,7 @@ def build_backup_status_report(
         freshness = assess_backup_freshness(
             database,
             backup_at=parse_backup_timestamp(backup_created_at),
-            live=live,
+            live=live and not absent_on_server,
         )
 
         verification = verify_backup_artifacts(backup_dir, database=database)
@@ -125,6 +158,11 @@ def build_backup_status_report(
         if warning:
             status = "untrusted root"
             issues = [warning, *issues]
+        if absent_on_server:
+            issues.append(
+                "Database is not present on this MariaDB server; "
+                "on-disk backup is historical only for this host."
+            )
 
         if status == "verified":
             verified_count += 1
@@ -136,7 +174,7 @@ def build_backup_status_report(
         elif freshness.freshness == FRESHNESS_UNKNOWN:
             unknown_freshness_count += 1
 
-        if freshness.recommend_full_backup and status == "verified":
+        if freshness.recommend_full_backup and status == "verified" and not absent_on_server:
             issues.append(
                 "Backup artifacts are verified, but freshness is stale or unknown. "
                 "Run full backup before workstation handoff."
@@ -158,9 +196,18 @@ def build_backup_status_report(
                 ),
                 activity_signal=freshness.activity_signal,
                 backup_age=freshness.backup_age,
-                recommend_full_backup=freshness.recommend_full_backup or status != "verified",
+                recommend_full_backup=(
+                    (freshness.recommend_full_backup or status != "verified")
+                    and not absent_on_server
+                ),
                 issues=issues,
             )
+        )
+
+    if absent_count:
+        warnings.append(
+            f"{absent_count} catalog backup source(s) are not present on this MariaDB server "
+            "and do not block handoff completeness."
         )
 
     return BackupStatusReport(
@@ -172,6 +219,7 @@ def build_backup_status_report(
         failed_count=failed_count,
         stale_count=stale_count,
         unknown_freshness_count=unknown_freshness_count,
+        absent_count=absent_count,
         entries=entries,
-        warnings=[warning] if warning else [],
+        warnings=warnings,
     )

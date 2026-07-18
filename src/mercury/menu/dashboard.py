@@ -59,6 +59,14 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             )
         )
 
+    try:
+        from mercury.storage.report import build_storage_status_report
+
+        storage_report = build_storage_status_report()
+        rows.append(dashboard_row("Storage roles", storage_report.dashboard_line()))
+    except OSError:
+        pass
+
     deploy_status_line = "skipped until config initialized"
     sync_blocker = "None."
     stale_names: set[str] = set()
@@ -68,6 +76,8 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     missing_count = 0
     failed_count = 0
     unknown_only_count = 0
+    absent_count = 0
+    status_error: str | None = None
     ready = 0
     blocked = 0
     deploy_complete = False
@@ -93,6 +103,8 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             missing_count,
             failed_count,
             unknown_only_count,
+            absent_count,
+            status_error,
         ) = _verified_source_summary(live=probe and env.mariadb.connection_works is True)
         ready, blocked, sync_blocker = _sync_readiness_summary(
             live=probe and env.mariadb.connection_works is True,
@@ -113,9 +125,13 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             missing_count=missing_count,
             failed_count=failed_count,
             unknown_only_count=unknown_only_count,
+            absent_count=absent_count,
+            status_error=status_error,
         )
-        present_count = max(0, len(source_names) - missing_count)
-        backup_line = f"{len(verified_names)} of {len(source_names)} verified on USB"
+        present_on_server = max(0, len(source_names) - absent_count)
+        backup_line = f"{len(verified_names)} of {present_on_server} server sources verified"
+        if absent_count:
+            backup_line += f"; {absent_count} absent from server"
         if missing_count:
             backup_line += f"; {missing_count} without backup"
         if failed_count:
@@ -124,15 +140,20 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             backup_line += f"; {len(stale_names)} stale"
         if unknown_names:
             backup_line += f"; {len(unknown_names)} unknown freshness"
+        if status_error:
+            backup_line = status_error
         mariadb_line = deploy_line
         sync_line = f"{ready} approved pairs ready"
         if blocked:
             sync_line += f"; {blocked} blocked"
-        if stale_names or missing_count or failed_count:
+        if status_error:
+            sync_line = "unavailable"
+            handoff_line = "status error — see Protection"
+        elif stale_names or missing_count or failed_count:
             handoff_line = "partial — menu [9] or h for checklist"
-        elif unknown_names:
+        elif unknown_names or absent_count:
             handoff_line = "warnings — menu [9] guided wizard"
-        elif verified_names and len(verified_names) == len(source_names):
+        elif verified_names and present_on_server and len(verified_names) == present_on_server:
             handoff_line = "backup lane ok — menu [9] handoff wizard"
         else:
             handoff_line = "incomplete"
@@ -155,6 +176,7 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             missing_count=missing_count,
             failed_count=failed_count,
             unknown_count=len(unknown_names),
+            absent_count=absent_count,
             latest_handoff_status=latest_handoff_status,
             latest_transfer_at=latest_transfer_at,
         )
@@ -162,7 +184,7 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     rows.extend(
         [
             dashboard_row("MariaDB sources", mariadb_line),
-            dashboard_row("USB backups", backup_line),
+            dashboard_row("Operator backups", backup_line),
             dashboard_row("Handoff readiness", handoff_line),
             dashboard_row("Sync readiness", sync_line),
             dashboard_row("Protection", blocker),
@@ -220,7 +242,11 @@ def _resolve_environment_readiness(
     missing_count: int,
     failed_count: int,
     unknown_only_count: int,
+    absent_count: int = 0,
+    status_error: str | None = None,
 ) -> str:
+    if status_error:
+        return status_error
     base = resolve_dashboard_blocker(
         setup_blocker=setup_blocker,
         verified_names=verified_names,
@@ -236,12 +262,21 @@ def _resolve_environment_readiness(
     if stale_count:
         protection_parts.append(_pluralized(stale_count, "stale backup"))
     if missing_count:
-        protection_parts.append(_pluralized(missing_count, "protected source missing"))
+        protection_parts.append(_pluralized(missing_count, "protected source missing backup"))
     if failed_count:
         protection_parts.append(_pluralized(failed_count, "backup verification failure"))
     if unknown_only_count:
         protection_parts.append(_pluralized(unknown_only_count, "unknown freshness state"))
+    if absent_count:
+        protection_parts.append(
+            _pluralized(absent_count, "catalog source absent from this server")
+        )
     if protection_parts:
+        # Absent-only is a warning, not incomplete protection for this host.
+        if absent_count and not (stale_count or missing_count or failed_count or unknown_only_count):
+            return f"Host note: {'; '.join(protection_parts)}"
+        if absent_count and not (stale_count or missing_count or failed_count):
+            return f"Protection warnings: {'; '.join(protection_parts)}"
         return f"Protection incomplete: {'; '.join(protection_parts)}"
     return base
 
@@ -255,7 +290,7 @@ def _pluralized(count: int, singular: str) -> str:
 def _verified_source_summary(
     *,
     live: bool,
-) -> tuple[set[str], set[str], set[str], set[str], int, int, int]:
+) -> tuple[set[str], set[str], set[str], set[str], int, int, int, int, str | None]:
     try:
         from mercury.backup.batch_runner import resolve_batch_sources
         from mercury.backup.status import build_backup_status_report
@@ -269,7 +304,10 @@ def _verified_source_summary(
         }
         stale = {entry.database for entry in report.entries if entry.freshness == "stale"}
         unknown = {entry.database for entry in report.entries if entry.freshness == "unknown"}
-        unknown_only_count = max(0, report.unknown_freshness_count - report.missing_count)
+        unknown_only_count = max(
+            0,
+            report.unknown_freshness_count - report.missing_count,
+        )
         return (
             verified,
             sources,
@@ -278,9 +316,11 @@ def _verified_source_summary(
             report.missing_count,
             report.failed_count,
             unknown_only_count,
+            report.absent_count,
+            None,
         )
-    except Exception:
-        return set(), set(), set(), set(), 0, 0, 0
+    except Exception as exc:
+        return set(), set(), set(), set(), 0, 0, 0, 0, f"Backup status unavailable: {exc}"
 
 
 def _deploy_status_line(*, live: bool) -> str:
@@ -291,8 +331,8 @@ def _deploy_status_line(*, live: bool) -> str:
 
         report = build_rebuild_status_report(probe_database=True)
         return report.deploy_status
-    except Exception:
-        return "unknown"
+    except Exception as exc:
+        return f"deploy status unavailable: {exc}"
 
 
 def _deploy_target_summary(*, live: bool) -> str:
@@ -306,8 +346,8 @@ def _deploy_target_summary(*, live: bool) -> str:
 
         snapshot = build_deployment_snapshot(execute=False)
         return deployment_target_dashboard_label(snapshot)
-    except Exception:
-        return "deploy status unavailable"
+    except Exception as exc:
+        return f"deploy status unavailable: {exc}"
 
 
 def _sync_readiness_summary(

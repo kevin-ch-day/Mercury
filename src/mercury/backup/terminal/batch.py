@@ -78,7 +78,7 @@ def print_backup_batch_result(
             display_screen.write_summary("Preview only; no files were written.")
         elif batch.refused_count and batch.execute:
             display_screen.write_blank()
-            display_screen.write_summary("No backups written. Check USB/config or missing sources.")
+            display_screen.write_summary("No backups written. Check storage/config or missing sources.")
         return
 
     if compact:
@@ -128,4 +128,4 @@ def print_backup_batch_result(
 
     if batch.execute and batch.refused_count and not batch.executed_count:
         output.write()
-        output.write("Batch refused: check USB backup root, config/local.toml, or missing sources.")
+        output.write("Batch refused: check operator backup root, config/local.toml, or missing sources.")

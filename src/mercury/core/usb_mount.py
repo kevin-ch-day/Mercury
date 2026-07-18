@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import string
+import warnings
 from pathlib import Path
 
 import tomllib
@@ -12,6 +13,7 @@ from mercury.core.paths import LOCAL_CONFIG
 from mercury.core.platform import PlatformInfo, detect_platform
 
 ENV_USB_MOUNT = "MERCURY_USB_MOUNT"
+ENV_LEGACY_MOUNT = "MERCURY_LEGACY_MOUNT"
 DEFAULT_USB_MOUNT = Path("/mnt/MERCURY_DATA_USB")
 MERCURY_USB_MARKERS = ("mercury_backups", "mercury_logs")
 
@@ -41,19 +43,49 @@ def _windows_auto_detect_usb_mount() -> Path | None:
 
 def resolve_usb_mount(*, local_config: Path | None = None) -> Path:
     """
-    Resolve the Mercury USB root directory.
+    Resolve the active transitional / legacy operator storage root.
+
+    Until cutover this is the USB write root. Prefer role-specific env vars and
+    ``[storage]`` active-write root so observe and write stacks stay aligned.
 
     Precedence (highest first):
-    - MERCURY_USB_MOUNT environment variable
+    - MERCURY_LEGACY_MOUNT
+    - MERCURY_USB_MOUNT (deprecated; transitional USB only)
+    - load_storage_config().active_write_root while role is legacy
     - [mercury].usb_mount in config/local.toml
     - Windows auto-detect (drive letter with mercury_backups + mercury_logs)
     - DEFAULT_USB_MOUNT (/mnt/MERCURY_DATA_USB on Linux)
     """
+    legacy_env = os.environ.get(ENV_LEGACY_MOUNT)
+    if legacy_env and str(legacy_env).strip():
+        return Path(str(legacy_env).strip()).expanduser().resolve()
+
     env_value = os.environ.get(ENV_USB_MOUNT)
     if env_value and str(env_value).strip():
+        if os.environ.get("PYTEST_CURRENT_TEST") is None:
+            warnings.warn(
+                f"{ENV_USB_MOUNT} is deprecated; use {ENV_LEGACY_MOUNT} for the "
+                "transitional USB role and MERCURY_PRIMARY_MOUNT for the canonical primary. "
+                f"{ENV_USB_MOUNT} never selects primary storage after cutover.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         return Path(str(env_value).strip()).expanduser().resolve()
 
     config_path = local_config or LOCAL_CONFIG
+    try:
+        from mercury.core.storage_roots import load_storage_config
+        from mercury.core.storage_roles import StorageWriteRole
+
+        storage = load_storage_config(local_config=config_path, warn_deprecated=False)
+        if storage.active_write_role == StorageWriteRole.LEGACY:
+            return storage.legacy.mount_path.expanduser().resolve()
+        # After cutover, USB-named resolvers still point at the legacy archive root
+        # so historical tooling does not silently retarget primary.
+        return storage.legacy.mount_path.expanduser().resolve()
+    except Exception:
+        pass
+
     section = _load_mercury_section(config_path)
     configured = section.get("usb_mount")
     if configured and str(configured).strip():
@@ -88,6 +120,35 @@ def usb_mount_is_active(mount_path: Path, *, platform_info: PlatformInfo | None 
         return False
 
 
+def unmounted_storage_path_blocker(mount_path: Path) -> str | None:
+    """
+    Refuse writes into a directory that looks like a mount point but is not mounted.
+
+    Does not delete or relocate stale entries.
+    """
+    path = Path(mount_path)
+    if not path.exists():
+        return None
+    if usb_mount_is_active(path):
+        return None
+    try:
+        from mercury.core.storage_validate import list_stale_mountpoint_entries
+
+        stale = list_stale_mountpoint_entries(path)
+    except Exception:
+        stale = ()
+    if stale:
+        listing = ", ".join(stale[:6])
+        return (
+            f"Refusing backup execution because {path} is not an active mount and contains "
+            f"unexpected entries ({listing}). Mount the configured volume or clear the "
+            "stale mount-point directory manually — Mercury will not remove them."
+        )
+    return (
+        f"Refusing backup execution because the required storage mount is not active: {path}"
+    )
+
+
 def usb_mount_label(mount_path: Path) -> str:
     return str(mount_path)
 
@@ -105,7 +166,7 @@ def default_usb_path_replacements(mount_path: Path) -> dict[str, str]:
 
 
 def assert_operator_usb_path(path: Path, *, usb_mount: Path | None = None) -> None:
-    """Refuse writes outside the resolved Mercury USB mount when it is not active."""
+    """Refuse writes outside the resolved operator storage mount when it is not active."""
     mount = (usb_mount or resolve_usb_mount()).resolve()
     resolved = path.expanduser().resolve()
     try:
@@ -113,4 +174,4 @@ def assert_operator_usb_path(path: Path, *, usb_mount: Path | None = None) -> No
     except ValueError as exc:
         raise ValueError(f"path is not under {mount}: {resolved}") from exc
     if not usb_mount_is_active(mount):
-        raise ValueError(f"required USB mount is not active: {mount}")
+        raise ValueError(f"required operator storage mount is not active: {mount}")

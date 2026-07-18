@@ -56,7 +56,7 @@ Schema-only uses planned `*.schema.sql.gz` files. Full verified backups are **re
 Backup writes are allowed when Mercury’s backup environment checks pass:
 
 - Fedora or Windows runtime host
-- `config/local.toml` present with USB-backed `backup_root`
+- `config/local.toml` present with operator-storage `backup_root`
 - mounted USB layout (`mercury_backups/`, `mercury_logs/`, … under configured `usb_mount` or Linux default `/mnt/MERCURY_DATA_USB`)
 - sufficient free space on the backup root
 - source database present on MariaDB (missing protected sources are refused, not silently skipped)

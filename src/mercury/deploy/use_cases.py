@@ -71,7 +71,7 @@ def detect_deploy_use_cases() -> list[DeployUseCase]:
             DeployUseCase(
                 case_id="repos_config_missing",
                 title="Repository config not initialized",
-                summary="Mercury cannot plan GitHub or USB repository deployment without config/repos.toml.",
+                summary="Mercury cannot plan GitHub or operator-storage repository deployment without config/repos.toml.",
                 commands=("./run.sh repo init-config",),
             )
         )
@@ -101,7 +101,7 @@ def detect_deploy_use_cases() -> list[DeployUseCase]:
             DeployUseCase(
                 case_id="fresh_full_rebuild",
                 title="Fresh workstation — databases and repositories",
-                summary="Verified USB database backups and repository sources are available; prod DBs and repos are missing.",
+                summary="Verified operator-storage database backups and repository sources are available; prod DBs and repos are missing.",
                 commands=(
                     "./run.sh deploy system --dry-run",
                     "./run.sh menu",
@@ -113,7 +113,7 @@ def detect_deploy_use_cases() -> list[DeployUseCase]:
             DeployUseCase(
                 case_id="deploy_databases_only",
                 title="Deploy databases only",
-                summary=f"{db_snapshot.import_count} protected database(s) missing on MariaDB; verified USB SQL backups are ready.",
+                summary=f"{db_snapshot.import_count} protected database(s) missing on MariaDB; verified operator-storage SQL backups are ready.",
                 commands=("./run.sh deploy db --dry-run",),
             )
         )
@@ -147,7 +147,7 @@ def detect_deploy_use_cases() -> list[DeployUseCase]:
             DeployUseCase(
                 case_id="repos_from_github",
                 title="Clone missing repositories from GitHub",
-                summary="remote_url or USB manifest metadata can drive git clone into configured paths.",
+                summary="remote_url or operator-storage manifest metadata can drive git clone into configured paths.",
                 commands=("./run.sh deploy repos --from-github --dry-run",),
             )
         )
@@ -155,7 +155,7 @@ def detect_deploy_use_cases() -> list[DeployUseCase]:
         cases.append(
             DeployUseCase(
                 case_id="repos_from_usb",
-                title="Restore missing repositories from USB git bundles",
+                title="Restore missing repositories from operator-storage git bundles",
                 summary="Offline or pinned restore from mercury_repo_backups bundle artifacts.",
                 commands=("./run.sh deploy repos --from-usb --dry-run",),
             )
@@ -180,7 +180,7 @@ def detect_deploy_use_cases() -> list[DeployUseCase]:
                 title="Database deployment plan is ready",
                 summary=(
                     f"Review the dry-run plan for {db_snapshot.import_count} importable database(s), "
-                    "then enable live actions to import verified USB backups."
+                    "then enable live actions to import verified operator-storage backups."
                 ),
                 commands=(
                     "./run.sh deploy db --dry-run",

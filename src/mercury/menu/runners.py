@@ -93,6 +93,12 @@ def run_handoff_menu() -> None:
     _run_handoff_menu()
 
 
+def run_storage_menu() -> None:
+    from mercury.storage.interactive_menu import run_storage_menu as _run_storage_menu
+
+    _run_storage_menu()
+
+
 # Re-export interactive loop (implementation in menu.loop).
 from mercury.menu.loop import MenuResult, handle_menu_choice, run_menu  # noqa: E402
 

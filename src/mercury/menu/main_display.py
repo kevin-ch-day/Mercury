@@ -102,7 +102,7 @@ MENU_SECTIONS: list[tuple[str, list[MenuItem]]] = [
             MenuItem(
                 "9",
                 "Workstation handoff",
-                "USB checklist, guided wizard, and transfer write",
+                "Operator-storage checklist, guided wizard, and transfer write",
             ),
         ],
     ),
@@ -242,7 +242,7 @@ def render_menu_help() -> str:
         help_line(f"Enter {key_label} for actions, 0 or q to exit."),
         help_line("Shortcut: h opens workstation handoff (menu 9)."),
         help_line("Handoff: menu 9 [2] guided wizard · [11] receiver guide · ./run.sh transfer receive"),
-        help_line("Recovery: menu 8 for DR status; complete handoff USB uses transfer receive on receiver."),
+        help_line("Recovery: menu 8 for DR status; complete handoff media uses transfer receive on receiver."),
         "",
         help_line("For full detail, run the matching CLI command (e.g. ./run.sh db discover)."),
         rule,

@@ -74,7 +74,7 @@ def test_dashboard_verified_backups_dry_run_no_import_actions(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """USB backups verified + server DBs present => no import commands in dry-run."""
+    """Operator-storage backups verified + server DBs present => no import commands in dry-run."""
     policy = _usb_policy(tmp_path)
     _seed_all_verified(policy)
     _mock_server_names(monkeypatch, list(PROTECTED))

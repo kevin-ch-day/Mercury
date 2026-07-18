@@ -54,7 +54,7 @@ def repository_deploy_status_rows() -> list[str]:
         ),
     ]
     if blocked:
-        rows.append(dashboard_row("No source", f"{len(blocked)} repo(s) need remote_url or USB bundle"))
+        rows.append(dashboard_row("No source", f"{len(blocked)} repo(s) need remote_url or operator-storage bundle"))
     if not policy.live_execution_allowed():
         rows.append(dashboard_row("Next step", "Option 2 — dry-run repository plan"))
     elif missing:

@@ -1,4 +1,4 @@
-"""Resolve repository deployment candidates from config and USB manifests."""
+"""Resolve repository deployment candidates from config and operator-storage manifests."""
 
 from __future__ import annotations
 
@@ -93,6 +93,6 @@ def resolve_repo_deploy_candidates(
         if exists:
             candidate.skip_reason = f"Repository already present at {effective_path}"
         elif source == "none":
-            candidate.skip_reason = "No GitHub remote_url or verified USB bundle available"
+            candidate.skip_reason = "No GitHub remote_url or verified operator-storage bundle available"
         candidates.append(candidate)
     return candidates

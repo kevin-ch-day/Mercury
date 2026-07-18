@@ -20,10 +20,10 @@ from mercury.state.summary import build_state_summary
 
 def _usb_artifact_summary(path_str: str | None) -> str:
     if not path_str:
-        return "none on USB"
+        return "none on operator storage"
     path = Path(path_str)
     if not path.is_file():
-        return "listed path missing on USB"
+        return "listed path missing on operator storage"
     mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
     age = format_human_datetime(mtime.isoformat())
     return f"{age} ({path.name})"
@@ -78,7 +78,7 @@ def print_transfer_bundle(bundle: TransferBundle, *, executed: bool = False) -> 
             "Handoff readiness": handoff_status,
             "Sync readiness": sync_status,
             "Actual sync": "deferred",
-            "Latest on USB": _usb_artifact_summary(bundle.latest_transfer_manifest_path),
+            "Latest on operator storage": _usb_artifact_summary(bundle.latest_transfer_manifest_path),
             "State root": str(state.state_root),
             "State ops": state.operations,
             "State bundles": state.database_bundle_rows,
@@ -144,7 +144,7 @@ def print_transfer_bundle(bundle: TransferBundle, *, executed: bool = False) -> 
     if executed:
         display_screen.write_summary(f"Transfer manifest written: {bundle.transfer_manifest_path}")
         display_screen.write_summary(f"Transfer runbook written: {bundle.transfer_runbook_path}")
-        display_screen.write_summary("Transfer package written to USB.")
+        display_screen.write_summary("Transfer package written to operator storage.")
     else:
         if bundle.latest_transfer_manifest_path:
             display_screen.write_summary(f"Latest transfer manifest: {bundle.latest_transfer_manifest_path}")

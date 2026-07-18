@@ -81,6 +81,8 @@ def backup_entry_status_label(entry) -> str:
     if protection_status != "verified":
         if protection_status == "missing":
             return "Missing"
+        if protection_status == "absent":
+            return "Absent"
         if protection_status == "failed":
             return "Unverified"
         return "Warning"
@@ -177,6 +179,7 @@ def artifact_status_label(protection_status: str) -> str:
     mapping = {
         "verified": "verified",
         "missing": "missing",
+        "absent": "absent",
         "failed": "unverified",
         "untrusted root": "untrusted",
     }
@@ -227,7 +230,7 @@ def handoff_freshness_warning(*, stale_count: int = 0, unknown_count: int = 0) -
     if unknown_count:
         parts.append(f"{unknown_count} unknown freshness")
     return (
-        f"{' and '.join(parts)} verified backup(s) — bundle documents current USB state "
+        f"{' and '.join(parts)} verified backup(s) — bundle documents current operator-storage state "
         "but handoff should wait for fresh full backups."
     )
 

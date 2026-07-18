@@ -77,14 +77,14 @@ def _bundle_next_steps(plan: DatabaseBundlePlan) -> list[str]:
         )
     if plan.verified_count and not stale_names and not unknown_names:
         steps.append(
-            "On the receiving workstation, open the index runbook and per-database restore notes under the USB runbook dir."
+            "On the receiving workstation, open the index runbook and per-database restore notes under the operator runbook dir."
         )
     elif plan.verified_count:
         steps.append(
-            "After backups are fresh, use the index runbook and per-database restore notes on the USB runbook dir."
+            "After backups are fresh, use the index runbook and per-database restore notes on the operator runbook dir."
         )
     if not steps:
-        steps.append("Bundle is ready for workstation handoff using the index runbook on USB.")
+        steps.append("Bundle is ready for workstation handoff using the index runbook on operator storage.")
     return steps
 
 
@@ -138,11 +138,11 @@ def print_database_bundle_plan(plan: DatabaseBundlePlan, *, executed: bool = Fal
         display_screen.write_blank()
         display_screen.write_status(
             "warn",
-            f"{plan.missing_count} source(s) missing verified USB backups — bundle index will list gaps.",
+            f"{plan.missing_count} source(s) missing verified operator-storage backups — bundle index will list gaps.",
         )
     display_screen.write_blank()
     if executed:
-        display_screen.write_status("ok", "Bundle written to USB.")
+        display_screen.write_status("ok", "Bundle written to operator storage.")
         display_screen.write_summary(f"Index manifest: {plan.planned_index_manifest_path}")
         display_screen.write_summary(f"Index runbook: {plan.planned_index_runbook_path}")
         artifact_rows = _written_artifact_rows(plan)
@@ -164,5 +164,5 @@ def print_database_bundle_plan(plan: DatabaseBundlePlan, *, executed: bool = Fal
         display_screen.write_summary(f"Planned index manifest: {plan.planned_index_manifest_path}")
         display_screen.write_summary(f"Planned index runbook: {plan.planned_index_runbook_path}")
         display_screen.write_summary(
-            "Confirm write to USB to create per-database manifests and restore runbooks."
+            "Confirm write to operator storage to create per-database manifests and restore runbooks."
         )

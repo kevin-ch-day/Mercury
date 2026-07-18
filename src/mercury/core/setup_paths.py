@@ -1,4 +1,4 @@
-"""Mercury USB and configured path assessment for doctor and dashboard."""
+"""Operator storage and configured path assessment for doctor and dashboard."""
 
 from __future__ import annotations
 
@@ -9,13 +9,13 @@ from mercury.core.paths import REPO_ROOT
 from mercury.logging.config import load_mercury_section, resolve_log_dir
 
 MERCURY_USB_DIR_LABELS: tuple[tuple[str, str], ...] = (
-    ("mercury_backups", "USB backup root"),
-    ("mercury_logs", "USB log directory"),
-    ("mercury_manifests", "USB manifest directory"),
-    ("mercury_repo_backups", "USB repo backup directory"),
-    ("mercury_restore_checks", "USB restore-check directory"),
-    ("mercury_runbooks", "USB runbook directory"),
-    ("mercury_state", "USB state directory"),
+    ("mercury_backups", "Operator backup root"),
+    ("mercury_logs", "Operator log directory"),
+    ("mercury_manifests", "Operator manifest directory"),
+    ("mercury_repo_backups", "Operator repo backup directory"),
+    ("mercury_restore_checks", "Operator restore-check directory"),
+    ("mercury_runbooks", "Operator runbook directory"),
+    ("mercury_state", "Operator state directory"),
 )
 
 MERCURY_USB_CHOWN_DIRS = (

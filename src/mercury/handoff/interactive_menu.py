@@ -55,9 +55,9 @@ def _render_handoff_options() -> None:
         [
             ("4", "Run full backup (stale or missing sources only)"),
             ("5", "Verify all source backups"),
-            ("6", "Write repository bundles to USB"),
+            ("6", "Write repository bundles to operator storage"),
             ("7", "Write DB bundle index and runbooks"),
-            ("8", "Write combined transfer package to USB"),
+            ("8", "Write combined transfer package to operator storage"),
         ],
         indent=0,
     )
@@ -66,7 +66,7 @@ def _render_handoff_options() -> None:
     render_submenu(
         [
             ("1", "Refresh checklist"),
-            ("9", "View handoff history on USB"),
+            ("9", "View handoff history on operator storage"),
             ("10", "Open backup menu"),
             ("11", "Receiving workstation guide"),
         ],

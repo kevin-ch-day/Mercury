@@ -39,13 +39,13 @@ BACKUP_SCREEN_TITLE = "Backup Operations"
 def _backup_target_label(policy) -> str:
     state = policy.backup_root_state()
     if state == "usb-mounted":
-        return "USB mounted"
+        return "operator storage mounted"
     if state == "usb not mounted":
-        return "USB not mounted"
+        return "operator storage not mounted"
     if state == "repo-local fallback":
         return "repo-local fallback"
     if state == "low free space":
-        return "USB mounted; low free space"
+        return "operator storage mounted; low free space"
     return state.replace("-", " ")
 
 
@@ -74,9 +74,9 @@ def _storage_usage_fields(policy) -> dict[str, str]:
         fields["Free"] = "n/a"
         fields["Usage"] = "n/a"
         if state == "missing path":
-            fields["Status"] = "path missing — mount USB first"
+            fields["Status"] = "path missing — mount operator storage first"
         elif state == "usb not mounted":
-            fields["Status"] = "USB not mounted"
+            fields["Status"] = "operator storage not mounted"
         else:
             fields["Status"] = state.replace("-", " ")
         return fields
@@ -233,14 +233,25 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
         display_screen.write_blank()
         counts = _status_counts(rows)
         problem_parts: list[str] = []
-        for label in ("Stale", "Unknown", "Missing", "Unverified", "Warning"):
+        for label in ("Stale", "Unknown", "Missing", "Unverified", "Warning", "Absent"):
             count = counts.get(label, 0)
             if count:
-                problem_parts.append(f"{count} {label.lower()}")
+                if label == "Absent":
+                    problem_parts.append(f"{count} absent from server")
+                else:
+                    problem_parts.append(f"{count} {label.lower()}")
         if problem_parts:
+            # Absent-only is informational; mix with real problems stays a warn.
+            only_absent = all(part.endswith("absent from server") for part in problem_parts)
             display_screen.write_status(
-                "warn",
-                menu_handoff_problem_summary(problem_parts),
+                "info" if only_absent else "warn",
+                (
+                    "Catalog source(s) not on this MariaDB server: "
+                    + ", ".join(problem_parts)
+                    + "."
+                    if only_absent
+                    else menu_handoff_problem_summary(problem_parts)
+                ),
             )
         else:
             display_screen.write_summary("All visible source backups are artifact-verified and fresh.")
@@ -257,7 +268,7 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
         if backup_ready:
             run_label = "Run full backup now"
         else:
-            run_label = "Run full backup now (USB/config not ready)"
+            run_label = "Run full backup now (storage/config not ready)"
         options.insert(1, ("2", run_label))
     from mercury.repair.startup import usb_repair_needed
 
@@ -290,7 +301,7 @@ def _run_backup(plan: BackupPlanDryRun) -> None:
     print_backup_batch_result(batch, compact=True, menu=True)
     if batch.executed_count:
         display_screen.write_summary(
-            "Next: use [3] Verify source backups to set manifest verified flags on USB."
+            "Next: use [3] Verify source backups to set manifest verified flags on operator storage."
         )
 
 

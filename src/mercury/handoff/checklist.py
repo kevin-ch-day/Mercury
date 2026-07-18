@@ -113,7 +113,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
         steps.append(
             HandoffStep(
                 step_key="usb_root",
-                label="USB backup root",
+                label="Operator backup root",
                 status="ok",
                 detail=str(policy.backup_root),
             )
@@ -122,7 +122,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
         steps.append(
             HandoffStep(
                 step_key="usb_root",
-                label="USB backup root",
+                label="Operator backup root",
                 status="fail",
                 detail=root_state,
                 action="./run.sh repair-usb",
@@ -136,7 +136,10 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 step_key="backups_verified",
                 label="Database backups verified",
                 status="ok",
-                detail=f"{bundle.verified_source_count} of {source_count} sources artifact-verified on USB",
+                detail=(
+                    f"{bundle.verified_source_count} of {source_count} sources "
+                    "artifact-verified on operator storage"
+                ),
             )
         )
     else:
@@ -181,7 +184,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 step_key="repo_bundles",
                 label="Repository bundles",
                 status="ok",
-                detail="Verified repo bundles on USB",
+                detail="Verified repo bundles on operator storage",
             )
         )
     elif repo_package == "complete with warnings":
@@ -201,7 +204,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 step_key="repo_bundles",
                 label="Repository bundles",
                 status="fail",
-                detail="Missing or unverified repo bundles on USB",
+                detail="Missing or unverified repo bundles on operator storage",
                 action="Handoff [6] write repository bundles",
             )
         )
@@ -222,7 +225,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 step_key="db_bundle_index",
                 label="Database bundle index",
                 status="fail",
-                detail="No database_transfer_manifest on USB",
+                detail="No database_transfer_manifest on operator storage",
                 action="Handoff [7] write DB bundle and runbooks",
             )
         )
@@ -248,7 +251,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 step_key="manifest_freshness",
                 label="Manifest freshness",
                 status="ok",
-                detail="Manifests are current relative to latest USB backups",
+                detail="Manifests are current relative to latest operator backups",
             )
         )
 
@@ -268,7 +271,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 step_key="transfer_package",
                 label="Combined transfer package",
                 status="warn",
-                detail=f"On USB but snapshot is {handoff}",
+                detail=f"On operator storage but snapshot is {handoff}",
                 action="Handoff [8] write transfer package when ready",
             )
         )
@@ -278,7 +281,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 step_key="transfer_package",
                 label="Combined transfer package",
                 status="fail",
-                detail="No transfer_manifest on USB",
+                detail="No transfer_manifest on operator storage",
                 action="Handoff [8] write transfer package",
             )
         )

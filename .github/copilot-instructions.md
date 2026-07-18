@@ -12,7 +12,7 @@ This repo is a **Fedora- and Windows-supported Python CLI** for MariaDB backup, 
 
 - Backup only `*_prod` and `android_permission_intel`. Never `*_dev`.
 - Never drop/overwrite/restore into `*_prod`.
-- **Backup writes** require a safe USB-backed environment; **sync/deploy/restore** additionally require explicit live-action gates.
+- **Backup writes** require a safe operator-storage environment (legacy USB until cutover); **sync/deploy/restore** additionally require explicit live-action gates.
 - Live execution is supported on **Fedora and Windows** when configured; non-Fedora Linux is seed/status only.
 - Live backup execution requires the USB layout under `[mercury].backup_root` (Linux default `/mnt/MERCURY_DATA_USB/mercury_backups`); repo-local `backups/` is dev-only.
 - When USB is plugged in but unmounted, doctor repair plan suggests `sudo systemctl start mnt-MERCURY_DATA_USB.mount` (fstab) or mount-by-label.

@@ -79,7 +79,7 @@ def test_backup_mode_label_ignores_live_actions_toggle(tmp_path: Path) -> None:
     )
     from mercury.core.execution_policy import backup_mode_label, destructive_ops_label
 
-    assert backup_mode_label(policy) == "writes to USB"
+    assert backup_mode_label(policy) == "writes to operator storage"
     assert destructive_ops_label(policy) == "requires live_actions_enabled in config/local.toml"
 
 
@@ -129,7 +129,7 @@ def test_live_execution_refuses_unmounted_usb_root(tmp_path: Path, monkeypatch: 
     )
     reason = policy.refusal_reason()
     assert reason is not None
-    assert "not active" in reason.lower()
+    assert "not an active mount" in reason.lower() or "not active" in reason.lower()
 
 
 def test_live_execution_accepts_mounted_usb_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -171,7 +171,8 @@ def test_live_execution_refuses_low_free_space(tmp_path: Path, monkeypatch: pyte
     )
     reason = policy.refusal_reason()
     assert reason is not None
-    assert "20 gb" in reason.lower()
+    assert "insufficient free space" in reason.lower()
+    assert "21474836480" in reason or "20" in reason.lower()
 
 
 def test_dry_run_does_not_write_backup_files(tmp_path: Path) -> None:

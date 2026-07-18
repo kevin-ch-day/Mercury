@@ -25,7 +25,9 @@ from mercury.backup.verification import verify_backup_directory
 from mercury.backup.terminal.verify import print_verification_result
 
 SYNC_SCREEN_TITLE = "Production sync readiness"
-SYNC_SCREEN_SUBTITLE = "Refresh development databases from verified production USB backups only."
+SYNC_SCREEN_SUBTITLE = (
+    "Refresh development databases from verified production operator backups only."
+)
 
 
 def read_sync_choice() -> str | None:
@@ -172,7 +174,7 @@ def _run_sync_for_ready(report: SyncReadinessReport) -> None:
         display_screen.write_bullets(
             [
                 "Production databases are never modified.",
-                "Each dev target is dropped and recreated from its verified USB backup.",
+                "Each dev target is dropped and recreated from its verified operator backup.",
             ]
         )
         display_screen.write_blank()

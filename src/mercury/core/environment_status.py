@@ -284,9 +284,9 @@ def backup_target_dashboard_label(
     if policy.config_path is None:
         if usb.mercury_layout_present:
             return (
-                f"[!!] USB detected, not configured"
+                f"[!!] Operator storage detected, not configured"
                 if styled
-                else "USB detected, not configured"
+                else "Operator storage detected, not configured"
             )
         target = str(policy.backup_root.resolve())
         return (
@@ -327,14 +327,14 @@ def backup_root_unsafe_reason(
     state = policy.backup_root_state()
     if state == "repo-local fallback":
         if usb.mercury_layout_present:
-            return "USB mounted but backup_root still points at repo"
+            return "Operator storage mounted but backup_root still points at repo"
         return "repo-local path is dev-only, not production protection"
     if state == "usb not mounted":
         from mercury.repair.usb import USB_REPAIR_COMMAND
 
         if usb.device_attached or usb.placeholder_mount_point:
-            return f"USB plugged in but not mounted — run: {USB_REPAIR_COMMAND}"
-        return "configured USB backup root is not mounted"
+            return f"Storage device plugged in but not mounted — run: {USB_REPAIR_COMMAND}"
+        return "configured operator backup root is not mounted"
     if state == "missing path":
         from mercury.repair.usb import USB_REPAIR_COMMAND
 
@@ -344,7 +344,7 @@ def backup_root_unsafe_reason(
     if state == "unsafe path":
         return f"backup_root must be under {policy.usb_mount}"
     if state == "low free space":
-        return "USB backup root has less than 20 GB free"
+        return "operator backup root has insufficient free space (see storage space policy)"
     return "unsafe"
 
 
@@ -393,11 +393,14 @@ def recommended_next_step(env: EnvironmentStatus) -> str:
 
             report = build_backup_status_report(live=True)
             if report.missing_count or report.failed_count:
-                return "./run.sh backup run --kind full --execute"
+                return "./run.sh backup run --kind full"
             if report.stale_count or report.unknown_freshness_count:
-                return "./run.sh backup run --kind full --execute  # refresh stale USB backups"
-            if report.source_count and report.verified_count == report.source_count:
-                return "./run.sh transfer handoff --run --execute  # USB backups fresh — guided handoff"
+                return "./run.sh backup run --kind full  # refresh stale operator backups"
+            effective = max(0, report.source_count - report.absent_count)
+            if effective and report.verified_count >= effective:
+                return "./run.sh transfer handoff --run  # operator backups ready — guided handoff"
+            if report.absent_count and not (report.missing_count or report.failed_count):
+                return "./run.sh transfer handoff  # review absent-on-server sources, then handoff"
     return "./run.sh menu"
 
 
@@ -413,7 +416,7 @@ def _collect_repairable_blockers(
     if config.missing_labels:
         blockers.append("local config not initialized")
     if not usb.mounted and not usb.mercury_layout_present:
-        blockers.append("USB backup mount not detected")
+        blockers.append("Operator backup mount not detected")
     for check in permission_checks:
         if check.needs_repair:
             blockers.append(f"{check.label} not writable")
@@ -436,7 +439,7 @@ def _resolve_primary_setup_blocker(
 ) -> str | None:
     if not config.local_toml_present:
         if usb.mercury_layout_present:
-            return f"Local config not initialized — USB target detected at {usb.mount_path}."
+            return f"Local config not initialized — Operator storage target detected at {usb.mount_path}."
         return "Local config not initialized — run: ./run.sh config init."
 
     for check in permission_checks:
@@ -448,15 +451,15 @@ def _resolve_primary_setup_blocker(
             ):
                 from mercury.repair.usb import USB_REPAIR_COMMAND
 
-                return f"USB plugged in but not mounted — run: {USB_REPAIR_COMMAND}"
+                return f"Storage device plugged in but not mounted — run: {USB_REPAIR_COMMAND}"
             if check.needs_repair and check.path.exists():
                 from mercury.repair.usb import USB_REPAIR_COMMAND
 
-                return f"USB Mercury paths not writable by {getpass.getuser()} — run: {USB_REPAIR_COMMAND}"
-            return f"USB Mercury paths not writable by {getpass.getuser()} — {check.label}."
+                return f"Operator storage paths not writable by {getpass.getuser()} — run: {USB_REPAIR_COMMAND}"
+            return f"Operator storage paths not writable by {getpass.getuser()} — {check.label}."
 
     if policy.backup_root_is_within_repo() and usb.mercury_layout_present:
-        return "USB target detected but not configured — set backup_root in config/local.toml."
+        return "Operator storage target detected but not configured — set backup_root in config/local.toml."
 
     if mariadb.service_state == "inactive" and mariadb.mariadb_client_found:
         return "MariaDB service is not running."
@@ -495,7 +498,7 @@ def _build_setup_hints(
 
         hints.append(f"Run: {USB_REPAIR_COMMAND}")
     if usb.mercury_layout_present and (not config.local_toml_present or primary_setup_blocker):
-        hints.append(f"USB backup layout detected at {usb.mount_path}.")
+        hints.append(f"Operator backup layout detected at {usb.mount_path}.")
     return tuple(hints)
 
 

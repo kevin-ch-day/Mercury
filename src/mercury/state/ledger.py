@@ -99,7 +99,7 @@ SYNC_EVENT_FIELDS = [
 
 
 def resolve_state_root(policy: ExecutionPolicy | None = None) -> Path:
-    """Use USB-backed state when the required mount is active; else repo-local data/."""
+    """Use operator-storage state when the required mount is active; else repo-local data/."""
     override = os.environ.get(ENV_STATE_ROOT)
     if override:
         return Path(override).expanduser().resolve()

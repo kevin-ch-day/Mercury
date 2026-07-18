@@ -150,17 +150,21 @@ def handoff_dashboard_line(
     missing_count: int = 0,
     failed_count: int = 0,
     unknown_count: int = 0,
+    absent_count: int = 0,
     latest_handoff_status: str | None = None,
     latest_transfer_at: str | None = None,
 ) -> str:
     """One-line handoff status for the main menu dashboard."""
+    effective_sources = max(0, source_count - max(0, absent_count))
     if missing_count or failed_count:
         line = "[!!] partial — [9] checklist · [2] wizard"
     elif stale_count:
         line = "[--] stale backups — [4] refresh backup lane"
     elif unknown_count:
         line = "[--] unknown freshness — [2] guided wizard"
-    elif source_count and verified_count == source_count:
+    elif absent_count and effective_sources and verified_count >= effective_sources:
+        line = "[--] ready with absent sources — [9] checklist"
+    elif effective_sources and verified_count == effective_sources:
         line = "[ok] ready — [9] handoff · [2] wizard"
     else:
         line = "[--] incomplete — [9] checklist"
@@ -177,10 +181,10 @@ def receiver_handoff_steps(*, checklist: HandoffChecklist | None = None) -> list
     transfer_age = checklist.latest_transfer_age if checklist else None
     db_bundle_age = checklist.latest_database_bundle_age if checklist else None
     handoff_status = checklist.handoff_status if checklist else "unknown"
-    manifest_detail = manifest or "mount USB and locate mercury_manifests/"
+    manifest_detail = manifest or "mount operator storage and locate mercury_manifests/"
     return [
         (
-            "Mount USB media",
+            "Mount operator storage media",
             "ok" if manifest else "warn",
             "Confirm mercury_backups, mercury_manifests, and mercury_runbooks are present.",
         ),
@@ -205,7 +209,7 @@ def receiver_handoff_steps(*, checklist: HandoffChecklist | None = None) -> list
         (
             "Import database backups",
             "ok" if handoff_status == "complete" else "warn",
-            "Run ./run.sh deploy system to import verified USB database backups.",
+            "Run ./run.sh deploy system to import verified operator-storage database backups.",
         ),
         (
             "Restore repository bundles",
@@ -215,7 +219,7 @@ def receiver_handoff_steps(*, checklist: HandoffChecklist | None = None) -> list
         (
             "Open database runbooks",
             "ok" if db_bundle_age else "warn",
-            f"Latest DB bundle index: {db_bundle_age or 'not found on USB'}.",
+            f"Latest DB bundle index: {db_bundle_age or 'not found on operator storage'}.",
         ),
         (
             "Run restore-check drills",
@@ -238,11 +242,11 @@ def handoff_status_kind(status: str) -> StatusKind:
 
 def receiver_quick_start_lines() -> list[str]:
     return [
-        "Mount this USB on the receiving workstation.",
+        "Mount this media on the receiving workstation.",
         "Run ./run.sh config init and ./run.sh doctor on the receiver.",
         "Run ./run.sh deploy system to import verified database backups.",
         "Run ./run.sh deploy repos --from-usb for repository bundles.",
-        "Start with the latest transfer runbook on USB before any live restore.",
+        "Start with the latest transfer runbook on operator storage before any live restore.",
     ]
 
 
@@ -286,7 +290,7 @@ def step_progress_summary(steps: list[HandoffStep]) -> str:
 
 def primary_handoff_action(checklist: HandoffChecklist) -> str | None:
     if checklist.handoff_status == "complete":
-        return "USB is ready — move to the receiving workstation and open the latest transfer runbook."
+        return "Operator storage is ready — move to the receiving workstation and open the latest transfer runbook."
     for step in checklist.steps:
         if step.status == "fail" and step.action:
             return step.action

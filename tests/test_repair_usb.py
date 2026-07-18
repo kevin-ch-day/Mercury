@@ -16,3 +16,5 @@ def test_describe_usb_repair_mentions_mount_and_ownership() -> None:
     assert "mount" in text.lower()
     assert "root-owned" in text.lower() or "ownership" in text.lower()
     assert USB_REPAIR_COMMAND in text
+    assert "MERCURY_DATA_V2" in text or "primary" in text.lower()
+    assert "storage status" in text.lower()

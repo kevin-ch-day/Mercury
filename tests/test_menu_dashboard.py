@@ -22,9 +22,10 @@ def test_dashboard_rows_include_extended_stats() -> None:
     rows = dashboard_rows(probe_database=False)
     text = "\n".join(rows)
     assert "MariaDB sources" in text
-    assert "USB backups" in text
+    assert "Operator backups" in text
     assert "Sync readiness" in text
     assert "Protection" in text
+    assert "Storage roles" in text
 
 
 def test_dashboard_rows_warn_on_repo_local_backup_root(monkeypatch) -> None:
@@ -120,10 +121,12 @@ def test_dashboard_rows_show_protection_incomplete_when_stale_and_missing(monkey
                 "obsidiandroid_core_prod",
             },
             {"android_permission_intel"},
-            {"obsidiandroid_core_prod"},
+            set(),
+            0,
+            0,
+            0,
             1,
-            0,
-            0,
+            None,
         ),
     )
     monkeypatch.setattr(
@@ -136,9 +139,10 @@ def test_dashboard_rows_show_protection_incomplete_when_stale_and_missing(monkey
     )
     text = "\n".join(dashboard_rows(probe_database=True))
     assert "MariaDB sources" in text
-    assert "USB backups" in text
+    assert "Operator backups" in text
     assert "3 of 4 protected sources on server; 1 missing" in text
-    assert "Protection incomplete: 1 stale backup; 1 protected source missing" in text
+    assert "Protection incomplete: 1 stale backup" in text
+    assert "catalog source absent from this server" in text
 
 
 def test_sync_readiness_summary_reports_none_verified() -> None:

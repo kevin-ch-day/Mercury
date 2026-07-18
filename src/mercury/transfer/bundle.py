@@ -67,6 +67,7 @@ class TransferBundle(BaseModel):
     failed_source_count: int = 0
     stale_source_count: int = 0
     unknown_freshness_source_count: int = 0
+    absent_source_count: int = 0
     ready_sync_pairs: int = 0
     blocked_sync_pairs: int = 0
     dirty_repo_names: list[str] = Field(default_factory=list)
@@ -87,6 +88,7 @@ def database_package_status_for_bundle(bundle: TransferBundle) -> str:
         failed_count=bundle.failed_source_count,
         stale_count=bundle.stale_source_count,
         unknown_freshness_count=bundle.unknown_freshness_source_count,
+        absent_count=bundle.absent_source_count,
     )
 
 
@@ -233,6 +235,7 @@ def build_transfer_bundle(*, live: bool = False) -> TransferBundle:
         failed_source_count=protection.failed_source_count,
         stale_source_count=protection.stale_source_count,
         unknown_freshness_source_count=protection.unknown_freshness_source_count,
+        absent_source_count=protection.absent_source_count,
         ready_sync_pairs=readiness.ready_count,
         blocked_sync_pairs=readiness.blocked_count,
         dirty_repo_names=dirty_repo_names,
@@ -261,15 +264,15 @@ def _runbook_text(bundle: TransferBundle) -> str:
         f"Stale sources: {bundle.stale_source_count}",
         f"Unknown freshness: {bundle.unknown_freshness_source_count}",
         f"Missing sources: {bundle.missing_source_count}",
-        f"USB mount: {bundle.required_usb_mount}",
+        f"Operator storage mount: {bundle.required_usb_mount}",
         f"Database backup root: {bundle.backup_root}",
         f"Manifest dir: {bundle.manifest_dir}",
         f"Runbook dir: {bundle.runbook_dir}",
         "",
         "Receiving workstation checklist:",
-        "1. Mount this USB and confirm mercury_backups, mercury_manifests, and mercury_runbooks are present.",
+        "1. Mount this media and confirm mercury_backups, mercury_manifests, and mercury_runbooks are present.",
         "2. Install Mercury and run ./run.sh config init on the receiving host.",
-        "3. Run ./run.sh deploy system to import verified USB database backups.",
+        "3. Run ./run.sh deploy system to import verified operator-storage database backups.",
         "4. Run ./run.sh deploy repos --from-usb for repository bundles.",
         "5. Open the latest database_transfer_runbook and per-database restore notes before any live restore.",
         "6. Run restore-check drills against verified backups before relying on production paths.",

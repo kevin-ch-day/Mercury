@@ -60,7 +60,7 @@ def run_repo_deploy_preflight(*, source_mode: str = "auto") -> DeploymentPreflig
             PreflightCheck(
                 label="Deployment sources",
                 level="blocked",
-                detail="No GitHub remote_url or USB bundle available for missing repositories",
+                detail="No GitHub remote_url or operator-storage bundle available for missing repositories",
             )
         )
     else:
@@ -79,7 +79,7 @@ def run_repo_deploy_preflight(*, source_mode: str = "auto") -> DeploymentPreflig
             PreflightCheck(
                 label="Missing sources",
                 level="warning",
-                detail=f"No source for: {names} (add remote_url or USB bundle)",
+                detail=f"No source for: {names} (add remote_url or operator-storage bundle)",
             )
         )
 

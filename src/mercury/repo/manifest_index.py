@@ -1,4 +1,4 @@
-"""Locate latest repository manifest artifacts on USB."""
+"""Locate latest repository manifest artifacts on operator storage."""
 
 from __future__ import annotations
 

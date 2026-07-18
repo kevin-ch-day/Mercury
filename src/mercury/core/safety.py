@@ -6,6 +6,8 @@ LIVE_ACTIONS_ENABLED = False
 
 # Future prod-to-dev sync confirmation (not used in seed)
 SYNC_DEV_CONFIRMATION_PHRASE = "SYNC DEV"
+# Storage migration copy confirmation (does not switch writers / cutover)
+MIGRATE_PRIMARY_CONFIRMATION_PHRASE = "MIGRATE PRIMARY"
 
 POLICY_SUMMARY = """
 Mercury safety policy:
@@ -16,18 +18,18 @@ Mercury safety policy:
 - Never restore into *_prod by default.
 - Always backup and verify the source before syncing into dev.
 - Show source and target before destructive actions; require typing SYNC DEV for dev sync.
-- Seed mode: dry-run and discovery-only; no destructive actions; no live DB connections unless enabled.
+- Seed/non-operator hosts: planning and discovery; no destructive sync/deploy/restore. Backup writes need a ready operator-storage environment.
 """.strip()
 
 SAFETY_NOTES = [
-    "Backups write to USB when MariaDB, config, and backup root are valid.",
+    "Backups write to operator storage when MariaDB, config, and backup root are valid.",
     "Production (*_prod) and shared authority DBs are backup sources.",
     "Development (*_dev) DBs are excluded from backup; they are disposable refresh targets rebuilt from verified source backups.",
     "Never drop or overwrite *_prod.",
     "Verify source backups before any prod-to-dev sync so dev refresh never runs without source protection.",
     "Restore-check temp DBs (_restorecheck_*) are never backup sources.",
     "Prod-to-dev sync, deploy, and restore require explicit confirmation and live_actions_enabled.",
-    "Future backups: mariadb-dump/mysqldump logical full + schema-only (Fedora).",
+    "Full and schema-only dumps run when the backup environment is ready (Fedora/Windows).",
 ]
 
 BACKUP_KIND_FULL = "full"

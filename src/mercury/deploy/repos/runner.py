@@ -82,7 +82,7 @@ def execute_repo_deploy_for_candidate(
                 display_name=candidate.display_name,
                 target_path=candidate.target_path,
                 refused=True,
-                message=f"USB bundle not found: {bundle}",
+                message=f"Operator-storage bundle not found: {bundle}",
                 commands=commands,
             )
         verify = subprocess.run(

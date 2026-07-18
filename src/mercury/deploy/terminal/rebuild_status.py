@@ -13,7 +13,7 @@ def print_rebuild_status(report: RebuildStatusReport) -> None:
             "Host": report.hostname,
             "Databases": f"{report.databases_deployed} of {report.databases_total} on server",
             "Repositories": f"{report.repositories_deployed} of {report.repositories_total} deployed",
-            "USB": "healthy" if report.usb_healthy else "needs repair",
+            "Storage": "healthy" if report.usb_healthy else "needs repair",
             "MariaDB": "connected" if report.mariadb_connected else "not connected",
             "Backup history": report.verified_backups,
             "Deploy needed": "yes" if report.deployment_needed else "no",

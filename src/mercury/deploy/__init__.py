@@ -1,4 +1,4 @@
-"""Deploy databases from verified USB backups onto this MariaDB host."""
+"""Deploy databases from verified operator-storage backups onto this MariaDB host."""
 
 from __future__ import annotations
 

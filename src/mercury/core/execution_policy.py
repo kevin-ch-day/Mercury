@@ -15,6 +15,7 @@ from mercury.core.safety import DRY_RUN_ONLY, LIVE_ACTIONS_ENABLED
 from mercury.core.usb_mount import (
     DEFAULT_USB_MOUNT,
     resolve_usb_mount,
+    unmounted_storage_path_blocker,
     usb_mount_is_active,
     usb_mount_label,
 )
@@ -107,6 +108,34 @@ class ExecutionPolicy:
 
     def backup_environment_refusal(self) -> str | None:
         """Environment checks for backup writes (platform, USB, config)."""
+        try:
+            from mercury.core.storage_roots import (
+                assess_routine_write_permission,
+                load_storage_config,
+            )
+
+            storage = load_storage_config(
+                local_config=self.config_path, warn_deprecated=False
+            )
+            gate = assess_routine_write_permission(storage, validate_mount=False)
+            if not gate.allowed and gate.blocker:
+                # Only enforce migration freeze / role policy here; mount checks
+                # remain below using the active backup_root contract.
+                from mercury.core.storage_roles import MountValidationCode
+
+                if gate.code in {
+                    MountValidationCode.MIGRATION_WRITE_FREEZE,
+                    MountValidationCode.LEGACY_WRITE_FORBIDDEN,
+                    MountValidationCode.ROLE_WRITE_FORBIDDEN,
+                    MountValidationCode.CUTOVER_INCOMPLETE,
+                    MountValidationCode.ACTIVE_ROLE_MISMATCH,
+                }:
+                    return (
+                        f"Refusing storage writes: {gate.blocker}. "
+                        "Check ./run.sh storage status (migration freeze or role policy)."
+                    )
+        except Exception:
+            pass
         platform_info = detect_platform()
         mount_label = usb_mount_label(self.usb_mount)
         if not platform_info.allows_live_execution:
@@ -136,7 +165,7 @@ class ExecutionPolicy:
         if not self.backup_root_exists():
             return (
                 "Refusing backup execution because backup_root does not exist: "
-                f"{resolved}. Create {mount_label}/mercury_backups on the USB first."
+                f"{resolved}. Create {mount_label}/mercury_backups on operator storage first."
             )
         if not self.backup_root_is_under_required_mount():
             return (
@@ -144,8 +173,9 @@ class ExecutionPolicy:
                 f"{self.usb_mount}: {resolved}"
             )
         if not self.required_mount_is_active():
-            return (
-                "Refusing backup execution because the required USB mount is not active: "
+            blocker = unmounted_storage_path_blocker(self.usb_mount)
+            return blocker or (
+                "Refusing backup execution because the required operator mount is not active: "
                 f"{self.usb_mount}"
             )
         free_bytes = self.backup_root_free_bytes()
@@ -154,15 +184,26 @@ class ExecutionPolicy:
                 "Refusing backup execution because free space could not be determined for "
                 f"{resolved}."
             )
-        if free_bytes < MIN_FREE_BYTES:
+        try:
+            from mercury.core.storage_roots import load_storage_config
+
+            space_policy = load_storage_config(warn_deprecated=False).space_policy
+            usage_total = _disk_usage(self.backup_root).total
+            required = space_policy.required_available_bytes(
+                capacity_bytes=int(usage_total),
+                estimated_operation_bytes=0,
+            )
+        except Exception:
+            required = MIN_FREE_BYTES
+        if free_bytes < required:
             return (
                 "Refusing backup execution because backup_root has insufficient free space: "
-                f"{resolved} ({free_bytes} bytes free, requires at least {MIN_FREE_BYTES} bytes / 20 GB)."
+                f"{resolved} ({free_bytes} bytes free, requires at least {required} bytes)."
             )
         return None
 
     def backup_execution_allowed(self) -> bool:
-        """True when backup writes to USB are permitted for this host."""
+        """True when backup writes to operator storage are permitted for this host."""
         return self.backup_environment_refusal() is None
 
     def backup_refusal_reason(self) -> str | None:
@@ -192,14 +233,19 @@ class ExecutionPolicy:
 def backup_mode_label(policy: ExecutionPolicy) -> str:
     """Short operator label for backup write readiness."""
     if policy.backup_execution_allowed():
-        return "writes to USB"
+        return "writes to operator storage"
     refusal = policy.backup_environment_refusal()
     if refusal and "repo-local" in refusal:
-        return "blocked until USB backup root is configured"
-    if refusal and "USB" in refusal:
-        return "blocked until USB is mounted"
+        return "blocked until operator backup root is configured"
+    if refusal and any(
+        token in refusal
+        for token in ("operator mount", "USB mount", "not mounted", "unmounted", "on the USB", "on operator storage first")
+    ):
+        return "blocked until operator storage is mounted"
     if refusal and "config/local.toml" in refusal:
         return "blocked until config is initialized"
+    if refusal and ("migration freeze" in refusal or "migration_state=" in refusal):
+        return "blocked during migration freeze"
     return "blocked until backup environment is ready"
 
 

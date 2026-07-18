@@ -20,8 +20,8 @@ def _display_sync_database_name(database: str) -> str:
 def _compact_readiness_status(*, ready: bool, blockers: list[str]) -> str:
     if ready:
         return "ready"
-    if "Backup root is repo-local fallback; configure USB-backed backups before sync readiness." in blockers:
-        return "USB root required"
+    if "Backup root is repo-local fallback; configure operator-storage backups before sync readiness." in blockers:
+        return "Operator storage root required"
     if "No on-disk backup found for production source." in blockers:
         return "missing backup"
     if "Latest backup is not artifact-verified (manifest/checksum/size/role)." in blockers:
@@ -45,7 +45,7 @@ def _blocker_action(blockers: list[str]) -> str:
     if "No on-disk backup found for production source." in blockers:
         return "Run full backup, then verify."
     if "Latest backup is not artifact-verified (manifest/checksum/size/role)." in blockers:
-        return "Verify latest USB backup."
+        return "Verify latest operator backup."
     if "Dev target missing:" in blockers[0]:
         return blockers[0]
     return blockers[0]
@@ -80,7 +80,7 @@ def sync_menu_context_fields(report: SyncReadinessReport, *, live_allowed: bool)
     projects = ", ".join(sorted({entry.project for entry in report.entries if entry.project})) or "approved prod→dev pairs"
     fields = {
         "Backup root": report.backup_root,
-        "Scope": f"verified prod USB backups into dev only ({projects})",
+        "Scope": f"verified prod operator backups into dev only ({projects})",
         "Pairs": f"{report.ready_count} ready · {report.blocked_count} blocked · {len(report.entries)} total",
     }
     fields["Execution"] = "live sync allowed" if live_allowed else "preview only (enable live actions in config)"

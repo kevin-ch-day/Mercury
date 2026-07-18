@@ -97,7 +97,7 @@ def _recommended_next_step(env, report: DoctorReport) -> str:
     if report.rebuild_complete:
         if env.policy.backup_execution_allowed():
             return "./run.sh backup all  # fresh backup of restored prod databases"
-        return "./run.sh backup plan  # review backup plan once USB backup root is ready"
+        return "./run.sh backup plan  # review backup plan once operator backup root is ready"
     missing_sources = [db for db in report.source_databases if not db.present and db.name != "(discovery)"]
     if (
         missing_sources
@@ -152,10 +152,64 @@ def build_repair_plan(report: DoctorReport) -> list[tuple[str, list[str]]]:
         if missing_paths:
             sections.append(
                 (
-                    "Complete local.toml USB artifact paths",
+                    "Complete local.toml operator-storage artifact paths",
                     ["./run.sh config repair-local"],
                 )
             )
+
+    # Primary HDD (observe-only hints; never applied by Mercury).
+    try:
+        from mercury.storage.report import build_storage_status_report, suggested_primary_fstab_line
+
+        storage = build_storage_status_report()
+        primary = storage.primary
+        legacy = storage.legacy
+        if not primary.validation.identity.is_mount:
+            sections.append(
+                (
+                    "Primary storage (MERCURY_DATA_V2) — operator mount only",
+                    [
+                        "./run.sh storage status",
+                        "./run.sh storage validate",
+                        f"# Suggested fstab line (review; do not apply blindly):",
+                        suggested_primary_fstab_line(storage.config),
+                        f"sudo mkdir -p {primary.mount_path}",
+                        f"sudo mount UUID={primary.filesystem_uuid} {primary.mount_path}",
+                        "Mercury will not write to primary until cutover is approved.",
+                    ],
+                )
+            )
+        elif primary.validation.identity.stale_mountpoint_entries:
+            sections.append(
+                (
+                    "Primary mount point has stale unmounted content",
+                    [
+                        f"Inspect {primary.mount_path} before mounting.",
+                        "Mercury will not delete or relocate stale mount-point entries.",
+                        "./run.sh storage status",
+                    ],
+                )
+            )
+        elif (
+            primary.validation.ok
+            and legacy.validation.ok
+            and not storage.config.cutover_complete
+            and storage.migration_state.value in {"not_started", "planned"}
+        ):
+            sections.append(
+                (
+                    "Primary mounted — plan legacy → primary migration (dry-run)",
+                    [
+                        "./run.sh storage migrate-plan",
+                        "./run.sh storage migrate-run",
+                        "./run.sh storage migrate-run --execute   # type MIGRATE PRIMARY",
+                        "./run.sh storage migrate-verify",
+                        "Writers remain on legacy until cutover approval.",
+                    ],
+                )
+            )
+    except Exception:
+        pass
 
     if not usb.mounted:
         sections.append(
@@ -205,7 +259,7 @@ def build_repair_plan(report: DoctorReport) -> list[tuple[str, list[str]]]:
     elif usb.mercury_layout_present and report.policy.config_path is None:
         sections.append(
             (
-                "USB mounted — initialize Mercury config",
+                "Operator storage mounted — initialize Mercury config",
                 [
                     "1. ./run.sh config init",
                     "2. ./run.sh doctor",
@@ -291,9 +345,9 @@ def build_repair_plan(report: DoctorReport) -> list[tuple[str, list[str]]]:
     ):
         sections.append(
             (
-                "Fresh rebuild — deploy databases from verified USB backups",
+                "Fresh rebuild — deploy databases from verified operator-storage backups",
                 [
-                    "Verified USB backups exist; prod databases are not on MariaDB yet.",
+                    "Verified operator-storage backups exist; prod databases are not on MariaDB yet.",
                     "Combined plan: ./run.sh deploy system --dry-run",
                     "Database plan: ./run.sh deploy db --dry-run",
                     "Repository plan: ./run.sh deploy repos --dry-run",
@@ -477,7 +531,7 @@ def _collect_warnings(env, report: DoctorReport) -> list[str]:
         missing_paths = missing_mercury_usb_artifact_keys()
         if missing_paths:
             warnings.append(
-                "local.toml missing USB artifact paths ("
+                "local.toml missing operator-storage artifact paths ("
                 + ", ".join(missing_paths)
                 + ") — run: ./run.sh config repair-local"
             )
@@ -486,6 +540,13 @@ def _collect_warnings(env, report: DoctorReport) -> list[str]:
         command = getattr(usb, "quick_mount_command", None)
         if command:
             warnings.append(f"USB drive attached but not mounted — run: {command}")
+    try:
+        from mercury.storage.report import build_storage_status_report
+
+        for line in build_storage_status_report().warning_lines():
+            warnings.append(line)
+    except OSError:
+        pass
     if env.mariadb.configured_user == "root" and report.current_user != "root":
         if env.mariadb.connection_works is True:
             warnings.append(
@@ -516,7 +577,7 @@ def _collect_warnings(env, report: DoctorReport) -> list[str]:
             names = ", ".join(missing_sources)
             warnings.append(
                 f"Fresh rebuild: {names} not on server yet; "
-                f"{report.verified_backup_count} verified USB backup(s) available."
+                f"{report.verified_backup_count} verified operator-storage backup(s) available."
             )
         else:
             for name in missing_sources:

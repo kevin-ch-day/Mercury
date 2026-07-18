@@ -163,3 +163,88 @@ def _isolate_mercury_state_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     state_root.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv(ENV_STATE_ROOT, str(state_root))
     yield
+
+
+# --- Storage dual-root helpers (primary HDD + transitional USB) ---
+
+DEFAULT_PRIMARY_UUID = "715f29a9-2671-477b-8c8d-515d190addb9"
+DEFAULT_LEGACY_UUID = "e4f0c7fb-132e-4867-9c16-5e4749f5c43a"
+
+
+def make_storage_mount_tree(root: Path) -> dict[str, Path]:
+    """Create sibling primary/legacy mount trees under ``root`` with Mercury layout dirs."""
+    from mercury.core.storage_roles import MERCURY_LAYOUT_DIRS
+
+    primary = root / "MERCURY_DATA_V2"
+    legacy = root / "MERCURY_DATA_USB"
+    primary.mkdir(parents=True, exist_ok=True)
+    legacy.mkdir(parents=True, exist_ok=True)
+    for dirname in MERCURY_LAYOUT_DIRS:
+        (primary / dirname).mkdir(exist_ok=True)
+        (legacy / dirname).mkdir(exist_ok=True)
+    return {"primary": primary, "legacy": legacy}
+
+
+def write_pre_cutover_storage_toml(
+    path: Path,
+    *,
+    primary_mount: Path | str | None = None,
+    legacy_mount: Path | str | None = None,
+    include_mercury: bool = True,
+) -> Path:
+    """Write a minimal pre-cutover ``[storage]`` local.toml for tests."""
+    primary = str(primary_mount or "/mnt/MERCURY_DATA_V2")
+    legacy = str(legacy_mount or "/mnt/MERCURY_DATA_USB")
+    lines = [
+        "[storage]",
+        'active_write_role = "legacy"',
+        'migration_state = "not_started"',
+        "",
+        "[storage.primary]",
+        'role = "canonical"',
+        'label = "MERCURY_DATA_V2"',
+        f'mount_path = "{primary}"',
+        f'filesystem_uuid = "{DEFAULT_PRIMARY_UUID}"',
+        'filesystem_type = "ext4"',
+        "writable = true",
+        "",
+        "[storage.legacy]",
+        'role = "transition_source"',
+        'label = "MERCURY_DATA_USB"',
+        f'mount_path = "{legacy}"',
+        f'filesystem_uuid = "{DEFAULT_LEGACY_UUID}"',
+        'filesystem_type = "ext4"',
+        "writable = true",
+        "",
+        "[storage.space_policy]",
+        "minimum_free_bytes = 21474836480",
+        "minimum_free_percent = 10",
+    ]
+    if include_mercury:
+        lines.extend(
+            [
+                "",
+                "[mercury]",
+                f'backup_root = "{legacy}/mercury_backups"',
+                "dry_run = true",
+                "live_actions_enabled = false",
+            ]
+        )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def storage_mounts(tmp_path: Path) -> dict[str, Path]:
+    """Primary + legacy mount trees under tmp_path."""
+    return make_storage_mount_tree(tmp_path)
+
+
+@pytest.fixture
+def pre_cutover_storage_config(tmp_path: Path, storage_mounts: dict[str, Path]) -> Path:
+    """local.toml pointing at tmp primary/legacy mounts (active writer = legacy)."""
+    return write_pre_cutover_storage_toml(
+        tmp_path / "local.toml",
+        primary_mount=storage_mounts["primary"],
+        legacy_mount=storage_mounts["legacy"],
+    )

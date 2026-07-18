@@ -62,7 +62,7 @@ def test_print_handoff_checklist_shows_progress_and_receiver_block(
             repository_package="complete",
             steps=[
                 HandoffStep(
-                    label="USB backup root",
+                    label="Operator backup root",
                     status="ok",
                     detail="/mnt/usb",
                 )

@@ -22,7 +22,7 @@ def _result_detail(result) -> str:
             return f"Preview only — {message[0].lower()}{message[1:]}"
         return f"Preview only — {message.lower()}"
     if result.executed and result.verification_passed is not False and not result.refused:
-        return "Dev target refreshed from verified USB backup."
+        return "Dev target refreshed from verified operator-storage backup."
     return message or "No action taken."
 
 
@@ -51,7 +51,7 @@ def print_sync_batch_result(batch: SyncBatchResult, *, compact: bool = False) ->
         failed = sum(1 for result in batch.results if result.refused or result.verification_passed is False)
         preview = sum(1 for result in batch.results if result.dry_run and not result.refused)
         if executed:
-            display_screen.write_status("ok", f"Synced {executed} development target(s) from verified USB backups.")
+            display_screen.write_status("ok", f"Synced {executed} development target(s) from verified operator-storage backups.")
         elif preview:
             display_screen.write_summary(f"Preview complete — {preview} pair(s); no dev databases were changed.")
         elif failed:

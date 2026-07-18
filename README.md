@@ -2,9 +2,9 @@
 
 **Mercury** is a **Fedora- and Windows-supported** operations utility for MariaDB backup, verification, restore-check, production-to-development sync, Git repository transfer bundles, transfer manifests/runbooks, and **recovery deployment** of Mercury-managed database and repository artifacts onto a prepared host.
 
-For the current milestone, it protects the active source databases `android_permission_intel`, `erebus_threat_intel_prod`, `scytaledroid_core_prod`, and `obsidiandroid_core_prod`, manages the dev sync targets `erebus_threat_intel_dev` and `scytaledroid_core_dev` as disposable refresh targets, and can inventory configured Git repositories plus write explicit Git bundles to the USB transfer media. It is not an AI tool, web app, or full workstation provisioning tool.
+For the current milestone, it protects the active source databases `android_permission_intel`, `erebus_threat_intel_prod`, `scytaledroid_core_prod`, and `obsidiandroid_core_prod`, manages the dev sync targets `erebus_threat_intel_dev` and `scytaledroid_core_dev` as disposable refresh targets, and can inventory configured Git repositories plus write explicit Git bundles to operator transfer media. It is not an AI tool, web app, or full workstation provisioning tool.
 
-**Fedora** and **Windows** are supported for live Mercury operations when MariaDB tools, `config/local.toml`, and the MERCURY_DATA_USB layout are configured. Non-Fedora Linux remains seed planning / development only.
+**Fedora** and **Windows** are supported for live Mercury operations when MariaDB tools, `config/local.toml`, and the operator storage layout (`mercury_backups` / `mercury_logs`, legacy USB until cutover) are configured. Non-Fedora Linux remains seed planning / development only.
 
 ## Current v1 status
 
@@ -13,7 +13,7 @@ For the current milestone, it protects the active source databases `android_perm
 - Transfer package: complete
 - Prod-to-dev sync: executed
 - Dirty repo warnings: recorded truthfully in manifests/state output
-- Recovery deployment: deploy verified USB backups and repo bundles onto a prepared Fedora host (not full OS bootstrap)
+- Recovery deployment: deploy verified operator-storage backups and repo bundles onto a prepared Fedora host (not full OS bootstrap)
 - Full workstation provisioning: out of scope for Mercury
 
 ## Operator dashboard semantics
@@ -22,8 +22,8 @@ The main menu separates **configured scope**, **MariaDB presence**, **on-disk pr
 
 | Line | Meaning |
 |------|---------|
-| **Backup mode** | Whether backup writes to USB are allowed (environment checks), not global dry-run |
-| **USB backups** | Artifact-verified count vs configured protected sources; stale/unknown freshness called out separately |
+| **Backup mode** | Whether backup writes to operator storage are allowed (environment checks), not global dry-run |
+| **Operator backups** | Artifact-verified count vs configured protected sources; stale/unknown freshness called out separately |
 | **MariaDB targets** | Protected backup sources present on MariaDB vs `ACTIVE_BACKUP_SOURCE_DATABASES` (e.g. `3 of 4 protected sources on server; 1 missing`) |
 | **Sync pairs** | Ready/blocked prod→dev pairs only (Erebus + ScytaleDroid for this milestone) |
 
@@ -56,7 +56,7 @@ mercury config repair-local   # add missing USB paths to existing local.toml
 mercury db ping                    # read-only server probe
 mercury db discover                # live inventory (needs config/local.toml)
 mercury status --live              # protection snapshot from live server
-mercury backup run --db erebus_threat_intel_prod --kind full   # writes to USB when environment is safe
+mercury backup run --db erebus_threat_intel_prod --kind full   # writes to operator storage when environment is safe
 mercury backup run --db erebus_threat_intel_prod --kind full --dry-run   # preview only
 mercury repo status
 mercury transfer status --live
@@ -132,7 +132,7 @@ mercury backup list [--demo]
 mercury report preview --db <prod> --kind full|schema_only
 ```
 
-**Backup writes** run when the backup environment is safe (Fedora or Windows host, `config/local.toml`, USB backup root under the MERCURY_DATA_USB layout). They do **not** require `dry_run = false` or `live_actions_enabled = true`.
+**Backup writes** run when the backup environment is safe (Fedora or Windows host, `config/local.toml`, operator backup root under the active write mount (legacy MERCURY_DATA_USB until cutover)). They do **not** require `dry_run = false` or `live_actions_enabled = true`.
 
 Use `--dry-run` on `backup run`, `backup batch`, or `backup all` to preview without writing files. The interactive menu uses **Run full backup now** for live writes and **Preview backup plan** for dry-run.
 
@@ -140,10 +140,11 @@ Use `--dry-run` on `backup run`, `backup batch`, or `backup all` to preview with
 
 Live backup execution also requires:
 - Fedora or Windows as the runtime host
-- a configured USB-backed root (Linux default: `/mnt/MERCURY_DATA_USB/mercury_backups`; Windows: set `[mercury].usb_mount` or rely on auto-detect when the drive has `mercury_backups/` and `mercury_logs/`)
+- a configured operator storage root (Linux transitional default: `/mnt/MERCURY_DATA_USB/mercury_backups`; Windows: set `[mercury].usb_mount` / `MERCURY_LEGACY_MOUNT`, or rely on auto-detect when the drive has `mercury_backups/` and `mercury_logs/`)
 
+Until storage cutover, routine writers target the USB (`active_write_role=legacy`). Inspect both roots with `./run.sh storage status`. Plan a legacy→primary copy with `./run.sh storage migrate-plan` (dry-run only; never copies). The primary HDD (`MERCURY_DATA_V2`) is observe-only until a verified migration and cutover.
 Repo-local `backups/` remains development-only and does not count as production protection in live/operator mode.
-`backup status` reports the latest protection state for active source databases using on-disk manifests and verification checks. `backup bundle --execute` writes database transfer manifests and restore notes to the configured USB-backed manifest/runbook paths.
+`backup status` reports the latest protection state for active source databases using on-disk manifests and verification checks. `backup bundle --execute` writes database transfer manifests and restore notes to the configured operator-storage manifest/runbook paths.
 
 ### Sync
 
@@ -164,7 +165,7 @@ mercury repo status [--verbose]
 mercury repo bundle [--repo mercury] [--execute]
 ```
 
-`repo init-config` writes `config/repos.toml` from the known Fedora desktop repo paths. `repo status` is read-only and reports configured repo path, branch, commit, remote, clean/dirty state, untracked count, and upstream ahead/behind status when available. `repo bundle --execute` writes Git bundles plus repo manifests and short restore notes under the USB-backed paths configured in `config/local.toml`. Mercury keeps one current verified bundle set per repo and prunes older repo bundle artifacts only after the replacement bundle is written and verified successfully.
+`repo init-config` writes `config/repos.toml` from the known Fedora desktop repo paths. `repo status` is read-only and reports configured repo path, branch, commit, remote, clean/dirty state, untracked count, and upstream ahead/behind status when available. `repo bundle --execute` writes Git bundles plus repo manifests and short restore notes under the operator-storage paths configured in `config/local.toml`. Mercury keeps one current verified bundle set per repo and prunes older repo bundle artifacts only after the replacement bundle is written and verified successfully.
 
 ### Combined transfer
 
@@ -173,7 +174,7 @@ mercury transfer status [--live]
 mercury transfer write [--live] [--execute]
 ```
 
-`transfer status` shows one combined database + repository handoff summary. `transfer write --execute` writes one aggregate transfer manifest and one aggregate runbook to the USB-backed manifest/runbook paths.
+`transfer status` shows one combined database + repository handoff summary. `transfer write --execute` writes one aggregate transfer manifest and one aggregate runbook to the operator-storage manifest/runbook paths.
 
 ### Restore-check
 
@@ -198,7 +199,7 @@ mercury deploy system --dry-run
 mercury deploy use-cases
 ```
 
-Live deploy requires the same gates as sync/restore (`dry_run = false`, `live_actions_enabled = true`, Fedora or Windows host, USB-backed backup root). Menu: option **7 → System Deployment**.
+Live deploy requires the same gates as sync/restore (`dry_run = false`, `live_actions_enabled = true`, Fedora or Windows host, operator-storage backup root). Menu: option **7 → System Deployment**.
 
 ## Setup
 
@@ -261,12 +262,16 @@ use_client = true
 ssl_disabled = true
 ```
 
-Mercury auto-detects a drive letter when `mercury_backups/` and `mercury_logs/` exist at the root (e.g. `E:/`). Override with `[mercury].usb_mount` or `MERCURY_USB_MOUNT`. Use TCP/password for local or remote MariaDB on Windows (unix socket auth is Linux-only).
+Mercury auto-detects a drive letter when `mercury_backups/` and `mercury_logs/` exist at the root (e.g. `E:/`). Prefer `MERCURY_LEGACY_MOUNT` / `MERCURY_PRIMARY_MOUNT` (or `[storage.*]` in `config/local.toml`). `MERCURY_USB_MOUNT` remains as a deprecated alias for the transitional USB role only and never overrides primary after cutover. Use TCP/password for local or remote MariaDB on Windows (unix socket auth is Linux-only).
 
 ```powershell
 python -m mercury.cli menu
 python -m mercury.cli env check
 python -m mercury.cli doctor
+python -m mercury.cli storage status
+python -m mercury.cli storage migrate-plan
+python -m mercury.cli storage migrate-run
+python -m mercury.cli storage migrate-verify
 ```
 
 ## Project layout
@@ -274,13 +279,15 @@ python -m mercury.cli doctor
 ```
 src/mercury/
   cli.py, menu.py
-  core/          paths, safety, runtime, execution policy
+  core/          paths, safety, runtime, execution policy, storage roles/validation
+  storage/       primary vs legacy status, validate, migrate-plan (no copy)
   backup/        plan, execute, verify, manifests
   config/        settings, init
   database/      discovery, MariaDB, classification
   env/           environment probe
   reporting/     protection status, previews
   transfer/      combined database + repository transfer manifest/runbook
+  handoff/       workstation handoff checklist and wizard
   sync/          prod→dev planning, readiness, execution
   restore/       restore-check planning and execution
   deploy/        recovery deployment of verified USB DB backups and repo bundles

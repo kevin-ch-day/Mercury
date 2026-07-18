@@ -32,7 +32,7 @@ def _policy_labels(options: DeployOptions) -> tuple[str, bool, bool]:
 
 def _build_safety_notes(candidates, *, has_existing_targets: bool) -> list[str]:
     notes = [
-        "Deployment imports verified USB backups into local MariaDB.",
+        "Deployment imports verified operator-storage backups into local MariaDB.",
         "Never drops target databases unless explicit overwrite/drop modes are enabled.",
     ]
     if has_existing_targets:

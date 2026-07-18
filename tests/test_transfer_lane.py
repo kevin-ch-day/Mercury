@@ -264,7 +264,7 @@ def test_print_transfer_bundle_uses_planned_and_written_labels(capsys: pytest.Ca
     assert "Database package" in planned_out
     assert "Repository package" in planned_out
     assert "Handoff readiness" in planned_out
-    assert "Latest on USB" in planned_out
+    assert "Latest on operator storage" in planned_out
     assert "Actual sync" in planned_out
     assert "State root" in planned_out
     assert "State ops" in planned_out
@@ -273,7 +273,7 @@ def test_print_transfer_bundle_uses_planned_and_written_labels(capsys: pytest.Ca
     written_out = capsys.readouterr().out
     assert "Transfer manifest written:" in written_out
     assert "Transfer runbook written:" in written_out
-    assert "Transfer package written to USB." in written_out
+    assert "Transfer package written to operator storage." in written_out
 
 
 def test_print_transfer_bundle_stale_database_package_shows_warnings(

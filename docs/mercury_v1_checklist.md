@@ -9,7 +9,7 @@ Mercury v1 closeout is complete for the scoped transfer lanes below.
 - Transfer package: complete
 - Prod-to-dev sync: executed
 - Dirty repo warnings: recorded truthfully at bundle time
-- Recovery deployment: deploy verified USB DB/repo artifacts onto a prepared Fedora host
+- Recovery deployment: deploy verified operator-storage DB/repo artifacts onto a prepared Fedora host
 - Full workstation provisioning: out of scope for Mercury
 
 ## Database lane
@@ -58,4 +58,4 @@ Recorded warnings:
 
 Mercury v1 does not include Fedora package installation, systemd/service setup, Apache/httpd, SELinux policy work, Linux user/group management, MariaDB user/grant management, or full workstation bootstrap.
 
-Recovery deployment (`mercury deploy …`) **is** in scope: importing verified USB database backups and configured repository bundles onto a host that is already prepared for Mercury operations.
+Recovery deployment (`mercury deploy …`) **is** in scope: importing verified operator-storage database backups and configured repository bundles onto a host that is already prepared for Mercury operations.

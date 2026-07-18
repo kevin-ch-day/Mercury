@@ -109,7 +109,7 @@ def test_backup_target_label_calls_out_usb_when_config_missing(monkeypatch, tmp_
         config_path=None,
     )
     label = backup_target_dashboard_label(policy, usb)
-    assert "not configured" in label.lower() or "USB detected" in label
+    assert "not configured" in label.lower() or "operator storage detected" in label.lower() or "usb detected" in label.lower()
 
 # from test_environment_status.py
 def test_backup_root_unsafe_reason_explains_missing_local_config(tmp_path: Path) -> None:
@@ -215,8 +215,8 @@ def test_dashboard_rows_show_first_run_messaging(monkeypatch, tmp_path: Path) ->
             socket_available=True,
             connection_error=None,
         ),
-        primary_setup_blocker="Local config not initialized — USB target detected at /mnt/MERCURY_DATA_USB.",
-        setup_hints=("Run: ./run.sh config init", f"USB backup layout detected at {mount}."),
+        primary_setup_blocker="Local config not initialized — Operator storage target detected at /mnt/MERCURY_DATA_USB.",
+        setup_hints=("Run: ./run.sh config init", f"Operator backup layout detected at {mount}."),
         permission_checks=(),
         repairable_blockers=("local config not initialized",),
         has_repairable_blockers=True,
@@ -232,7 +232,7 @@ def test_dashboard_rows_show_first_run_messaging(monkeypatch, tmp_path: Path) ->
 
     text = "\n".join(dashboard_rows(probe_database=False))
     assert "service active" in text
-    assert "USB detected" in text
+    assert "Operator storage detected" in text or "USB detected" in text
     assert "local config missing" in text
     assert "Local config not initialized" in text
     assert "doctor --repair-plan" in text or "config init" in text
@@ -623,7 +623,7 @@ def test_init_customizes_mariadb_user_for_os_user(tmp_path: Path, monkeypatch) -
     text = local_local.read_text(encoding="utf-8")
     assert 'user = "linuxadmin"' in text
     assert any("linuxadmin" in line for line in results)
-    assert any("USB backup layout detected" in line for line in results)
+    assert any("Operator backup layout detected" in line for line in results)
 
 # from test_env_probe.py
 def test_probe_returns_expected_fields() -> None:
@@ -754,7 +754,7 @@ def test_build_environment_check_fields_live_sync_mentions_sync_dev(
     )
     fields = build_environment_check_fields(_env_result(), probe)
     assert fields["Execution Safety"]["Sync/deploy/restore"] == "enabled with confirmation"
-    assert fields["Execution Safety"]["Backup mode"] == "writes to USB"
+    assert fields["Execution Safety"]["Backup mode"] == "writes to operator storage"
 
 # from test_env_menu.py
 def test_run_env_menu_non_interactive(capsys: pytest.CaptureFixture[str]) -> None:

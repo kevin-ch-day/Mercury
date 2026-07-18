@@ -20,7 +20,25 @@ def print_doctor_report(report: DoctorReport) -> None:
     output.field("databases.toml", "present" if config.databases_toml_present else "missing")
     output.field("repos.toml", "present" if config.repos_toml_present else "missing")
     output.write("")
-    output.write("USB Storage")
+    output.write("Storage roles")
+    try:
+        from mercury.storage.report import build_storage_status_report, suggested_primary_fstab_line
+
+        storage = build_storage_status_report()
+        output.field("active writer", storage.active_write_role.value)
+        output.field("migration state", storage.migration_state.value)
+        output.field("primary", storage.primary.one_line())
+        output.field("legacy", storage.legacy.one_line())
+        if not storage.primary.validation.ok and not storage.primary.validation.identity.is_mount:
+            output.field(
+                "primary fstab draft",
+                suggested_primary_fstab_line(storage.config),
+            )
+            output.field("primary note", "Operator action only — Mercury does not edit fstab.")
+    except Exception as exc:
+        output.field("storage status", f"unavailable — {exc}")
+    output.write("")
+    output.write("Legacy / active-write mount")
     usb = report.usb
     output.field("mount", str(usb.mount_path))
     output.field("mounted", "yes" if usb.mounted else "no")
@@ -108,14 +126,14 @@ def _repair_plan_warranted(report: DoctorReport) -> bool:
         return True
     repairable = {
         "local config not initialized",
-        "USB backup mount not detected",
+        "Operator backup mount not detected",
     }
     if any(
         any(token in blocker for token in repairable)
         for blocker in report.blockers
     ):
         return True
-    if any("missing USB artifact paths" in warning for warning in report.warnings):
+    if any("missing operator-storage artifact paths" in warning for warning in report.warnings):
         return True
     if any("prefer a dedicated unix_socket" in warning for warning in report.warnings):
         return True

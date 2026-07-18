@@ -25,10 +25,13 @@ transfer_app = typer.Typer(help="Combined database + repository transfer manifes
 config_app = typer.Typer(help="Configuration commands.")
 sync_app = typer.Typer(help="Production sync-pair planning and execution.")
 restore_app = typer.Typer(help="Restore-check and DR execution.")
-deploy_app = typer.Typer(help="Deploy verified USB backups onto this MariaDB host.")
+deploy_app = typer.Typer(help="Deploy verified operator-storage backups onto this MariaDB host.")
 report_app = typer.Typer(help="Backup report previews (dry-run).")
 logs_app = typer.Typer(help="Mercury log files under logs/.")
 state_app = typer.Typer(help="Portable Mercury operation ledger and summaries.")
+storage_app = typer.Typer(
+    help="Primary/legacy storage status, validate, migrate plan/run/verify (no cutover)."
+)
 
 app.add_typer(env_app, name="env")
 app.add_typer(db_app, name="db")
@@ -43,6 +46,7 @@ app.add_typer(deploy_app, name="deploy")
 app.add_typer(report_app, name="report")
 app.add_typer(logs_app, name="logs")
 app.add_typer(state_app, name="state")
+app.add_typer(storage_app, name="storage")
 repair_app = typer.Typer(help="Host repair helpers.")
 app.add_typer(repair_app, name="repair")
 
@@ -182,6 +186,220 @@ def state_handoff_history_cmd(
     from mercury.handoff.terminal import print_handoff_history
 
     print_handoff_history(build_handoff_history(limit=limit))
+
+
+@storage_app.command("status")
+def storage_status_cmd() -> None:
+    """Show primary and legacy storage roles (observe-only; does not switch writers)."""
+    from mercury.storage.report import build_storage_status_report
+    from mercury.storage.terminal import print_storage_status
+
+    print_storage_status(build_storage_status_report())
+
+
+@storage_app.command("validate")
+def storage_validate_cmd() -> None:
+    """Validate configured storage mounts; exit non-zero if the active writer fails."""
+    from mercury.storage.report import build_storage_status_report
+    from mercury.storage.terminal import print_storage_validate
+
+    code = print_storage_validate(build_storage_status_report())
+    if code:
+        raise typer.Exit(code)
+
+
+@storage_app.command("migrate-plan")
+def storage_migrate_plan_cmd(
+    write_report: bool = typer.Option(
+        False,
+        "--write-report",
+        help="Write JSON plan under output/storage/ (repo artifact only; no volume writes).",
+    ),
+    report_path: Path | None = typer.Option(
+        None,
+        "--report-path",
+        help="Optional explicit JSON report path (implies --write-report).",
+    ),
+    update_state: bool = typer.Option(
+        False,
+        "--update-state",
+        help="When the plan is ready, set [storage].migration_state=planned in local.toml.",
+    ),
+) -> None:
+    """Dry-run inventory: plan legacy → primary copy (never copies or switches writers)."""
+    from mercury.core.storage_roles import MigrationState
+    from mercury.storage.migrate_plan import (
+        build_migration_plan,
+        write_migration_plan_report,
+    )
+    from mercury.storage.migrate_run import patch_migration_state
+    from mercury.storage.terminal import print_migration_plan
+
+    report = build_migration_plan()
+    written: str | None = None
+    if write_report or report_path is not None:
+        path = write_migration_plan_report(report, report_path)
+        written = str(path)
+    code = print_migration_plan(report, report_path=written)
+    if update_state and report.ready_for_migrate_execute:
+        for note in patch_migration_state(MigrationState.PLANNED):
+            from mercury.terminal import screen as display_screen
+
+            display_screen.write_hint(note)
+    elif update_state and not report.ready_for_migrate_execute:
+        from mercury.terminal import screen as display_screen
+
+        display_screen.write_status(
+            "fail",
+            "Skipped --update-state: plan is not ready.",
+        )
+        code = code or 1
+    if code:
+        raise typer.Exit(code)
+
+
+@storage_app.command("migrate-run")
+def storage_migrate_run_cmd(
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Perform the copy to primary (default is dry-run preview).",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        help="Non-interactive confirm (still requires --confirm 'MIGRATE PRIMARY').",
+    ),
+    confirm: str | None = typer.Option(
+        None,
+        "--confirm",
+        help="Confirmation phrase for --execute (MIGRATE PRIMARY).",
+    ),
+    update_state: bool = typer.Option(
+        True,
+        "--update-state/--no-update-state",
+        help="After successful copy, set [storage].migration_state=copied in local.toml.",
+    ),
+    write_report: bool = typer.Option(
+        False,
+        "--write-report",
+        help="Also write a JSON report under output/storage/.",
+    ),
+) -> None:
+    """Copy legacy → primary (dry-run by default). Does not switch writers or cut over."""
+    from mercury.core.safety import MIGRATE_PRIMARY_CONFIRMATION_PHRASE
+    from mercury.storage.migrate_run import run_migration
+    from mercury.storage.terminal import print_migration_run
+
+    confirmation = confirm
+    if execute and confirmation is None:
+        if yes:
+            raise typer.BadParameter(
+                f"--yes requires --confirm '{MIGRATE_PRIMARY_CONFIRMATION_PHRASE}'"
+            )
+        confirmation = typer.prompt(
+            f"Type {MIGRATE_PRIMARY_CONFIRMATION_PHRASE} to copy onto primary "
+            "(writers stay on legacy until cutover)",
+            default="",
+        )
+
+    def _progress(index: int, total: int, relative_path: str, bytes_copied: int) -> None:
+        if total <= 0:
+            return
+        # Sparse progress: every item for small jobs, otherwise ~5% steps + last.
+        step = max(1, total // 20)
+        if index == 1 or index == total or index % step == 0:
+            from mercury.terminal import screen as display_screen
+
+            display_screen.write_hint(
+                f"Progress {index}/{total}: {relative_path} ({bytes_copied} bytes so far)"
+            )
+
+    result = run_migration(
+        execute=execute,
+        confirmation=confirmation,
+        update_state=update_state,
+        write_repo_report=write_report,
+        progress_callback=_progress if execute else None,
+    )
+    code = print_migration_run(result)
+    if code:
+        raise typer.Exit(code)
+
+
+@storage_app.command("migrate-quarantine")
+def storage_migrate_quarantine_cmd(
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Move primary conflict paths into .mercury_control/quarantine/ (default dry-run).",
+    ),
+    confirm: str | None = typer.Option(
+        None,
+        "--confirm",
+        help="Confirmation phrase for --execute (QUARANTINE CONFLICTS).",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        help="Non-interactive confirm (still requires --confirm 'QUARANTINE CONFLICTS').",
+    ),
+) -> None:
+    """Move conflicting primary paths aside (never deletes legacy USB; no overwrite)."""
+    from mercury.storage.migrate_quarantine import (
+        QUARANTINE_CONFIRMATION_PHRASE,
+        quarantine_migration_conflicts,
+    )
+    from mercury.storage.terminal import print_quarantine_result
+
+    confirmation = confirm
+    if execute and confirmation is None:
+        if yes:
+            raise typer.BadParameter(
+                f"--yes requires --confirm '{QUARANTINE_CONFIRMATION_PHRASE}'"
+            )
+        confirmation = typer.prompt(
+            f"Type {QUARANTINE_CONFIRMATION_PHRASE} to move primary conflicts aside",
+            default="",
+        )
+    result = quarantine_migration_conflicts(execute=execute, confirmation=confirmation)
+    code = print_quarantine_result(result)
+    if code:
+        raise typer.Exit(code)
+
+
+@storage_app.command("migrate-verify")
+def storage_migrate_verify_cmd(
+    update_state: bool = typer.Option(
+        False,
+        "--update-state",
+        help="On success, set [storage].migration_state=verified in local.toml.",
+    ),
+    write_report: bool = typer.Option(
+        False,
+        "--write-report",
+        help="Write JSON verify report under output/storage/.",
+    ),
+) -> None:
+    """Verify legacy content matches primary (no copy, no cutover)."""
+    from mercury.storage.migrate_verify import verify_migration
+    from mercury.storage.terminal import print_migration_verify
+
+    report = verify_migration(update_state=update_state, write_repo_report=write_report)
+    code = print_migration_verify(report)
+    if code:
+        raise typer.Exit(code)
+
+
+@storage_app.command("cutover-readiness")
+def storage_cutover_readiness_cmd() -> None:
+    """Read-only checklist for future cutover (never switches writers or remounts)."""
+    from mercury.storage.cutover_readiness import build_cutover_readiness
+    from mercury.storage.terminal import print_cutover_readiness
+
+    code = print_cutover_readiness(build_cutover_readiness())
+    if code:
+        raise typer.Exit(code)
 
 
 @backup_app.command("plan")
@@ -492,7 +710,7 @@ def transfer_receive_cmd(
         help="Use catalog/seed inventory instead of live probes.",
     ),
 ) -> None:
-    """Show the receiving-workstation guide for imported USB media."""
+    """Show the receiving-workstation guide for imported handoff media."""
     from mercury.handoff.receiver import build_receiver_handoff_guide
     from mercury.handoff.terminal import print_receiver_handoff_guide
     from mercury.transfer.bundle import resolve_transfer_live
@@ -1121,7 +1339,7 @@ def deploy_db_cmd(
         help="Skip databases that already exist locally (default).",
     ),
 ) -> None:
-    """Deploy verified USB backups onto this MariaDB host (dry-run by default)."""
+    """Deploy verified operator-storage backups onto this MariaDB host (dry-run by default)."""
     from mercury.deploy.models import DeployOptions
     from mercury.deploy.plan import build_deployment_plan
     from mercury.deploy.runner import execute_deployment_batch
@@ -1183,7 +1401,7 @@ def deploy_repos_cmd(
     from_usb: bool = typer.Option(
         False,
         "--from-usb",
-        help="Clone missing repositories from verified USB git bundles.",
+        help="Clone missing repositories from verified operator-storage git bundles.",
     ),
     skip_existing: bool = typer.Option(
         True,
@@ -1468,7 +1686,7 @@ def config_init_cmd(
 
 @config_app.command("repair-local")
 def config_repair_local_cmd() -> None:
-    """Add missing USB artifact paths to config/local.toml without overwriting settings."""
+    """Add missing operator-storage artifact paths to config/local.toml without overwriting settings."""
     from mercury.config.init import repair_local_config_paths
 
     output.heading("Repair local config")

@@ -1,6 +1,6 @@
 # System recovery deployment runbook (Neptune / prepared Fedora host)
 
-Mercury can restore **Mercury-managed artifacts** — verified USB database backups and configured Git repositories — onto a **prepared Fedora/MariaDB host**. This is recovery deployment, not full workstation provisioning.
+Mercury can restore **Mercury-managed artifacts** — verified operator-storage database backups and configured Git repositories — onto a **prepared Fedora/MariaDB host**. This is recovery deployment, not full workstation provisioning.
 
 Mercury does **not** install Fedora packages, configure systemd, manage MariaDB users/grants, or bootstrap a bare OS. The host must already have MariaDB, Git, and operator paths ready (see `mercury env doctor`).
 

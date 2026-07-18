@@ -1,6 +1,6 @@
 # Database recovery deployment runbook
 
-Import verified Mercury USB backups onto a **prepared Fedora/MariaDB host** after migration or hardware loss.
+Import verified Mercury operator-storage backups onto a **prepared Fedora/MariaDB host** after migration or hardware loss.
 
 Mercury recovery deployment assumes the host is already set up (MariaDB running, USB mount available). It is **not** prod→dev sync and **not** full workstation bootstrap.
 

@@ -20,7 +20,7 @@ def resolve_deployment_candidates(
     databases: list[str] | None = None,
     existing_on_server: set[str] | None = None,
 ) -> list[DeploymentCandidate]:
-    """Latest verified full backup per protected source (USB/catalog scope, not live server)."""
+    """Latest verified full backup per protected source (operator-storage/catalog scope, not live server)."""
     resolved_policy = policy or load_execution_policy()
     existing = existing_on_server or set()
     source_names = databases or resolve_batch_sources(live=False)

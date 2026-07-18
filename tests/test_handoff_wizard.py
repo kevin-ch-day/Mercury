@@ -232,7 +232,7 @@ def test_cli_transfer_handoff_run_from_phase(
         lambda **kwargs: HandoffWizardPhaseResult(
             phase="repo_bundle",
             status="skipped",
-            summary="Would write repository bundles to USB.",
+            summary="Would write repository bundles to operator storage.",
         ),
     )
     monkeypatch.setattr(

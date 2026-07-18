@@ -27,8 +27,13 @@ Cookbook for AI agents (Cursor, ChatGPT, Codex) implementing features in this re
 | `src/mercury/database/commands.py` | `mercury db *` / `mercury database *` commands |
 | `src/mercury/menu/runners.py` | Interactive menu action runners |
 | `src/mercury/menu/loop.py` | Menu read-eval loop and choice routing |
-| `src/mercury/core/safety.py` | Policy constants, backup kind literals, role rules |
-| `src/mercury/core/execution_policy.py` | `ExecutionPolicy`, env/config gates for live writes |
+| `src/mercury/core/storage_roots.py` | Primary/legacy config, migration state, write gates |
+| `src/mercury/core/storage_validate.py` | Mount/UUID/fstype/space validation |
+| `src/mercury/storage/` | Storage status, migrate-plan/run/verify/quarantine, cutover-readiness (no writer switch) |
+| `src/mercury/storage/migrate_plan.py` | Legacy → primary inventory/plan (no copies) |
+| `src/mercury/storage/migrate_run.py` | Gated copy + progress ledger resume |
+| `src/mercury/storage/progress_ledger.py` | Append-only `.mercury_control/migration_progress.jsonl` |
+| `src/mercury/storage/cutover_readiness.py` | Read-only cutover checklist (no remount/switch) |
 | `src/mercury/core/paths.py` | `REPO_ROOT`, config paths, output dirs |
 | `src/mercury/core/runtime.py` | `operator_status()` for menu/CLI |
 | `src/mercury/core/output.py` | Rich terminal helpers |

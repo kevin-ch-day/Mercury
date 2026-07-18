@@ -31,7 +31,7 @@ Sync and restore-check are **implemented** but gated by default:
 - `[mercury] dry_run = false` and `live_actions_enabled = true` in `config/local.toml`, or
 - `MERCURY_DRY_RUN=0` and `MERCURY_LIVE_ACTIONS=1` in the environment.
 
-For the first live milestone, backup execution must also target the mounted USB-backed root under `/mnt/MERCURY_DATA_USB/mercury_backups`. Repo-local `backups/` do not count as production protection or sync readiness in live/operator mode.
+For the first live milestone, backup execution must also target the mounted operator-storage root (legacy default `/mnt/MERCURY_DATA_USB/mercury_backups`). Repo-local `backups/` do not count as production protection or sync readiness in live/operator mode.
 
 CLI:
 

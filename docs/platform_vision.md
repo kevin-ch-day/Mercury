@@ -36,7 +36,7 @@ Mercury is a **Fedora-first operations utility** for the Android security resear
 
 - Read-only local MariaDB discovery
 - Classification of active platform databases
-- USB-backed full logical backups for `erebus_threat_intel_prod`, `scytaledroid_core_prod`, `obsidiandroid_core_prod`, and `android_permission_intel`
+- Operator-storage full logical backups for `erebus_threat_intel_prod`, `scytaledroid_core_prod`, `obsidiandroid_core_prod`, and `android_permission_intel`
 - Backup verification and protection reporting
 - Prod->dev sync readiness for the Erebus and ScytaleDroid pairs only
 

@@ -10,8 +10,8 @@ from mercury.restore.check_plan import RestoreCheckPlan
 def _compact_restore_status(plan: RestoreCheckPlan) -> str:
     if plan.allowed:
         return "ready"
-    if "Backup root is repo-local fallback; configure USB-backed backups before restore-check." in plan.blockers:
-        return "USB root required"
+    if "Backup root is repo-local fallback; configure operator-storage backups before restore-check." in plan.blockers:
+        return "Operator storage root required"
     if "No on-disk backup found for production source." in plan.blockers:
         return "missing verified backup"
     if "Latest backup is not artifact-verified." in plan.blockers:

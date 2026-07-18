@@ -41,6 +41,7 @@ class DatabaseBundlePlan(BaseModel):
     failed_count: int
     stale_count: int = 0
     unknown_freshness_count: int = 0
+    absent_count: int = 0
     entries: list[DatabaseBundleEntry] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
@@ -111,6 +112,7 @@ def build_database_bundle_plan(
         failed_count=report.failed_count,
         stale_count=report.stale_count,
         unknown_freshness_count=report.unknown_freshness_count,
+        absent_count=report.absent_count,
         entries=entries,
         warnings=list(report.warnings),
     )
@@ -128,6 +130,7 @@ def bundle_package_status(plan: DatabaseBundlePlan) -> str:
         failed_count=plan.failed_count,
         stale_count=plan.stale_count,
         unknown_freshness_count=plan.unknown_freshness_count,
+        absent_count=plan.absent_count,
     )
 
 
@@ -254,7 +257,7 @@ def _index_runbook_text(plan: DatabaseBundlePlan) -> str:
             "- A database is not protected until verification passes.",
             "- Restore-check uses disposable _restorecheck_* databases only.",
             "- Prod-to-dev sync requires verified full backups for production sync sources.",
-            "- Stale or unknown freshness means the USB backup may lag live source activity; run full backup before handoff.",
+            "- Stale or unknown freshness means the operator backup may lag live source activity; run full backup before handoff.",
             "",
         ]
     )

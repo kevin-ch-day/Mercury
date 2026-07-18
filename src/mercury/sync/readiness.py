@@ -78,7 +78,7 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
         blockers: list[str] = []
         if policy.backup_root_is_within_repo() and not policy.allow_unsafe_backup_root:
             blockers.append(
-                "Backup root is repo-local fallback; configure USB-backed backups before sync readiness."
+                "Backup root is repo-local fallback; configure operator-storage backups before sync readiness."
             )
         if not pair.dev_listed:
             blockers.append(f"Dev target missing: {pair.expected_dev}")

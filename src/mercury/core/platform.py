@@ -47,7 +47,8 @@ class PlatformInfo:
         if self.is_windows:
             return (
                 "Windows detected — full Mercury workflows supported when MariaDB tools, "
-                "config/local.toml, and the MERCURY_DATA_USB layout are configured."
+                "config/local.toml, and the operator storage layout (mercury_backups / "
+                "mercury_logs) are configured."
             )
         if self.is_linux:
             distro = self.distro_name or self.distro_id or "Linux"

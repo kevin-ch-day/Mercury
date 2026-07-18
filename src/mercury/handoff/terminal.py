@@ -50,7 +50,7 @@ def print_handoff_checklist(checklist: HandoffChecklist) -> None:
         "Checklist": step_progress_summary(checklist.steps),
         "Database package": checklist.database_package,
         "Repository package": checklist.repository_package,
-        "Latest transfer on USB": checklist.latest_transfer_age or "none",
+        "Latest transfer on storage": checklist.latest_transfer_age or "none",
         "Latest DB bundle index": checklist.latest_database_bundle_age or "none",
         "State bundle records": checklist.state_bundle_rows,
     }
@@ -73,7 +73,7 @@ def print_handoff_checklist(checklist: HandoffChecklist) -> None:
     primary = primary_handoff_action(checklist)
     if checklist.handoff_status == "complete":
         display_screen.write_summary(
-            "USB is ready for workstation handoff — receiver should start with the latest transfer runbook."
+            "Operator storage is ready for workstation handoff — receiver should start with the latest transfer runbook."
         )
         display_screen.write_section("Receiver quick start")
         display_screen.write_list("", receiver_quick_start_lines())
@@ -82,7 +82,7 @@ def print_handoff_checklist(checklist: HandoffChecklist) -> None:
             display_screen.write_hint(f"Recommended next: {primary}")
         display_screen.write_status(
             "warn",
-            "Complete failed or warned steps before moving this USB to another workstation.",
+            "Complete failed or warned steps before moving this media to another workstation.",
         )
 
 
@@ -135,7 +135,7 @@ def print_handoff_wizard_result(result: HandoffWizardResult) -> None:
         )
         if result.final_handoff_status == "complete":
             display_screen.write_summary(
-                "USB is ready for workstation handoff — receiver should start with the latest transfer runbook."
+                "Operator storage is ready for workstation handoff — receiver should start with the latest transfer runbook."
             )
         elif result.cancelled:
             display_screen.write_status("warn", "Guided wizard stopped before completion.")
@@ -150,7 +150,7 @@ def print_handoff_history(report: HandoffHistoryReport) -> None:
     display_screen.open_screen(HISTORY_SCREEN_TITLE)
     display_screen.write_fields(
         {
-            "Transfer packages on USB": report.transfer_package_count,
+            "Transfer packages on storage": report.transfer_package_count,
             "Database bundle records": report.database_bundle_count,
             "Guided wizard runs": report.wizard_run_count,
         }
@@ -177,29 +177,29 @@ def print_handoff_history(report: HandoffHistoryReport) -> None:
         )
     else:
         display_screen.write_summary(
-            "No handoff history on USB yet — run the guided wizard or write transfer/database bundles."
+            "No handoff history on operator storage yet — run the guided wizard or write transfer/database bundles."
         )
 
 
 def print_receiver_handoff_guide(*, checklist: HandoffChecklist | None = None) -> None:
-    """Show the receiving-workstation checklist for imported USB media."""
+    """Show the receiving-workstation checklist for imported handoff media."""
     display_screen.open_screen(RECEIVER_SCREEN_TITLE)
     if checklist is None:
         display_screen.write_status(
             "warn",
-            "USB handoff snapshot unavailable — follow the generic receiver checklist below.",
+            "Handoff snapshot unavailable — follow the generic receiver checklist below.",
         )
     else:
         readiness_kind = handoff_status_kind(checklist.handoff_status)
         display_screen.write_status(
             readiness_kind,
-            f"Source USB handoff status: {checklist.handoff_status}",
+            f"Source handoff status: {checklist.handoff_status}",
         )
         display_screen.write_blank()
         display_screen.write_fields(
             {
                 "Pipeline": handoff_pipeline_line(checklist),
-                "Latest transfer on USB": checklist.latest_transfer_age or "none",
+                "Latest transfer on storage": checklist.latest_transfer_age or "none",
                 "Latest DB bundle index": checklist.latest_database_bundle_age or "none",
             }
         )

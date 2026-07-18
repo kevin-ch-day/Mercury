@@ -153,7 +153,7 @@ def _render_recovery_screen(data: RecoveryScreenData, *, show_title: bool) -> No
             "Protected sources": report.source_count,
             "Verified backups": report.verified_count,
             "Latest safe backup": _latest_verified_backup(report),
-            "Latest transfer on USB": checklist.latest_transfer_age or "none",
+            "Latest transfer on storage": checklist.latest_transfer_age or "none",
             "Recovery runbooks": str(resolve_usb_mount() / "mercury_runbooks"),
         }
     )

@@ -1,4 +1,4 @@
-"""Post-rebuild checkpoint — databases, repositories, USB, and next steps."""
+"""Post-rebuild checkpoint — databases, repositories, storage, and next steps."""
 
 from __future__ import annotations
 

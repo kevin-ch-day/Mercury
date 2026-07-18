@@ -31,7 +31,7 @@ def finalize_deployed_repository(candidate: RepoDeployCandidate) -> str:
     """
     Attach origin, land on a named branch, and return operator guidance.
 
-    Avoids leaving USB bundle restores in detached HEAD without context.
+    Avoids leaving operator-storage bundle restores in detached HEAD without context.
     """
     target = Path(candidate.target_path)
     if not (target / ".git").is_dir():

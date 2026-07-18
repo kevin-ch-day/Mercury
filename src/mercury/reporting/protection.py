@@ -44,6 +44,7 @@ class ProtectionReport(BaseModel):
     failed_source_count: int = 0
     stale_source_count: int = 0
     unknown_freshness_source_count: int = 0
+    absent_source_count: int = 0
     source_freshness: dict[str, str] = Field(default_factory=dict)
     manual_review: list[str] = Field(default_factory=list)
     prod_dev_pairs: list[ProdDevPair] = Field(default_factory=list)
@@ -97,7 +98,7 @@ def build_protection_report(*, live: bool = False, probe_database: bool = False)
         actions.append("Then: mercury backup verify --db <prod> --update-manifest")
     else:
         actions.append("Run: mercury backup run --db <prod> --kind full --dry-run")
-        actions.append("Configure USB backup root and config/local.toml before writing backups")
+        actions.append("Configure operator backup root and config/local.toml before writing backups")
     if not policy.live_execution_allowed():
         actions.append("Sync/deploy/restore require live_actions_enabled in config/local.toml")
     for pair in pairs:
@@ -131,6 +132,7 @@ def build_protection_report(*, live: bool = False, probe_database: bool = False)
         failed_source_count=backup_status.failed_count,
         stale_source_count=backup_status.stale_count,
         unknown_freshness_source_count=backup_status.unknown_freshness_count,
+        absent_source_count=backup_status.absent_count,
         source_freshness={entry.database: entry.freshness for entry in backup_status.entries},
         manual_review=review,
         prod_dev_pairs=pairs,

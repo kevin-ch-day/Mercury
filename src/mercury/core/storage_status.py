@@ -51,13 +51,13 @@ def backup_root_summary_label(policy) -> str:
     state = policy.backup_root_state()
     target = str(policy.backup_root.resolve())
     if state == "usb-mounted":
-        return "[ok] USB ready"
+        return "[ok] storage ready"
     if state == "low free space":
-        return "[--] USB warning"
+        return "[--] storage warning"
     if state == "repo-local fallback":
         return f"[!!] repo-local fallback — {target}"
     if state == "usb not mounted":
-        return "[!!] USB not mounted"
+        return "[!!] storage not mounted"
     if state == "unsafe path":
         return f"[!!] unsafe path — {target}"
     if state == "missing path":

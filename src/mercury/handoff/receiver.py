@@ -9,7 +9,7 @@ from mercury.core.runtime import should_probe_database_status
 
 def build_receiver_handoff_guide(*, live: bool | None = None) -> HandoffChecklist | None:
     """
-    Build receiver guidance from the current USB handoff snapshot when available.
+    Build receiver guidance from the current handoff snapshot when available.
 
     Returns the source checklist used to contextualize receiver steps, or None when
     the snapshot cannot be built.
