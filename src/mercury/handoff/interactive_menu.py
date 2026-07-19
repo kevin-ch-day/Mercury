@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from mercury.core.runtime import should_probe_database_status
-from mercury.handoff.display import handoff_pipeline_line, handoff_wizard_plan_line, suggested_menu_choice
+from mercury.handoff.display import handoff_pipeline_line, handoff_wizard_plan_line
 from mercury.handoff.history import build_handoff_history
 from mercury.handoff.receiver import build_receiver_handoff_guide
 from mercury.handoff.snapshot import build_handoff_snapshot, clear_handoff_snapshot
 from mercury.handoff.terminal import (
     print_handoff_checklist,
+    print_handoff_status_panel,
     print_handoff_history,
     print_handoff_wizard_result,
     print_receiver_handoff_guide,
@@ -41,34 +42,21 @@ def _after_handoff_write() -> None:
 
 def _render_handoff_options() -> None:
     display_screen.write_blank()
-    display_screen.write_section("Guided flow")
+    display_screen.write_section("Actions")
     render_submenu(
         [
-            ("2", "Run guided handoff wizard"),
-            ("3", "Resume guided wizard from verification"),
-        ],
-        indent=0,
-    )
-    display_screen.write_blank()
-    display_screen.write_section("Individual phases")
-    render_submenu(
-        [
-            ("4", "Run full backup (stale or missing sources only)"),
-            ("5", "Verify all source backups"),
-            ("6", "Write repository bundles to operator storage"),
-            ("7", "Write DB bundle index and runbooks"),
-            ("8", "Write combined transfer package to operator storage"),
-        ],
-        indent=0,
-    )
-    display_screen.write_blank()
-    display_screen.write_section("Tools")
-    render_submenu(
-        [
-            ("1", "Refresh checklist"),
-            ("9", "View handoff history on operator storage"),
-            ("10", "Open backup menu"),
-            ("11", "Receiving workstation guide"),
+            ("1", "Refresh status"),
+            ("2", "Guided handoff"),
+            ("3", "Resume handoff"),
+            ("4", "Run backup"),
+            ("5", "Verify backups"),
+            ("6", "Create repository bundles"),
+            ("7", "Create database bundle"),
+            ("8", "Create transfer package"),
+            ("9", "Handoff history"),
+            ("10", "Backup menu"),
+            ("11", "Receiver guide"),
+            ("12", "Review blockers"),
         ],
         indent=0,
     )
@@ -126,16 +114,10 @@ def run_handoff_menu(*, interactive: bool = True) -> None:
             live=should_probe_database_status(),
             refresh=show_title,
         )
-        print_handoff_checklist(snapshot.checklist)
-        if snapshot.checklist.recommended_actions() and interactive:
-            display_screen.write_blank()
-            display_screen.write_list(
-                "Suggested next steps",
-                snapshot.checklist.recommended_actions()[:3],
-            )
-        suggested = suggested_menu_choice(snapshot.checklist)
-        if suggested and interactive:
-            display_screen.write_hint(f"Suggested action: press [{suggested}]")
+        if interactive:
+            print_handoff_status_panel(snapshot.checklist)
+        else:
+            print_handoff_checklist(snapshot.checklist)
         if not interactive:
             return
         _render_handoff_options()
@@ -207,6 +189,10 @@ def run_handoff_menu(*, interactive: bool = True) -> None:
             continue
         if choice == "11":
             print_receiver_handoff_guide(checklist=build_receiver_handoff_guide())
+            show_title = pause_and_redraw()
+            continue
+        if choice == "12":
+            print_handoff_checklist(snapshot.checklist)
             show_title = pause_and_redraw()
             continue
         display_screen.write_summary(menu_prompts.invalid_choice_message(choice))

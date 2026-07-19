@@ -136,6 +136,9 @@ class StorageConfig:
         """Flat path map matching historical [mercury] keys for the active writer."""
         root = self.active_write_root
         return {
+            "operator_mount": str(root.mount_path),
+            # Retained for historical config consumers; it names the active
+            # operator mount after cutover as well, not necessarily a USB.
             "usb_mount": str(root.mount_path),
             "backup_root": str(root.backup_root),
             "log_dir": str(root.log_dir),

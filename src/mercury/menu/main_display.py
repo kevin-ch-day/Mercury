@@ -84,7 +84,6 @@ MENU_RETURN_LABEL = "Return"
 class MenuItem:
     key: str
     title: str
-    blurb: str = ""
 
 
 MENU_SECTIONS: list[tuple[str, list[MenuItem]]] = [
@@ -99,11 +98,7 @@ MENU_SECTIONS: list[tuple[str, list[MenuItem]]] = [
             MenuItem("6", "System doctor / repair guide"),
             MenuItem("7", "System Deployment"),
             MenuItem("8", "Disaster Recovery"),
-            MenuItem(
-                "9",
-                "Workstation handoff",
-                "Operator-storage checklist, guided wizard, and transfer write",
-            ),
+            MenuItem("9", "Workstation handoff"),
         ],
     ),
 ]
@@ -219,7 +214,6 @@ def _sectioned_menu_item_lines() -> list[str]:
             menu_item_line(
                 item.key,
                 item.title,
-                blurb=item.blurb,
                 indent=len(MENU_ITEM_INDENT),
             )
         )

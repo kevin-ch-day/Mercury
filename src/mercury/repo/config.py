@@ -8,19 +8,19 @@ import tomllib
 from pydantic import BaseModel, Field
 
 from mercury.core.paths import LOCAL_CONFIG, REPOS_EXAMPLE, REPOS_LOCAL
-from mercury.core.usb_mount import resolve_usb_mount
+from mercury.core.usb_mount import resolve_operator_mount
 
 
 def default_repo_backup_root() -> Path:
-    return resolve_usb_mount() / "mercury_repo_backups"
+    return resolve_operator_mount() / "mercury_repo_backups"
 
 
 def default_manifest_dir() -> Path:
-    return resolve_usb_mount() / "mercury_manifests"
+    return resolve_operator_mount() / "mercury_manifests"
 
 
 def default_runbook_dir() -> Path:
-    return resolve_usb_mount() / "mercury_runbooks"
+    return resolve_operator_mount() / "mercury_runbooks"
 
 
 def _home_github_candidates() -> list[tuple[str, str, str]]:

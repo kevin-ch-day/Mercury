@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from mercury import output
 from mercury.core.storage_roles import MigrationState
-from mercury.menu import main_display as menu_display
 from mercury.menu import prompts as menu_prompts
 from mercury.menu.subscreen import pause_and_redraw, read_submenu_choice, render_submenu
 from mercury.storage.cutover_readiness import build_cutover_readiness
@@ -34,17 +33,13 @@ def _render_storage_screen(*, show_title: bool) -> None:
     render_submenu(
         [
             ("1", "Refresh status"),
-            ("2", "Migration plan (dry-run inventory)"),
-            ("3", "Preview migrate-run (dry-run)"),
-            ("4", "Verify migration"),
-            ("5", "Cutover readiness checklist"),
-            ("6", "Mark plan state (migration_state=planned)"),
+            ("2", "Migration plan"),
+            ("3", "Preview migration"),
+            ("4", "Verify mirror"),
+            ("5", "Cutover readiness"),
+            ("6", "Record plan"),
         ],
         indent=0,
-    )
-    display_screen.write_blank()
-    output.write(
-        menu_display.format_menu_bottom_option("Back")
     )
 
 

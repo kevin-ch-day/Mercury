@@ -195,6 +195,9 @@ def test_write_transfer_bundle_writes_manifest_and_runbook(
         latest_transfer_manifest_path=str(manifest_path),
         latest_transfer_runbook_path=str(runbook_path),
     )
+    assert bundle.required_operator_mount == str(usb_root)
+    assert bundle.model_dump()["required_usb_mount"] == str(usb_root)
+    assert bundle.model_dump()["required_operator_mount"] == str(usb_root)
     monkeypatch.setattr("mercury.core.usb_mount.resolve_usb_mount", lambda **kwargs: usb_root)
     monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
     monkeypatch.setattr("mercury.state.ledger.resolve_state_root", lambda policy=None: state_root)

@@ -86,6 +86,20 @@ def print_handoff_checklist(checklist: HandoffChecklist) -> None:
         )
 
 
+def print_handoff_status_panel(checklist: HandoffChecklist) -> None:
+    """Render the compact interactive-menu status panel without the full table."""
+    display_screen.open_screen(HANDOFF_SCREEN_TITLE)
+    display_screen.write_fields(
+        {
+            "Handoff readiness": checklist.handoff_status,
+            "Database package": checklist.database_package,
+            "Repository package": checklist.repository_package,
+            "Latest transfer": checklist.latest_transfer_age or "none",
+            "Checklist": step_progress_summary(checklist.steps),
+        }
+    )
+
+
 def print_handoff_wizard_result(result: HandoffWizardResult) -> None:
     """Show phase-by-phase results from the guided handoff wizard."""
     if not result.phases:

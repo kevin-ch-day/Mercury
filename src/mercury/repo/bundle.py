@@ -9,7 +9,7 @@ import subprocess
 
 from pydantic import BaseModel, Field
 
-from mercury.core.usb_mount import assert_operator_usb_path
+from mercury.core.usb_mount import assert_operator_storage_path
 from mercury.repo.config import RepoBundleSettings
 from mercury.repo.status import RepoStatus
 
@@ -160,8 +160,9 @@ def build_repo_bundle_plan(
     )
 
 
-def _ensure_usb_path(path: Path) -> None:
-    assert_operator_usb_path(path)
+def _ensure_operator_storage_path(path: Path) -> None:
+    """Refuse bundle writes outside the configured active writer mount."""
+    assert_operator_storage_path(path)
 
 
 def _manifest_payload(plan: RepoBundlePlan, entry: RepoBundleEntry) -> dict[str, object]:
@@ -282,9 +283,9 @@ def _index_runbook_text(plan: RepoBundlePlan) -> str:
 
 
 def execute_repo_bundle_plan(plan: RepoBundlePlan) -> RepoBundlePlan:
-    _ensure_usb_path(plan.repo_backup_root)
-    _ensure_usb_path(plan.manifest_dir)
-    _ensure_usb_path(plan.runbook_dir)
+    _ensure_operator_storage_path(plan.repo_backup_root)
+    _ensure_operator_storage_path(plan.manifest_dir)
+    _ensure_operator_storage_path(plan.runbook_dir)
 
     for entry in plan.entries:
         if entry.error:

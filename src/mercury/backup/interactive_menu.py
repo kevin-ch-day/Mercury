@@ -268,13 +268,13 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
         if backup_ready:
             run_label = "Run full backup now"
         else:
-            run_label = "Run full backup now (storage/config not ready)"
+            run_label = "Run full backup"
         options.insert(1, ("2", run_label))
     from mercury.repair.startup import usb_repair_needed
 
     if usb_repair_needed():
         options.append(("7", "Repair USB mount and permissions"))
-    options.append(("8", "Open workstation handoff (main menu 9)"))
+    options.append(("8", "Open workstation handoff"))
     display_screen.write_blank()
     render_submenu(options, indent=0)
 

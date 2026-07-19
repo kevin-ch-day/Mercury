@@ -177,17 +177,10 @@ def _render_db_menu(*, show_title: bool) -> None:
     options = [
         ("1", "Show latest verified backup set"),
         ("2", "Dry-run deploy latest verified set"),
-        (
-            "3",
-            "Deploy latest verified set (LIVE — y/n confirm)"
-            if policy.live_execution_allowed()
-            else "Deploy latest verified set (blocked — enable live mode)",
-        ),
+        ("3", "Deploy latest verified set"),
         ("4", "Preflight checks"),
     ]
     render_submenu(options)
-    if policy.live_execution_allowed():
-        display_screen.write_hint("Option 3 imports verified operator-storage backups into MariaDB.")
 
 
 def _render_repo_menu(*, show_title: bool) -> None:

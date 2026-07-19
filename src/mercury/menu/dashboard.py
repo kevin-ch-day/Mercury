@@ -10,21 +10,12 @@ from mercury.core.environment_status import (
     mariadb_dashboard_label,
     recommended_next_step,
     resolve_dashboard_blocker,
-    storage_status_dashboard_label,
 )
-from mercury.core.execution_policy import backup_mode_label, destructive_ops_label, load_execution_policy
+from mercury.core.execution_policy import destructive_ops_label, load_execution_policy
 from mercury.core.platform import detect_platform
 from mercury.core.runtime import should_probe_database_status
 from mercury.core.storage_status import backup_root_free_space_label
 from mercury.terminal.theme import dashboard_row
-
-
-def backup_mode_dashboard_label(policy) -> str:
-    """Main menu backup safety line."""
-    base = backup_mode_label(policy)
-    if policy.backup_execution_allowed():
-        return f"{base}; sync/deploy require confirmation"
-    return base
 
 
 def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
@@ -36,34 +27,20 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
 
     rows: list[str] = []
     if env.config.initialized and env.mariadb.connection_works is True:
-        rows.append(dashboard_row("Backup target", _backup_target_summary(policy, env)))
+        rows.append(dashboard_row("Active writer", _backup_target_summary(policy, env)))
     else:
         rows.append(dashboard_row("MariaDB", mariadb_dashboard_label(env.mariadb)))
         rows.append(dashboard_row("Config", config_dashboard_label(env.config)))
         rows.append(dashboard_row("Backup target", _backup_target_summary(policy, env)))
-    rows.append(dashboard_row("Backup mode", backup_mode_dashboard_label(policy)))
     platform_info = detect_platform()
     if not platform_info.is_fedora:
         rows.append(dashboard_row("Platform", platform_info.support_label))
-
-    if policy.backup_root_state() != "usb-mounted" or env.permission_checks:
-        rows.append(
-            dashboard_row(
-                "Storage status",
-                storage_status_dashboard_label(
-                    policy,
-                    config=env.config,
-                    usb=env.usb,
-                    permission_checks=env.permission_checks,
-                ),
-            )
-        )
 
     try:
         from mercury.storage.report import build_storage_status_report
 
         storage_report = build_storage_status_report()
-        rows.append(dashboard_row("Storage roles", storage_report.dashboard_line()))
+        rows.append(dashboard_row("Storage mirror", storage_report.dashboard_line()))
     except OSError:
         pass
 
@@ -183,11 +160,10 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
 
     rows.extend(
         [
-            dashboard_row("MariaDB sources", mariadb_line),
-            dashboard_row("Operator backups", backup_line),
-            dashboard_row("Handoff readiness", handoff_line),
+            dashboard_row("Database backups", backup_line),
+            dashboard_row("Workstation handoff", handoff_line),
             dashboard_row("Sync readiness", sync_line),
-            dashboard_row("Protection", blocker),
+            dashboard_row("Cutover blockers", blocker),
         ]
     )
     if config_initialized and deploy_complete and sync_blocker not in {"None.", ""}:
