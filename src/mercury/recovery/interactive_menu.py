@@ -7,7 +7,7 @@ from pathlib import Path
 
 from mercury.backup.freshness import FRESHNESS_STALE, backup_entry_status_label
 from mercury.backup.status import BackupStatusEntry, BackupStatusReport, build_backup_status_report
-from mercury.core.usb_mount import resolve_usb_mount
+from mercury.core.usb_mount import resolve_operator_mount
 from mercury.core.runtime import should_probe_database_status
 from mercury.handoff.display import handoff_pipeline_line, handoff_status_kind
 from mercury.handoff.receiver import build_receiver_handoff_guide
@@ -54,8 +54,8 @@ def _latest_restore_check_status() -> dict[str, str]:
 
 
 def _latest_runbook(pattern: str) -> Path | None:
-    usb_mount = resolve_usb_mount()
-    root = usb_mount / "mercury_runbooks"
+    operator_mount = resolve_operator_mount()
+    root = operator_mount / "mercury_runbooks"
     if not root.is_dir():
         return None
     matches = sorted(root.glob(pattern))
@@ -154,7 +154,7 @@ def _render_recovery_screen(data: RecoveryScreenData, *, show_title: bool) -> No
             "Verified backups": report.verified_count,
             "Latest safe backup": _latest_verified_backup(report),
             "Latest transfer on storage": checklist.latest_transfer_age or "none",
-            "Recovery runbooks": str(resolve_usb_mount() / "mercury_runbooks"),
+            "Recovery runbooks": str(resolve_operator_mount() / "mercury_runbooks"),
         }
     )
     display_screen.write_blank()

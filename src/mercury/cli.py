@@ -30,7 +30,7 @@ report_app = typer.Typer(help="Backup report previews (dry-run).")
 logs_app = typer.Typer(help="Mercury log files under logs/.")
 state_app = typer.Typer(help="Portable Mercury operation ledger and summaries.")
 storage_app = typer.Typer(
-    help="Primary/legacy storage status, validate, migrate plan/run/verify (no cutover)."
+    help="Primary/legacy storage status, audit, validate, migrate plan/run/verify (no cutover)."
 )
 
 app.add_typer(env_app, name="env")
@@ -204,6 +204,50 @@ def storage_validate_cmd() -> None:
     from mercury.storage.terminal import print_storage_validate
 
     code = print_storage_validate(build_storage_status_report())
+    if code:
+        raise typer.Exit(code)
+
+
+@storage_app.command("audit")
+def storage_audit_cmd(
+    hash_files: bool = typer.Option(
+        False,
+        "--hash",
+        help="Also SHA-256 every legacy file against primary (can take time; use --no-logging for strict no-write audit).",
+    ),
+    write_report: bool = typer.Option(
+        False,
+        "--write-report",
+        help="Write JSON under output/storage/ (never writes to either storage volume).",
+    ),
+    report_path: Path | None = typer.Option(
+        None,
+        "--report-path",
+        help="Explicit JSON report path (implies --write-report).",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Print the structured report as JSON.",
+    ),
+) -> None:
+    """Audit configured legacy→primary storage; never copies or switches writers."""
+    from mercury.storage.audit import build_storage_audit, write_storage_audit_report
+    from mercury.storage.terminal import print_storage_audit
+
+    report = build_storage_audit(hash_files=hash_files)
+    written = None
+    if write_report or report_path is not None:
+        written = write_storage_audit_report(report, report_path)
+    if json_output:
+        import json
+
+        typer.echo(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+        code = report.exit_code
+    else:
+        code = print_storage_audit(report)
+        if written is not None:
+            output.write(f"JSON report: {written}")
     if code:
         raise typer.Exit(code)
 
@@ -398,6 +442,17 @@ def storage_cutover_readiness_cmd() -> None:
     from mercury.storage.terminal import print_cutover_readiness
 
     code = print_cutover_readiness(build_cutover_readiness())
+    if code:
+        raise typer.Exit(code)
+
+
+@storage_app.command("cutover-plan")
+def storage_cutover_plan_cmd() -> None:
+    """Preview every future USB→HDD writer-path change; never applies it."""
+    from mercury.storage.cutover_plan import build_cutover_plan
+    from mercury.storage.terminal import print_cutover_plan
+
+    code = print_cutover_plan(build_cutover_plan())
     if code:
         raise typer.Exit(code)
 

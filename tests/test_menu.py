@@ -20,8 +20,8 @@ def test_render_menu_text_shows_database_status_when_configured() -> None:
 
     text = render_menu_text()
     if should_probe_database_status():
-        assert "Backup target" in text
-        assert "MariaDB sources" in text
+        assert "Active writer" in text
+        assert "Database backups" in text
         assert "Sync readiness" in text
     else:
         assert "MariaDB" in text and "[!!]" in text
@@ -218,26 +218,36 @@ def test_render_main_menu_matches_simple_layout() -> None:
     assert menu_display.MENU_TITLE in text
     assert menu_display.MENU_SUBTITLE in text
     assert "\nMain Menu\n" in text
-    assert "Backup target" in text
-    assert "MariaDB sources" in text
+    assert "Active writer" in text
+    assert "Database backups" in text
     assert "Sync readiness" in text
-    assert "Protection" in text
+    assert "Cutover blockers" in text
     assert "Execution Safety" not in text
     assert "─" in text
     assert "      [1] Backup source databases" in text
     assert "      [7] System Deployment" in text
     assert "      [8] Disaster Recovery" in text
     assert "      [0] Exit" in text
+    assert "Operator-storage checklist" not in text
     assert "Core workflows" not in text
     assert "Diagnostics" not in text
     assert f"{menu_display.MENU_SUBTITLE}\n────────────────" not in text
+
+
+def test_main_menu_options_are_single_action_lines(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("mercury.menu.main_display.dashboard_rows", lambda **_kwargs: [])
+    text = menu_display.render_main_menu(probe_database=False)
+    option_lines = [line for line in text.splitlines() if line.lstrip().startswith("[")]
+    expected = [item.key for _section, items in menu_display.MENU_SECTIONS for item in items] + ["0"]
+    assert [line.strip().split("]", 1)[0][1:] for line in option_lines] == expected
+    assert all(" — " not in line and "→" not in line for line in option_lines)
 
 # merged from test_menu_display.py
 def test_render_main_menu_body_omits_title_block() -> None:
     body = menu_display.render_main_menu_body()
     assert menu_display.MENU_TITLE not in body
     assert "Main Menu" in body
-    assert "Backup target" in body
+    assert "Active writer" in body
     assert "      [1] Backup source databases" in body
 
 # merged from test_menu_display.py

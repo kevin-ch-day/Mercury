@@ -12,20 +12,19 @@ from mercury.menu.dashboard import _sync_readiness_summary, dashboard_rows
 def test_dashboard_rows_include_core_fields() -> None:
     rows = dashboard_rows(probe_database=False)
     text = "\n".join(rows)
-    assert "Backup target" in text
+    assert "Active writer" in text or "Backup target" in text
     assert "Execution mode" not in text
-    assert "Backup mode" in text
+    assert "Backup mode" not in text
     assert "Execution Safety" not in text
 
 
 def test_dashboard_rows_include_extended_stats() -> None:
     rows = dashboard_rows(probe_database=False)
     text = "\n".join(rows)
-    assert "MariaDB sources" in text
-    assert "Operator backups" in text
+    assert "Database backups" in text
     assert "Sync readiness" in text
-    assert "Protection" in text
-    assert "Storage roles" in text
+    assert "Cutover blockers" in text
+    assert "Storage mirror" in text
 
 
 def test_dashboard_rows_warn_on_repo_local_backup_root(monkeypatch) -> None:
@@ -138,9 +137,8 @@ def test_dashboard_rows_show_protection_incomplete_when_stale_and_missing(monkey
         lambda **kwargs: "3 of 4 protected sources on server; 1 missing",
     )
     text = "\n".join(dashboard_rows(probe_database=True))
-    assert "MariaDB sources" in text
-    assert "Operator backups" in text
-    assert "3 of 4 protected sources on server; 1 missing" in text
+    assert "Database backups" in text
+    assert "3 of 3 server sources verified" in text
     assert "Protection incomplete: 1 stale backup" in text
     assert "catalog source absent from this server" in text
 

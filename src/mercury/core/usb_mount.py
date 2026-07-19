@@ -100,8 +100,25 @@ def resolve_usb_mount(*, local_config: Path | None = None) -> Path:
     return DEFAULT_USB_MOUNT.resolve()
 
 
-def usb_mount_is_active(mount_path: Path, *, platform_info: PlatformInfo | None = None) -> bool:
-    """True when the USB target appears mounted and usable for Mercury."""
+def resolve_operator_mount(*, local_config: Path | None = None) -> Path:
+    """Resolve the currently configured writer mount (legacy before cutover, primary after)."""
+    config_path = local_config or LOCAL_CONFIG
+    try:
+        from mercury.core.storage_roots import load_storage_config
+        from mercury.core.storage_roles import StorageWriteRole
+
+        storage = load_storage_config(local_config=config_path, warn_deprecated=False)
+        if storage.active_write_role == StorageWriteRole.LEGACY:
+            # Preserve legacy environment overrides and compatibility hooks until
+            # the operator actually selects the primary writer role.
+            return resolve_usb_mount(local_config=config_path)
+        return storage.active_write_root.mount_path.expanduser().resolve()
+    except Exception:
+        return resolve_usb_mount(local_config=config_path)
+
+
+def storage_mount_is_active(mount_path: Path, *, platform_info: PlatformInfo | None = None) -> bool:
+    """True when an operator-storage mount appears mounted and usable for Mercury."""
     if not mount_path.exists():
         return False
 
@@ -118,6 +135,11 @@ def usb_mount_is_active(mount_path: Path, *, platform_info: PlatformInfo | None 
         return mount_path.is_mount()
     except OSError:
         return False
+
+
+def usb_mount_is_active(mount_path: Path, *, platform_info: PlatformInfo | None = None) -> bool:
+    """Legacy compatibility wrapper; prefer :func:`storage_mount_is_active`."""
+    return storage_mount_is_active(mount_path, platform_info=platform_info)
 
 
 def unmounted_storage_path_blocker(mount_path: Path) -> str | None:
@@ -149,12 +171,23 @@ def unmounted_storage_path_blocker(mount_path: Path) -> str | None:
     )
 
 
-def usb_mount_label(mount_path: Path) -> str:
+def storage_mount_label(mount_path: Path) -> str:
+    """Display an operator-storage mount without assuming a USB device."""
     return str(mount_path)
 
 
+def usb_mount_label(mount_path: Path) -> str:
+    """Legacy compatibility wrapper; prefer :func:`storage_mount_label`."""
+    return storage_mount_label(mount_path)
+
+
 def default_usb_path_replacements(mount_path: Path) -> dict[str, str]:
-    """Standard Mercury subpaths under a USB mount root."""
+    """Legacy compatibility wrapper; prefer operator-storage path replacements."""
+    return default_operator_path_replacements(mount_path)
+
+
+def default_operator_path_replacements(mount_path: Path) -> dict[str, str]:
+    """Standard Mercury subpaths under an active operator-storage mount."""
     root = mount_path.resolve()
     return {
         "backup_root": str(root / "mercury_backups"),
@@ -173,5 +206,17 @@ def assert_operator_usb_path(path: Path, *, usb_mount: Path | None = None) -> No
         resolved.relative_to(mount)
     except ValueError as exc:
         raise ValueError(f"path is not under {mount}: {resolved}") from exc
+    if not usb_mount_is_active(mount):
+        raise ValueError(f"required operator storage mount is not active: {mount}")
+
+
+def assert_operator_storage_path(path: Path, *, operator_mount: Path | None = None) -> None:
+    """Require a write path under the configured active operator-storage role."""
+    mount = (operator_mount or resolve_operator_mount()).resolve()
+    resolved = path.expanduser().resolve()
+    try:
+        resolved.relative_to(mount)
+    except ValueError as exc:
+        raise ValueError(f"path is not under active operator storage {mount}: {resolved}") from exc
     if not usb_mount_is_active(mount):
         raise ValueError(f"required operator storage mount is not active: {mount}")

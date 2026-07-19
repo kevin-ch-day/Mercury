@@ -14,10 +14,10 @@ from mercury.core.platform import detect_platform
 from mercury.core.safety import DRY_RUN_ONLY, LIVE_ACTIONS_ENABLED
 from mercury.core.usb_mount import (
     DEFAULT_USB_MOUNT,
-    resolve_usb_mount,
+    resolve_operator_mount,
+    storage_mount_label,
     unmounted_storage_path_blocker,
     usb_mount_is_active,
-    usb_mount_label,
 )
 
 ENV_DRY_RUN = "MERCURY_DRY_RUN"
@@ -61,6 +61,11 @@ class ExecutionPolicy:
     allow_unsafe_backup_root: bool = False
     usb_mount: Path = REQUIRED_BACKUP_MOUNT
 
+    @property
+    def operator_mount(self) -> Path:
+        """Configured active storage mount; ``usb_mount`` remains API-compatible."""
+        return self.usb_mount
+
     def backup_root_is_within_repo(self) -> bool:
         try:
             self.backup_root.resolve().relative_to(REPO_ROOT.resolve())
@@ -74,15 +79,25 @@ class ExecutionPolicy:
     def backup_root_exists(self) -> bool:
         return self.backup_root.exists() and self.backup_root.is_dir()
 
-    def backup_root_is_under_required_mount(self) -> bool:
+    def backup_root_is_under_operator_mount(self) -> bool:
         try:
-            self.backup_root.resolve().relative_to(self.usb_mount.resolve())
+            self.backup_root.resolve().relative_to(self.operator_mount.resolve())
             return True
         except ValueError:
             return False
 
+    def backup_root_is_under_required_mount(self) -> bool:
+        """Compatibility alias for :meth:`backup_root_is_under_operator_mount`."""
+        return self.backup_root_is_under_operator_mount()
+
+    def operator_mount_is_active(self) -> bool:
+        # Keep this compatibility call site patchable by established test and
+        # integration hooks. The wrapper itself delegates to the generic helper.
+        return usb_mount_is_active(self.operator_mount)
+
     def required_mount_is_active(self) -> bool:
-        return usb_mount_is_active(self.usb_mount)
+        """Compatibility alias for :meth:`operator_mount_is_active`."""
+        return self.operator_mount_is_active()
 
     def backup_root_free_bytes(self) -> int | None:
         try:
@@ -95,9 +110,9 @@ class ExecutionPolicy:
             return "repo-local fallback"
         if not self.backup_root_exists():
             return "missing path"
-        if not self.backup_root_is_under_required_mount():
+        if not self.backup_root_is_under_operator_mount():
             return "unsafe path"
-        if not self.required_mount_is_active():
+        if not self.operator_mount_is_active():
             return "usb not mounted"
         free_bytes = self.backup_root_free_bytes()
         if free_bytes is None:
@@ -137,7 +152,7 @@ class ExecutionPolicy:
         except Exception:
             pass
         platform_info = detect_platform()
-        mount_label = usb_mount_label(self.usb_mount)
+        mount_label = storage_mount_label(self.operator_mount)
         if not platform_info.allows_live_execution:
             if platform_info.is_linux:
                 distro = platform_info.distro_name or platform_info.distro_id or "Linux"
@@ -167,16 +182,16 @@ class ExecutionPolicy:
                 "Refusing backup execution because backup_root does not exist: "
                 f"{resolved}. Create {mount_label}/mercury_backups on operator storage first."
             )
-        if not self.backup_root_is_under_required_mount():
+        if not self.backup_root_is_under_operator_mount():
             return (
                 "Refusing backup execution because backup_root is not under "
-                f"{self.usb_mount}: {resolved}"
+                f"{self.operator_mount}: {resolved}"
             )
-        if not self.required_mount_is_active():
-            blocker = unmounted_storage_path_blocker(self.usb_mount)
+        if not self.operator_mount_is_active():
+            blocker = unmounted_storage_path_blocker(self.operator_mount)
             return blocker or (
                 "Refusing backup execution because the required operator mount is not active: "
-                f"{self.usb_mount}"
+                f"{self.operator_mount}"
             )
         free_bytes = self.backup_root_free_bytes()
         if free_bytes is None:
@@ -321,7 +336,9 @@ def load_execution_policy(
     if live_actions_override is not None:
         live_actions = live_actions_override
 
-    usb_mount = usb_mount_override or resolve_usb_mount(local_config=config_path)
+    # Kept as ``usb_mount`` for API compatibility; after cutover it is the
+    # configured active operator mount, not necessarily a USB device.
+    usb_mount = usb_mount_override or resolve_operator_mount(local_config=config_path)
     backup_root = backup_root_override or resolve_backup_root(local_config=config_path)
 
     return ExecutionPolicy(

@@ -99,6 +99,37 @@ def test_print_handoff_checklist_shows_steps(capsys: pytest.CaptureFixture[str])
     assert "Operator backup root" in out
 
 
+def test_compact_handoff_status_panel_omits_checklist_table(capsys: pytest.CaptureFixture[str]) -> None:
+    from mercury.handoff.checklist import HandoffChecklist, HandoffStep
+    from mercury.handoff.terminal import print_handoff_status_panel
+
+    print_handoff_status_panel(
+        HandoffChecklist(
+            handoff_status="partial",
+            database_package="partial",
+            repository_package="partial",
+            steps=[HandoffStep(label="Operator backup root", status="ok", detail="/mnt/usb")],
+        )
+    )
+    out = capsys.readouterr().out
+    assert "Handoff readiness" in out
+    assert "Readiness checklist" not in out
+    assert "Operator backup root" not in out
+
+
+def test_handoff_action_menu_is_one_compact_block(capsys: pytest.CaptureFixture[str]) -> None:
+    from mercury.handoff.interactive_menu import _render_handoff_options
+
+    _render_handoff_options()
+    out = capsys.readouterr().out
+    assert "Guided flow" not in out
+    assert "Individual phases" not in out
+    assert "Tools" not in out
+    assert out.count("[0] Back") == 1
+    assert "[4] Run backup" in out
+    assert "stale or missing" not in out
+
+
 def test_handoff_checklist_recommended_actions_deduplicates() -> None:
     from mercury.handoff.checklist import HandoffChecklist, HandoffStep
 

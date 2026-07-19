@@ -142,7 +142,7 @@ Live backup execution also requires:
 - Fedora or Windows as the runtime host
 - a configured operator storage root (Linux transitional default: `/mnt/MERCURY_DATA_USB/mercury_backups`; Windows: set `[mercury].usb_mount` / `MERCURY_LEGACY_MOUNT`, or rely on auto-detect when the drive has `mercury_backups/` and `mercury_logs/`)
 
-Until storage cutover, routine writers target the USB (`active_write_role=legacy`). Inspect both roots with `./run.sh storage status`. Plan a legacy→primary copy with `./run.sh storage migrate-plan` (dry-run only; never copies). The primary HDD (`MERCURY_DATA_V2`) is observe-only until a verified migration and cutover.
+Until storage cutover, routine writers target the USB (`active_write_role=legacy`). Inspect both roots with `./run.sh storage status`. Use `./run.sh --no-logging storage audit` for a strict no-write configured-root integrity check; add `--hash` for byte-level comparison and `--write-report` for an atomic JSON artifact under `output/storage/`. (Without `--no-logging`, Mercury's normal session logger may append to the active log directory.) Audit warnings such as duplicate mounts or live log/state drift do not switch writers or authorize cutover. Plan a legacy→primary copy with `./run.sh storage migrate-plan` (dry-run only; never copies). After verification, `./run.sh storage cutover-plan` lists all five coordinated writer paths that a future cutover must change; it never applies them. The primary HDD (`MERCURY_DATA_V2`) is observe-only until a verified migration and cutover.
 Repo-local `backups/` remains development-only and does not count as production protection in live/operator mode.
 `backup status` reports the latest protection state for active source databases using on-disk manifests and verification checks. `backup bundle --execute` writes database transfer manifests and restore notes to the configured operator-storage manifest/runbook paths.
 
@@ -269,6 +269,8 @@ python -m mercury.cli menu
 python -m mercury.cli env check
 python -m mercury.cli doctor
 python -m mercury.cli storage status
+python -m mercury.cli --no-logging storage audit
+python -m mercury.cli --no-logging storage audit --hash
 python -m mercury.cli storage migrate-plan
 python -m mercury.cli storage migrate-run
 python -m mercury.cli storage migrate-verify

@@ -7,6 +7,8 @@ from mercury.storage.migrate_run import MigrationRunResult
 from mercury.storage.migrate_verify import MigrationVerifyReport
 from mercury.storage.cutover_readiness import CutoverReadinessReport
 from mercury.storage.migrate_quarantine import QuarantineResult
+from mercury.storage.audit import StorageAuditReport
+from mercury.storage.cutover_plan import CutoverPlan
 from mercury.storage.report import StorageStatusReport, suggested_primary_fstab_line
 from mercury.terminal import screen as display_screen
 
@@ -79,7 +81,56 @@ def print_storage_validate(report: StorageStatusReport) -> int:
     active = report.primary if report.active_write_role.value == "primary" else report.legacy
     if active.validation.ok:
         display_screen.write_summary("Active write root passed mount validation.")
+    return 0
+
+
+def print_storage_audit(report: StorageAuditReport) -> int:
+    """Print the configured-root audit. Returns non-zero for durable mismatches."""
+    display_screen.open_screen("Mercury Storage Audit")
+    display_screen.write_fields(
+        {
+            "Source (legacy)": report.verification.source_mount,
+            "Destination (primary)": report.verification.dest_mount,
+            "Metadata verification": report.verification.summary_line(),
+            "SHA-256 requested": "yes" if report.hashes_requested else "no",
+        }
+    )
+    if report.hashes_requested and report.verification.ok:
+        display_screen.write_blank()
+        display_screen.write_section("SHA-256 comparison")
+        display_screen.write_fields(
+            {
+                "Files hashed": str(report.files_hashed),
+                "Identical": str(report.identical_hashes),
+                "Durable differences": str(len(report.durable_differences)),
+                "Ephemeral differences": str(len(report.ephemeral_differences)),
+            }
+        )
+    audit_warnings = (*report.verification.warnings, *report.warnings)
+    if audit_warnings:
+        display_screen.write_blank()
+        display_screen.write_section("Warnings")
+        for warning in audit_warnings:
+            display_screen.write_status("warn", warning)
+    if report.differences:
+        display_screen.write_blank()
+        display_screen.write_section("Differences (first 20)")
+        for item in report.differences[:20]:
+            kind = "warn" if item.ephemeral else "fail"
+            suffix = " (ephemeral writer drift)" if item.ephemeral else ""
+            display_screen.write_status(kind, f"{item.relative_path} — {item.issue}{suffix}")
+    display_screen.write_blank()
+    if report.exit_code == 0:
+        detail = "Byte-level audit passed." if report.hashes_requested else "Metadata audit passed."
+        display_screen.write_summary(f"{detail} Writers still remain on legacy until cutover.")
         return 0
+    if report.exit_code == 1:
+        display_screen.write_summary(
+            "Audit completed with warnings. Writers still remain on legacy until cutover."
+        )
+        return 1
+    display_screen.write_summary("Audit found durable differences or verification blockers — do not cut over.")
+    return 2
     display_screen.write_status(
         "fail",
         f"Active write root failed validation: {active.validation.blocker}",
@@ -350,3 +401,29 @@ def print_cutover_readiness(report: CutoverReadinessReport) -> int:
         return 0
     display_screen.write_summary("Not ready for cutover — resolve blockers first.")
     return 1
+
+
+def print_cutover_plan(plan: CutoverPlan) -> int:
+    """Render the future writer switch without offering an unsafe execute path."""
+    display_screen.open_screen("Mercury Writer Cutover Plan")
+    display_screen.write_fields(
+        {
+            "Storage mirror ready": "yes" if plan.readiness.ready else "no",
+            "Ready to switch writers": "yes" if plan.ready_for_future_execution else "no",
+            "Current writer": plan.readiness.active_write_role,
+            "Target writer": plan.target_active_write_role,
+            "Execution available": "no",
+        }
+    )
+    display_screen.write_blank()
+    display_screen.write_section("Coordinated path changes")
+    for change in plan.path_changes:
+        display_screen.write_fields({change.key: f"{change.legacy_path} → {change.primary_path}"})
+    display_screen.write_blank()
+    display_screen.write_status(
+        "warn",
+        "Plan only: Mercury does not yet switch writers, edit fstab, or delete USB data.",
+    )
+    for blocker in plan.runtime_blockers:
+        display_screen.write_status("warn", blocker)
+    return 0 if plan.ready_for_future_execution else 1

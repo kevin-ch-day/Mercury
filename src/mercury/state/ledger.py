@@ -99,7 +99,7 @@ SYNC_EVENT_FIELDS = [
 
 
 def resolve_state_root(policy: ExecutionPolicy | None = None) -> Path:
-    """Use operator-storage state when the required mount is active; else repo-local data/."""
+    """Use active operator-storage state when its mount is active; else repo-local data/."""
     override = os.environ.get(ENV_STATE_ROOT)
     if override:
         return Path(override).expanduser().resolve()
@@ -107,11 +107,14 @@ def resolve_state_root(policy: ExecutionPolicy | None = None) -> Path:
         return (DATA_DIR / "pytest_state").resolve()
 
     resolved_policy = policy or load_execution_policy()
-    if (
-        usb_mount_is_active(resolved_policy.usb_mount)
-        and resolved_policy.backup_root_is_under_required_mount()
-    ):
-        return resolved_policy.usb_mount / STATE_DIRNAME
+    operator_mount = getattr(resolved_policy, "operator_mount", resolved_policy.usb_mount)
+    under_operator_mount = getattr(
+        resolved_policy,
+        "backup_root_is_under_operator_mount",
+        resolved_policy.backup_root_is_under_required_mount,
+    )
+    if usb_mount_is_active(operator_mount) and under_operator_mount():
+        return operator_mount / STATE_DIRNAME
     return DATA_DIR
 
 

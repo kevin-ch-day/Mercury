@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from mercury.core.usb_mount import assert_operator_usb_path
+from mercury.core.usb_mount import assert_operator_storage_path
 from mercury.deploy.plan import build_deployment_plan
 from mercury.deploy.repos.build_plan import build_repo_deploy_plan
 from mercury.deploy.target_status import target_status_label
@@ -170,7 +170,7 @@ def write_system_deploy_runbook(plan: SystemDeployPlan) -> Path:
     settings = load_repo_bundle_settings()
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     path = settings.runbook_dir / f"system_deployment_runbook_{stamp}.md"
-    assert_operator_usb_path(path)
+    assert_operator_storage_path(path)
     resolved = path.expanduser().resolve()
     resolved.parent.mkdir(parents=True, exist_ok=True)
     resolved.write_text(_runbook_text(plan), encoding="utf-8")

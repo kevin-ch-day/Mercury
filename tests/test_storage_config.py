@@ -82,6 +82,7 @@ backup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"
     assert cfg.active_write_root.backup_root == Path("/mnt/MERCURY_DATA_USB/mercury_backups")
     assert cfg.space_policy.minimum_free_percent == 10.0
     assert cfg.derived_paths()["backup_root"].endswith("/mercury_backups")
+    assert cfg.derived_paths()["operator_mount"] == "/mnt/MERCURY_DATA_USB"
 
 
 def test_cutover_complete_boolean_derives_primary_active(tmp_path: Path) -> None:
@@ -108,6 +109,7 @@ filesystem_uuid = "e4f0c7fb-132e-4867-9c16-5e4749f5c43a"
     assert cfg.active_write_role == StorageWriteRole.PRIMARY
     assert cfg.legacy.role == StorageRootRole.LEGACY_ARCHIVE
     assert cfg.legacy.writable is False
+    assert cfg.derived_paths()["operator_mount"] == "/mnt/MERCURY_DATA_V2"
 
 
 def test_mercury_usb_mount_only_affects_legacy_before_cutover(

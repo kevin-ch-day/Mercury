@@ -232,25 +232,26 @@ def menu_item_line(
     key: str,
     title: str,
     *,
-    blurb: str = "",
     title_width: int = 0,
     indent: int = 4,
 ) -> str:
+    """Render exactly one action-only menu row.
+
+    Safety details and help belong on the selected action screen.  Keeping this
+    primitive to a key and title prevents explanatory continuations from
+    quietly returning to menus as the console grows.
+    """
     prefix = " " * indent
     key_part = f"[{key}]"
     title_part = title.ljust(title_width) if title_width > 0 else title
 
     if not colors_enabled():
         label = f"{key_part} {title_part}".rstrip()
-        if blurb:
-            return f"{prefix}{label}  —  {blurb}"
         return f"{prefix}{label}"
 
     styled_key = markup(key_part, MENU_KEY)
     styled_title = markup(title_part, MENU_OPTION)
     label = f"{styled_key} {styled_title}"
-    if blurb:
-        return f"{prefix}{label}  [{HINT}]—[/] [{HINT}]{blurb}[/]"
     return f"{prefix}{label}"
 
 
