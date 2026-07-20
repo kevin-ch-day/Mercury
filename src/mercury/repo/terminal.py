@@ -110,7 +110,7 @@ def print_repo_bundle_plan(plan: RepoBundlePlan, *, executed: bool = False) -> N
     if executed:
         display_screen.write_blank()
         display_screen.write_summary(
-            "Bundles, per-repo manifests, transfer index manifest, and restore notes were written to the USB paths above."
+            "Bundles, per-repo manifests, transfer index manifest, and restore notes were written to the operator-storage paths above."
         )
         display_screen.write_summary(
             "Repo retention keeps one current verified bundle set per repo; older repo artifacts are pruned after successful replacement."
