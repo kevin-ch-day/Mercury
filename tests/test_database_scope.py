@@ -15,7 +15,7 @@ from mercury.database.terminal.active_scope import print_active_scope_report
 
 def test_out_of_scope_names() -> None:
     assert "android_permission_intel_prod" in OUT_OF_SCOPE_DATABASES
-    assert "android_permission_intel_dev" in OUT_OF_SCOPE_DATABASES
+    assert "android_permission_intel_dev" not in OUT_OF_SCOPE_DATABASES
     assert "gecko_research_database_prod" in OUT_OF_SCOPE_DATABASES
     assert "gecko_research_database_dev" in OUT_OF_SCOPE_DATABASES
     assert "obsidiandroid_core_dev" in OUT_OF_SCOPE_DATABASES
@@ -24,6 +24,7 @@ def test_out_of_scope_names() -> None:
     assert "droid_threat_intel_db_prod" in OUT_OF_SCOPE_DATABASES
     assert is_in_scope("obsidiandroid_core_prod")
     assert is_in_scope("erebus_threat_intel_dev")
+    assert is_in_scope("android_permission_intel_dev")
     assert not is_in_scope("proofpoint_cti_db_dev")
     assert not is_in_scope("droid_threat_intel_db_prod")
 
@@ -32,6 +33,7 @@ def test_discover_demo_excludes_out_of_scope() -> None:
     inventory = discover_demo()
     names = set(inventory.names)
     assert "android_permission_intel_prod" not in names
+    # The demo catalog does not invent optional recovery-only databases.
     assert "android_permission_intel_dev" not in names
     assert "gecko_research_database_prod" not in names
     assert "gecko_research_database_dev" not in names
@@ -77,7 +79,7 @@ def test_live_discovery_keeps_out_of_scope_databases_visible(monkeypatch) -> Non
     assert android_prod.backup_source is False
     assert android_prod.dev_target is False
     assert android_dev.backup_source is False
-    assert android_dev.dev_target is False
+    assert android_dev.dev_target is True
     assert droid.backup_source is False
     assert droid.dev_target is False
     assert proofpoint.backup_source is False
@@ -176,4 +178,3 @@ def test_print_active_scope_report_compact(capsys: pytest.CaptureFixture[str]) -
     assert "backup-only" in out
     assert "source+pair" in out
     assert "dev target" in out
-

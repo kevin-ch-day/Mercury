@@ -157,17 +157,17 @@ def handoff_dashboard_line(
     """One-line handoff status for the main menu dashboard."""
     effective_sources = max(0, source_count - max(0, absent_count))
     if missing_count or failed_count:
-        line = "[!!] partial — [9] checklist · [2] wizard"
+        line = "[!!] partial — [10] checklist · [2] wizard"
     elif stale_count:
         line = "[--] stale backups — [4] refresh backup lane"
     elif unknown_count:
         line = "[--] unknown freshness — [2] guided wizard"
     elif absent_count and effective_sources and verified_count >= effective_sources:
-        line = "[--] ready with absent sources — [9] checklist"
+        line = "[--] ready with absent sources — [10] checklist"
     elif effective_sources and verified_count == effective_sources:
-        line = "[ok] ready — [9] handoff · [2] wizard"
+        line = "[ok] ready — [10] handoff · [2] wizard"
     else:
-        line = "[--] incomplete — [9] checklist"
+        line = "[--] incomplete — [10] checklist"
     if latest_transfer_at:
         line += f" · last transfer {latest_transfer_at}"
     if latest_handoff_status and latest_handoff_status != "complete":
@@ -214,7 +214,7 @@ def receiver_handoff_steps(*, checklist: HandoffChecklist | None = None) -> list
         (
             "Restore repository bundles",
             "ok",
-            "Run ./run.sh deploy repos --from-usb for configured repositories.",
+            "Run ./run.sh deploy repos --from-usb for operator-storage Git bundles.",
         ),
         (
             "Open database runbooks",
@@ -245,7 +245,7 @@ def receiver_quick_start_lines() -> list[str]:
         "Mount this media on the receiving workstation.",
         "Run ./run.sh config init and ./run.sh doctor on the receiver.",
         "Run ./run.sh deploy system to import verified database backups.",
-        "Run ./run.sh deploy repos --from-usb for repository bundles.",
+        "Run ./run.sh deploy repos --from-usb for operator-storage repository bundles.",
         "Start with the latest transfer runbook on operator storage before any live restore.",
     ]
 

@@ -35,6 +35,16 @@ class StorageRootStatus:
         detail = self.validation.blocker or (
             "mounted and writable" if self.validation.ok else self.validation.code.value
         )
+
+    @property
+    def physical_mount_mode(self) -> str:
+        """Best-effort kernel mount mode, independent of Mercury policy."""
+        options = self.validation.identity.mount_options.split(",")
+        if "ro" in options:
+            return "read-only"
+        if "rw" in options:
+            return "read-write"
+        return "unknown"
         active = " · ACTIVE WRITER" if self.is_active_writer else ""
         return (
             f"{self.status_tag} {self.label} ({self.role}) @ {self.mount_path} — {detail}{active}"
@@ -116,6 +126,15 @@ class StorageStatusReport:
         ):
             warnings.append(
                 "Legacy root is marked archive but still writable in config — set writable=false."
+            )
+        if (
+            self.config.cutover_complete
+            and self.legacy.role == StorageRootRole.LEGACY_ARCHIVE.value
+            and self.legacy.physical_mount_mode == "read-write"
+        ):
+            warnings.append(
+                "Legacy USB archive is physically mounted read-write — Mercury blocks its writes, "
+                "but other processes can still modify it. Remount it read-only before transport."
             )
         if self.config.usb_mount_deprecated_override:
             warnings.append(

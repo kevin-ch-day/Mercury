@@ -1,6 +1,8 @@
 # Copy to config/local.toml for local overrides (gitignored).
 
-# --- Storage roles (C1–C2 models; writers still use [mercury] paths until cutover) ---
+# --- Storage roles ---
+# This is a transitional template. `./setup.sh --init-config` detects a mounted
+# canonical HDD with a Mercury layout and writes primary/HDD paths instead.
 # Before cutover: active_write_role = "legacy" (USB is transition_source, writable).
 # After verified cutover: active_write_role = "primary", legacy role = legacy_archive.
 #
@@ -45,7 +47,8 @@ mode = "seed"
 # Stable USB mount example: /mnt/MERCURY_DATA_USB/mercury_backups (Linux)
 # Windows example: usb_mount = "E:/MERCURY_DATA_USB" then paths like E:/MERCURY_DATA_USB/mercury_backups
 # usb_mount = "E:/MERCURY_DATA_USB"
-# Flat paths below remain the live backup destination until storage cutover (option B).
+# These USB paths are transitional defaults only; fresh receiver initialization
+# substitutes mounted canonical-HDD paths when available.
 backup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"
 dry_run = true
 # Gate for sync/deploy/restore (not required for backup writes)

@@ -91,7 +91,7 @@ def print_backup_plan(
     output.heading("Backup plan (preview)")
     output.field("backup root", str(policy.backup_root.resolve()))
     state = policy.backup_root_state()
-    output.field("backup root state", "operator storage mounted" if state == "usb-mounted" else state)
+    output.field("backup root state", "operator storage mounted" if state in {"operator-mounted", "usb-mounted"} else state)
     output.field("backup mode", backup_mode_label(policy))
     if policy.backup_root_is_within_repo() and not policy.allow_unsafe_backup_root:
         from mercury.core.usb_mount import resolve_operator_mount

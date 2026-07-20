@@ -119,7 +119,7 @@ class ExecutionPolicy:
             return "free space unknown"
         if free_bytes < MIN_FREE_BYTES:
             return "low free space"
-        return "usb-mounted"
+        return "operator-mounted"
 
     def backup_environment_refusal(self) -> str | None:
         """Environment checks for backup writes (platform, USB, config)."""
@@ -243,6 +243,16 @@ class ExecutionPolicy:
                 f"in config/local.toml or export {ENV_LIVE_ACTIONS}=1."
             )
         return None
+
+
+def backup_root_state_is_ready(state: str) -> bool:
+    """Return whether a storage-state token represents a mounted safe root.
+
+    ``usb-mounted`` is retained only for compatibility with old saved reports
+    and lightweight test doubles. New policy evaluations use the role-neutral
+    ``operator-mounted`` token so a post-cutover HDD is never mislabeled.
+    """
+    return state in {"operator-mounted", "usb-mounted"}
 
 
 def backup_mode_label(policy: ExecutionPolicy) -> str:

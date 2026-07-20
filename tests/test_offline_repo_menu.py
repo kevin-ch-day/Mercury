@@ -8,7 +8,7 @@ from mercury.repo import interactive_menu
 
 def test_offline_repo_sync_uses_a_yes_no_confirmation(monkeypatch) -> None:
     prompts_seen: list[tuple[str, bool | None]] = []
-    inputs = iter(["2", "0"])
+    inputs = iter(["1", "0"])
 
     class _Plan:
         root = "/mnt/MERCURY_DATA_V2/mercury_repo_clones"
@@ -17,7 +17,6 @@ def test_offline_repo_sync_uses_a_yes_no_confirmation(monkeypatch) -> None:
     monkeypatch.setattr(interactive_menu, "print_offline_clone_plan", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(interactive_menu, "render_submenu", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(interactive_menu, "read_submenu_choice", lambda: next(inputs))
-    monkeypatch.setattr(interactive_menu, "pause_and_redraw", lambda **_kwargs: False)
     monkeypatch.setattr(
         prompts,
         "ask_yes_no",

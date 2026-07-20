@@ -797,7 +797,7 @@ def repo_bundle_cmd(
     execute: bool = typer.Option(
         False,
         "--execute",
-        help="Create Git bundles plus repo manifest and restore note on the USB target.",
+        help="Create Git bundles plus repo manifest and restore note on active operator storage.",
     ),
 ) -> None:
     """Plan or write Git bundles for configured repositories."""
@@ -989,7 +989,7 @@ def transfer_write_cmd(
     execute: bool = typer.Option(
         False,
         "--execute",
-        help="Write the combined transfer manifest and runbook to the USB target.",
+        help="Write the combined transfer manifest and runbook to active operator storage.",
     ),
     force: bool = typer.Option(
         False,
@@ -1353,7 +1353,7 @@ def backup_bundle_cmd(
     execute: bool = typer.Option(
         False,
         "--execute",
-        help="Write database manifest and restore runbook files to the USB target.",
+        help="Write database manifest and restore runbook files to active operator storage.",
     ),
     force: bool = typer.Option(
         False,

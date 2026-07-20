@@ -175,11 +175,11 @@ def _render_recovery_screen(data: RecoveryScreenData, *, show_title: bool) -> No
     elif data.latest_database_runbook:
         display_screen.write_hint(f"Latest database runbook: {data.latest_database_runbook}")
     display_screen.write_hint(
-        "Emergency next step: open Workstation handoff [9] or press h, then restore-check or System Deployment."
+        "Emergency next step: open Workstation handoff [10] or press h, then restore-check or System Deployment."
     )
     if checklist.handoff_status == "complete":
         display_screen.write_hint(
-            "USB handoff is complete — use [3] for the receiving-workstation guide on the target host."
+            "Operator-storage handoff is complete — use [3] for the receiving-workstation guide on the target host."
         )
     display_screen.write_blank()
     render_submenu(

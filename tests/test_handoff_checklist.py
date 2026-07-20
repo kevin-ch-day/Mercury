@@ -136,9 +136,11 @@ def test_handoff_action_menu_is_one_compact_block(capsys: pytest.CaptureFixture[
     out = capsys.readouterr().out
     assert "Guided flow" not in out
     assert "Individual phases" not in out
-    assert "[6] Handoff Tools" in out
+    assert "[5] Handoff Tools" in out
     assert out.count("[0] Back") == 1
-    assert "[4] USB to HDD Migration" in out
+    assert "[2] Build Migration Package" in out
+    assert "[4] Receiver Guide" in out
+    assert "USB to HDD Migration" not in out
     assert "stale or missing" not in out
 
 

@@ -87,9 +87,9 @@ def assert_safe_backup_source(
         allow_development_backup
         and classification.role == DatabaseRole.DEVELOPMENT
     ):
-        from mercury.database.core.scope import is_active_dev_target
+        from mercury.database.core.scope import is_active_dev_recovery_database
 
-        if is_active_dev_target(database):
+        if is_active_dev_recovery_database(database):
             return classification
     if not classification.backup_source:
         reason = exclusion_reason(classification) or "Not a backup source."

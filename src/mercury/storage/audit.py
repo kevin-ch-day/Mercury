@@ -56,12 +56,46 @@ class StorageAuditReport:
         return tuple(item for item in self.differences if item.ephemeral)
 
     @property
+    def post_cutover_blockers(self) -> tuple[str, ...]:
+        """Verification failures that still make the active HDD unusable.
+
+        The pre-cutover verifier deliberately puts legacy/HDD mismatches in
+        ``blockers``.  Once HDD is the writer those are archive-evidence
+        warnings, not a reason to reject the active storage root.  A failed
+        primary destination validation remains a hard failure.
+        """
+        if not self.post_cutover:
+            return self.verification.blockers
+        return tuple(
+            blocker
+            for blocker in self.verification.blockers
+            if blocker.startswith("Primary destination not ready:")
+        )
+
+    @property
     def ok(self) -> bool:
+        if self.post_cutover:
+            # Once HDD is the writer, divergence from the frozen USB archive is
+            # expected and cannot assess the current HDD package. Mount/config
+            # blockers remain meaningful; legacy differences are historical.
+            return not self.post_cutover_blockers
         return self.verification.ok and not self.durable_differences
 
     @property
     def exit_code(self) -> int:
         """0 clean, 1 completed with warnings, 2 integrity/configuration blocker."""
+        if self.post_cutover:
+            if self.post_cutover_blockers:
+                return 2
+            if (
+                self.verification.blockers
+                or self.verification.mismatches
+                or self.differences
+                or self.warnings
+                or self.verification.warnings
+            ):
+                return 1
+            return 0
         if not self.ok:
             return 2
         if self.warnings or self.verification.warnings or self.ephemeral_differences:

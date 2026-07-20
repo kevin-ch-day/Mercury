@@ -17,7 +17,7 @@ def print_backup_status_report(report: BackupStatusReport) -> None:
     display_screen.write_fields(
         {
             "Backup root": report.backup_root,
-            "Backup root state": "operator storage mounted" if report.backup_root_state == "usb-mounted" else report.backup_root_state,
+            "Backup root state": "operator storage mounted" if report.backup_root_state in {"operator-mounted", "usb-mounted"} else report.backup_root_state,
             "Source databases": report.source_count,
             "Artifact verified": report.verified_count,
             "Missing": report.missing_count,

@@ -18,7 +18,7 @@ MERCURY_USB_DIR_LABELS: tuple[tuple[str, str], ...] = (
     ("mercury_state", "Operator state directory"),
 )
 
-MERCURY_USB_CHOWN_DIRS = (
+MERCURY_OPERATOR_STORAGE_DIRS = (
     "mercury_logs",
     "mercury_backups",
     "mercury_manifests",
@@ -27,6 +27,9 @@ MERCURY_USB_CHOWN_DIRS = (
     "mercury_restore_checks",
     "mercury_runbooks",
 )
+
+# Compatibility import for older repair/doctor call sites.
+MERCURY_USB_CHOWN_DIRS = MERCURY_OPERATOR_STORAGE_DIRS
 
 
 def assess_mercury_path_permissions(

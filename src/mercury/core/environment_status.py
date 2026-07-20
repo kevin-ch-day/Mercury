@@ -7,7 +7,11 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
+from mercury.core.execution_policy import (
+    ExecutionPolicy,
+    backup_root_state_is_ready,
+    load_execution_policy,
+)
 from mercury.core.usb_mount import (
     DEFAULT_USB_MOUNT,
     mercury_layout_present,
@@ -309,7 +313,7 @@ def storage_status_dashboard_label(
         return "[!!] not writable" if styled else "not writable"
     if not config.local_toml_present:
         return "[!!] setup required" if styled else "setup required"
-    if policy.backup_root_state() == "usb-mounted":
+    if backup_root_state_is_ready(policy.backup_root_state()):
         return "[ok] ready" if styled else "ready"
     reason = backup_root_unsafe_reason(policy, config=config, usb=usb)
     prefix = "[!!]" if styled else ""

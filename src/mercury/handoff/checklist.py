@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from mercury.core.execution_policy import load_execution_policy
+from mercury.core.execution_policy import backup_root_state_is_ready, load_execution_policy
 from mercury.core.runtime import should_probe_database_status
 from mercury.state.summary import build_state_summary
 from mercury.transfer.bundle import (
@@ -120,7 +120,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
     steps: list[HandoffStep] = []
 
     root_state = policy.backup_root_state()
-    if root_state == "usb-mounted":
+    if backup_root_state_is_ready(root_state):
         steps.append(
             HandoffStep(
                 step_key="usb_root",

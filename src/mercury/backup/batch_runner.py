@@ -82,10 +82,10 @@ def resolve_development_backup_sources(*, live: bool = False) -> list[str]:
     a deliberate pre-migration/recovery capture, never a default backup lane.
     """
     from mercury.database.discovery import discover_for_planning
-    from mercury.database.core.scope import is_active_dev_target
+    from mercury.database.core.scope import is_active_dev_recovery_database
 
     inventory = discover_for_planning(live=live)
-    return sorted(name for name in inventory.names if is_active_dev_target(name))
+    return sorted(name for name in inventory.names if is_active_dev_recovery_database(name))
 
 
 def run_backup_batch(

@@ -23,10 +23,17 @@ ACTIVE_DEV_TARGET_DATABASES: frozenset[str] = frozenset(
     }
 )
 
+# Optional recovery copies for a workstation move.  This is deliberately
+# broader than the prod→dev sync targets: Permission Intel has no approved
+# automatic sync source, but its development catalog must be recoverable on a
+# new host when the operator explicitly requests dev backups.
+ACTIVE_DEV_RECOVERY_DATABASES: frozenset[str] = (
+    ACTIVE_DEV_TARGET_DATABASES | frozenset({"android_permission_intel_dev"})
+)
+
 OUT_OF_SCOPE_DATABASES: frozenset[str] = frozenset(
     {
         "android_permission_intel_prod",
-        "android_permission_intel_dev",
         # Legacy Komodo / market-event research naming (not ObsidianDroid prod).
         "gecko_research_database_prod",
         "gecko_research_database_dev",
@@ -49,6 +56,11 @@ def is_active_backup_source(name: str) -> bool:
 
 def is_active_dev_target(name: str) -> bool:
     return name in ACTIVE_DEV_TARGET_DATABASES
+
+
+def is_active_dev_recovery_database(name: str) -> bool:
+    """True only for explicitly approved optional dev recovery backups."""
+    return name in ACTIVE_DEV_RECOVERY_DATABASES
 
 
 def is_active_sync_pair(prod_name: str, dev_name: str) -> bool:

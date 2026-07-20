@@ -176,9 +176,14 @@ def verify_migration(
     ephemeral_notes = [w for w in warnings if w.startswith("ephemeral drift accepted:")]
     other_warnings = [w for w in warnings if not w.startswith("ephemeral drift accepted:")]
     if ephemeral_notes:
+        ephemeral_context = (
+            "archive drift after cutover; HDD is the active writer"
+            if cfg.cutover_complete
+            else "accepted until cutover; logs/state keep appending on legacy"
+        )
         other_warnings.append(
             f"{len(ephemeral_notes)} ephemeral path(s) differ by size/mtime but are present "
-            "(accepted until cutover; logs/state keep appending on legacy)."
+            f"({ephemeral_context})."
         )
     warnings = other_warnings
 

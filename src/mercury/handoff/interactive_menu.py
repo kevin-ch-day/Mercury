@@ -45,11 +45,10 @@ def _render_handoff_options() -> None:
     render_submenu(
         [
             ("1", "Refresh status"),
-            ("2", "Build USB Migration Package"),
+            ("2", "Build Migration Package"),
             ("3", "Capture Web Worktrees"),
-            ("4", "USB to HDD Migration"),
-            ("5", "Receiver Guide"),
-            ("6", "Handoff Tools"),
+            ("4", "Receiver Guide"),
+            ("5", "Handoff Tools"),
         ],
         indent=0,
     )
@@ -190,16 +189,10 @@ def run_handoff_menu(*, interactive: bool = True) -> None:
             show_title = pause_and_redraw()
             continue
         if choice == "4":
-            from mercury.storage.interactive_menu import run_storage_menu
-
-            run_storage_menu(interactive=True)
-            show_title = pause_and_redraw()
-            continue
-        if choice == "5":
             print_receiver_handoff_guide(checklist=build_receiver_handoff_guide())
             show_title = pause_and_redraw()
             continue
-        if choice == "6":
+        if choice == "5":
             _run_handoff_tools(snapshot)
             show_title = pause_and_redraw()
             continue

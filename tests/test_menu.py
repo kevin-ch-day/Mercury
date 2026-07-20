@@ -257,3 +257,4 @@ def test_render_menu_help_lists_shortcuts() -> None:
     assert "Operator console help" in help_text
     assert "0 or q to exit" in help_text
     assert "transfer receive" in help_text
+    assert "handoff (menu 10)" in help_text

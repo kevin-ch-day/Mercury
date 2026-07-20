@@ -13,16 +13,19 @@ def test_development_backup_remains_refused_without_explicit_override() -> None:
 
 def test_only_configured_development_target_is_allowed_explicitly() -> None:
     assert assert_safe_backup_source("erebus_threat_intel_dev", allow_development_backup=True).role.value == "development"
+    assert assert_safe_backup_source("android_permission_intel_dev", allow_development_backup=True).role.value == "development"
     with pytest.raises(BackupExecutionError):
         assert_safe_backup_source("proofpoint_cti_db_dev", allow_development_backup=True)
 
 
 def test_development_sources_only_include_present_configured_targets(monkeypatch) -> None:
     class Inventory:
-        names = ["erebus_threat_intel_dev", "scytaledroid_core_dev", "random_dev"]
+        names = ["android_permission_intel_dev", "erebus_threat_intel_dev", "scytaledroid_core_dev", "random_dev"]
 
     monkeypatch.setattr("mercury.database.discovery.discover_for_planning", lambda live: Inventory())
-    assert resolve_development_backup_sources(live=True) == ["erebus_threat_intel_dev", "scytaledroid_core_dev"]
+    assert resolve_development_backup_sources(live=True) == [
+        "android_permission_intel_dev", "erebus_threat_intel_dev", "scytaledroid_core_dev",
+    ]
 
 
 def test_development_verification_only_checks_written_results(monkeypatch, tmp_path) -> None:

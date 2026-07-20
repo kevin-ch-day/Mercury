@@ -42,6 +42,7 @@ def print_storage_status(report: StorageStatusReport) -> None:
             {
                 "  UUID": root.filesystem_uuid,
                 "  Policy writable": "yes" if root.writable_policy else "no",
+                "  Mount mode": root.physical_mount_mode,
                 "  Validation": root.validation.code.value,
             }
         )
@@ -90,13 +91,20 @@ def print_storage_validate(report: StorageStatusReport) -> int:
 
 
 def print_storage_audit(report: StorageAuditReport) -> int:
-    """Print the configured-root audit. Returns non-zero for durable mismatches."""
+    """Print the configured-root audit with post-cutover historical semantics."""
     display_screen.open_screen("Mercury Storage Audit")
+    metadata_label = "Historical USB comparison" if report.post_cutover else "Metadata verification"
+    metadata_value = report.verification.summary_line()
+    if report.post_cutover and report.verification.mismatches:
+        metadata_value = (
+            f"archive drift observed · matched={report.verification.matched} "
+            f"differences={len(report.verification.mismatches)}"
+        )
     display_screen.write_fields(
         {
             "Source (legacy)": report.verification.source_mount,
             "Destination (primary)": report.verification.dest_mount,
-            "Metadata verification": report.verification.summary_line(),
+            metadata_label: metadata_value,
             "SHA-256 requested": "yes" if report.hashes_requested else "no",
         }
     )
@@ -139,6 +147,13 @@ def print_storage_audit(report: StorageAuditReport) -> int:
             )
         )
         return 1
+    if report.post_cutover:
+        display_screen.write_summary(
+            "Active HDD validation failed: "
+            + "; ".join(report.post_cutover_blockers)
+            + ". Repair the HDD mount before relying on Mercury."
+        )
+        return 2
     display_screen.write_summary("Audit found durable differences or verification blockers — do not cut over.")
     return 2
     display_screen.write_status(

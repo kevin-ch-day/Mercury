@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from dataclasses import replace
 
-from mercury.core.storage_roles import MigrationState, StorageWriteRole
+from mercury.core.storage_roles import MigrationState, StorageRootRole, StorageWriteRole
 from mercury.core.storage_validate import MountIdentity, MountValidationCode
 from mercury.storage.report import (
     StorageRootStatus,
@@ -97,6 +98,44 @@ def test_warning_for_stale_primary_mountpoint(tmp_path: Path) -> None:
         MountValidationCode.STALE_MOUNTPOINT_CONTENT,
         MountValidationCode.NOT_A_MOUNT,
     }
+
+
+def test_post_cutover_warns_when_legacy_archive_is_physically_read_write() -> None:
+    cfg = default_storage_config()
+    config = replace(
+        cfg,
+        legacy=replace(cfg.legacy, role=StorageRootRole.LEGACY_ARCHIVE, writable=False),
+        active_write_role=StorageWriteRole.PRIMARY,
+        migration_state=MigrationState.CUTOVER_COMPLETE,
+    )
+    validation = MountValidationResult(
+        code=MountValidationCode.OK,
+        mount_path=config.legacy.mount_path,
+        expected_uuid=config.legacy.filesystem_uuid,
+        expected_fstype="ext4",
+        identity=MountIdentity(
+            mount_path=config.legacy.mount_path,
+            path_exists=True,
+            is_mount=True,
+            mounted_uuid=config.legacy.filesystem_uuid,
+            mounted_fstype="ext4",
+            mount_options="rw,relatime",
+            writable=True,
+            capacity_bytes=100,
+            available_bytes=80,
+        ),
+    )
+    legacy = StorageRootStatus(
+        key="legacy", role="legacy_archive", label="USB", mount_path="/mnt/USB",
+        filesystem_uuid="uuid", writable_policy=False, validation=validation,
+        is_active_writer=False,
+    )
+    primary = replace(legacy, key="primary", role="canonical", label="HDD", is_active_writer=True)
+
+    report = StorageStatusReport(config=config, primary=primary, legacy=legacy)
+
+    assert legacy.physical_mount_mode == "read-write"
+    assert any("physically mounted read-write" in warning for warning in report.warning_lines())
 
 
 def test_print_storage_status_smoke(capsys, tmp_path: Path) -> None:

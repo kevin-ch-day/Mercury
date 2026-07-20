@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import getpass
+import os
 import shutil
 from pathlib import Path
 
@@ -222,13 +223,16 @@ def init_local_config(*, force: bool = False) -> list[str]:
         if dest == LOCAL_CONFIG:
             results.extend(_customize_created_local_config(dest))
 
+    primary = discover_primary_operator_root()
     usb = discover_usb_target()
-    mount_label = str(usb.mount_path)
-    if usb.mercury_layout_present:
+    if primary is not None:
+        results.append(
+            f"Canonical HDD layout detected at {primary} — local.toml uses primary HDD paths."
+        )
+    elif usb.mercury_layout_present:
         results.extend(_ensure_usb_layout(usb.mount_path))
         results.append(
-            f"Operator backup layout detected at {usb.mount_path} — "
-            f"local.toml uses {mount_label} paths."
+            f"Operator backup layout detected at {usb.mount_path} — local.toml uses legacy USB paths."
         )
     elif LOCAL_CONFIG.exists():
         results.append(
@@ -243,9 +247,13 @@ def _customize_created_local_config(path) -> list[str]:
     notes: list[str] = []
     text = path.read_text(encoding="utf-8")
     os_user = getpass.getuser()
+    primary = discover_primary_operator_root()
     usb = discover_usb_target()
 
-    if not usb.mercury_layout_present:
+    if primary is not None:
+        text = _apply_primary_paths(text, primary)
+        notes.append(f"local.toml: using canonical HDD paths from {primary}.")
+    elif not usb.mercury_layout_present:
         text = _apply_repo_local_paths(text)
         notes.append(
             "local.toml: using repo-local backup/log paths (temporary dev fallback)."
@@ -270,13 +278,51 @@ def _customize_created_local_config(path) -> list[str]:
 
 
 def _apply_usb_paths(text: str, mount_path) -> str:
+    text = _apply_mercury_paths(text, mount_path)
+    # Keep [storage.legacy] aligned with the active transitional USB mount.
+    return text.replace(
+        'mount_path = "/mnt/MERCURY_DATA_USB"',
+        f'mount_path = "{Path(mount_path).resolve()}"',
+    )
+
+
+def _apply_mercury_paths(text: str, mount_path) -> str:
     paths = default_usb_path_replacements(mount_path)
     for old, template in _USB_PATH_REPLACEMENTS:
         text = text.replace(old, template.format(**paths))
-    # Keep [storage.legacy] aligned with the active transitional USB mount.
+    return text
+
+
+def discover_primary_operator_root() -> Path | None:
+    """Return a mounted canonical HDD that already has the Mercury layout.
+
+    Config initialization is run on a freshly cloned receiver as well as on
+    legacy USB hosts.  Prefer the explicitly configured primary mount when it
+    is a real mount with backup data, so a receiver does not silently create a
+    legacy-USB writer configuration.
+    """
+    from mercury.core.storage_roles import DEFAULT_PRIMARY_MOUNT, ENV_PRIMARY_MOUNT
+
+    mount = Path(os.environ.get(ENV_PRIMARY_MOUNT, DEFAULT_PRIMARY_MOUNT)).expanduser()
+    if not mount.is_mount():
+        return None
+    if (mount / "mercury_backups").is_dir():
+        return mount.resolve()
+    return None
+
+
+def _apply_primary_paths(text: str, mount_path: Path) -> str:
+    """Point a fresh config at an already-cut-over canonical HDD."""
+    text = _apply_mercury_paths(text, mount_path)
+    text = text.replace('active_write_role = "legacy"', 'active_write_role = "primary"', 1)
+    text = text.replace('migration_state = "not_started"', 'migration_state = "cutover_complete"', 1)
+    text = text.replace('role = "transition_source"', 'role = "legacy_archive"', 1)
+    # This replacement deliberately includes the following table header, so it
+    # changes only the legacy role's writable policy, not the primary's.
     text = text.replace(
-        'mount_path = "/mnt/MERCURY_DATA_USB"',
-        f'mount_path = "{Path(mount_path).resolve()}"',
+        'filesystem_type = "ext4"\nwritable = true\n\n[storage.space_policy]',
+        'filesystem_type = "ext4"\nwritable = false\n\n[storage.space_policy]',
+        1,
     )
     return text
 

@@ -614,6 +614,7 @@ def test_init_customizes_mariadb_user_for_os_user(tmp_path: Path, monkeypatch) -
     monkeypatch.setattr("mercury.config.init.LOCAL_EXAMPLE", example_local)
     monkeypatch.setattr("mercury.config.init.LOCAL_CONFIG", local_local)
     monkeypatch.setattr("mercury.config.init.getpass.getuser", lambda: "linuxadmin")
+    monkeypatch.setattr("mercury.config.init.discover_primary_operator_root", lambda: None)
     monkeypatch.setattr(
         "mercury.config.init.discover_usb_target",
         lambda: SimpleNamespace(mercury_layout_present=True, mount_path=Path("/mnt/MERCURY_DATA_USB")),
@@ -624,6 +625,41 @@ def test_init_customizes_mariadb_user_for_os_user(tmp_path: Path, monkeypatch) -
     assert 'user = "linuxadmin"' in text
     assert any("linuxadmin" in line for line in results)
     assert any("Operator backup layout detected" in line for line in results)
+
+
+def test_init_prefers_mounted_canonical_hdd_over_legacy_usb(tmp_path: Path, monkeypatch) -> None:
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    example_local = config_dir / "local.example.toml"
+    example_local.write_text(
+        '[storage]\nactive_write_role = "legacy"\nmigration_state = "not_started"\n'
+        '[storage.legacy]\nrole = "transition_source"\nfilesystem_type = "ext4"\nwritable = true\n\n'
+        '[storage.space_policy]\nminimum_free_bytes = 1\n'
+        '[mercury]\nbackup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"\n'
+        'log_dir = "/mnt/MERCURY_DATA_USB/mercury_logs"\n',
+        encoding="utf-8",
+    )
+    for name in ("databases.example.toml", "repos.example.toml"):
+        (config_dir / name).write_text("[default]\n", encoding="utf-8")
+    monkeypatch.setattr("mercury.config.init.LOCAL_EXAMPLE", example_local)
+    monkeypatch.setattr("mercury.config.init.LOCAL_CONFIG", config_dir / "local.toml")
+    monkeypatch.setattr("mercury.config.init.DATABASES_EXAMPLE", config_dir / "databases.example.toml")
+    monkeypatch.setattr("mercury.config.init.DATABASES_LOCAL", config_dir / "databases.toml")
+    monkeypatch.setattr("mercury.config.init.REPOS_EXAMPLE", config_dir / "repos.example.toml")
+    monkeypatch.setattr("mercury.config.init.REPOS_LOCAL", config_dir / "repos.toml")
+    monkeypatch.setattr("mercury.config.init.discover_primary_operator_root", lambda: tmp_path / "hdd")
+    monkeypatch.setattr(
+        "mercury.config.init.discover_usb_target",
+        lambda: SimpleNamespace(mercury_layout_present=True, mount_path=Path("/mnt/MERCURY_DATA_USB")),
+    )
+
+    results = init_local_config()
+    text = (config_dir / "local.toml").read_text(encoding="utf-8")
+
+    assert 'active_write_role = "primary"' in text
+    assert 'migration_state = "cutover_complete"' in text
+    assert str(tmp_path / "hdd" / "mercury_backups") in text
+    assert any("Canonical HDD layout detected" in line for line in results)
 
 # from test_env_probe.py
 def test_probe_returns_expected_fields() -> None:
@@ -782,4 +818,3 @@ def test_live_mode_guide_has_no_decorative_bullets(capsys: pytest.CaptureFixture
     assert "OPERATOR SAFETY GUIDE" in out
     assert "◆" not in out
     assert "Destructive actions" in out
-

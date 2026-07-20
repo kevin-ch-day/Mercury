@@ -290,7 +290,7 @@ def _runbook_text(bundle: TransferBundle) -> str:
         "1. Mount this media and confirm mercury_backups, mercury_manifests, and mercury_runbooks are present.",
         "2. Install Mercury and run ./run.sh config init on the receiving host.",
         "3. Run ./run.sh deploy system to import verified operator-storage database backups.",
-        "4. Run ./run.sh deploy repos --from-usb for repository bundles.",
+        "4. Run ./run.sh deploy repos --from-usb for operator-storage repository bundles.",
         "5. Open the latest database_transfer_runbook and per-database restore notes before any live restore.",
         "6. Run restore-check drills against verified backups before relying on production paths.",
         "",

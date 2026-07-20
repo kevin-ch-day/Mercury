@@ -11,7 +11,11 @@ from mercury.core.environment_status import (
     recommended_next_step,
     resolve_dashboard_blocker,
 )
-from mercury.core.execution_policy import destructive_ops_label, load_execution_policy
+from mercury.core.execution_policy import (
+    backup_root_state_is_ready,
+    destructive_ops_label,
+    load_execution_policy,
+)
 from mercury.core.platform import detect_platform
 from mercury.core.runtime import should_probe_database_status
 from mercury.core.storage_status import backup_root_free_space_label
@@ -137,11 +141,11 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             sync_line = "unavailable"
             handoff_line = "status error — see Protection"
         elif stale_names or missing_count or failed_count:
-            handoff_line = "partial — menu [9] or h for checklist"
+            handoff_line = "partial — menu [10] or h for checklist"
         elif unknown_names or absent_count:
-            handoff_line = "warnings — menu [9] guided wizard"
+            handoff_line = "warnings — menu [10] guided wizard"
         elif verified_names and present_on_server and len(verified_names) == present_on_server:
-            handoff_line = "backup lane ok — menu [9] handoff wizard"
+            handoff_line = "backup lane ok — menu [10] handoff wizard"
         else:
             handoff_line = "incomplete"
         latest_handoff_status: str | None = None
@@ -233,7 +237,7 @@ def _migration_dashboard_rows(report, policy) -> list[str]:
 
 def _backup_target_summary(policy, env) -> str:
     base = backup_target_dashboard_label(policy, env.usb)
-    if policy.backup_root_state() == "usb-mounted":
+    if backup_root_state_is_ready(policy.backup_root_state()):
         free_space = backup_root_free_space_label(policy)
         if free_space:
             return f"{base} · {free_space} free"

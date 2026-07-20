@@ -6,6 +6,7 @@ import shutil
 from collections import Counter
 
 from mercury import output
+from mercury.core.execution_policy import backup_root_state_is_ready
 from mercury.menu import main_display as menu_display
 from mercury.menu import prompts as menu_prompts
 from mercury.terminal import screen as display_screen
@@ -38,7 +39,7 @@ BACKUP_SCREEN_TITLE = "Backup Operations"
 
 def _backup_target_label(policy) -> str:
     state = policy.backup_root_state()
-    if state == "usb-mounted":
+    if backup_root_state_is_ready(state):
         return "operator storage mounted"
     if state == "usb not mounted":
         return "operator storage not mounted"
@@ -109,7 +110,7 @@ def _storage_usage_fields(policy) -> dict[str, str]:
         status = "critical"
     elif used_percent >= 85.0:
         status = "warning"
-    elif state == "usb-mounted":
+    elif backup_root_state_is_ready(state):
         status = "ok"
     else:
         status = state.replace("-", " ")

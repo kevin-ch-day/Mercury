@@ -4,7 +4,7 @@
 
 For the current milestone, it protects the active source databases `android_permission_intel`, `erebus_threat_intel_prod`, `scytaledroid_core_prod`, and `obsidiandroid_core_prod`, manages the dev sync targets `erebus_threat_intel_dev` and `scytaledroid_core_dev` as disposable refresh targets, and can inventory configured Git repositories plus write explicit Git bundles to operator transfer media. It is not an AI tool, web app, or full workstation provisioning tool.
 
-**Fedora** and **Windows** are supported for live Mercury operations when MariaDB tools, `config/local.toml`, and the operator storage layout (`mercury_backups` / `mercury_logs`, legacy USB until cutover) are configured. Non-Fedora Linux remains seed planning / development only.
+**Fedora** and **Windows** are supported for live Mercury operations when MariaDB tools, `config/local.toml`, and the active operator-storage layout (`mercury_backups` / `mercury_logs`) are configured. On this cut-over deployment, the canonical HDD is the writer and USB is recovery archive only. Non-Fedora Linux remains seed planning / development only.
 
 ## Current v1 status
 
@@ -59,7 +59,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[mariadb,dev]"
 
 mercury config init
-mercury config repair-local   # add missing USB paths to existing local.toml
+mercury config repair-local   # add missing operator-storage paths to existing local.toml
 mercury db ping                    # read-only server probe
 mercury db discover                # live inventory (needs config/local.toml)
 mercury status --live              # protection snapshot from live server
@@ -92,7 +92,7 @@ Windows (PowerShell):
 cd C:\path\to\Mercury
 .\run.ps1                        # interactive menu (creates .venv on first run)
 mercury config init
-mercury doctor --repair-plan     # USB path setup when drive is connected
+mercury doctor --repair-plan     # storage-path setup after the HDD is mounted
 ```
 
 ## CLI commands
@@ -129,6 +129,7 @@ mercury backup schema-plan [--demo]
 mercury backup run --db <prod> --kind full|schema_only [--dry-run]
 mercury backup batch [--kind full|schema_only] [--dry-run] [--demo]
 mercury backup all [--kind full|schema_only] [--dry-run] [--demo]
+mercury backup dev [--execute]             # explicit optional development recovery copies
 mercury backup verify --db <prod> [--path DIR] [--update-manifest]
 mercury backup verify-all [--update-manifest] [--demo]
 mercury backup status [--db <source>] [--demo]
@@ -139,7 +140,7 @@ mercury backup list [--demo]
 mercury report preview --db <prod> --kind full|schema_only
 ```
 
-**Backup writes** run when the backup environment is safe (Fedora or Windows host, `config/local.toml`, operator backup root under the active write mount (legacy MERCURY_DATA_USB until cutover)). They do **not** require `dry_run = false` or `live_actions_enabled = true`.
+**Backup writes** run when the backup environment is safe (Fedora or Windows host, `config/local.toml`, and an operator backup root under the active write mount). They do **not** require `dry_run = false` or `live_actions_enabled = true`.
 
 Use `--dry-run` on `backup run`, `backup batch`, or `backup all` to preview without writing files. The interactive menu uses **Run full backup now** for live writes and **Preview backup plan** for dry-run.
 
@@ -147,9 +148,9 @@ Use `--dry-run` on `backup run`, `backup batch`, or `backup all` to preview with
 
 Live backup execution also requires:
 - Fedora or Windows as the runtime host
-- a configured operator storage root (Linux transitional default: `/mnt/MERCURY_DATA_USB/mercury_backups`; Windows: set `[mercury].usb_mount` / `MERCURY_LEGACY_MOUNT`, or rely on auto-detect when the drive has `mercury_backups/` and `mercury_logs/`)
+- a configured operator-storage root (this deployment: `/mnt/MERCURY_DATA_V2/mercury_backups`; use `[storage.*]`, `MERCURY_PRIMARY_MOUNT`, or `MERCURY_LEGACY_MOUNT` for other layouts)
 
-Until storage cutover, routine writers target the USB (`active_write_role=legacy`). Inspect both roots with `./run.sh storage status`. Use `./run.sh --no-logging storage audit` for a strict no-write configured-root integrity check; add `--hash` for byte-level comparison and `--write-report` for an atomic JSON artifact under `output/storage/`. (Without `--no-logging`, Mercury's normal session logger may append to the active log directory.) Audit warnings such as duplicate mounts or live log/state drift do not switch writers or authorize cutover. Plan a legacy→primary copy with `./run.sh storage migrate-plan` (dry-run only; never copies). After verification, `./run.sh storage cutover-plan` lists all five coordinated writer paths that a future cutover must change; it never applies them. The primary HDD (`MERCURY_DATA_V2`) is observe-only until a verified migration and cutover.
+Inspect both storage roots with `./run.sh storage status`. Use `./run.sh --no-logging storage audit` for a no-write configured-root integrity check; add `--hash` for byte-level comparison and `--write-report` for an atomic JSON artifact under `output/storage/`. On a completed cutover, HDD is authoritative and USB differences are historical archive evidence only. Mercury warns when the USB archive is physically mounted read-write; resolve that at the host level before transporting it. For a new migration before cutover, use `storage migrate-plan`, `storage migrate-run`, and `storage migrate-verify` before `storage cutover-readiness`.
 Repo-local `backups/` remains development-only and does not count as production protection in live/operator mode.
 `backup status` reports the latest protection state for active source databases using on-disk manifests and verification checks. `backup bundle --execute` writes database transfer manifests and restore notes to the configured operator-storage manifest/runbook paths.
 
@@ -204,7 +205,7 @@ Successful restore-check runs now auto-drop the temporary `_restorecheck_*` data
 
 ### Recovery deployment
 
-Mercury can **import verified USB database backups** and **restore configured Git repositories** onto a prepared Fedora/MariaDB host after hardware loss or migration. This is Mercury-managed artifact recovery — not Fedora package installation, systemd setup, or full workstation bootstrap.
+Mercury can **import verified operator-storage database backups** and **restore configured Git repositories** onto a prepared Fedora/MariaDB host after hardware loss or migration. This is Mercury-managed artifact recovery — not Fedora package installation, systemd setup, runtime-secret reconstruction, or full workstation bootstrap.
 
 ```bash
 mercury deploy status
@@ -223,12 +224,12 @@ Live deploy requires the same gates as sync/restore (`dry_run = false`, `live_ac
 ```toml
 # config/local.toml
 [mercury]
-backup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"
-log_dir = "/mnt/MERCURY_DATA_USB/mercury_logs"
-repo_backup_root = "/mnt/MERCURY_DATA_USB/mercury_repo_backups"
-manifest_dir = "/mnt/MERCURY_DATA_USB/mercury_manifests"
-runbook_dir = "/mnt/MERCURY_DATA_USB/mercury_runbooks"
-# Backups write when USB + config are valid (see README). These flags gate sync/deploy/restore:
+backup_root = "/mnt/MERCURY_DATA_V2/mercury_backups"
+log_dir = "/mnt/MERCURY_DATA_V2/mercury_logs"
+repo_backup_root = "/mnt/MERCURY_DATA_V2/mercury_repo_backups"
+manifest_dir = "/mnt/MERCURY_DATA_V2/mercury_manifests"
+runbook_dir = "/mnt/MERCURY_DATA_V2/mercury_runbooks"
+# Backups write when HDD operator storage + config are valid. These flags gate sync/deploy/restore:
 dry_run = true
 live_actions_enabled = false
 
