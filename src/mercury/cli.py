@@ -1055,6 +1055,11 @@ def backup_verify_cmd(
         "--update-manifest/--no-update-manifest",
         help="Set manifest verified=true when verification passes (default).",
     ),
+    allow_development_recovery: bool = typer.Option(
+        False,
+        "--allow-development-recovery",
+        help="Allow only configured optional development recovery databases.",
+    ),
 ) -> None:
     """Verify on-disk backup artifacts (manifest, dumps, checksums)."""
     from pathlib import Path
@@ -1077,7 +1082,12 @@ def backup_verify_cmd(
             )
             raise typer.Exit(1)
 
-    result = verify_backup_directory(backup_dir, database=db, update_manifest=update_manifest)
+    result = verify_backup_directory(
+        backup_dir,
+        database=db,
+        update_manifest=update_manifest,
+        allow_development_backup=allow_development_recovery,
+    )
     if result.database != db:
         typer.echo(
             f"Backup directory is for '{result.database}', not '{db}'. "

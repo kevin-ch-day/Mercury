@@ -82,16 +82,16 @@ def test_out_of_scope_databases_are_excluded_from_primary_table(
     )
     print_discover_menu(inventory)
     out = capsys.readouterr().out
-    assert "Active scope: 1" in out
+    assert "Active scope: 2" in out
     assert "Backup sources: 1" in out
     assert "Sync targets: 0" in out
-    assert "Out of scope: 4 ignored" in out
+    assert "Out of scope: 3 ignored" in out
     assert "erebus_threat_intel_prod" in out
     assert "android_permission_intel_prod" in out
     assert "android_permission_intel_dev" in out
     assert "droid_threat_intel_db_prod" in out
     assert "proofpoint_cti_db_dev" in out
-    assert "Ignored databases: 4" in out
+    assert "Ignored databases: 3" in out
 
 
 def test_discover_menu_explains_shared_authority_source(capsys: pytest.CaptureFixture[str]) -> None:

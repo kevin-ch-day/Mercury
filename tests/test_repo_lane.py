@@ -12,7 +12,11 @@ import subprocess
 import pytest
 
 from mercury.repo.bundle import build_repo_bundle_plan, execute_repo_bundle_plan
-from mercury.repo.offline_clone import build_offline_clone_plan, execute_offline_clone_plan
+from mercury.repo.offline_clone import (
+    _subprocess_error_detail,
+    build_offline_clone_plan,
+    execute_offline_clone_plan,
+)
 from mercury.repo.config import (
     RepoBundleSettings,
     RepoDefinition,
@@ -104,6 +108,57 @@ def test_offline_clone_sync_creates_independent_hdd_worktree(tmp_path: Path, mon
     blocked = build_offline_clone_plan([status], root=hdd / "mercury_repo_clones")
     assert blocked.entries[0].action == "blocked"
     assert "local changes" in (blocked.entries[0].error or "")
+
+
+def test_offline_clone_preview_blocks_damaged_copy_before_head_comparison(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _make_repo(tmp_path, "source")
+    status = inspect_repositories([RepoDefinition(key="source", display_name="Source", path=source)])[0]
+    hdd = tmp_path / "hdd"
+    destination = hdd / "mercury_repo_clones" / "source"
+    subprocess.run(["git", "clone", "--no-hardlinks", str(source), str(destination)], check=True, capture_output=True, text=True)
+    monkeypatch.setattr(
+        "mercury.repo.offline_clone._destination_integrity_error",
+        lambda _path: "pack index unavailable",
+    )
+
+    plan = build_offline_clone_plan([status], root=hdd / "mercury_repo_clones")
+
+    assert plan.entries[0].action == "blocked"
+    assert "integrity check failed" in (plan.entries[0].error or "")
+
+
+def test_offline_clone_error_detail_is_bounded() -> None:
+    exc = subprocess.CalledProcessError(
+        1, ["git", "fetch"], stderr="one\ntwo\nthree\nfour\nfive\n",
+    )
+
+    detail = _subprocess_error_detail(exc)
+
+    assert detail == "one | two | three | … 2 additional Git error line(s)"
+
+
+def test_failed_fresh_offline_clone_leaves_no_managed_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _make_repo(tmp_path, "source")
+    status = inspect_repositories([RepoDefinition(key="source", display_name="Source", path=source)])[0]
+    hdd = tmp_path / "hdd"
+    plan = build_offline_clone_plan([status], root=hdd / "mercury_repo_clones")
+
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_operator_mount", lambda **kwargs: hdd)
+    monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
+    monkeypatch.setattr(
+        "mercury.repo.offline_clone._head",
+        lambda _path: (_ for _ in ()).throw(ValueError("forced verification failure")),
+    )
+
+    executed = execute_offline_clone_plan(plan)
+
+    assert executed.entries[0].action == "blocked"
+    assert not executed.entries[0].destination_path.exists()
+    assert not list(executed.root.glob(".source.staging-*"))
 
 
 def test_offline_clone_terminal_marks_executed_entries_as_synced(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:

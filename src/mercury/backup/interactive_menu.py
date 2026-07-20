@@ -306,7 +306,7 @@ def _run_backup(plan: BackupPlanDryRun) -> None:
     print_backup_batch_result(batch, compact=True, menu=True)
     if batch.executed_count:
         display_screen.write_summary(
-            "Next: use [3] Verify source backups to set manifest verified flags on operator storage."
+            "Next: verify source backups to set manifest verified flags on operator storage."
         )
 
 

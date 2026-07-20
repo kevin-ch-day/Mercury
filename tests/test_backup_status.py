@@ -122,6 +122,13 @@ def test_build_backup_status_report_live_anchors_missing_configured_source(
             "scytaledroid_core_prod",
         },
     )
+    # A historical on-disk backup must not make an absent live source appear
+    # currently protected on this host.
+    _write_verified_backup(
+        tmp_path,
+        "obsidiandroid_core_prod",
+        "obsidiandroid_core_prod-full-20260608_120000",
+    )
 
     report = build_backup_status_report(
         live=True,

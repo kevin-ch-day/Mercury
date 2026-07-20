@@ -208,9 +208,9 @@ def verify_backup_artifacts(
     classification = classify_database(resolved_db)
     role_ok = classification.backup_source
     if allow_development_backup and classification.role == DatabaseRole.DEVELOPMENT:
-        from mercury.database.core.scope import is_active_dev_target
+        from mercury.database.core.scope import is_active_dev_recovery_database
 
-        role_ok = is_active_dev_target(resolved_db)
+        role_ok = is_active_dev_recovery_database(resolved_db)
 
     issues: list[str] = []
     manifest_exists = manifest_path.exists() and manifest is not None

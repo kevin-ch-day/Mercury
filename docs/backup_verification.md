@@ -33,6 +33,13 @@ mercury backup verify --db erebus_threat_intel_prod --path /path/to/backup/dir
 mercury backup verify --db erebus_threat_intel_prod --update-manifest
 ```
 
+Optional development recovery copies remain excluded by default. Verify one
+only with the explicit, configured-target gate:
+
+```bash
+mercury backup verify --db android_permission_intel_dev --allow-development-recovery
+```
+
 Preview/demo (no files on disk):
 
 ```bash

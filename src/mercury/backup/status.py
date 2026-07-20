@@ -187,7 +187,7 @@ def build_backup_status_report(
         )
 
         verification = verify_backup_artifacts(backup_dir, database=database)
-        status = "verified" if verification.verified else "failed"
+        status = "absent" if absent_on_server else ("verified" if verification.verified else "failed")
         issues = list(verification.issues)
         if warning:
             status = "untrusted root"
@@ -198,14 +198,16 @@ def build_backup_status_report(
                 "on-disk backup is historical only for this host."
             )
 
-        if status == "verified":
+        if status == "absent":
+            absent_count += 1
+        elif status == "verified":
             verified_count += 1
         else:
             failed_count += 1
 
-        if freshness.freshness == FRESHNESS_STALE:
+        if not absent_on_server and freshness.freshness == FRESHNESS_STALE:
             stale_count += 1
-        elif freshness.freshness == FRESHNESS_UNKNOWN:
+        elif not absent_on_server and freshness.freshness == FRESHNESS_UNKNOWN:
             unknown_freshness_count += 1
 
         if freshness.recommend_full_backup and status == "verified" and not absent_on_server:

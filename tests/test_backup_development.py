@@ -52,3 +52,15 @@ def test_explicit_development_verification_keeps_default_policy_strict(tmp_path)
     )
     assert default.role_ok is False
     assert explicit.role_ok is True
+
+
+def test_optional_permission_intel_recovery_backup_is_verified_when_explicit(tmp_path) -> None:
+    from mercury.backup.verification import verify_backup_artifacts
+
+    result = verify_backup_artifacts(
+        tmp_path / "android_permission_intel_dev",
+        database="android_permission_intel_dev",
+        allow_development_backup=True,
+    )
+
+    assert result.role_ok is True

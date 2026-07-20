@@ -72,6 +72,17 @@ separate, confirmation-gated lane for configured development targets:
 ./run.sh backup dev --execute --confirm 'BACKUP DEV DATABASES'
 ```
 
+To re-verify an already-written optional development recovery backup without
+creating another dump, use the explicit recovery gate. It accepts only the
+configured recovery databases and stamps `manifest.json` only after the normal
+artifact checks pass:
+
+```bash
+./run.sh backup verify --db android_permission_intel_dev --allow-development-recovery
+./run.sh backup verify --db erebus_threat_intel_dev --allow-development-recovery
+./run.sh backup verify --db scytaledroid_core_dev --allow-development-recovery
+```
+
 They can be planned on the receiving PC without weakening the normal
 production deployment lane:
 
