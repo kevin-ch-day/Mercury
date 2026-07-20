@@ -15,6 +15,7 @@ venv/
 /env/
 
 config/local.toml
+config/local.toml.pre_*
 config/databases.toml
 config/repos.toml
 output/*
