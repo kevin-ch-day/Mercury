@@ -120,7 +120,7 @@ def test_latest_records_by_database_keeps_newest_record_first(tmp_path: Path) ->
 
 def test_cli_backup_list_on_disk() -> None:
     backups = REPO_ROOT / "backups"
-    if not any(backups.glob("*/*/manifest.json")):
+    if not any(backups.glob("*/*/manifest.json")) and not any(backups.glob("*/*/*/manifest.json")):
         pytest.skip("no on-disk backups in repo")
 
     result = run_cli(

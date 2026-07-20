@@ -25,6 +25,22 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     policy = env.policy
     config_initialized = env.config.initialized
 
+    if config_initialized:
+        try:
+            from mercury.migration.readiness import build_migration_readiness
+
+            return _migration_dashboard_rows(
+                build_migration_readiness(
+                    probe_database=False, detailed=False
+                ),
+                policy,
+            )
+        except Exception as exc:
+            return [
+                dashboard_row("Active writer", _backup_target_summary(policy, env)),
+                dashboard_row("Migration status", f"unavailable: {exc}"),
+            ]
+
     rows: list[str] = []
     if env.config.initialized and env.mariadb.connection_works is True:
         rows.append(dashboard_row("Active writer", _backup_target_summary(policy, env)))
@@ -44,7 +60,6 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     except OSError:
         pass
 
-    deploy_status_line = "skipped until config initialized"
     sync_blocker = "None."
     stale_names: set[str] = set()
     unknown_names: set[str] = set()
@@ -57,12 +72,9 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     status_error: str | None = None
     ready = 0
     blocked = 0
-    deploy_complete = False
     if not config_initialized:
-        mariadb_line = "skipped until config initialized"
         backup_line = "skipped until config initialized"
         sync_line = "skipped until config initialized"
-        deploy_line = "skipped until config initialized"
         handoff_line = "skipped until config initialized"
         blocker = resolve_dashboard_blocker(
             setup_blocker=env.primary_setup_blocker,
@@ -88,16 +100,15 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             verified_names=verified_names,
             source_names=source_names,
         )
-        deploy_line = _deploy_target_summary(live=probe and env.mariadb.connection_works is True)
-        deploy_status_line = _deploy_status_line(live=probe and env.mariadb.connection_works is True)
-        deploy_complete = "deploy not needed" in deploy_line.lower()
         blocker = _resolve_environment_readiness(
             setup_blocker=env.primary_setup_blocker,
             config_initialized=True,
             verified_names=verified_names,
             source_names=source_names,
             sync_blocker=sync_blocker,
-            deploy_complete=deploy_complete,
+            # Deployment selection re-verifies every backup and is too costly
+            # for a menu redraw. Deployment screens own that detailed check.
+            deploy_complete=False,
             stale_count=len(stale_names),
             missing_count=missing_count,
             failed_count=failed_count,
@@ -119,7 +130,6 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             backup_line += f"; {len(unknown_names)} unknown freshness"
         if status_error:
             backup_line = status_error
-        mariadb_line = deploy_line
         sync_line = f"{ready} approved pairs ready"
         if blocked:
             sync_line += f"; {blocked} blocked"
@@ -166,11 +176,6 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             dashboard_row("Cutover blockers", blocker),
         ]
     )
-    if config_initialized and deploy_complete and sync_blocker not in {"None.", ""}:
-        from mercury.deploy.rebuild_status import sync_blocker_is_rebuild_blocker
-
-        if not sync_blocker_is_rebuild_blocker(sync_blocker, deploy_complete=True):
-            rows.append(dashboard_row("Sync blocker", sync_blocker))
     if env.repairable_blockers or env.usb.repair_banner:
         from mercury.repair.usb import USB_REPAIR_COMMAND
 
@@ -185,6 +190,45 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
         for hint in env.setup_hints[1:]:
             rows.append(dashboard_row("", hint))
     return rows
+
+
+def _migration_dashboard_rows(report, policy) -> list[str]:
+    """Compact dashboard backed by one shared migration-evidence report."""
+    by_id = {check.id: check for check in report.checks}
+    active = by_id["active_writer"]
+    mirror = by_id["storage_mirror"]
+    duplicate = by_id["duplicate_primary_mount"]
+    backups = by_id["database_backups"]
+    unresolved = report.unresolved_checks
+    free = backup_root_free_space_label(policy)
+    active_text = active.summary
+    if free:
+        active_text += f" · {free} free"
+    mirror_text = "Verified" if mirror.state.value == "PASS" else mirror.summary
+    if duplicate.state.value == "WARNING":
+        mirror_text += " · HDD mounted twice"
+    package_text = "Review required" if report.overall_status.value != "PASS" else "Ready"
+    # Dashboard mode deliberately avoids scanning large worktrees or runtime
+    # configuration.  Do not turn the absence of that expensive scan into a
+    # claim that a capture is incomplete.
+    if any(
+        check.id in {"erebus_web_worktree", "scytaledroid_web_worktree", "web_runtime_configuration"}
+        and check.unresolved
+        for check in report.checks
+    ):
+        package_text += " · capture status not rechecked"
+    next_open = next((check for check in unresolved if check.id == "destination_validation"), None)
+    blocker_text = f"{len(unresolved)} open"
+    if next_open is not None:
+        blocker_text += " · destination not validated"
+    return [
+        dashboard_row("Active writer", active_text),
+        dashboard_row("Storage mirror", mirror_text),
+        dashboard_row("Database backups", backups.summary),
+        dashboard_row("Migration package", package_text),
+        dashboard_row("Migration phase", report.operator_phase.title()),
+        dashboard_row("Cutover blockers", blocker_text),
+    ]
 
 
 def _backup_target_summary(policy, env) -> str:

@@ -43,3 +43,5 @@ default_branch = "main"
 display_name = "Fedora Linux Scripts"
 path = "/home/linuxadmin/GitHub/fedora-linux-scripts"
 default_branch = "main"
+# Set false when this checkout is deliberately outside the workstation-migration scope.
+# migration_scope = false

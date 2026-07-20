@@ -50,7 +50,20 @@ def _backup_target_label(policy) -> str:
 
 
 def read_backup_choice() -> str | None:
-    return read_submenu_choice()
+    # Keep the backup screen dense: its action list already follows the status table.
+    while True:
+        choice = menu_prompts.ask_stripped("Choice: ")
+        if choice is None or choice == "0":
+            return choice
+        if choice:
+            return choice
+        output.write(menu_prompts.invalid_choice_message(choice))
+
+
+def _write_backup_fields(fields: dict[str, str]) -> None:
+    """Tab-separate compact backup status rows without changing global reports."""
+    for name, value in fields.items():
+        output.write(f"  {name}:\t{value}")
 
 
 def _storage_usage_fields(policy) -> dict[str, str]:
@@ -214,9 +227,7 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
         menu_display.open_screen(BACKUP_SCREEN_TITLE)
     policy = load_execution_policy()
     backup_ready = policy.backup_execution_allowed()
-    display_screen.write_fields(
-        _storage_usage_fields(policy)
-    )
+    _write_backup_fields(_storage_usage_fields(policy))
     display_screen.write_blank()
     status_report = build_backup_status_report(live=should_probe_database_status())
     status_entries = {entry.database: entry for entry in status_report.entries}
@@ -243,38 +254,31 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
         if problem_parts:
             # Absent-only is informational; mix with real problems stays a warn.
             only_absent = all(part.endswith("absent from server") for part in problem_parts)
-            display_screen.write_status(
-                "info" if only_absent else "warn",
-                (
-                    "Catalog source(s) not on this MariaDB server: "
-                    + ", ".join(problem_parts)
-                    + "."
-                    if only_absent
-                    else menu_handoff_problem_summary(problem_parts)
-                ),
+            message = (
+                "Catalog source(s) not on this MariaDB server: "
+                + ", ".join(problem_parts)
+                + "."
+                if only_absent
+                else menu_handoff_problem_summary(problem_parts)
             )
+            output.write(f"[INFO] {message}" if only_absent else f"[WARN] {message}")
         else:
             display_screen.write_summary("All visible source backups are artifact-verified and fresh.")
     else:
         display_screen.write_status("warn", "No databases in active backup scope.")
     options: list[tuple[str, str]] = [
         ("1", "Refresh"),
-        ("3", "Verify source backups"),
-        ("4", "Restore-check source backups"),
-        ("5", "Write DB bundle and runbooks"),
-        ("6", "Preview backup plan"),
+        ("2", "Run full backup now"),
+        ("3", "Back up production databases"),
+        ("4", "Verify source backups"),
+        ("5", "Restore-check source backups"),
+        ("6", "Write DB bundle and runbooks"),
+        ("7", "Preview backup plan"),
+        ("8", "Open workstation handoff"),
+        ("9", "Backup dev databases"),
     ]
-    if plan.backup_sources:
-        if backup_ready:
-            run_label = "Run full backup now"
-        else:
-            run_label = "Run full backup"
-        options.insert(1, ("2", run_label))
-    from mercury.repair.startup import usb_repair_needed
-
-    if usb_repair_needed():
-        options.append(("7", "Repair USB mount and permissions"))
-    options.append(("8", "Open workstation handoff"))
+    if not backup_ready:
+        options[1] = ("2", "Run full backup")
     display_screen.write_blank()
     render_submenu(options, indent=0)
 
@@ -303,6 +307,43 @@ def _run_backup(plan: BackupPlanDryRun) -> None:
         display_screen.write_summary(
             "Next: use [3] Verify source backups to set manifest verified flags on operator storage."
         )
+
+
+def _run_development_backup(*, require_confirmation: bool = True) -> None:
+    """Rare, explicitly confirmed development recovery backup."""
+    from mercury.backup.batch_runner import resolve_development_backup_sources, verify_development_backup_batch
+
+    sources = resolve_development_backup_sources(live=should_probe_database_status())
+    if not sources:
+        display_screen.write_summary("No configured development databases are present on this MariaDB server.")
+        return
+    display_screen.open_screen("Development Database Backup")
+    display_screen.write_fields({"Databases": ", ".join(sources), "Purpose": "Optional pre-migration recovery capture"})
+    display_screen.write_summary("This is not part of routine production protection or the default handoff package.")
+    if require_confirmation and not menu_prompts.ask_confirmation_phrase("BACKUP DEV DATABASES", action="back up development databases"):
+        display_screen.write_summary("Development backup cancelled.")
+        return
+    batch = run_backup_batch(
+        BACKUP_KIND_FULL, execute=True, live=should_probe_database_status(),
+        policy=load_execution_policy(), sources=sources, allow_development_backup=True,
+    )
+    print_backup_batch_result(batch, compact=True, menu=True)
+    if batch.executed_count:
+        verification = verify_development_backup_batch(batch)
+        display_screen.write_summary(f"Development backup verification: {verification.verified} verified, {verification.failed} failed.")
+        for issue in verification.issues:
+            display_screen.write_status("fail", issue)
+
+
+def _run_full_backup(plan: BackupPlanDryRun) -> None:
+    """Run production protection and optionally include explicit dev recovery copies."""
+    include_dev = menu_prompts.ask_yes_no(
+        "Also back up configured development databases for migration recovery?",
+        default=False,
+    ) is True
+    _run_backup(plan)
+    if include_dev:
+        _run_development_backup(require_confirmation=False)
 
 
 def _run_verify_sources() -> None:
@@ -358,37 +399,34 @@ def run_backup_menu(*, interactive: bool = True) -> None:
             continue
 
         if choice == "2":
-            _run_backup(plan)
+            _run_full_backup(plan)
             plan = _load_plan()
             show_title = pause_and_redraw()
             continue
 
         if choice == "3":
-            _run_verify_sources()
+            _run_backup(plan)
             plan = _load_plan()
             show_title = pause_and_redraw()
             continue
 
         if choice == "4":
-            run_restore_menu()
+            _run_verify_sources()
             show_title = pause_and_redraw()
             continue
 
         if choice == "5":
-            _write_backup_bundle()
+            run_restore_menu()
             show_title = pause_and_redraw()
             continue
 
         if choice == "6":
-            _preview_backup_plan(plan)
+            _write_backup_bundle()
             show_title = pause_and_redraw()
             continue
 
         if choice == "7":
-            from mercury.repair.startup import run_usb_repair_flow
-
-            run_usb_repair_flow(interactive=True, default_yes=True)
-            plan = _load_plan()
+            _preview_backup_plan(plan)
             show_title = pause_and_redraw()
             continue
 
@@ -397,6 +435,11 @@ def run_backup_menu(*, interactive: bool = True) -> None:
 
             run_handoff_menu(interactive=True)
             plan = _load_plan()
+            show_title = pause_and_redraw()
+            continue
+
+        if choice == "9":
+            _run_development_backup()
             show_title = pause_and_redraw()
             continue
 

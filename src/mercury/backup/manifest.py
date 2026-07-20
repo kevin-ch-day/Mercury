@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from mercury.backup.layout import (
     build_backup_layout,
@@ -42,6 +42,10 @@ class BackupManifest(BaseModel):
     live_actions_enabled: bool = False
     dry_run: bool = True
     notes: str = ""
+    # Content proof is absent from historical manifests.  New live backups
+    # attach it only after the dump has been checked against live metadata.
+    dump_options: list[str] = Field(default_factory=list)
+    object_contract: dict[str, object] | None = None
 
 
 def build_backup_manifest(
@@ -62,6 +66,8 @@ def build_backup_manifest(
     schema_size_bytes: int | None = None,
     notes: str = "",
     verified: bool = False,
+    dump_options: list[str] | None = None,
+    object_contract: dict[str, object] | None = None,
 ) -> BackupManifest:
     """Build a manifest record with stable field ordering via the model."""
     return BackupManifest(
@@ -81,6 +87,8 @@ def build_backup_manifest(
         live_actions_enabled=live_actions_enabled,
         dry_run=dry_run,
         notes=notes,
+        dump_options=dump_options or [],
+        object_contract=object_contract,
     )
 
 

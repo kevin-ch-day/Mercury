@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, model_validator
 from mercury.backup.on_disk_index import build_on_disk_backup_list, latest_records_by_database
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.execution_policy import load_execution_policy
+from mercury.core.artifact_permissions import ensure_private_directory, restrict_artifact_file
 from mercury.core.usb_mount import assert_operator_storage_path, resolve_operator_mount
 from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.reporting.protection import build_protection_report
@@ -351,9 +352,11 @@ def write_transfer_bundle(bundle: TransferBundle) -> TransferBundle:
     runbook_path = Path(bundle.transfer_runbook_path)
     _ensure_usb_path(manifest_path)
     _ensure_usb_path(runbook_path)
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    runbook_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_private_directory(manifest_path.parent)
+    ensure_private_directory(runbook_path.parent)
     manifest_path.write_text(bundle.model_dump_json(indent=2) + "\n", encoding="utf-8")
     runbook_path.write_text(_runbook_text(bundle), encoding="utf-8")
+    restrict_artifact_file(manifest_path)
+    restrict_artifact_file(runbook_path)
     record_transfer_bundle_written(bundle)
     return bundle

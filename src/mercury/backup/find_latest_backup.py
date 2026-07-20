@@ -38,8 +38,17 @@ def find_backup_directories(backup_root: Path, database: str) -> list[Path]:
         if not day_dir.is_dir():
             continue
         db_dir = day_dir / database
-        if db_dir.is_dir() and (db_dir / MANIFEST_FILENAME).is_file():
+        if not db_dir.is_dir():
+            continue
+        # Read legacy date/database manifests and the immutable
+        # date/database/timestamp run directories used by new backups.
+        if (db_dir / MANIFEST_FILENAME).is_file():
             found.append(db_dir)
+        found.extend(
+            child
+            for child in sorted(db_dir.iterdir())
+            if child.is_dir() and (child / MANIFEST_FILENAME).is_file()
+        )
     return found
 
 

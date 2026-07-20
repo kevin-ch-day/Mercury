@@ -110,7 +110,10 @@ def build_on_disk_backup_list(backup_root: Path) -> OnDiskBackupList:
         return OnDiskBackupList(backup_root=str(root), records=[])
 
     try:
-        manifest_paths = sorted(root.glob("*/*/manifest.json"))
+        manifest_paths = sorted(
+            set(root.glob("*/*/manifest.json"))
+            | set(root.glob("*/*/*/manifest.json"))
+        )
     except OSError:
         return OnDiskBackupList(backup_root=str(root), records=[])
 

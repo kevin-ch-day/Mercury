@@ -17,7 +17,7 @@ def print_backup_status_report(report: BackupStatusReport) -> None:
     display_screen.write_fields(
         {
             "Backup root": report.backup_root,
-            "Backup root state": report.backup_root_state,
+            "Backup root state": "operator storage mounted" if report.backup_root_state == "usb-mounted" else report.backup_root_state,
             "Source databases": report.source_count,
             "Artifact verified": report.verified_count,
             "Missing": report.missing_count,
@@ -53,6 +53,15 @@ def print_backup_status_report(report: BackupStatusReport) -> None:
         display_screen.write_blank()
         for warning in report.warnings:
             display_screen.write_status("warn", warning)
+
+    empty_sources = [entry.database for entry in report.entries if entry.source_is_empty]
+    if empty_sources:
+        display_screen.write_blank()
+        display_screen.write_status(
+            "info",
+            "Empty live source(s): " + ", ".join(empty_sources)
+            + ". A verified artifact preserves the empty schema without activity-freshness probing.",
+        )
 
     freshness_warning = handoff_freshness_warning(
         stale_count=report.stale_count,

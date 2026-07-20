@@ -16,6 +16,7 @@ from mercury.terminal.format import format_human_datetime
 FRESHNESS_FRESH = "fresh"
 FRESHNESS_STALE = "stale"
 FRESHNESS_UNKNOWN = "unknown"
+FRESHNESS_EMPTY = "empty"
 
 ScalarFn = Callable[[MariaDbConnectionConfig, str], str]
 
@@ -59,9 +60,19 @@ SOURCE_ACTIVITY_PROBES: dict[str, list[tuple[str, str]]] = {
     ],
     "obsidiandroid_core_prod": [
         (
-            "schema_migrations.applied_at",
-            "SELECT MAX(applied_at) FROM obsidiandroid_core_prod.schema_migrations "
-            "WHERE applied_at IS NOT NULL",
+            "core_schema_migration.applied_at_utc",
+            "SELECT MAX(applied_at_utc) FROM obsidiandroid_core_prod.core_schema_migration "
+            "WHERE applied_at_utc IS NOT NULL",
+        ),
+        (
+            "core_artifact.imported_at_utc",
+            "SELECT MAX(imported_at_utc) FROM obsidiandroid_core_prod.core_artifact "
+            "WHERE imported_at_utc IS NOT NULL",
+        ),
+        (
+            "core_run.run_completed_at_utc",
+            "SELECT MAX(run_completed_at_utc) FROM obsidiandroid_core_prod.core_run "
+            "WHERE run_completed_at_utc IS NOT NULL",
         ),
     ],
 }
@@ -87,6 +98,8 @@ def backup_entry_status_label(entry) -> str:
             return "Unverified"
         return "Warning"
     freshness = getattr(entry, "freshness", None)
+    if freshness == FRESHNESS_EMPTY:
+        return "Empty"
     if freshness == FRESHNESS_STALE:
         return "Stale"
     if freshness == FRESHNESS_UNKNOWN:
@@ -189,6 +202,8 @@ def artifact_status_label(protection_status: str) -> str:
 def freshness_status_label(freshness: str) -> str:
     if freshness == FRESHNESS_FRESH:
         return "fresh"
+    if freshness == FRESHNESS_EMPTY:
+        return "empty"
     if freshness == FRESHNESS_STALE:
         return "stale"
     return "unknown"
@@ -230,8 +245,8 @@ def handoff_freshness_warning(*, stale_count: int = 0, unknown_count: int = 0) -
     if unknown_count:
         parts.append(f"{unknown_count} unknown freshness")
     return (
-        f"{' and '.join(parts)} verified backup(s) — bundle documents current operator-storage state "
-        "but handoff should wait for fresh full backups."
+        f"{' and '.join(parts)} source(s) require attention — bundle documents current "
+        "operator-storage state but handoff should wait for fresh full backups."
     )
 
 
@@ -274,6 +289,7 @@ def assess_backup_freshness(
     config: MariaDbConnectionConfig | None = None,
     scalar_fn: ScalarFn | None = None,
     now: datetime | None = None,
+    source_is_empty: bool = False,
 ) -> BackupFreshnessAssessment:
     """
     Compare backup timestamp against latest read-only source DB activity.
@@ -286,6 +302,16 @@ def assess_backup_freshness(
     if backup_at is None:
         assessment.notes.append("Backup timestamp unavailable; freshness unknown.")
         assessment.recommend_full_backup = True
+        return assessment
+
+    # A live schema with no tables or views has no meaningful application
+    # activity timestamp.  Its verified artifact is still important: it
+    # recreates the intentionally present empty schema on the receiver.
+    if source_is_empty:
+        assessment.freshness = FRESHNESS_EMPTY
+        assessment.notes.append(
+            "Live database has no tables or views; verified backup preserves an empty schema."
+        )
         return assessment
 
     if not live or not should_probe_database_status():

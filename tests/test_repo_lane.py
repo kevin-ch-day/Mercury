@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import stat
 import os
 from pathlib import Path
 import subprocess
@@ -109,7 +110,7 @@ def test_execute_repo_bundle_plan_writes_bundle_manifest_and_runbook(
     plan = build_repo_bundle_plan(statuses, settings)
     state_root = tmp_path / "state"
 
-    monkeypatch.setattr("mercury.core.usb_mount.resolve_usb_mount", lambda **kwargs: usb_root)
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_operator_mount", lambda **kwargs: usb_root)
     monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
     monkeypatch.setattr("mercury.state.ledger.resolve_state_root", lambda policy=None: state_root)
 
@@ -119,6 +120,8 @@ def test_execute_repo_bundle_plan_writes_bundle_manifest_and_runbook(
     assert entry.planned_bundle_path.exists()
     assert entry.planned_manifest_path.exists()
     assert entry.planned_runbook_path.exists()
+    assert stat.S_IMODE(entry.planned_bundle_path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(entry.planned_bundle_path.parent.stat().st_mode) == 0o700
 
     manifest = json.loads(entry.planned_manifest_path.read_text(encoding="utf-8"))
     assert manifest["repo_name"] == "ScytaleDroid"
@@ -167,7 +170,7 @@ def test_execute_repo_bundle_plan_prunes_older_repo_artifacts_after_success(
             return cls.current.astimezone(tz)
 
     monkeypatch.setattr("mercury.repo.bundle.datetime", _FakeDateTime)
-    monkeypatch.setattr("mercury.core.usb_mount.resolve_usb_mount", lambda **kwargs: usb_root)
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_operator_mount", lambda **kwargs: usb_root)
     monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
     monkeypatch.setattr("mercury.state.ledger.resolve_state_root", lambda policy=None: state_root)
 

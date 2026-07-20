@@ -83,13 +83,15 @@ def test_run_backup_menu_non_interactive(
     assert "Ignored databases:" not in out
     assert "Fresh full backup needed before workstation handoff" in out
     assert "\n[1] Refresh" in out
-    assert "\n[2] Run full backup now" in out
-    assert "\n[3] Verify source backups" in out
-    assert "\n[4] Restore-check source backups" in out
-    assert "\n[5] Write DB bundle and runbooks" in out
-    assert "\n[8] Open workstation handoff (main menu 9)" in out
+    assert "\n[2] Run full backup" in out
+    assert "\n[3] Back up production databases" in out
+    assert "\n[4] Verify source backups" in out
+    assert "\n[5] Restore-check source backups" in out
+    assert "\n[6] Write DB bundle and runbooks" in out
+    assert "\n[8] Open workstation handoff" in out
+    assert "\n[9] Backup dev databases" in out
     assert "Verify on-disk backups" not in out
-    assert "\n[6] Preview backup plan" in out
+    assert "\n[7] Preview backup plan" in out
 
 
 def test_backup_menu_warning_summary_uses_visible_status_labels(
@@ -300,6 +302,21 @@ def test_run_backup_menu_executes_when_environment_ready(
     )
     _run_backup(build_backup_plan(["android_permission_intel"]))
     assert written == [True]
+
+
+def test_full_backup_can_include_dev_recovery_copy(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mercury.backup.interactive_menu import _run_full_backup
+    from mercury.database.backup_planning import build_backup_plan
+
+    calls: list[object] = []
+    monkeypatch.setattr("mercury.backup.interactive_menu.menu_prompts.ask_yes_no", lambda *args, **kwargs: True)
+    monkeypatch.setattr("mercury.backup.interactive_menu._run_backup", lambda plan: calls.append("production"))
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu._run_development_backup",
+        lambda *, require_confirmation=True: calls.append(require_confirmation),
+    )
+    _run_full_backup(build_backup_plan(["android_permission_intel"]))
+    assert calls == ["production", False]
 
 
 def test_run_verify_menu_non_interactive(capsys: pytest.CaptureFixture[str]) -> None:

@@ -10,6 +10,11 @@ DumpKind = Literal["full", "schema_only"]
 
 DUMP_TOOLS = ("mariadb-dump", "mysqldump")
 
+# These object classes are part of a recoverable logical database backup.  Keep
+# the contract identical for full and schema-only exports; a schema-only
+# companion must not silently contain objects missing from the full export.
+RECOVERY_OBJECT_FLAGS = ("--routines", "--triggers", "--events")
+
 
 class PlannedDump(BaseModel):
     database: str
@@ -55,10 +60,13 @@ def build_planned_dump_command(
     )
     if kind == BACKUP_KIND_SCHEMA_ONLY:
         return (
-            f"{base} --no-data --routines --triggers --events "
+            f"{base} --no-data {' '.join(RECOVERY_OBJECT_FLAGS)} "
             f"--databases {database}  # schema-only"
         )
-    return f"{base} --single-transaction --databases {database}  # full logical"
+    return (
+        f"{base} --single-transaction {' '.join(RECOVERY_OBJECT_FLAGS)} "
+        f"--databases {database}  # full logical"
+    )
 
 
 def select_dump_tool(tools_on_path: dict[str, str] | None = None) -> str:
@@ -97,9 +105,9 @@ def build_dump_argv(
         if ssl_disabled:
             argv[1:1] = ["--skip-ssl"]
     if kind == BACKUP_KIND_SCHEMA_ONLY:
-        argv.extend(["--no-data", "--routines", "--triggers", "--events"])
+        argv.extend(["--no-data", *RECOVERY_OBJECT_FLAGS])
     else:
-        argv.extend(["--single-transaction"])
+        argv.extend(["--single-transaction", *RECOVERY_OBJECT_FLAGS])
     argv.extend(["--databases", database])
     return argv
 

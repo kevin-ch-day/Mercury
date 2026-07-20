@@ -49,6 +49,7 @@ def build_cutover_readiness(
     checks: list[CutoverCheck] = []
     warnings: list[str] = []
 
+    post_cutover = cfg.cutover_complete
     checks.append(
         CutoverCheck(
             "legacy_mount",
@@ -66,11 +67,11 @@ def build_cutover_readiness(
     checks.append(
         CutoverCheck(
             "active_writer_legacy",
-            cfg.active_write_role.value == "legacy",
-            f"active_write_role={cfg.active_write_role.value} (must be legacy until cutover)",
+            (cfg.active_write_role.value == "primary") if post_cutover else (cfg.active_write_role.value == "legacy"),
+            f"active_write_role={cfg.active_write_role.value} " + ("(HDD writer active)" if post_cutover else "(must be legacy until cutover)"),
         )
     )
-    state_ok = cfg.migration_state in {
+    state_ok = post_cutover or cfg.migration_state in {
         MigrationState.VERIFIED,
         MigrationState.VERIFIED_PENDING_CUTOVER,
     }
@@ -78,7 +79,7 @@ def build_cutover_readiness(
         CutoverCheck(
             "migration_verified",
             state_ok,
-            f"migration_state={cfg.migration_state.value} (need verified before cutover)",
+            f"migration_state={cfg.migration_state.value} " + ("(cutover complete)" if post_cutover else "(need verified before cutover)"),
         )
     )
     checks.append(
@@ -107,13 +108,12 @@ def build_cutover_readiness(
 
     blockers = [c.detail for c in checks if not c.ok]
     if cfg.cutover_complete:
-        warnings.append("cutover_complete already true — readiness is informational.")
-    warnings.append(
-        "Cutover approve that switches writers / remounts legacy RO is not enabled yet."
-    )
+        warnings.append("Cutover is complete; USB is retained as recovery archive.")
+    else:
+        warnings.append("Cutover approve that switches writers / remounts legacy RO is not enabled yet.")
     warnings.append(f"Suggested fstab draft (not applied): {suggested_primary_fstab_line(cfg)}")
 
-    ready = all(c.ok for c in checks) and not cfg.cutover_complete
+    ready = all(c.ok for c in checks)
     return CutoverReadinessReport(
         ready=ready,
         active_write_role=cfg.active_write_role.value,

@@ -11,7 +11,7 @@ from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
 from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.database.core import classify_database
 from mercury.deploy.models import DeploymentCandidate
-from mercury.backup.batch_runner import resolve_batch_sources
+from mercury.backup.batch_runner import resolve_batch_sources, resolve_development_backup_sources
 
 
 def resolve_deployment_candidates(
@@ -19,15 +19,22 @@ def resolve_deployment_candidates(
     policy: ExecutionPolicy | None = None,
     databases: list[str] | None = None,
     existing_on_server: set[str] | None = None,
+    allow_development_deploy: bool = False,
 ) -> list[DeploymentCandidate]:
-    """Latest verified full backup per protected source (operator-storage/catalog scope, not live server)."""
+    """Resolve latest verified production backups, or explicit configured dev backups."""
     resolved_policy = policy or load_execution_policy()
     existing = existing_on_server or set()
-    source_names = databases or resolve_batch_sources(live=False)
+    development_sources = (
+        set(resolve_development_backup_sources(live=False)) if allow_development_deploy else set()
+    )
+    source_names = databases or (
+        sorted(development_sources) if allow_development_deploy else resolve_batch_sources(live=False)
+    )
     candidates: list[DeploymentCandidate] = []
 
     for name in source_names:
-        if not classify_database(name).backup_source:
+        classification = classify_database(name)
+        if not classification.backup_source and not (allow_development_deploy and name in development_sources):
             continue
         backup_dir = find_latest_backup_directory(resolved_policy.backup_root, name)
         if backup_dir is None:
@@ -36,6 +43,7 @@ def resolve_deployment_candidates(
             backup_dir,
             database=name,
             backup_kind=BACKUP_KIND_FULL,
+            allow_development_backup=allow_development_deploy,
         )
         if not verification.verified:
             continue

@@ -73,6 +73,32 @@ def test_find_latest_backup_directory_prefers_manifest_created_at(tmp_path: Path
     assert latest == newer
 
 
+def test_find_latest_backup_directory_supports_immutable_run_directories(tmp_path: Path) -> None:
+    database = "erebus_threat_intel_prod"
+    older = tmp_path / "2026-05-30" / database / "20260530_120000"
+    newer = tmp_path / "2026-05-30" / database / "20260530_130000"
+    for path, backup_id, created_at in (
+        (older, "old", "2026-05-30T12:00:00+00:00"),
+        (newer, "new", "2026-05-30T13:00:00+00:00"),
+    ):
+        path.mkdir(parents=True)
+        (path / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "backup_id": backup_id,
+                    "database": database,
+                    "backup_kind": "full",
+                    "created_at": created_at,
+                    "dump_file": "dump.sql.gz",
+                    "source_role": "production",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    assert find_latest_backup_directory(tmp_path, database) == newer
+
+
 def test_verify_rejects_manifest_database_mismatch(tmp_path: Path) -> None:
     backup_dir = tmp_path / "2026-05-30" / "erebus_threat_intel_prod"
     backup_dir.mkdir(parents=True)
@@ -134,7 +160,7 @@ def test_verify_backup_directory_updates_manifest(tmp_path: Path) -> None:
         dump_runner=fake_runner,
     )
 
-    backup_dir = tmp_path / FIXED_DATE / "erebus_threat_intel_prod"
+    backup_dir = tmp_path / FIXED_DATE / "erebus_threat_intel_prod" / FIXED_TS
     result = verify_backup_directory(backup_dir, update_manifest=True)
     assert result.verified is True
 

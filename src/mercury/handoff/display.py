@@ -235,7 +235,7 @@ def handoff_status_kind(status: str) -> StatusKind:
         return "ok"
     if "warning" in normalized:
         return "warn"
-    if normalized in {"partial", "empty"}:
+    if normalized.startswith("blocked") or normalized in {"partial", "empty"}:
         return "fail"
     return "info"
 

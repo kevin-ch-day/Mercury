@@ -69,9 +69,21 @@ def test_build_handoff_checklist_marks_stale_backups_partial(
     )
 
     checklist = build_handoff_checklist(live=True)
-    assert checklist.handoff_status == "complete with warnings"
+    assert checklist.handoff_status == "blocked · 1 failed check"
     labels = [step.label for step in checklist.steps]
     assert "Backup freshness" in labels
+
+
+def test_handoff_aggregate_status_rules() -> None:
+    from mercury.handoff.checklist import HandoffStep, aggregate_handoff_status
+
+    assert aggregate_handoff_status([HandoffStep(label="ok", status="ok", detail="")], package_status="complete") == "complete"
+    assert aggregate_handoff_status([HandoffStep(label="warn", status="warn", detail="")], package_status="complete") == "complete with warnings"
+    assert aggregate_handoff_status([HandoffStep(label="fail", status="fail", detail="")], package_status="complete") == "blocked · 1 failed check"
+    assert aggregate_handoff_status([
+        HandoffStep(label="a", status="fail", detail=""),
+        HandoffStep(label="b", status="fail", detail=""),
+    ], package_status="complete with warnings") == "blocked · 2 failed checks"
 
 
 def test_print_handoff_checklist_shows_steps(capsys: pytest.CaptureFixture[str]) -> None:
@@ -124,9 +136,9 @@ def test_handoff_action_menu_is_one_compact_block(capsys: pytest.CaptureFixture[
     out = capsys.readouterr().out
     assert "Guided flow" not in out
     assert "Individual phases" not in out
-    assert "Tools" not in out
+    assert "[6] Handoff Tools" in out
     assert out.count("[0] Back") == 1
-    assert "[4] Run backup" in out
+    assert "[4] USB to HDD Migration" in out
     assert "stale or missing" not in out
 
 

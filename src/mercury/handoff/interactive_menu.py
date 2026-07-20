@@ -42,24 +42,64 @@ def _after_handoff_write() -> None:
 
 def _render_handoff_options() -> None:
     display_screen.write_blank()
-    display_screen.write_section("Actions")
     render_submenu(
         [
             ("1", "Refresh status"),
-            ("2", "Guided handoff"),
-            ("3", "Resume handoff"),
-            ("4", "Run backup"),
-            ("5", "Verify backups"),
-            ("6", "Create repository bundles"),
-            ("7", "Create database bundle"),
-            ("8", "Create transfer package"),
-            ("9", "Handoff history"),
-            ("10", "Backup menu"),
-            ("11", "Receiver guide"),
-            ("12", "Review blockers"),
+            ("2", "Build USB Migration Package"),
+            ("3", "Capture Web Worktrees"),
+            ("4", "USB to HDD Migration"),
+            ("5", "Receiver Guide"),
+            ("6", "Handoff Tools"),
         ],
         indent=0,
     )
+
+
+def _render_handoff_tools() -> None:
+    display_screen.open_screen("Handoff Tools")
+    render_submenu(
+        [
+            ("1", "Resume Package Build"),
+            ("2", "Run Backup"),
+            ("3", "Verify Backups"),
+            ("4", "Create Repository Bundles"),
+            ("5", "Create Database Bundle"),
+            ("6", "Create Transfer Package"),
+            ("7", "Review Checklist"),
+            ("8", "Handoff History"),
+        ],
+        indent=0,
+    )
+
+
+def _run_handoff_tools(snapshot) -> None:
+    _render_handoff_tools()
+    choice = read_submenu_choice()
+    if choice in {None, "0"}:
+        return
+    if choice == "1":
+        _run_guided_wizard(start_phase="verify")
+    elif choice == "2":
+        _show_phase_result(run_handoff_backup_phase(live=should_probe_database_status(), execute=True))
+        _after_handoff_write()
+    elif choice == "3":
+        _show_phase_result(run_handoff_verify_phase(execute=True))
+        _after_handoff_write()
+    elif choice == "4":
+        _show_phase_result(run_handoff_repo_bundle_phase(execute=True))
+        _after_handoff_write()
+    elif choice == "5":
+        _show_phase_result(run_handoff_db_bundle_phase(live=should_probe_database_status(), execute=True, confirm=_menu_confirm))
+        _after_handoff_write()
+    elif choice == "6":
+        _show_phase_result(run_handoff_transfer_phase(live=should_probe_database_status(), execute=True, confirm=_menu_confirm))
+        _after_handoff_write()
+    elif choice == "7":
+        print_handoff_checklist(snapshot.checklist)
+    elif choice == "8":
+        print_handoff_history(build_handoff_history())
+    else:
+        display_screen.write_summary(menu_prompts.invalid_choice_message(choice))
 
 
 def _run_guided_wizard(*, start_phase: str | None = None) -> None:
@@ -136,63 +176,31 @@ def run_handoff_menu(*, interactive: bool = True) -> None:
             show_title = pause_and_redraw()
             continue
         if choice == "3":
-            _run_guided_wizard(start_phase="verify")
+            from mercury.migration.web_capture import capture_web_worktrees
+
+            results = capture_web_worktrees(execute=False)
+            for result in results:
+                display_screen.write_summary(f"Preview: {result.name} → {result.snapshot_dir}")
+            if menu_prompts.ask_yes_no("Write restricted web snapshots to active operator storage?", default=False):
+                results = capture_web_worktrees(execute=True)
+                for result in results:
+                    display_screen.write_summary(
+                        f"{result.name}: {'restore checked' if result.restore_checked else result.error or 'not captured'}"
+                    )
             show_title = pause_and_redraw()
             continue
         if choice == "4":
-            _show_phase_result(run_handoff_backup_phase(live=should_probe_database_status(), execute=True))
-            _after_handoff_write()
+            from mercury.storage.interactive_menu import run_storage_menu
+
+            run_storage_menu(interactive=True)
             show_title = pause_and_redraw()
             continue
         if choice == "5":
-            _show_phase_result(run_handoff_verify_phase(execute=True))
-            _after_handoff_write()
-            show_title = pause_and_redraw()
-            continue
-        if choice == "6":
-            _show_phase_result(run_handoff_repo_bundle_phase(execute=True))
-            _after_handoff_write()
-            show_title = pause_and_redraw()
-            continue
-        if choice == "7":
-            _show_phase_result(
-                run_handoff_db_bundle_phase(
-                    live=should_probe_database_status(),
-                    execute=True,
-                    confirm=_menu_confirm,
-                )
-            )
-            _after_handoff_write()
-            show_title = pause_and_redraw()
-            continue
-        if choice == "8":
-            _show_phase_result(
-                run_handoff_transfer_phase(
-                    live=should_probe_database_status(),
-                    execute=True,
-                    confirm=_menu_confirm,
-                )
-            )
-            _after_handoff_write()
-            show_title = pause_and_redraw()
-            continue
-        if choice == "9":
-            print_handoff_history(build_handoff_history())
-            show_title = pause_and_redraw()
-            continue
-        if choice == "10":
-            from mercury.backup.interactive_menu import run_backup_menu
-
-            run_backup_menu(interactive=True)
-            clear_handoff_snapshot()
-            show_title = pause_and_redraw()
-            continue
-        if choice == "11":
             print_receiver_handoff_guide(checklist=build_receiver_handoff_guide())
             show_title = pause_and_redraw()
             continue
-        if choice == "12":
-            print_handoff_checklist(snapshot.checklist)
+        if choice == "6":
+            _run_handoff_tools(snapshot)
             show_title = pause_and_redraw()
             continue
         display_screen.write_summary(menu_prompts.invalid_choice_message(choice))

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import stat
 from pathlib import Path
 
 import pytest
@@ -198,11 +199,13 @@ def test_write_transfer_bundle_writes_manifest_and_runbook(
     assert bundle.required_operator_mount == str(usb_root)
     assert bundle.model_dump()["required_usb_mount"] == str(usb_root)
     assert bundle.model_dump()["required_operator_mount"] == str(usb_root)
-    monkeypatch.setattr("mercury.core.usb_mount.resolve_usb_mount", lambda **kwargs: usb_root)
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_operator_mount", lambda **kwargs: usb_root)
     monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
     monkeypatch.setattr("mercury.state.ledger.resolve_state_root", lambda policy=None: state_root)
 
     written = write_transfer_bundle(bundle)
+    assert stat.S_IMODE(Path(written.transfer_manifest_path).stat().st_mode) == 0o600
+    assert stat.S_IMODE(Path(written.transfer_runbook_path).parent.stat().st_mode) == 0o700
     assert Path(written.transfer_manifest_path).exists()
     assert Path(written.transfer_runbook_path).exists()
     manifest = json.loads(Path(written.transfer_manifest_path).read_text(encoding="utf-8"))

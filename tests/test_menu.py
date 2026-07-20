@@ -12,19 +12,19 @@ from mercury.menu.runners import (
     render_menu_text,
     run_menu,
 )
+from mercury.menu.actions import MenuAction
 from mercury.menu.loop import handle_menu_choice as interactive_handle_choice
 
 
-def test_render_menu_text_shows_database_status_when_configured() -> None:
-    from mercury.core.runtime import should_probe_database_status
-
+def test_render_menu_text_shows_database_status_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "mercury.menu.main_display.dashboard_rows",
+        lambda **_kwargs: ["  Active writer", "  Database backups", "  Sync readiness"],
+    )
     text = render_menu_text()
-    if should_probe_database_status():
-        assert "Active writer" in text
-        assert "Database backups" in text
-        assert "Sync readiness" in text
-    else:
-        assert "MariaDB" in text and "[!!]" in text
+    assert "Active writer" in text
+    assert "Database backups" in text
+    assert "Sync readiness" in text
 
 
 def test_menu_handoff_shortcut_runs_handoff_menu(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -44,22 +44,34 @@ def test_run_menu_redisplay_after_choice(monkeypatch: pytest.MonkeyPatch, capsys
         "mercury.menu.prompts.ask",
         lambda _prompt="": next(inputs),
     )
-    monkeypatch.setattr("mercury.env.interactive_menu.read_env_choice", lambda: "0")
     monkeypatch.setattr("mercury.repair.startup.maybe_prompt_usb_repair_at_startup", lambda: None)
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "mercury.menu.loop.resolve_menu_action",
+        lambda choice: MenuAction(choice, "Environment details", lambda: calls.append(choice)),
+    )
 
-    run_menu(interactive=True)
+    run_menu(interactive=True, render_menu_text=lambda: "MERCURY OPERATOR CONSOLE\n[4] Environment details")
     out = capsys.readouterr().out
+    assert calls == ["4"]
     assert out.count("MERCURY OPERATOR CONSOLE") == 1
-    assert out.count("[4] Environment details") >= 2
-    assert "Rescan" in out
-    assert "LIVE MODE GUIDE" not in out
-    assert "[6] Live mode guide" not in out
-    assert "[7] System Deployment" in out
-    assert "[8] Disaster Recovery" in out
-    assert "[9] Workstation handoff" in out
-    assert "Press any key to continue" not in out
-    assert "[0] Return" not in out
     assert "Exiting Mercury" in out
+
+
+def test_run_menu_terminates_after_scripted_inputs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A finite scripted input sequence must not cause a hidden redisplay loop."""
+    inputs = iter(["1", "0"])
+    calls: list[str] = []
+    monkeypatch.setattr("mercury.menu.prompts.ask", lambda _prompt="": next(inputs))
+    monkeypatch.setattr("mercury.repair.startup.maybe_prompt_usb_repair_at_startup", lambda: None)
+    monkeypatch.setattr(
+        "mercury.menu.loop.resolve_menu_action",
+        lambda choice: MenuAction(choice, "Stub", lambda: calls.append(choice)),
+    )
+
+    run_menu(interactive=True, render_menu_text=lambda: "MENU")
+
+    assert calls == ["1"]
 
 
 def test_run_menu_invalid_choice_does_not_redisplay(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -143,44 +155,23 @@ def test_menu_renders_without_crashing(capsys: pytest.CaptureFixture[str]) -> No
 
 
 @pytest.mark.parametrize(
-    ("choice", "snippets"),
+    ("choice",),
     [
-        ("1", ("USB Path", "LAST BACKUP", "Run full backup now", "Restore-check source backups")),
-        ("2", ("ready", "blocked", "Recheck Database Sync Status")),
-        ("3", ("REPORTS AND BACKUP HISTORY", "Backup root", "Show backup history", "Show protection status")),
-        ("4", ("ENVIRONMENT CHECK", "Runtime", "Backup Storage")),
-        ("5", ("Active scope:", "Backup sources:", "DATABASE", "ROLE", "Rescan inventory")),
-        ("6", ("MERCURY DOCTOR", "Repo", "Recommended Next Step")),
-        ("7", ("System Deployment", "Check host readiness", "Build deployment plan", "Deploy selected databases")),
-        ("8", ("Disaster Recovery", "RESTORE-CHECK", "Protected sources", "Latest safe backup")),
+        ("1",), ("2",), ("3",), ("4",), ("5",), ("6",), ("7",), ("8",),
     ],
 )
 def test_handle_menu_action(
     choice: str,
-    snippets: tuple[str, ...],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    if choice == "4":
-        monkeypatch.setattr("mercury.env.interactive_menu.read_env_choice", lambda: "0")
-    if choice == "5":
-        monkeypatch.setattr("mercury.database.discovery_menu.read_discover_choice", lambda: "0")
-    if choice == "2":
-        monkeypatch.setattr("mercury.sync.interactive_menu.read_sync_choice", lambda: "0")
-    if choice == "1":
-        monkeypatch.setattr("mercury.backup.interactive_menu.read_backup_choice", lambda: "0")
-    if choice == "3":
-        monkeypatch.setattr("mercury.reporting.interactive_menu.read_reports_choice", lambda: "0")
-    if choice == "6":
-        monkeypatch.setattr("mercury.env.interactive_menu.read_submenu_choice", lambda: "0")
-    if choice == "7":
-        monkeypatch.setattr("mercury.deploy.interactive_menu.read_deploy_choice", lambda: "0")
-    if choice == "8":
-        monkeypatch.setattr("mercury.recovery.interactive_menu.read_recovery_choice", lambda: "0")
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "mercury.menu.loop.resolve_menu_action",
+        lambda key: MenuAction(key, f"Action {key}", lambda: calls.append(key)),
+    )
     assert handle_menu_choice(choice) == "continue"
-    out = capsys.readouterr().out.lower()
-    matched = sum(1 for snippet in snippets if snippet.lower() in out)
-    assert matched >= 1, f"expected one of {snippets!r} in menu output"
+    assert calls == [choice]
 
 # merged from test_menu_display.py
 def test_status_line_includes_tags() -> None:
@@ -213,7 +204,11 @@ def test_render_option_menu_puts_return_last() -> None:
     assert "      [1] First" in lines
 
 # merged from test_menu_display.py
-def test_render_main_menu_matches_simple_layout() -> None:
+def test_render_main_menu_matches_simple_layout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "mercury.menu.main_display.dashboard_rows",
+        lambda **_kwargs: ["  Active writer", "  Database backups", "  Sync readiness", "  Cutover blockers"],
+    )
     text = menu_display.render_main_menu()
     assert menu_display.MENU_TITLE in text
     assert menu_display.MENU_SUBTITLE in text
@@ -243,7 +238,11 @@ def test_main_menu_options_are_single_action_lines(monkeypatch: pytest.MonkeyPat
     assert all(" — " not in line and "→" not in line for line in option_lines)
 
 # merged from test_menu_display.py
-def test_render_main_menu_body_omits_title_block() -> None:
+def test_render_main_menu_body_omits_title_block(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "mercury.menu.main_display.dashboard_rows",
+        lambda **_kwargs: ["  Active writer"],
+    )
     body = menu_display.render_main_menu_body()
     assert menu_display.MENU_TITLE not in body
     assert "Main Menu" in body

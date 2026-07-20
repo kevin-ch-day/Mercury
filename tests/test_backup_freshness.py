@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from mercury.backup.freshness import (
+    FRESHNESS_EMPTY,
     FRESHNESS_FRESH,
     FRESHNESS_STALE,
     FRESHNESS_UNKNOWN,
@@ -88,6 +89,29 @@ def test_assess_backup_freshness_unknown_without_activity_signal(
     )
     assert assessment.freshness == FRESHNESS_UNKNOWN
     assert assessment.recommend_full_backup is True
+
+
+def test_assess_backup_freshness_marks_verified_empty_source_without_activity_probe() -> None:
+    assessment = assess_backup_freshness(
+        "obsidiandroid_core_prod",
+        backup_at=parse_backup_timestamp("2026-07-20T00:00:00+00:00"),
+        live=True,
+        source_is_empty=True,
+    )
+    assert assessment.freshness == FRESHNESS_EMPTY
+    assert assessment.recommend_full_backup is False
+
+
+def test_obsidiandroid_freshness_probes_match_the_current_core_schema() -> None:
+    from mercury.backup.freshness import SOURCE_ACTIVITY_PROBES
+
+    probes = SOURCE_ACTIVITY_PROBES["obsidiandroid_core_prod"]
+    labels = {label for label, _statement in probes}
+    sql = "\n".join(statement for _label, statement in probes)
+    assert "core_schema_migration.applied_at_utc" in labels
+    assert "core_artifact.imported_at_utc" in labels
+    assert "obsidiandroid_core_prod.core_schema_migration" in sql
+    assert "schema_migrations " not in sql
 
 
 def test_backup_screen_rows_never_use_current_label(
@@ -185,7 +209,7 @@ def test_build_backup_status_report_includes_freshness_fields(
     )
     monkeypatch.setattr(
         "mercury.backup.status.assess_backup_freshness",
-        lambda database, backup_at, live=True: type(
+        lambda database, backup_at, live=True, **_kwargs: type(
             "Freshness",
             (),
             {
@@ -227,6 +251,7 @@ def test_display_status_labels() -> None:
 
     assert display_artifact_status_label("failed") == "Unverified"
     assert display_freshness_label("stale") == "Stale"
+    assert display_freshness_label("empty") == "Empty"
     assert display_freshness_label(None) == "—"
     assert backup_entry_status_label(None) == "Missing"
     assert menu_handoff_problem_summary(["1 stale"]) == (

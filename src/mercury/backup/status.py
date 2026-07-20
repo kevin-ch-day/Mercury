@@ -19,6 +19,8 @@ from mercury.backup.layout import MANIFEST_FILENAME
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
 from mercury.database.core import classify_database
+from mercury.database.mariadb.inspect import inspect_database_on_server
+from mercury.database.mariadb.session import try_load_mariadb_config
 
 
 class BackupStatusEntry(BaseModel):
@@ -33,6 +35,7 @@ class BackupStatusEntry(BaseModel):
     activity_signal: str | None = None
     backup_age: str | None = None
     recommend_full_backup: bool = False
+    source_is_empty: bool = False
     issues: list[str] = Field(default_factory=list)
 
 
@@ -91,6 +94,24 @@ def _live_server_database_names(*, live: bool) -> set[str] | None:
         return None
 
 
+def _source_is_empty_on_server(database: str, *, live: bool, present: bool) -> bool:
+    """Return whether a present source has no tables/views, without treating errors as empty."""
+    if not live or not present:
+        return False
+    config = try_load_mariadb_config()
+    if config is None:
+        return False
+    try:
+        inspected = inspect_database_on_server(database, config)
+    except Exception:
+        return False
+    return bool(
+        inspected.exists_on_server
+        and inspected.table_count == 0
+        and inspected.view_count == 0
+    )
+
+
 def build_backup_status_report(
     *,
     live: bool = False,
@@ -116,6 +137,9 @@ def build_backup_status_report(
         role = _role_label(database)
         backup_dir = find_latest_backup_directory(resolved_policy.backup_root, database)
         absent_on_server = server_names is not None and database not in server_names
+        source_is_empty = _source_is_empty_on_server(
+            database, live=live, present=not absent_on_server,
+        )
 
         if backup_dir is None:
             if absent_on_server:
@@ -139,6 +163,15 @@ def build_backup_status_report(
                     role=role,
                     protection_status="missing",
                     recommend_full_backup=True,
+                    source_is_empty=source_is_empty,
+                    issues=(
+                        [
+                            "Live database has no tables or views; create one verified backup "
+                            "to preserve the empty schema on the destination."
+                        ]
+                        if source_is_empty
+                        else []
+                    ),
                 )
             )
             missing_count += 1
@@ -150,6 +183,7 @@ def build_backup_status_report(
             database,
             backup_at=parse_backup_timestamp(backup_created_at),
             live=live and not absent_on_server,
+            source_is_empty=source_is_empty,
         )
 
         verification = verify_backup_artifacts(backup_dir, database=database)
@@ -200,6 +234,7 @@ def build_backup_status_report(
                     (freshness.recommend_full_backup or status != "verified")
                     and not absent_on_server
                 ),
+                source_is_empty=source_is_empty,
                 issues=issues,
             )
         )

@@ -74,6 +74,14 @@ def test_audit_exit_codes_distinguish_warning_and_blocker() -> None:
     assert StorageAuditReport(verification=blocked).exit_code == 2
 
 
+def test_audit_report_records_post_cutover_context() -> None:
+    report = StorageAuditReport(
+        verification=MigrationVerifyReport(source_mount="source", dest_mount="dest"),
+        post_cutover=True,
+    )
+    assert report.post_cutover is True
+
+
 def test_write_storage_audit_report_is_parseable_json(tmp_path) -> None:
     report = StorageAuditReport(
         verification=MigrationVerifyReport(source_mount="source", dest_mount="destination"),

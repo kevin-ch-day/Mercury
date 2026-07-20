@@ -24,7 +24,7 @@ Mercury safety policy:
 SAFETY_NOTES = [
     "Backups write to operator storage when MariaDB, config, and backup root are valid.",
     "Production (*_prod) and shared authority DBs are backup sources.",
-    "Development (*_dev) DBs are excluded from backup; they are disposable refresh targets rebuilt from verified source backups.",
+    "Development (*_dev) DBs are excluded from routine backup; an explicit confirmed recovery capture is available only for configured dev targets.",
     "Never drop or overwrite *_prod.",
     "Verify source backups before any prod-to-dev sync so dev refresh never runs without source protection.",
     "Restore-check temp DBs (_restorecheck_*) are never backup sources.",

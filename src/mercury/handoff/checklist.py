@@ -52,6 +52,17 @@ class HandoffChecklist(BaseModel):
         return actions
 
 
+def aggregate_handoff_status(steps: list[HandoffStep], *, package_status: str) -> str:
+    """Checklist failures override package-level warnings for operator safety."""
+    failed = sum(step.status == "fail" for step in steps)
+    warned = sum(step.status == "warn" for step in steps)
+    if failed:
+        return f"blocked · {failed} failed check" + ("s" if failed != 1 else "")
+    if warned or package_status != "complete":
+        return "complete with warnings"
+    return "complete"
+
+
 def _path_mtime(path: Path | None) -> datetime | None:
     if path is None or not path.is_file():
         return None
@@ -306,8 +317,11 @@ def build_handoff_checklist_from_bundle(
         else None
     )
     db_index = _latest_glob_file(manifest_dir, "**/database_transfer_manifest_*.json")
+    steps = _build_steps(bundle, policy=policy)
     return HandoffChecklist(
-        handoff_status=handoff_status_for_bundle(bundle),
+        handoff_status=aggregate_handoff_status(
+            steps, package_status=handoff_status_for_bundle(bundle)
+        ),
         database_package=database_package_status_for_bundle(bundle),
         repository_package=repository_package_status_for_bundle(bundle),
         latest_transfer_manifest=str(transfer_path) if transfer_path else None,
@@ -315,7 +329,7 @@ def build_handoff_checklist_from_bundle(
         latest_database_bundle_manifest=str(db_index) if db_index else None,
         latest_database_bundle_age=_artifact_age_label(db_index),
         state_bundle_rows=rows,
-        steps=_build_steps(bundle, policy=policy),
+        steps=steps,
     )
 
 

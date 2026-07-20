@@ -45,6 +45,7 @@ class StorageAuditReport:
     differences: tuple[HashDifference, ...] = ()
     primary_mount_targets: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
+    post_cutover: bool = False
 
     @property
     def durable_differences(self) -> tuple[HashDifference, ...]:
@@ -145,6 +146,7 @@ def build_storage_audit(*, hash_files: bool = False) -> StorageAuditReport:
             hashes_requested=hash_files,
             primary_mount_targets=mount_targets,
             warnings=tuple(warnings),
+            post_cutover=cfg.cutover_complete,
         )
     files_hashed, identical, differences = hash_compare_trees(
         Path(verification.source_mount), Path(verification.dest_mount)
@@ -157,6 +159,7 @@ def build_storage_audit(*, hash_files: bool = False) -> StorageAuditReport:
         differences=differences,
         primary_mount_targets=mount_targets,
         warnings=tuple(warnings),
+        post_cutover=cfg.cutover_complete,
     )
 
 

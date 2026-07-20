@@ -42,6 +42,15 @@ Schema-only uses planned `*.schema.sql.gz` files. Full verified backups are **re
 - **Schema-only** verified backups are useful for schema review and empty shells; they are **not** sufficient for full DR or prod-to-dev sync.
 - **Full verified** backups are required before prod-to-dev sync so Mercury can protect the source state before refreshing dev.
 
+### Live-presence status terms
+
+For a source included in a live protection report, `absent` means the source
+schema was not present on the MariaDB server that was probed. `missing` means
+the source schema was present on that server, but no qualifying backup package
+was found. These are deliberately different states: an absent schema does not
+become a missing backup merely because it is listed in the configured source
+catalog.
+
 ## Seed mode (M4 / M4.5)
 
 - `mercury backup schema-plan --demo` — schema-only dry-run plan

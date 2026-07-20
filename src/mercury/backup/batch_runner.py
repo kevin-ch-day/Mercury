@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
+from pathlib import Path
 
 from mercury.backup.backup_runner import BackupExecutionError, BackupExecutionResult, execute_backup
 from mercury.backup.manifest import BackupKind
@@ -25,6 +26,12 @@ class BackupBatchResult(BaseModel):
 
 class BackupSourceSelectionError(ValueError):
     """Selected backup source list is not valid for the current scope."""
+
+
+class DevelopmentBackupVerification(BaseModel):
+    verified: int = 0
+    failed: int = 0
+    issues: list[str] = Field(default_factory=list)
 
 
 def resolve_batch_sources(*, live: bool = False) -> list[str]:
@@ -68,6 +75,19 @@ def select_batch_sources(
     return resolved
 
 
+def resolve_development_backup_sources(*, live: bool = False) -> list[str]:
+    """Configured dev targets that exist in the current inventory.
+
+    This is intentionally separate from routine source protection.  It is for
+    a deliberate pre-migration/recovery capture, never a default backup lane.
+    """
+    from mercury.database.discovery import discover_for_planning
+    from mercury.database.core.scope import is_active_dev_target
+
+    inventory = discover_for_planning(live=live)
+    return sorted(name for name in inventory.names if is_active_dev_target(name))
+
+
 def run_backup_batch(
     kind: BackupKind,
     *,
@@ -76,6 +96,7 @@ def run_backup_batch(
     policy: ExecutionPolicy | None = None,
     sources: list[str] | None = None,
     dump_runner=None,
+    allow_development_backup: bool = False,
 ) -> BackupBatchResult:
     """Plan or execute backups for all approved backup sources."""
     resolved_policy = policy or load_execution_policy()
@@ -97,6 +118,7 @@ def run_backup_batch(
                 dump_runner=dump_runner,
                 live=live,
                 server_names=server_names,
+                allow_development_backup=allow_development_backup,
             )
         except BackupExecutionError as exc:
             batch.errors.append(f"{database}: {exc}")
@@ -122,3 +144,23 @@ def run_backup_batch(
         errors=len(batch.errors),
     )
     return batch
+
+
+def verify_development_backup_batch(batch: BackupBatchResult) -> DevelopmentBackupVerification:
+    """Verify newly written optional dev backups and stamp their manifests."""
+    from mercury.backup.verification import verify_backup_directory
+
+    summary = DevelopmentBackupVerification()
+    for result in batch.results:
+        if not result.executed or not result.backup_directory_path:
+            continue
+        verification = verify_backup_directory(
+            Path(result.backup_directory_path), database=result.database, update_manifest=True,
+            allow_development_backup=True,
+        )
+        if verification.verified:
+            summary.verified += 1
+        else:
+            summary.failed += 1
+            summary.issues.append(f"{result.database}: {(verification.issues or ['verification failed'])[0]}")
+    return summary

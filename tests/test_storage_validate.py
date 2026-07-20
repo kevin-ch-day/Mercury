@@ -12,6 +12,8 @@ from mercury.core.storage_roles import (
     StorageWriteRole,
 )
 from mercury.core.storage_roots import (
+    StorageConfig,
+    StorageRootConfig,
     assess_routine_write_permission,
     default_storage_config,
     write_freeze_active,
@@ -35,6 +37,21 @@ def test_default_storage_keeps_legacy_as_active_writer() -> None:
     assert cfg.active_write_root.mount_path == Path("/mnt/MERCURY_DATA_USB")
     assert CONTROL_DIRNAME == ".mercury_control"
     assert str(cfg.primary.control_dir).endswith("/.mercury_control")
+
+
+def test_post_cutover_never_falls_back_to_writable_usb_when_hdd_fails(tmp_path: Path) -> None:
+    """A primary writer failure must fail closed, even with a writable USB."""
+    primary = tmp_path / "missing-hdd"
+    usb = tmp_path / "writable-usb"; usb.mkdir()
+    cfg = StorageConfig(
+        primary=StorageRootConfig("primary", StorageRootRole.CANONICAL, "HDD", primary, "expected-hdd", "ext4", True),
+        legacy=StorageRootConfig("legacy", StorageRootRole.LEGACY_ARCHIVE, "USB", usb, "usb", "ext4", True),
+        active_write_role=StorageWriteRole.PRIMARY, migration_state=MigrationState.CUTOVER_COMPLETE,
+    )
+    gate = assess_routine_write_permission(cfg, validate_mount=True)
+    assert gate.allowed is False
+    assert gate.mount_validation is not None
+    assert gate.mount_validation.code == MountValidationCode.MOUNT_PATH_MISSING
 
 
 def test_space_policy_uses_max_of_floor_and_percent() -> None:

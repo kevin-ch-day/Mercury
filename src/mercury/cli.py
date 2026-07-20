@@ -32,6 +32,7 @@ state_app = typer.Typer(help="Portable Mercury operation ledger and summaries.")
 storage_app = typer.Typer(
     help="Primary/legacy storage status, audit, validate, migrate plan/run/verify (no cutover)."
 )
+migration_app = typer.Typer(help="Read-only workstation migration readiness and blockers.")
 
 app.add_typer(env_app, name="env")
 app.add_typer(db_app, name="db")
@@ -47,6 +48,7 @@ app.add_typer(report_app, name="report")
 app.add_typer(logs_app, name="logs")
 app.add_typer(state_app, name="state")
 app.add_typer(storage_app, name="storage")
+app.add_typer(migration_app, name="migration")
 repair_app = typer.Typer(help="Host repair helpers.")
 app.add_typer(repair_app, name="repair")
 
@@ -206,6 +208,143 @@ def storage_validate_cmd() -> None:
     code = print_storage_validate(build_storage_status_report())
     if code:
         raise typer.Exit(code)
+
+
+@storage_app.command("archive-receipt")
+def storage_archive_receipt_cmd(
+    execute: bool = typer.Option(False, "--execute", help="Write the immutable USB archive receipt on the HDD."),
+    override: bool = typer.Option(False, "--administrative-override", help="Replace an existing historical receipt (administrative use only)."),
+    confirm: str | None = typer.Option(None, "--confirm", help="Required with override: REPLACE USB ARCHIVE RECEIPT."),
+) -> None:
+    """Preview or record USB recovery-archive evidence; never writes to USB."""
+    from mercury.storage.archive_receipt import build_archive_receipt, record_archive_receipt
+
+    if override and (not execute or confirm != "REPLACE USB ARCHIVE RECEIPT"):
+        raise typer.BadParameter("--administrative-override requires --execute --confirm 'REPLACE USB ARCHIVE RECEIPT'")
+    try:
+        result = record_archive_receipt(override=override) if execute else build_archive_receipt()
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    output.heading("USB Archive Receipt")
+    output.field("Mode", "EXECUTE" if execute else "PREVIEW")
+    output.field("Application policy", result.payload["application_policy"])
+    output.field("Filesystem mode", result.payload["filesystem_mount_mode"])
+    output.field("Archive generation", result.payload["final_usb_archive_generation"])
+    output.field("Manifest SHA-256", result.payload["manifest_sha256"])
+    output.field("Receipt", str(result.path) if execute else f"would write {result.path}")
+    output.field("Physical retirement", "not authorized")
+    if not execute:
+        output.write("\nPreview only. No USB or HDD artifact was written.")
+
+
+@migration_app.command("blockers")
+def migration_blockers_cmd() -> None:
+    """Show unresolved workstation-migration checks without changing state."""
+    from mercury.migration.readiness import build_migration_readiness
+    from mercury.migration.terminal import print_migration_blockers
+
+    code = print_migration_blockers(build_migration_readiness())
+    if code:
+        raise typer.Exit(code)
+
+
+@migration_app.command("next")
+def migration_next_cmd() -> None:
+    """Show the single highest-priority read-only migration action."""
+    from mercury.migration.readiness import build_migration_readiness
+    from mercury.migration.terminal import print_migration_next
+
+    code = print_migration_next(build_migration_readiness())
+    if code:
+        raise typer.Exit(code)
+
+
+@migration_app.command("package-status")
+def migration_package_status_cmd() -> None:
+    """Show historical cutover evidence and the authoritative active package."""
+    from mercury.core.storage_roots import load_storage_config
+    from mercury.migration.generation import (
+        build_active_hdd_generation, build_usb_generation, read_archive_receipt,
+        read_cutover_receipt, read_verified_generation,
+    )
+    from mercury.migration.readiness import _repo_checks
+
+    config = load_storage_config(warn_deprecated=False)
+    output.heading("Migration Package Status")
+    if config.cutover_complete:
+        active = build_active_hdd_generation(config=config)
+        cutover = read_cutover_receipt(config=config)
+        verified = read_verified_generation(config=config)
+        archive = read_archive_receipt(config=config)
+        erebus, scytale, _runtime, repos = _repo_checks()
+        current_web = sum(check.state.value == "PASS" for check in (erebus, scytale))
+        output.write("  Active package: HDD")
+        output.write(f"  HDD package generation: {active.generation}")
+        output.write(f"  Final USB archive generation: {(cutover or {}).get('final_usb_archive_generation') or verified or 'missing'}")
+        output.write(f"  Cutover HDD generation: {(cutover or {}).get('cutover_verified_hdd_generation') or verified or 'missing'}")
+        output.write(f"  Cutover receipt: {'Recorded' if cutover else 'Historical record missing'}")
+        output.write(f"  Web snapshots: {current_web} current · restore checked")
+        output.write(f"  Repository worktrees: {repos.summary}")
+        output.write(f"  USB archive: {'Receipt recorded' if archive else 'Receipt missing'}")
+        output.write("  Destination PC: Not validated")
+    else:
+        generation = build_usb_generation(config=config)
+        verified = read_verified_generation(config=config)
+        output.write("  Active package: USB")
+        output.write(f"  USB generation: {generation.generation}")
+        output.write(f"  USB durable entries: {generation.durable_entries}")
+        output.write(f"  USB durable files: {generation.durable_files}")
+        output.write(f"  HDD verified generation: {verified or 'none'}")
+        output.write(f"  HDD mirror: {'Current' if verified == generation.generation else 'Refresh required'}")
+
+
+@migration_app.command("capture-web")
+def migration_capture_web_cmd(
+    execute: bool = typer.Option(False, "--execute", help="Write restricted snapshots to the active operator storage."),
+) -> None:
+    """Preview or capture dirty web worktrees; source repositories are never modified."""
+    from mercury.migration.web_capture import capture_web_worktrees
+
+    results = capture_web_worktrees(execute=execute)
+    output.heading("Web Worktree Capture")
+    output.field("Mode", "EXECUTE" if execute else "PREVIEW")
+    for result in results:
+        outcome = "restore checked" if result.restore_checked else ("preview" if not execute else "failed")
+        output.write(f"  {result.name}: {outcome} · {result.snapshot_dir}")
+        if result.error:
+            output.write(f"    error: {result.error}")
+    if not execute:
+        output.write("\nPreview only. Re-run with --execute to write restricted snapshots.")
+    if any(result.error for result in results):
+        raise typer.Exit(1)
+
+
+@migration_app.command("capture-worktrees")
+def migration_capture_worktrees_cmd(
+    execute: bool = typer.Option(False, "--execute", help="Write restricted snapshots to the active HDD."),
+    repo: list[str] = typer.Option(None, "--repo", help="Configured repository key to capture (repeatable)."),
+) -> None:
+    """Preview or capture dirty configured repositories; source repositories are never modified."""
+    from mercury.migration.web_capture import capture_worktrees
+    from mercury.repo.config import RepoSelectionError
+
+    try:
+        results = capture_worktrees(execute=execute, keys=set(repo) if repo else None)
+    except RepoSelectionError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    output.heading("Worktree Capture")
+    output.field("Mode", "EXECUTE" if execute else "PREVIEW")
+    if not results:
+        output.write("  No selected dirty configured worktrees require capture.")
+    for result in results:
+        outcome = "restore checked" if result.restore_checked else ("preview" if not execute else "failed")
+        output.write(f"  {result.name}: {outcome} · {result.snapshot_dir}")
+        if result.error:
+            output.write(f"    error: {result.error}")
+    if not execute:
+        output.write("\nPreview only. Re-run with --execute to write restricted snapshots.")
+    if any(result.error for result in results):
+        raise typer.Exit(1)
 
 
 @storage_app.command("audit")
@@ -424,6 +563,11 @@ def storage_migrate_verify_cmd(
         "--write-report",
         help="Write JSON verify report under output/storage/.",
     ),
+    record_generation: bool = typer.Option(
+        False,
+        "--record-generation",
+        help="On successful verification, record this USB package generation as the final HDD mirror.",
+    ),
 ) -> None:
     """Verify legacy content matches primary (no copy, no cutover)."""
     from mercury.storage.migrate_verify import verify_migration
@@ -431,6 +575,11 @@ def storage_migrate_verify_cmd(
 
     report = verify_migration(update_state=update_state, write_repo_report=write_report)
     code = print_migration_verify(report)
+    if report.ok and record_generation:
+        from mercury.migration.generation import build_usb_generation, record_verified_generation
+
+        path = record_verified_generation(build_usb_generation())
+        output.write(f"Final package generation recorded: {path}")
     if code:
         raise typer.Exit(code)
 
@@ -444,6 +593,20 @@ def storage_cutover_readiness_cmd() -> None:
     code = print_cutover_readiness(build_cutover_readiness())
     if code:
         raise typer.Exit(code)
+
+
+@storage_app.command("cutover-approve")
+def storage_cutover_approve_cmd(
+    confirm: str = typer.Option("", "--confirm", help="Required phrase: USE HDD WRITER."),
+) -> None:
+    """Select verified HDD as writer; preserves a rollback config copy and never changes mounts."""
+    from mercury.storage.cutover_approve import approve_hdd_writer_cutover
+
+    try:
+        backup = approve_hdd_writer_cutover(confirmation=confirm)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    output.write(f"HDD is now the active writer. Rollback config: {backup}")
 
 
 @storage_app.command("cutover-plan")
@@ -991,6 +1154,40 @@ def backup_batch_cmd(
         raise typer.Exit(1)
 
 
+@backup_app.command("dev")
+def backup_dev_cmd(
+    execute: bool = typer.Option(False, "--execute", help="Write optional development recovery backups."),
+    confirm: str | None = typer.Option(None, "--confirm", help="Required with --execute: BACKUP DEV DATABASES."),
+    demo: bool = typer.Option(False, "--demo", help="Use demo/catalog inventory instead of live server."),
+) -> None:
+    """Preview or explicitly back up configured development recovery targets."""
+    from mercury.backup.batch_runner import (
+        resolve_development_backup_sources, run_backup_batch, verify_development_backup_batch,
+    )
+    from mercury.backup.terminal.batch import print_backup_batch_result
+
+    if execute and confirm != "BACKUP DEV DATABASES":
+        raise typer.BadParameter("--execute requires --confirm 'BACKUP DEV DATABASES'")
+    sources = resolve_development_backup_sources(live=not demo)
+    if not sources:
+        output.write("No configured development databases are present on this MariaDB server.")
+        return
+    batch = run_backup_batch(
+        "full", execute=execute, live=not demo, sources=sources,
+        allow_development_backup=True,
+    )
+    print_backup_batch_result(batch)
+    if execute and batch.executed_count:
+        verification = verify_development_backup_batch(batch)
+        output.write(f"Development backup verification: {verification.verified} verified · {verification.failed} failed")
+        for issue in verification.issues:
+            output.write(f"  {issue}")
+        if verification.failed:
+            raise typer.Exit(1)
+    if batch.errors or (execute and batch.refused_count and not batch.executed_count):
+        raise typer.Exit(1)
+
+
 @backup_app.command("all")
 def backup_all_cmd(
     kind: str = typer.Option("full", "--kind", help="Backup kind: full or schema_only."),
@@ -1426,6 +1623,81 @@ def deploy_db_cmd(
         return
 
     batch = execute_deployment_batch(databases=selected, options=options, execute=True)
+    print_deployment_summary(batch)
+    if batch.failed_count:
+        raise typer.Exit(1)
+
+
+@deploy_app.command("dev")
+def deploy_dev_cmd(
+    database: list[str] | None = typer.Option(
+        None,
+        "--database",
+        "--db",
+        help="Deploy one configured development recovery database (repeatable).",
+    ),
+    dry_run: bool = typer.Option(
+        True,
+        "--dry-run/--no-dry-run",
+        help="Plan only; do not import (default).",
+    ),
+    execute: bool = typer.Option(False, "--execute", help="Import the selected development backups."),
+    confirm: str | None = typer.Option(
+        None,
+        "--confirm",
+        help="Required with --execute: DEPLOY DEV BACKUPS.",
+    ),
+    allow_create: bool = typer.Option(
+        True,
+        "--allow-create/--no-allow-create",
+        help="Allow CREATE DATABASE when a development target is missing.",
+    ),
+    skip_existing: bool = typer.Option(
+        True,
+        "--skip-existing/--no-skip-existing",
+        help="Skip development databases that already exist locally (default).",
+    ),
+) -> None:
+    """Plan or explicitly deploy verified HDD development recovery backups."""
+    from mercury.backup.batch_runner import resolve_development_backup_sources
+    from mercury.deploy.models import DeployOptions
+    from mercury.deploy.plan import build_deployment_plan
+    from mercury.deploy.runner import execute_deployment_batch
+    from mercury.deploy.terminal.plan import print_deployment_plan
+    from mercury.deploy.terminal.summary import print_deployment_summary
+
+    allowed = set(resolve_development_backup_sources(live=False))
+    selected = list(database) if database else None
+    if selected and (invalid := sorted(set(selected) - allowed)):
+        typer.echo("Development deployment only permits configured targets: " + ", ".join(sorted(allowed)))
+        raise typer.Exit(1)
+    if execute and confirm != "DEPLOY DEV BACKUPS":
+        raise typer.BadParameter("--execute requires --confirm 'DEPLOY DEV BACKUPS'")
+    if execute:
+        dry_run = False
+
+    options = DeployOptions(
+        allow_create_database=allow_create,
+        skip_existing=skip_existing,
+    )
+    if dry_run and not execute:
+        plan = build_deployment_plan(
+            databases=selected,
+            options=options,
+            execute=False,
+            allow_development_deploy=True,
+        )
+        print_deployment_plan(plan)
+        if not plan.candidates and plan.blockers:
+            raise typer.Exit(1)
+        return
+
+    batch = execute_deployment_batch(
+        databases=selected,
+        options=options,
+        execute=True,
+        allow_development_deploy=True,
+    )
     print_deployment_summary(batch)
     if batch.failed_count:
         raise typer.Exit(1)

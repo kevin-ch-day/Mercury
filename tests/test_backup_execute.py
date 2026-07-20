@@ -348,6 +348,8 @@ def test_manifest_fields_are_stable() -> None:
         "live_actions_enabled",
         "dry_run",
         "notes",
+        "dump_options",
+        "object_contract",
     }
     assert data["backup_kind"] == "full"
     assert data["live_actions_enabled"] is True
@@ -370,7 +372,7 @@ def test_live_execution_writes_manifest_and_checksum(tmp_path: Path) -> None:
     assert result.refused is False
     assert result.manifest is not None
 
-    backup_dir = tmp_path / "backups" / FIXED_DATE / "erebus_threat_intel_prod"
+    backup_dir = tmp_path / "backups" / FIXED_DATE / "erebus_threat_intel_prod" / FIXED_TS
     assert (backup_dir / "manifest.json").exists()
     assert (backup_dir / "checksum.sha256").exists()
     assert (backup_dir / "backup_report.md").exists()
@@ -394,7 +396,7 @@ def test_full_backup_writes_dump_and_schema_companion(tmp_path: Path) -> None:
         mariadb_config=_fake_mariadb_config(),
         dump_runner=_fake_dump_runner,
     )
-    backup_dir = tmp_path / "backups" / FIXED_DATE / "android_permission_intel"
+    backup_dir = tmp_path / "backups" / FIXED_DATE / "android_permission_intel" / FIXED_TS
     layout = build_backup_layout(
         "android_permission_intel",
         date=FIXED_DATE,
@@ -492,7 +494,7 @@ def test_manifest_sha256_matches_artifact(tmp_path: Path) -> None:
         dump_runner=_fake_dump_runner,
     )
     assert result.manifest is not None
-    backup_dir = tmp_path / "backups" / FIXED_DATE / "erebus_threat_intel_prod"
+    backup_dir = tmp_path / "backups" / FIXED_DATE / "erebus_threat_intel_prod" / FIXED_TS
     artifact = backup_dir / result.manifest.dump_file
     assert result.manifest.sha256 == sha256_file(artifact)
 def test_cli_backup_run_preview_with_dry_run_flag() -> None:

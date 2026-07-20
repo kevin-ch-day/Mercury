@@ -24,6 +24,7 @@ class CutoverPlan:
     path_changes: tuple[CutoverPathChange, ...]
     target_active_write_role: str = "primary"
     execution_available: bool = False
+    already_complete: bool = False
     runtime_blockers: tuple[str, ...] = (
         "No atomic cutover transaction updates the storage role and all legacy [mercury] paths together.",
         "Mercury does not yet validate a post-cutover writer, retain a rollback record, or lock the USB archive read-only.",
@@ -61,4 +62,6 @@ def build_cutover_plan(
     return CutoverPlan(
         readiness=readiness,
         path_changes=tuple(CutoverPathChange(key, legacy[key], primary[key]) for key in keys),
+        already_complete=cfg.cutover_complete,
+        runtime_blockers=() if cfg.cutover_complete else CutoverPlan.runtime_blockers,
     )

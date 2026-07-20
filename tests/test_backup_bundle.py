@@ -57,7 +57,7 @@ def test_write_database_bundle_plan_writes_manifest_and_runbook(
         "android_permission_intel-full-20260608_120000",
     )
 
-    monkeypatch.setattr("mercury.core.usb_mount.resolve_usb_mount", lambda **kwargs: usb_root)
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_operator_mount", lambda **kwargs: usb_root)
     monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
     monkeypatch.setattr(
         "mercury.backup.bundle.load_repo_bundle_settings",
@@ -362,7 +362,7 @@ def test_write_database_bundle_plan_records_ledger(
         "android_permission_intel-full-20260608_120000",
     )
 
-    monkeypatch.setattr("mercury.core.usb_mount.resolve_usb_mount", lambda **kwargs: usb_root)
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_operator_mount", lambda **kwargs: usb_root)
     monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
     monkeypatch.setattr("mercury.state.ledger.resolve_state_root", lambda policy=None: state_root)
     monkeypatch.setattr(

@@ -60,6 +60,7 @@ def build_deployment_plan(
     options: DeployOptions | None = None,
     execute: bool = False,
     row_fn=None,
+    allow_development_deploy: bool = False,
 ) -> DeploymentPlan:
     resolved = policy or load_execution_policy()
     opts = options or DeployOptions()
@@ -71,6 +72,7 @@ def build_deployment_plan(
         policy=resolved,
         databases=databases,
         existing_on_server=server_databases,
+        allow_development_deploy=allow_development_deploy,
     )
 
     blockers = list(preflight.planning_blockers if not execute else preflight.blockers)

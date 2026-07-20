@@ -111,6 +111,17 @@ def test_build_backup_status_report_live_anchors_missing_configured_source(
         "mercury.database.discovery.discover_for_planning",
         lambda live=False: inventory,
     )
+    # ``absent`` is determined by the live-server presence boundary, not by
+    # planning discovery. Keep this fixture independent of the host MariaDB
+    # state so it continues to model a source that is genuinely absent.
+    monkeypatch.setattr(
+        "mercury.backup.status._live_server_database_names",
+        lambda **kwargs: {
+            "erebus_threat_intel_prod",
+            "android_permission_intel",
+            "scytaledroid_core_prod",
+        },
+    )
 
     report = build_backup_status_report(
         live=True,
@@ -223,6 +234,6 @@ def test_cli_backup_status_compact_report(tmp_path: Path) -> None:
 
 
 def test_cli_backup_all_alias_matches_batch_output() -> None:
-    result = run_cli("backup", "all", "--demo", "--db", "android_permission_intel")
+    result = run_cli("backup", "all", "--demo", "--db", "android_permission_intel", "--dry-run")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "BACKUP BATCH" in result.stdout
