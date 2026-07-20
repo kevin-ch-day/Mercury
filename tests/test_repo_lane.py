@@ -12,6 +12,7 @@ import subprocess
 import pytest
 
 from mercury.repo.bundle import build_repo_bundle_plan, execute_repo_bundle_plan
+from mercury.repo.offline_clone import build_offline_clone_plan, execute_offline_clone_plan
 from mercury.repo.config import (
     RepoBundleSettings,
     RepoDefinition,
@@ -39,6 +40,12 @@ def _git(path: Path, *args: str) -> None:
         text=True,
         env=env,
     )
+
+
+def _git_output(path: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=path, check=True, capture_output=True, text=True
+    ).stdout.strip()
 
 
 def _make_repo(tmp_path: Path, name: str) -> Path:
@@ -69,6 +76,60 @@ def test_inspect_repositories_reports_dirty_and_untracked(tmp_path: Path) -> Non
     assert status.dirty is True
     assert status.untracked_count == 1
     assert status.state_label == "dirty"
+
+
+def test_offline_clone_sync_creates_independent_hdd_worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = _make_repo(tmp_path, "source")
+    status = inspect_repositories([RepoDefinition(key="source", display_name="Source", path=source)])[0]
+    hdd = tmp_path / "hdd"
+    plan = build_offline_clone_plan([status], root=hdd / "mercury_repo_clones")
+
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_operator_mount", lambda **kwargs: hdd)
+    monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
+    executed = execute_offline_clone_plan(plan)
+
+    entry = executed.entries[0]
+    assert entry.executed is True
+    assert entry.action == "clone"
+    assert entry.destination_path != source
+    assert (entry.destination_path / "README.md").is_file()
+    assert _git_output(entry.destination_path, "rev-parse", "HEAD") == status.commit
+    assert executed.receipt_path is not None and executed.receipt_path.is_file()
+    assert stat.S_IMODE(executed.receipt_path.stat().st_mode) == 0o600
+    receipt = json.loads(executed.receipt_path.read_text(encoding="utf-8"))
+    assert receipt["repositories"][0]["commit"] == status.commit
+    assert receipt["repositories"][0]["synced"] is True
+
+    (entry.destination_path / "README.md").write_text("offline edit\n", encoding="utf-8")
+    blocked = build_offline_clone_plan([status], root=hdd / "mercury_repo_clones")
+    assert blocked.entries[0].action == "blocked"
+    assert "local changes" in (blocked.entries[0].error or "")
+
+
+def test_offline_clone_terminal_marks_executed_entries_as_synced(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    from mercury.repo.offline_clone import OfflineCloneEntry, OfflineClonePlan
+    from mercury.repo.offline_terminal import print_offline_clone_plan
+
+    plan = OfflineClonePlan(
+        root=tmp_path,
+        entries=[
+            OfflineCloneEntry(
+                key="mercury",
+                display_name="Mercury",
+                source_path=tmp_path / "source",
+                destination_path=tmp_path / "copy",
+                commit="a" * 40,
+                source_dirty=True,
+                action="clone",
+                executed=True,
+            )
+        ],
+    )
+
+    print_offline_clone_plan(plan, executed=True)
+    text = capsys.readouterr().out
+    assert "synced" in text
+    assert "source dirty" in text
 
 
 def test_inspect_repositories_reports_ahead_behind_when_available(tmp_path: Path) -> None:

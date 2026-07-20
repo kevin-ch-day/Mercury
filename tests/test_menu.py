@@ -220,8 +220,10 @@ def test_render_main_menu_matches_simple_layout(monkeypatch: pytest.MonkeyPatch)
     assert "Execution Safety" not in text
     assert "─" in text
     assert "      [1] Backup source databases" in text
-    assert "      [7] System Deployment" in text
-    assert "      [8] Disaster Recovery" in text
+    assert "      [4] Sync Offline GitHub Repositories" in text
+    assert "      [8] System Deployment" in text
+    assert "      [9] Disaster Recovery" in text
+    assert "      [10] Workstation handoff" in text
     assert "      [0] Exit" in text
     assert "Operator-storage checklist" not in text
     assert "Core workflows" not in text

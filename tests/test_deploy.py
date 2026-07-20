@@ -99,8 +99,8 @@ def _seed_all_verified(policy: ExecutionPolicy) -> None:
 
 def test_deploy_lane_appears_in_menu() -> None:
     keys = {item.key for _section, items in menu_display.MENU_SECTIONS for item in items}
-    assert "7" in keys
-    assert menu_actions()["7"].title == "System Deployment"
+    assert "8" in keys
+    assert menu_actions()["8"].title == "System Deployment"
 
 
 def test_database_deploy_status_rows_describe_missing_databases(
@@ -672,4 +672,4 @@ def test_deploy_plan_blocks_stale_backup_on_live_execute(
 def test_handoff_lane_appears_in_menu() -> None:
     keys = {item.key for _section, items in menu_display.MENU_SECTIONS for item in items}
     assert "9" in keys
-    assert menu_actions()["9"].title == "Workstation handoff"
+    assert menu_actions()["10"].title == "Workstation handoff"

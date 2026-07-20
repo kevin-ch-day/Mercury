@@ -41,8 +41,15 @@ Missing protected sources (e.g. `obsidiandroid_core_prod` not yet on MariaDB) ap
 
 ```bash
 cd /path/to/Mercury
-./run.sh                         # interactive menu (creates .venv on first run)
+./setup.sh                       # first-run bootstrap for a fresh clone
+./run.sh                         # interactive menu
 ```
+
+`./setup.sh` creates the local virtual environment and installs Mercury's
+Python dependencies. It does **not** install OS packages, mount storage,
+modify MariaDB, or write backups. On a receiving host, mount
+`MERCURY_DATA_V2` first; use `./setup.sh --init-config` only to create missing
+local config templates, then review them before running `./run.sh doctor`.
 
 The menu groups actions by task, pauses after each screen, and accepts `q` to quit.
 
@@ -163,9 +170,17 @@ mercury sync all [--live] [--execute]
 mercury repo init-config [--force]
 mercury repo status [--verbose]
 mercury repo bundle [--repo mercury] [--execute]
+mercury repo offline-sync [--execute --confirm "SYNC OFFLINE REPOS"]
 ```
 
 `repo init-config` writes `config/repos.toml` from the known Fedora desktop repo paths. `repo status` is read-only and reports configured repo path, branch, commit, remote, clean/dirty state, untracked count, and upstream ahead/behind status when available. `repo bundle --execute` writes Git bundles plus repo manifests and short restore notes under the operator-storage paths configured in `config/local.toml`. Mercury keeps one current verified bundle set per repo and prunes older repo bundle artifacts only after the replacement bundle is written and verified successfully.
+
+`repo offline-sync` previews independent, runnable Git checkouts under
+`<active operator mount>/mercury_repo_clones` (currently
+`/mnt/MERCURY_DATA_V2/mercury_repo_clones`). It never changes source checkouts,
+refuses to overwrite a dirty offline copy, and creates clones with
+`--no-hardlinks` so they remain usable if the source disk disappears. Execute
+only with `--confirm "SYNC OFFLINE REPOS"`.
 
 ### Combined transfer
 

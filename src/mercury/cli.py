@@ -832,6 +832,26 @@ def repo_bundle_cmd(
     print_repo_bundle_plan(executed_plan, executed=True)
 
 
+@repo_app.command("offline-sync")
+def repo_offline_sync_cmd(
+    execute: bool = typer.Option(False, "--execute", help="Create or update runnable HDD repository copies."),
+    confirm: str = typer.Option("", "--confirm", help="Required with --execute: SYNC OFFLINE REPOS"),
+) -> None:
+    """Preview or synchronize independent offline Git worktrees on operator storage."""
+    from mercury.repo import inspect_repositories, load_repo_definitions
+    from mercury.repo.offline_clone import OFFLINE_SYNC_CONFIRMATION, build_offline_clone_plan, execute_offline_clone_plan
+    from mercury.repo.offline_terminal import print_offline_clone_plan
+
+    plan = build_offline_clone_plan(inspect_repositories(load_repo_definitions()))
+    if not execute:
+        print_offline_clone_plan(plan)
+        return
+    if confirm != OFFLINE_SYNC_CONFIRMATION:
+        typer.echo(f"Refusing execution: pass --confirm '{OFFLINE_SYNC_CONFIRMATION}'.")
+        raise typer.Exit(2)
+    print_offline_clone_plan(execute_offline_clone_plan(plan), executed=True)
+
+
 @transfer_app.command("status")
 def transfer_status_cmd(
     live: bool = typer.Option(
