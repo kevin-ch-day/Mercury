@@ -128,6 +128,10 @@ def build_repo_bundle_plan(
     index_runbook_path = settings.runbook_dir / stamp_date / f"repo_transfer_runbook_{timestamp}.md"
     entries: list[RepoBundleEntry] = []
     for status in statuses:
+        # A configured checkout can be retained for operator visibility while
+        # deliberately excluded from the workstation migration package.
+        if not status.migration_scope:
+            continue
         bundle_path, manifest_path, runbook_path = _bundle_dirs(
             settings,
             status.display_name,

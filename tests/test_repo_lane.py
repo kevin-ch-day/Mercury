@@ -284,6 +284,32 @@ def test_render_repo_config_contains_expected_entries(tmp_path: Path) -> None:
     assert "[repos.erebus_engine]" in text
 
 
+def test_bundle_plan_excludes_repositories_outside_migration_scope(tmp_path: Path) -> None:
+    from mercury.repo.bundle import build_repo_bundle_plan
+    from mercury.repo.config import RepoBundleSettings
+    from mercury.repo.status import RepoStatus
+
+    settings = RepoBundleSettings(
+        repo_backup_root=tmp_path / "bundles",
+        manifest_dir=tmp_path / "manifests",
+        runbook_dir=tmp_path / "runbooks",
+    )
+    statuses = [
+        RepoStatus(key="included", display_name="Included", path=tmp_path / "included"),
+        RepoStatus(
+            key="excluded",
+            display_name="Excluded",
+            path=tmp_path / "excluded",
+            dirty=True,
+            migration_scope=False,
+        ),
+    ]
+
+    plan = build_repo_bundle_plan(statuses, settings)
+
+    assert [entry.key for entry in plan.entries] == ["included"]
+
+
 def test_write_local_repo_config_writes_existing_known_paths(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

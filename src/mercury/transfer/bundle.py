@@ -191,6 +191,10 @@ def build_transfer_bundle(*, live: bool = False) -> TransferBundle:
     repo_entries: list[TransferRepoEntry] = []
     dirty_repo_names: list[str] = []
     for status in repo_statuses:
+        # Keep transfer readiness aligned with repository-bundle scope. An
+        # excluded checkout is not a missing or dirty migration artifact.
+        if not status.migration_scope:
+            continue
         manifest_payload = latest_repo_manifests.get(status.key, {})
         warning = None
         if status.dirty:
