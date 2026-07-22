@@ -143,7 +143,7 @@ def format_report_header(title: str, *, width: int | None = None) -> list[str]:
     return [title, "-" * min(line_width, 60)]
 
 
-def format_dashboard_row(label: str, value: str, *, label_width: int = 22) -> str:
+def format_dashboard_row(label: str, value: str, *, label_width: int = 14) -> str:
     """Aligned dashboard status row under the main menu."""
     return f"  {label.ljust(label_width)}{value}"
 

@@ -94,6 +94,15 @@ def record_smart_health(
     Uses sudo smartctl. Writes under primary .mercury_control/smart/ only.
     """
     cfg = config or load_storage_config(warn_deprecated=False)
+    from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled
+
+    try:
+        refuse_if_hdd_writes_disabled("SMART health evidence write")
+    except RuntimeError as exc:
+        plan = build_smart_health_plan(config=cfg)
+        return SmartHealthResult(
+            Path(plan["receipt_path"]), {}, False, False, str(exc)
+        )
     plan = build_smart_health_plan(config=cfg)
     device = plan["block_device"]
     path = Path(plan["receipt_path"])

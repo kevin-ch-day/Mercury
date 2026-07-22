@@ -208,91 +208,121 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
 
 
 def _migration_dashboard_rows(report, policy) -> list[str]:
-    """Compact dashboard backed by one shared migration-evidence report."""
+    """Compact handoff dashboard — few dense rows, no filler status."""
     by_id = {check.id: check for check in report.checks}
-    active = by_id["active_writer"]
-    mirror = by_id["storage_mirror"]
-    duplicate = by_id["duplicate_primary_mount"]
-    backups = by_id["database_backups"]
     unresolved = report.unresolved_checks
     free = backup_root_free_space_label(policy)
-    active_text = active.summary
+
+    return [
+        dashboard_row("Writer", _compact_writer_line(by_id["active_writer"].summary, free)),
+        dashboard_row("Mercury HDD", _compact_hdd_line()),
+        dashboard_row("Package", _compact_package_line()),
+        dashboard_row("Phase", _compact_phase_line(report.operator_phase, unresolved)),
+        dashboard_row("Cleanup", _compact_cleanup_line()),
+    ]
+
+
+def _compact_writer_line(fallback: str, free: str | None) -> str:
     try:
         from mercury.storage.host_maintenance import load_host_maintenance
 
         host = load_host_maintenance()
-        if host.storage_availability in {"detaching", "detached"} or not host.writes_allowed:
-            active_text = (
-                f"HDD {host.storage_availability} · writes disabled · "
-                "destination rehearsal (cutover NOT complete)"
-            )
-            free = None
+        if host.storage_availability == "detached":
+            return "Detached · writes off"
+        if host.storage_availability == "detaching" or not host.writes_allowed:
+            return "Detaching · writes off · rehearsal"
     except OSError:
         pass
+    text = fallback
     if free:
-        active_text += f" · {free} free"
-    mirror_text = "Verified" if mirror.state.value == "PASS" else mirror.summary
-    if duplicate.state.value == "WARNING":
-        mirror_text += " · HDD mounted twice"
-    package_text = "Review required" if report.overall_status.value != "PASS" else "Ready"
-    # Dashboard mode deliberately avoids scanning large worktrees or runtime
-    # configuration.  Do not turn the absence of that expensive scan into a
-    # claim that a capture is incomplete.
-    if any(
-        check.id in {"erebus_web_worktree", "scytaledroid_web_worktree"}
-        and check.unresolved
-        for check in report.checks
-    ):
-        package_text += " · capture status not rechecked"
-    next_open = next((check for check in unresolved if check.id == "destination_validation"), None)
-    blocker_text = f"{len(unresolved)} open"
-    if next_open is not None:
-        blocker_text += " · destination not validated"
-    return [
-        dashboard_row("Active writer", active_text),
-        dashboard_row("Storage mirror", mirror_text),
-        dashboard_row("Database backups", backups.summary),
-        dashboard_row("Migration package", package_text),
-        dashboard_row("Destination package", _destination_package_dashboard_line()),
-        dashboard_row("Cleanup", _cleanup_dashboard_line()),
-        dashboard_row("Migration phase", report.operator_phase.title()),
-        dashboard_row("Cutover blockers", blocker_text),
-    ]
+        text = f"{text} · {free} free"
+    return text
 
 
-def _destination_package_dashboard_line() -> str:
+def _compact_hdd_line() -> str:
     from mercury.storage.host_maintenance import load_host_maintenance
-    from mercury.storage.retention import load_retention_policy
+
+    host = load_host_maintenance()
+    if host.storage_availability == "detached":
+        return "Detached"
+    disconnect = _safe_disconnect_dashboard_line()
+    try:
+        from mercury.storage.block_device import resolve_mercury_block_device
+
+        resolved = resolve_mercury_block_device(require_mounted=False)
+        if resolved.identity and resolved.identity.mountpoint:
+            return f"Mounted · disconnect {disconnect}"
+        if resolved.identity:
+            return f"Present · disconnect {disconnect}"
+    except OSError:
+        pass
+    return f"Unknown · disconnect {disconnect}"
+
+
+def _compact_package_line() -> str:
+    from mercury.storage.host_maintenance import load_host_maintenance
 
     host = load_host_maintenance()
     if host.package_verification_status == "DESTINATION_PACKAGE_VERIFIED" and host.package_id:
-        return f"VERIFIED · {host.package_id}"
-    policy = load_retention_policy()
-    mercury_pending = not policy.current_destination_mercury_commit
-    size_note = "allowlist only · Scytale excluded"
-    if mercury_pending:
-        return (
-            "Explicit allowlist required · ScytaleDroid excluded by default · "
-            "Phase 3B pinned · Mercury committed capture pending · "
-            f"Estimated transfer size: {size_note}"
-        )
-    return (
-        "Explicit allowlist required · ScytaleDroid excluded by default · "
-        "Phase 3B pinned · "
-        f"Mercury capture {policy.current_destination_mercury_capture_id or policy.current_destination_mercury_commit[:12]} · "
-        f"Estimated transfer size: {size_note}"
-    )
+        pkg = host.package_id
+        if len(pkg) > 42:
+            pkg = "…" + pkg[-34:]
+        return f"VERIFIED · {pkg}"
+    return "Pending"
 
 
-def _cleanup_dashboard_line() -> str:
+def _compact_phase_line(operator_phase: str, unresolved) -> str:
+    phase = operator_phase.replace("_", " ").title()
+    phase = phase.replace("Destination Validation Pending", "Destination validation")
+    blockers = len(unresolved)
+    if blockers == 0:
+        return phase
+    return f"{phase} · {blockers} open"
+
+
+def _compact_cleanup_line() -> str:
     from mercury.storage.retention import load_retention_policy
 
     policy = load_retention_policy()
-    return (
-        "Preview available · Execution locked until destination validation · "
-        f"Safe candidate estimate: {policy.safe_candidate_estimate_gib:.1f} GiB · "
-        f"Manual-review project data: ~{policy.manual_review_project_estimate_gib:.0f} GiB"
-    )
+    return f"Preview locked · ~{policy.safe_candidate_estimate_gib:.1f} GiB candidates"
+
+
+def _mercury_hdd_dashboard_line() -> str:
+    return _compact_hdd_line()
+
+
+def _safe_disconnect_dashboard_line() -> str:
+    from mercury.storage.host_maintenance import load_host_maintenance
+
+    host = load_host_maintenance()
+    if host.storage_availability == "detached":
+        return "Detached"
+    if host.package_verification_status != "DESTINATION_PACKAGE_VERIFIED":
+        return "Blocked: package"
+    try:
+        from mercury.storage.detach_wizard import run_detach_preflight
+
+        pre = run_detach_preflight(skip_log_redirect=True, mutate_host=False)
+    except OSError:
+        return "Unknown"
+    if pre.result_state == "PREFLIGHT_OK":
+        return "Ready"
+    if pre.result_state == "HDD_ALREADY_DETACHED":
+        return "Detached"
+    if pre.blockers:
+        reason = pre.blockers[0]
+        if len(reason) > 36:
+            reason = reason[:33] + "…"
+        return f"Blocked: {reason}"
+    return pre.result_state
+
+
+def _destination_package_dashboard_line() -> str:
+    return _compact_package_line()
+
+
+def _cleanup_dashboard_line() -> str:
+    return _compact_cleanup_line()
 
 
 def _backup_target_summary(policy, env) -> str:

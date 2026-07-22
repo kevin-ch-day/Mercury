@@ -234,6 +234,16 @@ def write_pre_cutover_storage_toml(
     return path
 
 
+@pytest.fixture(autouse=True)
+def _isolate_host_maintenance(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep tests off the live host_maintenance.json (may be detaching/detached).
+
+    Individual tests may override MERCURY_HOST_MAINTENANCE_PATH again.
+    """
+    path = tmp_path_factory.mktemp("host_maint") / "host_maintenance.json"
+    monkeypatch.setenv("MERCURY_HOST_MAINTENANCE_PATH", str(path))
+
+
 @pytest.fixture
 def storage_mounts(tmp_path: Path) -> dict[str, Path]:
     """Primary + legacy mount trees under tmp_path."""

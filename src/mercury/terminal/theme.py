@@ -334,7 +334,7 @@ def style_inline_value(text: str) -> str:
     return markup(text, VALUE)
 
 
-def dashboard_row(label: str, value: str, *, label_width: int = 22) -> str:
+def dashboard_row(label: str, value: str, *, label_width: int = 14) -> str:
     if not colors_enabled():
         return f"  {label.ljust(label_width)}{value}"
     styled_value = style_inline_value(value)

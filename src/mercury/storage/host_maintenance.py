@@ -119,3 +119,18 @@ def mark_detached(path: Path | None = None) -> HostMaintenanceState:
     )
     save_host_maintenance(state, path=path)
     return state
+
+
+def mark_reattached_writes_disabled(path: Path | None = None) -> HostMaintenanceState:
+    """HDD is present again; keep writes disabled until explicit restore."""
+    state = load_host_maintenance(path)
+    state.storage_availability = "attached"
+    state.writes_allowed = False
+    state.active_write_role = "none"
+    state.destination_rehearsal_in_progress = True
+    state.notes = (
+        "Mercury HDD reattached; writes disabled pending operator confirmation. "
+        "Destination cutover is NOT complete."
+    )
+    save_host_maintenance(state, path=path)
+    return state

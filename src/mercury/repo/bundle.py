@@ -290,6 +290,9 @@ def _index_runbook_text(plan: RepoBundlePlan) -> str:
 
 
 def execute_repo_bundle_plan(plan: RepoBundlePlan) -> RepoBundlePlan:
+    from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled
+
+    refuse_if_hdd_writes_disabled("repository backup bundle write")
     _ensure_operator_storage_path(plan.repo_backup_root)
     _ensure_operator_storage_path(plan.manifest_dir)
     _ensure_operator_storage_path(plan.runbook_dir)

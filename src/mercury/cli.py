@@ -663,46 +663,51 @@ def migration_package_cmd(
 
 @storage_app.command("detach")
 def storage_detach_cmd(
-    action: str = typer.Argument("status", help="status | preview | execute"),
+    action: str = typer.Argument(
+        "status",
+        help="status | preview | execute | wizard",
+    ),
     confirm: str | None = typer.Option(None, "--confirm"),
     mask_unit: bool = typer.Option(
         False,
         "--mask-unit",
-        help="Include reversible systemctl mask in operator command list (execute preview only).",
+        help="Not used by default (fstab nofail). Kept for compatibility.",
+    ),
+    power_off: bool = typer.Option(
+        True,
+        "--power-off/--no-power-off",
+        help="Attempt udisksctl power-off of the UUID-resolved parent after unmount.",
     ),
 ) -> None:
-    """Safe HDD detach workflow. Execute stops before privileged unmount."""
+    """Safe HDD detach. Prefer the Storage menu wizard for interactive sudo."""
     from mercury.storage.detach import (
         DETACH_CONFIRMATION,
         build_detach_status,
-        detach_execute_until_privileged,
         detach_preview,
     )
 
     if action == "status":
         status = build_detach_status()
         output.heading("Mercury HDD detach status")
-        output.field("Expected device", status.expected_device)
         output.field("Expected UUID", status.expected_uuid)
         output.field("Mount", status.mount_path)
         output.field("Mounted", "yes" if status.mounted else "no")
-        output.field("Mount source", status.mount_source or "—")
-        output.field("Mount UUID", status.mount_uuid or "—")
+        output.field("Partition (resolved)", status.partition_device or "—")
+        output.field("Parent (resolved)", status.parent_device or "—")
+        output.field("Model", status.model or "—")
+        output.field("Label", status.label or "—")
         output.field("Package ID", status.package_id or "—")
         output.field("Package verification", status.package_verification_status or "—")
         output.field("Writer state", status.writer_state)
         output.field("fstab configured", "yes" if status.fstab_configured else "no")
         output.field("systemd mount active", "yes" if status.systemd_mount_active else "no")
-        output.field("Menu PIDs", ",".join(str(p) for p in status.mercury_menu_pids) or "none")
-        if status.open_handle_samples:
-            output.write("Open handle samples:")
-            for sample in status.open_handle_samples[:20]:
-                output.write(f"  · {sample}")
+        output.field("Preflight", status.result_hint or "—")
         if status.blockers:
             output.write("Blockers:")
             for blocker in status.blockers:
                 output.write(f"  !! {blocker}")
         output.field("Safe to proceed", "yes" if status.safe_to_proceed else "no")
+        output.write("Tip: use Mercury menu → Storage → Safe disconnect Mercury HDD")
         return
 
     if action == "preview":
@@ -712,26 +717,107 @@ def storage_detach_cmd(
             output.write(f"  {line}")
         return
 
+    if action == "wizard":
+        from mercury.storage.detach_wizard import format_wizard_report, run_detach_wizard
+
+        result = run_detach_wizard(execute=False, skip_log_redirect=False)
+        for line in format_wizard_report(result):
+            output.write(line)
+        if not result.ok:
+            raise typer.Exit(1)
+        if not confirm:
+            output.write(
+                "Preflight only. Re-run with --confirm 'DETACH MERCURY HDD' to execute "
+                "(interactive sudo; password never captured by Mercury)."
+            )
+            return
+        output.write(
+            "Administrator access is required. Your system may display the sudo password prompt."
+        )
+        output.write("Mercury does not read or store your password.")
+        live = run_detach_wizard(
+            execute=True,
+            confirm=confirm,
+            skip_log_redirect=False,
+            power_off=power_off,
+        )
+        for line in format_wizard_report(live):
+            output.write(line)
+        if not live.safe_to_physically_disconnect:
+            raise typer.Exit(1)
+        return
+
     if action == "execute":
         if not confirm:
             raise typer.BadParameter(f"--confirm '{DETACH_CONFIRMATION}' is required")
-        status, commands = detach_execute_until_privileged(
-            confirm=confirm, mask_systemd_unit=mask_unit
+        # Full wizard path (interactive sudo). Prefer menu; CLI available for scripts/TTY.
+        from mercury.storage.detach_wizard import format_wizard_report, run_detach_wizard
+
+        del mask_unit
+        result = run_detach_wizard(
+            execute=True,
+            confirm=confirm,
+            skip_log_redirect=False,
+            power_off=power_off,
         )
-        output.heading("Mercury HDD detach execute")
-        output.field("Safe to proceed", "yes" if status.safe_to_proceed else "no")
-        if status.blockers:
-            output.write("Blockers:")
-            for blocker in status.blockers:
-                output.write(f"  !! {blocker}")
+        for line in format_wizard_report(result):
+            output.write(line)
+        if not result.safe_to_physically_disconnect:
             raise typer.Exit(1)
-        output.write("Host write-disable marked (detaching).")
-        output.write("STOP before privileged unmount — run these as the operator:")
-        for cmd in commands:
-            output.write(f"  {cmd}")
         return
 
-    raise typer.BadParameter("action must be status, preview, or execute")
+    raise typer.BadParameter("action must be status, preview, wizard, or execute")
+
+
+@storage_app.command("reconnect")
+def storage_reconnect_cmd(
+    mode: str = typer.Option("source", "--mode", help="source | destination"),
+    mount: bool = typer.Option(False, "--mount", help="Start mount if unmounted"),
+    read_only: bool = typer.Option(
+        False, "--read-only", help="Mount read-only (destination default)"
+    ),
+    restore_writes: str | None = typer.Option(
+        None,
+        "--restore-writes",
+        help="Exact phrase RESTORE MERCURY WRITES to re-enable source writes",
+    ),
+) -> None:
+    """Validate a returned Mercury HDD by UUID; never auto-enable writes."""
+    from mercury.storage.reconnect import (
+        restore_writes_after_reconnect,
+        run_reconnect_validate,
+    )
+
+    result = run_reconnect_validate(
+        mode=mode,
+        execute_mount=mount,
+        read_only=read_only or mode == "destination",
+    )
+    output.heading("Mercury HDD reconnect")
+    output.field("Result", result.result_state)
+    output.field("Ok", "yes" if result.ok else "no")
+    if result.identity:
+        for key in (
+            "partition_device",
+            "parent_device",
+            "uuid",
+            "label",
+            "model",
+            "mountpoint",
+        ):
+            output.field(key, str(result.identity.get(key) or "—"))
+    for err in result.errors:
+        output.write(f"  !! {err}")
+    for msg in result.messages:
+        output.write(f"  · {msg}")
+    if restore_writes:
+        restored = restore_writes_after_reconnect(confirm=restore_writes)
+        if restored is None:
+            output.write("Writes not restored (confirmation mismatch).")
+            raise typer.Exit(1)
+        output.write("Writes restored.")
+    if not result.ok:
+        raise typer.Exit(1)
 
 
 @migration_app.command("capture-web")
