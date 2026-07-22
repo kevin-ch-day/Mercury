@@ -255,11 +255,14 @@ def _main_menu_body_lines(*, probe_database: bool | None = None) -> list[str]:
         rule,
         *_flat_menu_item_lines(),
     ]
-    from mercury.repair.startup import main_menu_usb_repair_hint
+    from mercury.repair.startup import main_menu_usb_repair_hint, primary_mount_hint
 
     hint = main_menu_usb_repair_hint()
     if hint:
         lines.extend(["", hint])
+    primary_hint = primary_mount_hint()
+    if primary_hint:
+        lines.extend(["", f"Quick fix: {primary_hint}"])
     lines.append("")
     return lines
 

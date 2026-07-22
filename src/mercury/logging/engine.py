@@ -133,10 +133,26 @@ def configure_logging(
             file=sys.stderr,
         )
         return None
+    from mercury.core.usb_mount import inactive_operator_mount_blocker
+
+    inactive = inactive_operator_mount_blocker(resolved_dir)
+    if inactive:
+        _configured = True
+        _log_file = None
+        _error_log_file = None
+        _database_log_file = None
+        _backup_log_file = None
+        repair = log_directory_repair_hint(resolved_dir, permission_detail=inactive)
+        print(
+            f"Mercury: refusing log mkdir under inactive operator mount ({inactive}). "
+            f"Continuing without file logging. Repair: {repair}",
+            file=sys.stderr,
+        )
+        return None
     try:
         resolved_dir.mkdir(parents=True, exist_ok=True)
     except PermissionError:
-        from mercury.repair.usb import USB_REPAIR_COMMAND
+        repair = log_directory_repair_hint(resolved_dir, permission_detail="permission denied")
 
         _configured = True
         _log_file = None
@@ -145,7 +161,7 @@ def configure_logging(
         _backup_log_file = None
         print(
             f"Mercury: cannot write logs to {resolved_dir} (permission denied). "
-            f"Continuing without file logging. Repair: {USB_REPAIR_COMMAND}",
+            f"Continuing without file logging. Repair: {repair}",
             file=sys.stderr,
         )
         return None
@@ -185,8 +201,6 @@ def configure_logging(
         error_logger.setLevel(logging.DEBUG)
         error_logger.propagate = True
     except PermissionError:
-        from mercury.repair.usb import USB_REPAIR_COMMAND
-
         clear_logger(LOGGER_NAME)
         clear_logger(DATABASE_LOGGER_NAME)
         clear_logger(BACKUP_LOGGER_NAME)
@@ -195,9 +209,10 @@ def configure_logging(
         _error_log_file = None
         _database_log_file = None
         _backup_log_file = None
+        repair = log_directory_repair_hint(resolved_dir, permission_detail="permission denied")
         print(
             f"Mercury: cannot write logs under {resolved_dir} (permission denied). "
-            f"Continuing without file logging. Repair: {USB_REPAIR_COMMAND}",
+            f"Continuing without file logging. Repair: {repair}",
             file=sys.stderr,
         )
         return None

@@ -94,6 +94,20 @@ def check_path_permission(path: Path, *, label: str) -> PathPermissionCheck:
     writable = False
     detail = "ok"
 
+    from mercury.core.usb_mount import inactive_operator_mount_blocker
+
+    inactive = inactive_operator_mount_blocker(resolved)
+    if inactive:
+        return PathPermissionCheck(
+            path=resolved,
+            label=label,
+            exists=exists,
+            writable=False,
+            owner=None,
+            owner_mismatch=False,
+            detail=inactive,
+        )
+
     if exists:
         if resolved.is_dir():
             writable, detail = _probe_directory_writable(resolved)
@@ -138,6 +152,11 @@ def safe_ensure_directory(path: Path) -> tuple[bool, str]:
     resolved = path.expanduser()
     if resolved.exists():
         return True, "already exists"
+    from mercury.core.usb_mount import inactive_operator_mount_blocker
+
+    inactive = inactive_operator_mount_blocker(resolved)
+    if inactive:
+        return False, inactive
     parent = resolved.parent
     if not parent.exists():
         return False, f"parent missing: {parent}"

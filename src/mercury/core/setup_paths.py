@@ -32,6 +32,20 @@ MERCURY_OPERATOR_STORAGE_DIRS = (
 MERCURY_USB_CHOWN_DIRS = MERCURY_OPERATOR_STORAGE_DIRS
 
 
+def _usb_layout_permissions_in_scope() -> bool:
+    """After HDD cutover, USB layout is archive-only — do not treat it as operator health."""
+    try:
+        from mercury.core.storage_roots import load_storage_config
+        from mercury.core.storage_roles import StorageWriteRole
+
+        cfg = load_storage_config(warn_deprecated=False)
+        if cfg.cutover_complete and cfg.active_write_role == StorageWriteRole.PRIMARY:
+            return False
+    except Exception:
+        pass
+    return True
+
+
 def assess_mercury_path_permissions(
     *,
     policy,
@@ -41,7 +55,7 @@ def assess_mercury_path_permissions(
 ) -> list[PathPermissionCheck]:
     checks: list[PathPermissionCheck] = []
 
-    if usb.mercury_layout_present:
+    if usb.mercury_layout_present and _usb_layout_permissions_in_scope():
         for dirname, label in MERCURY_USB_DIR_LABELS:
             path = usb.mount_path / dirname
             if self_heal and not path.exists():

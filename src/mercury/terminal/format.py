@@ -77,6 +77,25 @@ def short_path(path: str, *, max_len: int = 52) -> str:
     return f"…{path[-(max_len - 1):]}"
 
 
+def format_backup_id_display(backup_id: str, *, max_len: int = 40) -> str:
+    """Truncate backup IDs while preserving the database prefix and unique suffix.
+
+    Example: ``android_permission_intel…141040_061`` instead of
+    ``…rmission_intel-full-20260722_141040_061``.
+    """
+    text = str(backup_id)
+    if max_len <= 0 or len(text) <= max_len:
+        return text
+    if max_len <= 3:
+        return "…"
+    # Prefer keeping trailing timestamp uniqueness (after last '-').
+    tail_keep = min(12, max_len // 2)
+    head_keep = max_len - tail_keep - 1
+    if head_keep < 4:
+        return f"…{text[-(max_len - 1):]}"
+    return f"{text[:head_keep]}…{text[-tail_keep:]}"
+
+
 def format_pair(source: str, target: str) -> str:
     """Standard prod → dev pair label."""
     return f"{source} -> {target}"

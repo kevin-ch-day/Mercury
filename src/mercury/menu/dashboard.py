@@ -181,14 +181,25 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
         ]
     )
     if env.repairable_blockers or env.usb.repair_banner:
-        from mercury.repair.usb import USB_REPAIR_COMMAND
+        from mercury.core.environment_status import _hdd_writer_active
 
-        rows.append(
-            dashboard_row(
-                "USB repair",
-                f"Enter r at main menu or run {USB_REPAIR_COMMAND}",
+        if _hdd_writer_active():
+            if env.repairable_blockers:
+                rows.append(
+                    dashboard_row(
+                        "Storage repair",
+                        "Run ./run.sh storage validate (HDD is the active writer)",
+                    )
+                )
+        else:
+            from mercury.repair.usb import USB_REPAIR_COMMAND
+
+            rows.append(
+                dashboard_row(
+                    "USB repair",
+                    f"Enter r at main menu or run {USB_REPAIR_COMMAND}",
+                )
             )
-        )
     elif env.setup_hints:
         rows.append(dashboard_row("Setup", env.setup_hints[0]))
         for hint in env.setup_hints[1:]:
@@ -216,7 +227,7 @@ def _migration_dashboard_rows(report, policy) -> list[str]:
     # configuration.  Do not turn the absence of that expensive scan into a
     # claim that a capture is incomplete.
     if any(
-        check.id in {"erebus_web_worktree", "scytaledroid_web_worktree", "web_runtime_configuration"}
+        check.id in {"erebus_web_worktree", "scytaledroid_web_worktree"}
         and check.unresolved
         for check in report.checks
     ):

@@ -30,7 +30,7 @@ report_app = typer.Typer(help="Backup report previews (dry-run).")
 logs_app = typer.Typer(help="Mercury log files under logs/.")
 state_app = typer.Typer(help="Portable Mercury operation ledger and summaries.")
 storage_app = typer.Typer(
-    help="Primary/legacy storage status, audit, validate, migrate plan/run/verify (no cutover)."
+    help="Primary/legacy storage status, audit, validate, migrate, and cutover tools."
 )
 migration_app = typer.Typer(help="Read-only workstation migration readiness and blockers.")
 
@@ -215,6 +215,11 @@ def storage_archive_receipt_cmd(
     execute: bool = typer.Option(False, "--execute", help="Write the immutable USB archive receipt on the HDD."),
     override: bool = typer.Option(False, "--administrative-override", help="Replace an existing historical receipt (administrative use only)."),
     confirm: str | None = typer.Option(None, "--confirm", help="Required with override: REPLACE USB ARCHIVE RECEIPT."),
+    full_manifest: bool = typer.Option(
+        False,
+        "--full-manifest",
+        help="Preview with a full relative-path manifest (slower). Execute always builds the full manifest.",
+    ),
 ) -> None:
     """Preview or record USB recovery-archive evidence; never writes to USB."""
     from mercury.storage.archive_receipt import build_archive_receipt, record_archive_receipt
@@ -222,7 +227,10 @@ def storage_archive_receipt_cmd(
     if override and (not execute or confirm != "REPLACE USB ARCHIVE RECEIPT"):
         raise typer.BadParameter("--administrative-override requires --execute --confirm 'REPLACE USB ARCHIVE RECEIPT'")
     try:
-        result = record_archive_receipt(override=override) if execute else build_archive_receipt()
+        if execute:
+            result = record_archive_receipt(override=override)
+        else:
+            result = build_archive_receipt(include_path_manifest=full_manifest)
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     output.heading("USB Archive Receipt")
@@ -235,7 +243,103 @@ def storage_archive_receipt_cmd(
     output.field("Physical retirement", "not authorized")
     if not execute:
         output.write("\nPreview only. No USB or HDD artifact was written.")
+        if not full_manifest:
+            output.write("Path manifest omitted for speed; use --full-manifest or --execute for the durable list.")
 
+
+@storage_app.command("archive-remount-ro")
+def storage_archive_remount_ro_cmd(
+    execute: bool = typer.Option(False, "--execute", help="Remount the USB archive read-only (requires sudo)."),
+    confirm: str | None = typer.Option(
+        None,
+        "--confirm",
+        help="Confirmation phrase for --execute (REMOUNT ARCHIVE RO).",
+    ),
+) -> None:
+    """Preview or remount the USB recovery archive read-only. Never touches the HDD writer."""
+    from mercury.storage.archive_remount import (
+        ARCHIVE_REMOUNT_RO_CONFIRMATION,
+        build_archive_remount_plan,
+        execute_archive_remount_ro,
+    )
+
+    if not execute:
+        plan = build_archive_remount_plan()
+        output.heading("USB Archive Remount Read-Only")
+        output.field("Mode", "PREVIEW")
+        output.field("Mount", str(plan.mount_path))
+        output.field("UUID", plan.filesystem_uuid)
+        output.field("Label", plan.label)
+        output.field("Current mode", plan.current_mode)
+        output.field("Command", plan.remount_command)
+        output.field("Confirmation", plan.confirmation_phrase)
+        for blocker in plan.blockers:
+            output.item(f"Blocker: {blocker}")
+        for note in plan.notes:
+            output.item(note)
+        if plan.already_read_only:
+            output.write("\nAlready read-only — nothing to do.")
+        else:
+            output.write(
+                f"\nPreview only. Re-run with --execute --confirm '{ARCHIVE_REMOUNT_RO_CONFIRMATION}'."
+            )
+        if plan.blockers:
+            raise typer.Exit(1)
+        return
+
+    confirmation = confirm
+    if confirmation is None:
+        confirmation = typer.prompt(f"Type {ARCHIVE_REMOUNT_RO_CONFIRMATION} to remount USB archive read-only")
+    result = execute_archive_remount_ro(confirmation=confirmation)
+    output.heading("USB Archive Remount Read-Only")
+    output.field("Mode", "EXECUTE")
+    output.field("Success", "yes" if result.success else "no")
+    output.field("Executed", "yes" if result.executed else "no")
+    output.field("Mode after", result.mode_after or "unknown")
+    output.field("Detail", result.message)
+    output.field("Command", result.plan.remount_command)
+    if not result.success:
+        raise typer.Exit(1)
+
+
+@storage_app.command("smart-health")
+def storage_smart_health_cmd(
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Run sudo smartctl against the primary HDD and record evidence under .mercury_control/smart/.",
+    ),
+) -> None:
+    """Preview or record primary HDD SMART health evidence (never writes to USB)."""
+    from mercury.storage.smart_health import build_smart_health_plan, record_smart_health
+
+    if not execute:
+        plan = build_smart_health_plan()
+        output.heading("HDD SMART Health")
+        output.field("Mode", "PREVIEW")
+        output.field("Mount", plan["mount_path"])
+        output.field("UUID", plan["filesystem_uuid"])
+        output.field("Block device", plan["block_device"] or "unknown")
+        output.field("smartctl", plan["smartctl"] or "not found")
+        output.field("Command", plan["command"])
+        output.field("Receipt", plan["receipt_path"])
+        existing = plan.get("existing")
+        if existing:
+            output.field("Existing recorded", existing.get("recorded_at_utc"))
+            output.field("Existing health passed", existing.get("overall_health_passed"))
+        output.write("\nPreview only. Re-run with --execute (requires interactive sudo).")
+        return
+
+    result = record_smart_health()
+    output.heading("HDD SMART Health")
+    output.field("Mode", "EXECUTE")
+    output.field("Success", "yes" if result.success else "no")
+    output.field("Receipt", str(result.path) if result.path.exists() else f"not written ({result.message})")
+    output.field("Detail", result.message)
+    if result.payload.get("block_device"):
+        output.field("Block device", result.payload["block_device"])
+    if not result.success:
+        raise typer.Exit(1)
 
 @migration_app.command("blockers")
 def migration_blockers_cmd() -> None:
@@ -1142,6 +1246,11 @@ def backup_batch_cmd(
         "--execute/--dry-run",
         help="Execute all backup sources (default). Use --dry-run to preview only.",
     ),
+    verify: bool = typer.Option(
+        True,
+        "--verify/--no-verify",
+        help="After execute, verify newly written backup IDs (default: verify).",
+    ),
     db: list[str] = typer.Option(
         None,
         "--db",
@@ -1158,8 +1267,9 @@ def backup_batch_cmd(
         BackupSourceSelectionError,
         run_backup_batch,
         select_batch_sources,
+        verify_written_backup_batch,
     )
-    from mercury.backup.terminal.batch import print_backup_batch_result
+    from mercury.backup.terminal.batch import print_backup_batch_result, print_batch_small_backup_warnings
     from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
 
     normalized = kind.strip().lower().replace("-", "_")
@@ -1180,6 +1290,17 @@ def backup_batch_cmd(
         sources=sources,
     )
     print_backup_batch_result(batch)
+    if execute and batch.executed_count:
+        print_batch_small_backup_warnings(batch)
+    if execute and verify and batch.executed_count:
+        verification = verify_written_backup_batch(batch)
+        output.write(
+            f"Batch verification: {verification.verified} verified · {verification.failed} failed"
+        )
+        for issue in verification.issues:
+            output.write(f"  {issue}")
+        if verification.failed:
+            raise typer.Exit(1)
     if batch.errors or (execute and batch.refused_count and not batch.executed_count):
         raise typer.Exit(1)
 
@@ -1206,7 +1327,7 @@ def backup_dev_cmd(
         "full", execute=execute, live=not demo, sources=sources,
         allow_development_backup=True,
     )
-    print_backup_batch_result(batch)
+    print_backup_batch_result(batch, databases_label="Development databases selected")
     if execute and batch.executed_count:
         verification = verify_development_backup_batch(batch)
         output.write(f"Development backup verification: {verification.verified} verified · {verification.failed} failed")
@@ -1218,6 +1339,127 @@ def backup_dev_cmd(
         raise typer.Exit(1)
 
 
+@backup_app.command("full")
+def backup_full_cmd(
+    execute: bool = typer.Option(
+        True,
+        "--execute/--dry-run",
+        help="Execute production full backup + verify (default). Use --dry-run to preview.",
+    ),
+    include_dev: bool = typer.Option(
+        False,
+        "--include-dev",
+        help="Also back up configured development databases (requires --confirm-dev).",
+    ),
+    confirm_dev: str | None = typer.Option(
+        None,
+        "--confirm-dev",
+        help="Required with --include-dev: BACKUP DEV DATABASES.",
+    ),
+    demo: bool = typer.Option(
+        False,
+        "--demo",
+        help="Use demo/catalog inventory instead of live server.",
+    ),
+) -> None:
+    """Production write+verify full backup (CLI parity with Backup Operations [2])."""
+    from datetime import datetime, timezone
+
+    from mercury.backup.batch_runner import (
+        BackupSourceSelectionError,
+        FullBackupOutcome,
+        build_full_backup_run_result,
+        new_full_backup_run_id,
+        resolve_development_backup_sources,
+        run_backup_batch,
+        select_batch_sources,
+        verify_written_backup_batch,
+        write_full_backup_run_receipt,
+    )
+    from mercury.backup.terminal.batch import print_backup_batch_result, print_full_backup_run_result
+    from mercury.core.safety import BACKUP_KIND_FULL
+
+    if include_dev and confirm_dev != "BACKUP DEV DATABASES":
+        raise typer.BadParameter("--include-dev requires --confirm-dev 'BACKUP DEV DATABASES'")
+
+    try:
+        sources = select_batch_sources(live=not demo)
+    except BackupSourceSelectionError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+
+    started = datetime.now(timezone.utc)
+    run_id = new_full_backup_run_id(now=started)
+    production_batch = run_backup_batch(
+        BACKUP_KIND_FULL,
+        execute=execute,
+        live=not demo,
+        sources=sources,
+    )
+    print_backup_batch_result(
+        production_batch,
+        databases_label="Production databases selected",
+    )
+
+    production_verification = None
+    if execute and production_batch.executed_count:
+        production_verification = verify_written_backup_batch(production_batch)
+        output.write(
+            f"Production verification: {production_verification.verified} verified · "
+            f"{production_verification.failed} failed"
+        )
+        for issue in production_verification.issues:
+            output.write(f"  {issue}")
+
+    development_batch = None
+    development_verification = None
+    if include_dev:
+        dev_sources = resolve_development_backup_sources(live=not demo)
+        if not dev_sources:
+            output.write("No configured development databases are present on this MariaDB server.")
+        else:
+            development_batch = run_backup_batch(
+                BACKUP_KIND_FULL,
+                execute=execute,
+                live=not demo,
+                sources=dev_sources,
+                allow_development_backup=True,
+            )
+            print_backup_batch_result(
+                development_batch,
+                databases_label="Development databases selected",
+            )
+            if execute and development_batch.executed_count:
+                development_verification = verify_written_backup_batch(
+                    development_batch, allow_development_backup=True
+                )
+
+    if not execute:
+        if production_batch.errors or (
+            production_batch.refused_count and not production_batch.executed_count
+        ):
+            raise typer.Exit(1)
+        return
+
+    result = build_full_backup_run_result(
+        run_id=run_id,
+        started_at_utc=started.isoformat(),
+        production_batch=production_batch,
+        production_verification=production_verification,
+        development_batch=development_batch,
+        development_verification=development_verification,
+        development_requested=include_dev,
+    )
+    try:
+        receipt = write_full_backup_run_receipt(result)
+        result = result.model_copy(update={"receipt_path": str(receipt)})
+    except Exception as exc:  # pragma: no cover - storage edge
+        output.write(f"Warning: could not write full-backup run receipt: {exc}")
+    print_full_backup_run_result(result)
+    if result.outcome != FullBackupOutcome.PASS:
+        raise typer.Exit(1)
+
+
 @backup_app.command("all")
 def backup_all_cmd(
     kind: str = typer.Option("full", "--kind", help="Backup kind: full or schema_only."),
@@ -1225,6 +1467,11 @@ def backup_all_cmd(
         True,
         "--execute/--dry-run",
         help="Execute backups for active source databases (default). Use --dry-run to preview.",
+    ),
+    verify: bool = typer.Option(
+        True,
+        "--verify/--no-verify",
+        help="After execute, verify newly written backup IDs (default: verify).",
     ),
     db: list[str] = typer.Option(
         None,
@@ -1238,7 +1485,7 @@ def backup_all_cmd(
     ),
 ) -> None:
     """Alias for batch backup over the active source database set."""
-    backup_batch_cmd(kind=kind, execute=execute, db=db, demo=demo)
+    backup_batch_cmd(kind=kind, execute=execute, verify=verify, db=db, demo=demo)
 
 
 @backup_app.command("verify-all")
@@ -2065,6 +2312,19 @@ def repair_usb_cmd(
     output.heading("Mercury USB repair")
     for line in describe_usb_repair():
         output.item(line)
+    try:
+        from mercury.core.storage_roots import load_storage_config
+        from mercury.core.storage_roles import StorageWriteRole
+
+        cfg = load_storage_config(warn_deprecated=False)
+        if cfg.cutover_complete and cfg.active_write_role == StorageWriteRole.PRIMARY:
+            output.write("")
+            output.item(
+                "Note: HDD is the active writer after cutover — USB repair is optional archive maintenance."
+            )
+            output.item("For routine operator storage: ./run.sh storage validate")
+    except Exception:
+        pass
     output.write("")
     output.item(f"Command: {USB_REPAIR_COMMAND}")
     if not apply:

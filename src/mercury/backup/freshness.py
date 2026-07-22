@@ -84,27 +84,61 @@ OPERATOR_FRESHNESS_GUIDANCE = (
 )
 
 
-def backup_entry_status_label(entry) -> str:
-    """Operator-facing backup row status for menus and recovery screens."""
+def backup_entry_verify_label(entry) -> str:
+    """Integrity/verification column — independent of freshness."""
     if entry is None:
         return "Missing"
     protection_status = getattr(entry, "protection_status", None)
-    if protection_status != "verified":
-        if protection_status == "missing":
-            return "Missing"
-        if protection_status == "absent":
-            return "Absent"
-        if protection_status == "failed":
-            return "Unverified"
-        return "Warning"
+    restore_status = getattr(entry, "restore_check_status", None)
+    if restore_status == "passed":
+        return "Restore-check passed"
+    if restore_status == "failed":
+        return "Restore-check failed"
+    if protection_status == "verified":
+        return "Verified"
+    if protection_status == "missing":
+        return "Missing"
+    if protection_status == "absent":
+        return "Absent"
+    if protection_status == "failed":
+        return "Verify failed"
+    if protection_status == "untrusted root":
+        return "Missing manifest"
+    return "Unverified"
+
+
+def backup_entry_freshness_label(entry) -> str:
+    """Freshness column — independent of verification."""
+    if entry is None:
+        return "—"
+    protection_status = getattr(entry, "protection_status", None)
+    if protection_status in {"missing", "absent"}:
+        return "—"
     freshness = getattr(entry, "freshness", None)
     if freshness == FRESHNESS_EMPTY:
         return "Empty"
     if freshness == FRESHNESS_STALE:
         return "Stale"
-    if freshness == FRESHNESS_UNKNOWN:
-        return "Unknown"
-    return "Fresh"
+    if freshness == FRESHNESS_FRESH:
+        return "Fresh"
+    return "Unknown"
+
+
+def backup_entry_status_label(entry) -> str:
+    """Combined operator-facing status for compact recovery screens.
+
+    Prefer separate freshness/verify columns on the Backup Operations table.
+    """
+    if entry is None:
+        return "Missing"
+    verify = backup_entry_verify_label(entry)
+    if verify != "Verified":
+        if verify == "Verify failed":
+            return "Unverified"
+        if verify == "Missing manifest":
+            return "Warning"
+        return verify
+    return backup_entry_freshness_label(entry)
 
 
 def menu_handoff_problem_summary(problem_parts: list[str]) -> str:

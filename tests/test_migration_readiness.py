@@ -65,6 +65,15 @@ def test_next_action_prefers_dirty_worktree_before_destination_and_cutover() -> 
     assert next_check(report).id == "erebus_web_worktree"
 
 
+def test_next_action_prioritizes_smart_health_before_destination() -> None:
+    report = _report(
+        _check("destination_validation", MigrationCheckState.NOT_CHECKED, blocking=True),
+        _check("obsidiandroid_core_prod", MigrationCheckState.DECISION_NEEDED),
+        _check("hdd_smart_health", MigrationCheckState.NOT_CHECKED),
+    )
+    assert next_check(report).id == "obsidiandroid_core_prod"
+
+
 def test_next_action_prioritizes_runtime_before_scope_and_destination() -> None:
     report = _report(
         _check("destination_validation", MigrationCheckState.NOT_CHECKED, blocking=True),
@@ -107,7 +116,8 @@ def test_web_worktree_checks_report_dirty_and_runtime_not_checked(monkeypatch, t
 
     assert erebus_check.state == MigrationCheckState.ACTION_NEEDED
     assert scytale_check.state == MigrationCheckState.PASS
-    assert runtime_check.state == MigrationCheckState.NOT_CHECKED
+    assert runtime_check.state == MigrationCheckState.PASS
+    assert "secrets_excluded=true" in runtime_check.evidence
 
 
 def test_dirty_non_web_snapshot_is_not_a_readiness_action(monkeypatch, tmp_path) -> None:

@@ -16,7 +16,14 @@ def ledger_path(primary_mount: Path) -> Path:
 
 
 def ensure_ledger(primary_mount: Path) -> Path:
+    from mercury.core.usb_mount import inactive_operator_mount_blocker
+
     path = ledger_path(primary_mount)
+    # Refuse shadow writes onto an empty configured mountpoint; allow explicit
+    # temp/test primary paths that are not under the live operator mount.
+    inactive = inactive_operator_mount_blocker(path)
+    if inactive:
+        raise OSError(f"Refusing migration ledger write ({inactive})")
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
         path.write_text("", encoding="utf-8")

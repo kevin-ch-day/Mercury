@@ -19,6 +19,12 @@ from mercury.repair.startup import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _pre_cutover_usb_repair(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests cover legacy USB-writer repair; ignore live HDD cutover config."""
+    monkeypatch.setattr("mercury.repair.startup._hdd_writer_active", lambda: False)
+
+
 def _env(*, repair_banner: str | None = None, permission_checks: tuple = ()) -> EnvironmentStatus:
     mount = Path("/mnt/MERCURY_DATA_USB")
     return SimpleNamespace(

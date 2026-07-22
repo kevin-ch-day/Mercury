@@ -38,6 +38,8 @@ def _render_storage_screen(*, show_title: bool) -> None:
             ("4", "Verify mirror"),
             ("5", "Cutover readiness"),
             ("6", "Record plan"),
+            ("7", "USB archive remount RO (preview)"),
+            ("8", "HDD SMART health (preview)"),
         ],
         indent=0,
     )
@@ -91,6 +93,30 @@ def run_storage_menu(*, interactive: bool = True) -> None:
                 display_screen.write_summary(
                     "migration_state=planned (writers still on legacy)."
                 )
+            show_title = pause_and_redraw()
+            continue
+        if choice == "7":
+            from mercury.storage.archive_remount import build_archive_remount_plan
+
+            plan = build_archive_remount_plan()
+            display_screen.write_summary(f"Current USB mode: {plan.current_mode}")
+            display_screen.write_hint(plan.remount_command)
+            for note in plan.notes:
+                display_screen.write_hint(note)
+            display_screen.write_hint(
+                "./run.sh storage archive-remount-ro --execute --confirm 'REMOUNT ARCHIVE RO'"
+            )
+            show_title = pause_and_redraw()
+            continue
+        if choice == "8":
+            from mercury.storage.smart_health import build_smart_health_plan
+
+            plan = build_smart_health_plan()
+            display_screen.write_summary(
+                f"Primary device: {plan['block_device'] or 'unknown'} · {plan['command']}"
+            )
+            display_screen.write_hint(f"Receipt: {plan['receipt_path']}")
+            display_screen.write_hint("./run.sh storage smart-health --execute")
             show_title = pause_and_redraw()
             continue
         output.write(menu_prompts.invalid_choice_message(choice))

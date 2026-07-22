@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from mercury.backup.freshness import (
     OPERATOR_FRESHNESS_GUIDANCE,
-    display_artifact_status_label,
+    backup_entry_verify_label,
     display_freshness_label,
     handoff_freshness_warning,
 )
@@ -18,7 +18,7 @@ def print_backup_status_report(report: BackupStatusReport) -> None:
         {
             "Backup root": report.backup_root,
             "Backup root state": "operator storage mounted" if report.backup_root_state in {"operator-mounted", "usb-mounted"} else report.backup_root_state,
-            "Source databases": report.source_count,
+            "Production databases": report.source_count,
             "Artifact verified": report.verified_count,
             "Missing": report.missing_count,
             "Failed": report.failed_count,
@@ -32,7 +32,7 @@ def print_backup_status_report(report: BackupStatusReport) -> None:
         [
             entry.database,
             entry.role,
-            display_artifact_status_label(entry.protection_status),
+            backup_entry_verify_label(entry),
             display_freshness_label(entry.freshness),
             entry.backup_age or "—",
             entry.backup_id or "—",
@@ -41,13 +41,13 @@ def print_backup_status_report(report: BackupStatusReport) -> None:
     ]
     if rows:
         display_screen.write_compact_table(
-            ["DATABASE", "ROLE", "ARTIFACT", "FRESHNESS", "BACKUP AGE", "LATEST BACKUP"],
+            ["DATABASE", "ROLE", "VERIFY", "FRESHNESS", "BACKUP AGE", "LATEST BACKUP"],
             rows,
-            min_col_widths=[28, 8, 10, 10, 10, 20],
-            max_col_widths=[36, 10, 12, 12, 12, 38],
+            min_col_widths=[28, 8, 12, 10, 10, 20],
+            max_col_widths=[36, 10, 20, 12, 12, 38],
         )
     else:
-        display_screen.write_status("warn", "No source databases in active backup scope.")
+        display_screen.write_status("warn", "No production databases in active backup scope.")
 
     if report.warnings:
         display_screen.write_blank()

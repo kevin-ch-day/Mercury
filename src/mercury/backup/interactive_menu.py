@@ -4,21 +4,40 @@ from __future__ import annotations
 
 import shutil
 from collections import Counter
+from datetime import datetime, timezone
 
 from mercury import output
 from mercury.core.execution_policy import backup_root_state_is_ready
 from mercury.menu import main_display as menu_display
 from mercury.menu import prompts as menu_prompts
 from mercury.terminal import screen as display_screen
-from mercury.backup.batch_runner import run_backup_batch
+from mercury.backup.batch_runner import (
+    build_full_backup_run_result,
+    new_full_backup_run_id,
+    run_backup_batch,
+    verify_written_backup_batch,
+    write_full_backup_run_receipt,
+)
 from mercury.backup import (
     BackupStatusEntry,
     build_backup_status_report,
     build_database_bundle_plan,
     write_database_bundle_plan,
 )
-from mercury.backup.freshness import backup_entry_status_label, menu_handoff_problem_summary
-from mercury.backup.terminal.batch import print_backup_batch_result
+from mercury.backup.freshness import (
+    backup_entry_freshness_label,
+    backup_entry_status_label,
+    backup_entry_verify_label,
+    menu_handoff_problem_summary,
+)
+from mercury.backup.menu_options import (
+    backup_menu_render_options,
+)
+from mercury.backup.terminal.batch import (
+    print_backup_batch_result,
+    print_batch_small_backup_warnings,
+    print_full_backup_run_result,
+)
 from mercury.backup.terminal.bundle import print_database_bundle_plan
 from mercury.backup.terminal.verify import print_verify_menu_summary, run_verify_all_for_menu
 from mercury.backup.on_disk_index import build_on_disk_backup_list, latest_records_by_database
@@ -31,7 +50,7 @@ from mercury.database.backup_planning import BackupPlanDryRun, build_backup_plan
 from mercury.database.discovery import discover_for_planning
 from mercury.database.core.classifier import DatabaseRole, classify_database
 from mercury.database.prod_dev_pairs import build_prod_dev_pairs
-from mercury.menu.subscreen import pause_and_redraw, read_submenu_choice, render_submenu
+from mercury.menu.subscreen import pause_and_redraw, render_submenu
 from mercury.restore.interactive_menu import run_restore_menu
 
 BACKUP_SCREEN_TITLE = "Backup Operations"
@@ -77,10 +96,25 @@ def _storage_usage_fields(policy) -> dict[str, str]:
         "Backup root": str(root),
         "Environment": _backup_target_label(policy),
     }
-    if usb.quick_mount_command and not usb.mounted:
-        from mercury.repair.usb import USB_REPAIR_COMMAND
+    if not usb.mounted:
+        try:
+            from mercury.core.storage_roots import load_storage_config
+            from mercury.core.storage_roles import StorageWriteRole
 
-        fields["Mount fix"] = USB_REPAIR_COMMAND
+            storage = load_storage_config(warn_deprecated=False)
+            if storage.cutover_complete and storage.active_write_role == StorageWriteRole.PRIMARY:
+                # USB archive is optional after cutover — only hint when backup root itself is down.
+                if state in {"usb not mounted", "missing path"}:
+                    fields["Mount fix"] = "./run.sh storage validate"
+            elif usb.quick_mount_command:
+                from mercury.repair.usb import USB_REPAIR_COMMAND
+
+                fields["Mount fix"] = USB_REPAIR_COMMAND
+        except Exception:
+            if usb.quick_mount_command:
+                from mercury.repair.usb import USB_REPAIR_COMMAND
+
+                fields["Mount fix"] = USB_REPAIR_COMMAND
 
     if not root.exists():
         fields["Used"] = "n/a"
@@ -129,7 +163,16 @@ def _format_last_backup(created_at: str | None, backup_age: str | None = None) -
 
 
 def _status_label(entry) -> str:
+    """Combined label retained for recovery/handoff helpers."""
     return backup_entry_status_label(entry)
+
+
+def _freshness_label(entry) -> str:
+    return backup_entry_freshness_label(entry)
+
+
+def _verify_label(entry) -> str:
+    return backup_entry_verify_label(entry)
 
 
 def _backup_screen_rows(
@@ -154,30 +197,14 @@ def _backup_screen_rows(
 
     rows: list[list[str]] = []
 
-    for name in sorted(plan.backup_sources):
-        classification = classify_database(name)
-        if classification.role == DatabaseRole.SHARED_AUTHORITY:
-            entry = status_entries.get(name)
-            record = latest_records.get(name)
-            rows.append(
-                [
-                    name,
-                    _status_label(entry),
-                    format_bytes(record.size_bytes) if record and record.size_bytes is not None else "-",
-                    _format_last_backup(
-                        record.created_at if record else None,
-                        entry.backup_age if entry else None,
-                    ),
-                ]
-            )
-
-    for pair in pairs:
-        entry = status_entries.get(pair.prod)
-        record = latest_records.get(pair.prod)
+    def append_row(name: str) -> None:
+        entry = status_entries.get(name)
+        record = latest_records.get(name)
         rows.append(
             [
-                pair.prod,
-                _status_label(entry),
+                name,
+                _freshness_label(entry),
+                _verify_label(entry),
                 format_bytes(record.size_bytes) if record and record.size_bytes is not None else "-",
                 _format_last_backup(
                     record.created_at if record else None,
@@ -185,6 +212,14 @@ def _backup_screen_rows(
                 ),
             ]
         )
+
+    for name in sorted(plan.backup_sources):
+        classification = classify_database(name)
+        if classification.role == DatabaseRole.SHARED_AUTHORITY:
+            append_row(name)
+
+    for pair in pairs:
+        append_row(pair.prod)
 
     extra_prod_sources = sorted(
         name
@@ -192,19 +227,7 @@ def _backup_screen_rows(
         if classify_database(name).role == DatabaseRole.PRODUCTION and name not in paired_prod_names
     )
     for name in extra_prod_sources:
-        entry = status_entries.get(name)
-        record = latest_records.get(name)
-        rows.append(
-            [
-                name,
-                _status_label(entry),
-                format_bytes(record.size_bytes) if record and record.size_bytes is not None else "-",
-                _format_last_backup(
-                    record.created_at if record else None,
-                    entry.backup_age if entry else None,
-                ),
-            ]
-        )
+        append_row(name)
 
     return rows
 
@@ -212,8 +235,9 @@ def _backup_screen_rows(
 def _status_counts(rows: list[list[str]]) -> Counter[str]:
     counts: Counter[str] = Counter()
     for row in rows:
-        if len(row) >= 2:
-            counts[row[1]] += 1
+        if len(row) >= 3:
+            counts[row[1]] += 1  # freshness
+            counts[row[2]] += 1  # verify
     return counts
 
 
@@ -235,17 +259,26 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
     rows = _backup_screen_rows(plan, status_entries=status_entries)
     if rows:
         table = Table.from_headers(
-            ["DATABASE", "STATUS", "SIZE", "LAST BACKUP"],
+            ["DATABASE", "FRESHNESS", "VERIFY", "SIZE", "LAST BACKUP"],
             rows,
             style=TableStyle(indent=0),
-            min_col_widths=[30, 10, 10, 30],
-            max_col_widths=[36, 12, 12, 48],
+            min_col_widths=[28, 10, 12, 10, 28],
+            max_col_widths=[36, 12, 20, 12, 44],
         )
         display_screen.write_structured_table(table)
         display_screen.write_blank()
         counts = _status_counts(rows)
         problem_parts: list[str] = []
-        for label in ("Stale", "Unknown", "Missing", "Unverified", "Warning", "Absent"):
+        for label in (
+            "Stale",
+            "Unknown",
+            "Missing",
+            "Unverified",
+            "Verify failed",
+            "Missing manifest",
+            "Absent",
+            "Restore-check failed",
+        ):
             count = counts.get(label, 0)
             if count:
                 if label == "Absent":
@@ -253,7 +286,6 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
                 else:
                     problem_parts.append(f"{count} {label.lower()}")
         if problem_parts:
-            # Absent-only is informational; mix with real problems stays a warn.
             only_absent = all(part.endswith("absent from server") for part in problem_parts)
             message = (
                 "Catalog source(s) not on this MariaDB server: "
@@ -264,24 +296,16 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
             )
             output.write(f"[INFO] {message}" if only_absent else f"[WARN] {message}")
         else:
-            display_screen.write_summary("All visible source backups are artifact-verified and fresh.")
+            display_screen.write_summary(
+                "All visible production backups are verified and fresh "
+                "(freshness and integrity are separate checks)."
+            )
     else:
         display_screen.write_status("warn", "No databases in active backup scope.")
-    options: list[tuple[str, str]] = [
-        ("1", "Refresh"),
-        ("2", "Run full backup now"),
-        ("3", "Back up production databases"),
-        ("4", "Verify source backups"),
-        ("5", "Restore-check source backups"),
-        ("6", "Write DB bundle and runbooks"),
-        ("7", "Preview backup plan"),
-        ("8", "Open workstation handoff"),
-        ("9", "Backup dev databases"),
-    ]
-    if not backup_ready:
-        options[1] = ("2", "Run full backup")
+    for warning in getattr(status_report, "warnings", []) or []:
+        display_screen.write_status("warn", warning)
     display_screen.write_blank()
-    render_submenu(options, indent=0)
+    render_submenu(backup_menu_render_options(backup_ready=backup_ready), indent=0)
 
 
 def _preview_backup_plan(plan: BackupPlanDryRun) -> None:
@@ -291,10 +315,17 @@ def _preview_backup_plan(plan: BackupPlanDryRun) -> None:
         live=should_probe_database_status(),
         sources=list(plan.backup_sources),
     )
-    print_backup_batch_result(batch, compact=True, menu=True)
+    print_backup_batch_result(
+        batch,
+        compact=True,
+        menu=True,
+        databases_label="Production databases selected",
+        suggest_verify=False,
+    )
 
 
 def _run_backup(plan: BackupPlanDryRun) -> None:
+    """Production-only backup workflow (menu [3])."""
     policy = load_execution_policy()
     batch = run_backup_batch(
         BACKUP_KIND_FULL,
@@ -303,48 +334,157 @@ def _run_backup(plan: BackupPlanDryRun) -> None:
         policy=policy,
         sources=list(plan.backup_sources),
     )
-    print_backup_batch_result(batch, compact=True, menu=True)
-    if batch.executed_count:
-        display_screen.write_summary(
-            "Next: verify source backups to set manifest verified flags on operator storage."
-        )
+    print_backup_batch_result(
+        batch,
+        compact=True,
+        menu=True,
+        databases_label="Production databases selected",
+        suggest_verify=True,
+    )
+    print_batch_small_backup_warnings(batch)
 
 
-def _run_development_backup(*, require_confirmation: bool = True) -> None:
-    """Rare, explicitly confirmed development recovery backup."""
-    from mercury.backup.batch_runner import resolve_development_backup_sources, verify_development_backup_batch
+def _run_development_backup(*, require_confirmation: bool = True):
+    """Development-only optional recovery backup (menu [9])."""
+    from mercury.backup.batch_runner import resolve_development_backup_sources
 
     sources = resolve_development_backup_sources(live=should_probe_database_status())
     if not sources:
-        display_screen.write_summary("No configured development databases are present on this MariaDB server.")
-        return
+        display_screen.write_summary(
+            "No configured development databases are present on this MariaDB server."
+        )
+        return None
     display_screen.open_screen("Development Database Backup")
-    display_screen.write_fields({"Databases": ", ".join(sources), "Purpose": "Optional pre-migration recovery capture"})
-    display_screen.write_summary("This is not part of routine production protection or the default handoff package.")
-    if require_confirmation and not menu_prompts.ask_confirmation_phrase("BACKUP DEV DATABASES", action="back up development databases"):
-        display_screen.write_summary("Development backup cancelled.")
-        return
-    batch = run_backup_batch(
-        BACKUP_KIND_FULL, execute=True, live=should_probe_database_status(),
-        policy=load_execution_policy(), sources=sources, allow_development_backup=True,
+    display_screen.write_fields(
+        {
+            "Development databases selected": str(len(sources)),
+            "Databases": ", ".join(sources),
+            "Purpose": "Optional pre-migration recovery capture",
+        }
     )
-    print_backup_batch_result(batch, compact=True, menu=True)
+    display_screen.write_summary(
+        "This is not part of routine production protection or the default handoff package."
+    )
+    if require_confirmation and not menu_prompts.ask_confirmation_phrase(
+        "BACKUP DEV DATABASES", action="back up development databases"
+    ):
+        display_screen.write_summary("Development backup cancelled.")
+        return None
+    batch = run_backup_batch(
+        BACKUP_KIND_FULL,
+        execute=True,
+        live=should_probe_database_status(),
+        policy=load_execution_policy(),
+        sources=sources,
+        allow_development_backup=True,
+    )
+    print_backup_batch_result(
+        batch,
+        compact=True,
+        menu=True,
+        databases_label="Development databases selected",
+        suggest_verify=False,
+    )
+    verification = None
     if batch.executed_count:
-        verification = verify_development_backup_batch(batch)
-        display_screen.write_summary(f"Development backup verification: {verification.verified} verified, {verification.failed} failed.")
+        verification = verify_written_backup_batch(batch, allow_development_backup=True)
+        display_screen.write_summary(
+            "Development backups were created and verified for optional migration recovery. "
+            "They are not included in the default production handoff bundle unless explicitly selected."
+            if verification.failed == 0
+            else f"Development backup verification: {verification.verified} verified, {verification.failed} failed."
+        )
         for issue in verification.issues:
             display_screen.write_status("fail", issue)
+    return batch, verification
 
 
-def _run_full_backup(plan: BackupPlanDryRun) -> None:
-    """Run production protection and optionally include explicit dev recovery copies."""
+def _run_full_backup(plan: BackupPlanDryRun):
+    """Full backup: production write+verify, optional development write+verify."""
     include_dev = menu_prompts.ask_yes_no(
         "Also back up configured development databases for migration recovery?",
         default=False,
     ) is True
-    _run_backup(plan)
+    started = datetime.now(timezone.utc)
+    run_id = new_full_backup_run_id(now=started)
+    policy = load_execution_policy()
+
+    production_batch = run_backup_batch(
+        BACKUP_KIND_FULL,
+        execute=True,
+        live=should_probe_database_status(),
+        policy=policy,
+        sources=list(plan.backup_sources),
+    )
+    print_backup_batch_result(
+        production_batch,
+        compact=True,
+        menu=True,
+        databases_label="Production databases selected",
+        suggest_verify=False,
+    )
+
+    production_verification = None
+    if production_batch.executed_count:
+        production_verification = verify_written_backup_batch(production_batch)
+        display_screen.write_summary(
+            f"Production verification: {production_verification.verified} verified, "
+            f"{production_verification.failed} failed."
+        )
+        for issue in production_verification.issues:
+            display_screen.write_status("fail", issue)
+
+    development_batch = None
+    development_verification = None
     if include_dev:
-        _run_development_backup(require_confirmation=False)
+        sources = None
+        from mercury.backup.batch_runner import resolve_development_backup_sources
+
+        sources = resolve_development_backup_sources(live=should_probe_database_status())
+        if not sources:
+            display_screen.write_summary(
+                "No configured development databases are present on this MariaDB server."
+            )
+        else:
+            display_screen.write_blank()
+            display_screen.write_summary("Development recovery backups")
+            development_batch = run_backup_batch(
+                BACKUP_KIND_FULL,
+                execute=True,
+                live=should_probe_database_status(),
+                policy=policy,
+                sources=sources,
+                allow_development_backup=True,
+            )
+            print_backup_batch_result(
+                development_batch,
+                compact=True,
+                menu=True,
+                databases_label="Development databases selected",
+                suggest_verify=False,
+            )
+            if development_batch.executed_count:
+                development_verification = verify_written_backup_batch(
+                    development_batch, allow_development_backup=True
+                )
+
+    result = build_full_backup_run_result(
+        run_id=run_id,
+        started_at_utc=started.isoformat(),
+        production_batch=production_batch,
+        production_verification=production_verification,
+        development_batch=development_batch,
+        development_verification=development_verification,
+        development_requested=include_dev,
+    )
+    try:
+        receipt = write_full_backup_run_receipt(result)
+        result = result.model_copy(update={"receipt_path": str(receipt)})
+    except Exception as exc:  # noqa: BLE001 — receipt is best-effort; result still shown
+        display_screen.write_status("warn", f"Could not write full-backup run receipt: {exc}")
+
+    print_full_backup_run_result(result)
+    return result
 
 
 def _run_verify_sources() -> None:
@@ -395,7 +535,9 @@ def run_backup_menu(*, interactive: bool = True) -> None:
 
         if choice == "1":
             plan = _load_plan()
-            display_screen.write_summary(f"Plan refreshed — {len(plan.backup_sources)} source database(s).")
+            display_screen.write_summary(
+                f"Plan refreshed — {len(plan.backup_sources)} production database(s)."
+            )
             show_title = pause_and_redraw()
             continue
 

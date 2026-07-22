@@ -98,6 +98,56 @@ def test_prepare_dry_run_shows_live_mode_hint(
     assert "Enable sync execution in config/local.toml" in out
 
 
+def test_prepare_verifies_written_backup_ids(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    from mercury.backup.batch_runner import BackupBatchResult, BatchVerificationSummary
+    from mercury.core.execution_policy import ExecutionPolicy
+    from mercury.sync.interactive_menu import _prepare_production_backups
+
+    policy = ExecutionPolicy(
+        dry_run=False,
+        live_actions_enabled=True,
+        backup_root=tmp_path / "backups",
+        config_path=None,
+        allow_unsafe_backup_root=True,
+    )
+    monkeypatch.setattr(
+        "mercury.sync.interactive_menu.load_execution_policy",
+        lambda: policy,
+    )
+    monkeypatch.setattr(
+        ExecutionPolicy,
+        "live_execution_allowed",
+        lambda self: True,
+    )
+    monkeypatch.setattr(
+        "mercury.sync.interactive_menu.run_backup_batch",
+        lambda *args, **kwargs: BackupBatchResult(
+            backup_kind="full",
+            execute=True,
+            sources=["erebus_threat_intel_prod"],
+            executed_count=1,
+        ),
+    )
+    called: list[object] = []
+
+    def _verify(batch):
+        called.append(batch)
+        return BatchVerificationSummary(verified=1, failed=0, backup_ids=["erebus-1"])
+
+    monkeypatch.setattr(
+        "mercury.sync.interactive_menu.verify_written_backup_batch",
+        _verify,
+    )
+    _prepare_production_backups(_sample_report())
+    out = capsys.readouterr().out
+    assert called
+    assert "Verified 1 of 1 newly written backup ID(s)." in out
+
+
 def test_sync_submenu_shows_sync_when_ready() -> None:
     report = _sample_report(ready=1, blocked=1)
     policy = ExecutionPolicy(

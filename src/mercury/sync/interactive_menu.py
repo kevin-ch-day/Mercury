@@ -6,9 +6,8 @@ from mercury import output
 from mercury.menu import main_display as menu_display
 from mercury.menu import prompts as menu_prompts
 from mercury.terminal import screen as display_screen
-from mercury.backup.batch_runner import run_backup_batch
+from mercury.backup.batch_runner import run_backup_batch, verify_written_backup_batch
 from mercury.backup.terminal.batch import print_backup_batch_result
-from mercury.backup.find_latest_backup import find_latest_backup_directory
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.runtime import should_probe_database_status
 from mercury.core.safety import BACKUP_KIND_FULL, SYNC_DEV_CONFIRMATION_PHRASE
@@ -21,8 +20,6 @@ from mercury.sync.readiness import SyncReadinessReport, build_sync_readiness_rep
 from mercury.sync.terminal.readiness import _pair_route_label, print_sync_readiness_report
 from mercury.sync.sync_plan import build_sync_plan_demo
 from mercury.reporting.terminal.plan import print_sync_plan
-from mercury.backup.verification import verify_backup_directory
-from mercury.backup.terminal.verify import print_verification_result
 
 SYNC_SCREEN_TITLE = "Production sync readiness"
 SYNC_SCREEN_SUBTITLE = (
@@ -129,7 +126,13 @@ def _prepare_production_backups(report: SyncReadinessReport) -> None:
         live=should_probe_database_status(),
         sources=sources,
     )
-    print_backup_batch_result(batch, compact=True, menu=True)
+    print_backup_batch_result(
+        batch,
+        compact=True,
+        menu=True,
+        databases_label="Production databases selected",
+        suggest_verify=False,
+    )
 
     if not execute:
         display_screen.write_blank()
@@ -143,17 +146,15 @@ def _prepare_production_backups(report: SyncReadinessReport) -> None:
         return
 
     display_screen.write_blank()
-    verified = 0
-    for database in sources:
-        backup_dir = find_latest_backup_directory(policy.backup_root, database)
-        if backup_dir is None:
-            menu_display.write_status("warn", f"{database}: no on-disk backup after batch")
-            continue
-        result = verify_backup_directory(backup_dir, database=database, update_manifest=True)
-        print_verification_result(result, compact=True)
-        if result.verified:
-            verified += 1
-    display_screen.write_summary(f"Verified {verified} of {len(sources)} prepared source(s).")
+    if not batch.executed_count:
+        display_screen.write_summary("No production backups were written; nothing to verify.")
+        return
+    verification = verify_written_backup_batch(batch)
+    for issue in verification.issues:
+        menu_display.write_status("fail", issue)
+    display_screen.write_summary(
+        f"Verified {verification.verified} of {batch.executed_count} newly written backup ID(s)."
+    )
 
 
 def _run_sync_for_ready(report: SyncReadinessReport) -> None:

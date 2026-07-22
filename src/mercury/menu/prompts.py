@@ -23,7 +23,7 @@ ContinueReader = Callable[[], None]
 _reader: PromptReader | None = None
 _continue_reader: ContinueReader | None = None
 
-CONTINUE_PROMPT = "\nPress any key to continue..."
+CONTINUE_PROMPT = "\nPress Enter to continue..."
 
 QUIT_ALIASES = frozenset({"q", "quit", "exit"})
 
@@ -131,33 +131,19 @@ def read_menu_option() -> str | None:
 
 
 def wait_for_continue(*, prompt: str = CONTINUE_PROMPT) -> None:
-    """Pause after a menu action until the user presses a key."""
+    """Pause after a menu action until the user presses Enter.
+
+    Non-interactive sessions and test seams never block.
+    """
     if _continue_reader is not None:
         _continue_reader()
         return
-
-    import sys
 
     if not is_interactive_terminal():
         return
 
     shown = continue_prompt() if prompt == CONTINUE_PROMPT else normalize_input_prompt(prompt)
-    output.write(shown)
-    try:
-        import termios
-        import tty
-
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        try:
-            tty.setraw(fd)
-            sys.stdin.read(1)
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-    except ImportError:
-        ask_safe(prompt)
-    except OSError:
-        ask_safe(prompt)
+    ask_safe(shown)
     output.write("")
 
 

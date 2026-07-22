@@ -136,7 +136,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 label="Operator backup root",
                 status="fail",
                 detail=root_state,
-                action="./run.sh repair-usb",
+                action="./run.sh storage validate",
             )
         )
 

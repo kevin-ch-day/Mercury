@@ -137,6 +137,23 @@ def storage_mount_is_active(mount_path: Path, *, platform_info: PlatformInfo | N
         return False
 
 
+def inactive_operator_mount_blocker(path: Path, *, local_config: Path | None = None) -> str | None:
+    """
+    If ``path`` is under the configured operator mount and that mount is not active,
+    return a refusal detail. Prevents shadow writes onto the NVMe under an empty
+    mountpoint (e.g. /mnt/MERCURY_DATA_V2 when the HDD is unplugged).
+    """
+    try:
+        mount = resolve_operator_mount(local_config=local_config).resolve()
+        resolved = path.expanduser().resolve()
+        resolved.relative_to(mount)
+    except Exception:
+        return None
+    if storage_mount_is_active(mount):
+        return None
+    return f"operator mount not active: {mount}"
+
+
 def usb_mount_is_active(mount_path: Path, *, platform_info: PlatformInfo | None = None) -> bool:
     """Legacy compatibility wrapper; prefer :func:`storage_mount_is_active`."""
     return storage_mount_is_active(mount_path, platform_info=platform_info)

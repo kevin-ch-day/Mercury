@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from mercury.backup.freshness import FRESHNESS_STALE, backup_entry_status_label
-from mercury.backup.status import BackupStatusEntry, BackupStatusReport, build_backup_status_report
+from mercury.backup.status import (
+    BackupStatusEntry,
+    BackupStatusReport,
+    build_backup_status_report,
+    latest_restore_check_status_by_database,
+)
 from mercury.core.usb_mount import resolve_operator_mount
 from mercury.core.runtime import should_probe_database_status
 from mercury.handoff.display import handoff_pipeline_line, handoff_status_kind
@@ -15,7 +20,6 @@ from mercury.handoff.snapshot import build_handoff_snapshot
 from mercury.menu import main_display as menu_display
 from mercury.menu import prompts as menu_prompts
 from mercury.menu.subscreen import pause_and_redraw, read_submenu_choice, render_submenu
-from mercury.state.ledger import read_operator_database_backup_rows
 from mercury.terminal import screen as display_screen
 from mercury.terminal.format import format_human_datetime
 from mercury.terminal.table import Table, TableStyle
@@ -39,20 +43,6 @@ def _status_label(entry: BackupStatusEntry) -> str:
     return backup_entry_status_label(entry)
 
 
-def _latest_restore_check_status() -> dict[str, str]:
-    latest: dict[str, tuple[str, str]] = {}
-    for row in read_operator_database_backup_rows():
-        database = (row.get("database") or "").strip()
-        status = (row.get("restore_check_status") or "").strip()
-        stamp = (row.get("timestamp") or "").strip()
-        if not database or not status:
-            continue
-        existing = latest.get(database)
-        if existing is None or stamp >= existing[0]:
-            latest[database] = (stamp, status)
-    return {database: status for database, (_stamp, status) in latest.items()}
-
-
 def _latest_runbook(pattern: str) -> Path | None:
     operator_mount = resolve_operator_mount()
     root = operator_mount / "mercury_runbooks"
@@ -66,7 +56,7 @@ def _load_recovery_screen() -> RecoveryScreenData:
     report = build_backup_status_report(live=should_probe_database_status())
     return RecoveryScreenData(
         report=report,
-        restore_check_status=_latest_restore_check_status(),
+        restore_check_status=latest_restore_check_status_by_database(),
         latest_transfer_runbook=_latest_runbook("transfer_runbook_*.md"),
         latest_database_runbook=_latest_runbook("*/database_transfer_runbook_*.md"),
     )

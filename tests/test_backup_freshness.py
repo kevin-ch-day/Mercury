@@ -296,8 +296,51 @@ def test_print_backup_status_report_uses_display_labels(
     out = capsys.readouterr().out
     assert "Verified" in out
     assert "Stale" in out
+    assert "VERIFY" in out
+    assert "Production databases" in out
     assert "handoff should wait for fresh full backups" in out
     assert "Artifact verified means backup files pass checksum" in out
+
+
+def test_backup_status_includes_restore_check_and_phase3b_note(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from mercury.backup.status import build_backup_status_report
+    from mercury.core.execution_policy import ExecutionPolicy
+
+    monkeypatch.setattr(
+        "mercury.backup.status.select_batch_sources",
+        lambda **kwargs: ["erebus_threat_intel_prod"],
+    )
+    monkeypatch.setattr(
+        "mercury.backup.status.find_latest_backup_directory",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "mercury.backup.status._live_server_database_names",
+        lambda **kwargs: {"erebus_threat_intel_prod"},
+    )
+    monkeypatch.setattr(
+        "mercury.backup.status.latest_restore_check_status_by_database",
+        lambda: {"erebus_threat_intel_prod": "passed"},
+    )
+    monkeypatch.setattr(
+        "mercury.backup.status.sealed_phase3b_package_note",
+        lambda: "Sealed Phase 3B rehearsal package present (20260722T055400Z_phase3b).",
+    )
+    report = build_backup_status_report(
+        live=False,
+        policy=ExecutionPolicy(
+            dry_run=True,
+            live_actions_enabled=False,
+            backup_root=tmp_path / "backups",
+            config_path=None,
+            allow_unsafe_backup_root=True,
+        ),
+    )
+    assert report.entries[0].restore_check_status == "passed"
+    assert any("Phase 3B" in warning for warning in report.warnings)
 
 
 def test_restore_readiness_complete_while_freshness_stale(

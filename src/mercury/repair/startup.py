@@ -9,6 +9,7 @@ import sys
 from mercury import output
 from mercury.core.environment_status import EnvironmentStatus, build_environment_status
 from mercury.core.platform import detect_platform
+from mercury.core.storage_roles import StorageWriteRole
 from mercury.repair.usb import USB_REPAIR_COMMAND, usb_repair_script_path
 from mercury.terminal import screen as display_screen
 
@@ -23,9 +24,28 @@ def skip_usb_repair_for_session() -> None:
     os.environ[_SKIP_ENV] = "1"
 
 
+def _hdd_writer_active() -> bool:
+    """True after cutover when routine writes target primary HDD, not USB."""
+    try:
+        from mercury.core.storage_roots import load_storage_config
+
+        cfg = load_storage_config(warn_deprecated=False)
+    except Exception:
+        return False
+    return bool(
+        cfg.cutover_complete and cfg.active_write_role == StorageWriteRole.PRIMARY
+    )
+
+
 def usb_repair_reason(env: EnvironmentStatus) -> str | None:
-    """Return a short reason when the one-shot USB repair helper should run."""
+    """Return a short reason when the one-shot USB repair helper should run.
+
+    After HDD cutover, USB is an optional recovery archive — do not block startup
+    or force repair when only the primary writer matters.
+    """
     if detect_platform().is_windows:
+        return None
+    if _hdd_writer_active():
         return None
 
     if env.usb.repair_banner:
@@ -124,9 +144,15 @@ def run_usb_repair_flow(*, interactive: bool = True, default_yes: bool = True) -
     Offer and/or run USB repair.
 
     Returns True when the USB is ready afterward (already OK, repaired, or user skipped
-    in non-blocking mode).
+    in non-blocking mode). After HDD cutover this is a no-op (USB is optional archive).
     """
     if detect_platform().is_windows:
+        return True
+    if _hdd_writer_active():
+        display_screen.write_summary(
+            "HDD is the active writer after cutover. USB repair is optional archive "
+            f"maintenance only ({USB_REPAIR_COMMAND})."
+        )
         return True
 
     env = build_environment_status(probe_database=False)
@@ -163,6 +189,8 @@ def maybe_prompt_usb_repair_at_startup() -> None:
         return
     if detect_platform().is_windows:
         return
+    if _hdd_writer_active():
+        return
 
     run_usb_repair_flow(interactive=True, default_yes=True)
 
@@ -178,3 +206,25 @@ def main_menu_invalid_choice_suffix() -> str:
     if usb_repair_needed() and not usb_repair_session_skipped():
         return ", or r to repair USB"
     return ""
+
+
+def primary_mount_hint() -> str | None:
+    """Post-cutover hint when the HDD writer is not mounted."""
+    if not _hdd_writer_active():
+        return None
+    try:
+        from mercury.storage.report import build_storage_status_report
+
+        report = build_storage_status_report()
+    except Exception:
+        return "Active writer is HDD — mount primary: ./run.sh storage validate"
+    if report.primary.validation.ok:
+        return None
+    uuid = report.primary.filesystem_uuid
+    path = report.primary.mount_path
+    return (
+        f"HDD writer not ready at {path}. Mount: "
+        f"sudo mount UUID={uuid} {path}  "
+        f"(or: sudo mount --bind /run/media/$USER/MERCURY_DATA_V2 {path}); "
+        f"then ./run.sh storage validate"
+    )

@@ -52,7 +52,13 @@ def _run_schema_export(plan) -> None:
         policy=policy,
         sources=list(plan.sources),
     )
-    print_backup_batch_result(batch, compact=True, menu=True)
+    print_backup_batch_result(
+        batch,
+        compact=True,
+        menu=True,
+        databases_label="Production databases selected",
+        suggest_verify=False,
+    )
 
 
 def run_schema_menu(*, interactive: bool = True) -> None:

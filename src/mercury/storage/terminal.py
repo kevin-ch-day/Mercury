@@ -65,6 +65,9 @@ def print_storage_status(report: StorageStatusReport) -> None:
         display_screen.write_hint("Routine backups and migration artifacts write to the canonical HDD. USB is recovery archive only.")
         display_screen.write_hint("Package status: ./run.sh migration package-status")
         display_screen.write_hint("USB archive receipt: ./run.sh storage archive-receipt")
+        display_screen.write_hint(
+            "Remount USB archive read-only: ./run.sh storage archive-remount-ro"
+        )
         display_screen.write_hint("Destination readiness: ./run.sh migration next")
     else:
         display_screen.write_hint("Routine backups still target the active write role (legacy until cutover).")

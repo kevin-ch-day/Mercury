@@ -46,9 +46,18 @@ def print_doctor_report(report: DoctorReport) -> None:
         output.field("mount", str(storage.primary.mount_path))
         output.field(
             "status",
-            "mounted and writable"
-            if storage.primary.validation.ok
-            else (storage.primary.validation.blocker or storage.primary.validation.code.value),
+            (
+                "mounted and writable"
+                if storage.primary.validation.ok and storage.primary.writable_policy
+                else (
+                    "mounted (read-only policy)"
+                    if storage.primary.validation.ok
+                    else (
+                        storage.primary.validation.blocker
+                        or storage.primary.validation.code.value
+                    )
+                )
+            ),
         )
         output.field("legacy archive", storage.legacy.one_line())
     else:
@@ -136,6 +145,7 @@ def _repair_plan_warranted(report: DoctorReport) -> bool:
     repairable = {
         "local config not initialized",
         "Operator backup mount not detected",
+        "Primary HDD writer mount not ready",
     }
     if any(
         any(token in blocker for token in repairable)

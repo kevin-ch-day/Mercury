@@ -342,9 +342,22 @@ def _apply_repo_local_paths(text: str) -> str:
 
 def _ensure_usb_layout(mount_path) -> list[str]:
     notes: list[str] = []
+    from pathlib import Path
+
+    from mercury.core.usb_mount import storage_mount_is_active
+
+    root = Path(mount_path)
+    if not storage_mount_is_active(root):
+        notes.append(
+            f"Skipped creating layout under {root}: not an active mount "
+            "(refusing host-local shadow directories)."
+        )
+        return notes
     for dirname, label in MERCURY_USB_DIR_LABELS:
-        path = mount_path / dirname
+        path = root / dirname
         ok, message = safe_ensure_directory(path)
         if message == "created":
             notes.append(f"Created USB {label}: {path}")
+        elif not ok:
+            notes.append(f"Could not create {label} at {path}: {message}")
     return notes

@@ -336,12 +336,30 @@ def backup_root_unsafe_reason(
     if state == "usb not mounted":
         from mercury.repair.usb import USB_REPAIR_COMMAND
 
+        try:
+            from mercury.core.storage_roots import load_storage_config
+            from mercury.core.storage_roles import StorageWriteRole
+
+            storage = load_storage_config(warn_deprecated=False)
+            if storage.cutover_complete and storage.active_write_role == StorageWriteRole.PRIMARY:
+                return "primary HDD writer is not mounted — run: ./run.sh storage validate"
+        except Exception:
+            pass
         if usb.device_attached or usb.placeholder_mount_point:
             return f"Storage device plugged in but not mounted — run: {USB_REPAIR_COMMAND}"
         return "configured operator backup root is not mounted"
     if state == "missing path":
         from mercury.repair.usb import USB_REPAIR_COMMAND
 
+        try:
+            from mercury.core.storage_roots import load_storage_config
+            from mercury.core.storage_roles import StorageWriteRole
+
+            storage = load_storage_config(warn_deprecated=False)
+            if storage.cutover_complete and storage.active_write_role == StorageWriteRole.PRIMARY:
+                return "backup_root missing on primary HDD — mount HDD then recheck"
+        except Exception:
+            pass
         if usb.device_attached or usb.placeholder_mount_point:
             return f"backup paths missing — run: {USB_REPAIR_COMMAND}"
         return "configured backup_root path does not exist"
@@ -383,6 +401,25 @@ def recommended_next_step(env: EnvironmentStatus) -> str:
 
     if not env.config.local_toml_present:
         return "./run.sh config init"
+    try:
+        from mercury.core.storage_roots import load_storage_config
+        from mercury.core.storage_roles import StorageWriteRole
+
+        storage = load_storage_config(warn_deprecated=False)
+        if storage.cutover_complete and storage.active_write_role == StorageWriteRole.PRIMARY:
+            from mercury.storage.report import build_storage_status_report
+
+            report = build_storage_status_report()
+            if not report.primary.validation.ok:
+                return "./run.sh storage validate  # mount primary HDD"
+            # USB is optional archive after cutover — do not recommend repair-usb.
+            if env.mariadb.connection_works is False:
+                return "./run.sh doctor --repair-plan"
+            if env.primary_setup_blocker:
+                return "./run.sh doctor"
+            return "./run.sh menu"
+    except Exception:
+        pass
     if env.repairable_blockers or env.usb.repair_banner:
         return USB_REPAIR_COMMAND
     if env.mariadb.connection_works is False:
@@ -408,6 +445,20 @@ def recommended_next_step(env: EnvironmentStatus) -> str:
     return "./run.sh menu"
 
 
+def _hdd_writer_active() -> bool:
+    """True when config says primary HDD is the post-cutover active writer."""
+    try:
+        from mercury.core.storage_roots import load_storage_config
+        from mercury.core.storage_roles import StorageWriteRole
+
+        storage = load_storage_config(warn_deprecated=False)
+        return bool(
+            storage.cutover_complete and storage.active_write_role == StorageWriteRole.PRIMARY
+        )
+    except Exception:
+        return False
+
+
 def _collect_repairable_blockers(
     *,
     config: ConfigSetupStatus,
@@ -419,7 +470,13 @@ def _collect_repairable_blockers(
     blockers: list[str] = []
     if config.missing_labels:
         blockers.append("local config not initialized")
-    if not usb.mounted and not usb.mercury_layout_present:
+    # After HDD cutover, the active writer is primary — do not treat USB absence as a blocker.
+    hdd_writer = _hdd_writer_active()
+    if hdd_writer:
+        if not policy.backup_root_exists() or not policy.backup_root_is_under_required_mount():
+            if not backup_root_state_is_ready(policy.backup_root_state()):
+                blockers.append("Primary HDD writer mount not ready")
+    elif not usb.mounted and not usb.mercury_layout_present:
         blockers.append("Operator backup mount not detected")
     for check in permission_checks:
         if check.needs_repair:
@@ -446,8 +503,14 @@ def _resolve_primary_setup_blocker(
             return f"Local config not initialized — Operator storage target detected at {usb.mount_path}."
         return "Local config not initialized — run: ./run.sh config init."
 
+    hdd_writer = _hdd_writer_active()
     for check in permission_checks:
         if check.needs_repair:
+            if hdd_writer:
+                return (
+                    f"Primary HDD writer paths not ready — {check.label}. "
+                    "Run: ./run.sh storage validate"
+                )
             if (
                 not usb.mounted
                 and (usb.device_attached or usb.placeholder_mount_point)
@@ -462,7 +525,11 @@ def _resolve_primary_setup_blocker(
                 return f"Operator storage paths not writable by {getpass.getuser()} — run: {USB_REPAIR_COMMAND}"
             return f"Operator storage paths not writable by {getpass.getuser()} — {check.label}."
 
-    if policy.backup_root_is_within_repo() and usb.mercury_layout_present:
+    if (
+        not hdd_writer
+        and policy.backup_root_is_within_repo()
+        and usb.mercury_layout_present
+    ):
         return "Operator storage target detected but not configured — set backup_root in config/local.toml."
 
     if mariadb.service_state == "inactive" and mariadb.mariadb_client_found:
@@ -489,19 +556,27 @@ def _build_setup_hints(
     if config.initialized and primary_setup_blocker is None and not has_repairable:
         return ()
     hints: list[str] = []
+    hdd_writer = _hdd_writer_active()
     if not config.local_toml_present:
         hints.append("Run: ./run.sh config init")
     elif config.missing_labels:
         hints.append(f"Run: ./run.sh config init  (missing: {', '.join(config.missing_labels)})")
     if has_repairable:
+        if hdd_writer:
+            hints.append("Run: ./run.sh storage validate")
+        else:
+            from mercury.repair.usb import USB_REPAIR_COMMAND
+
+            hints.append(f"Run: {USB_REPAIR_COMMAND}")
+    elif not hdd_writer and usb.quick_mount_command and not usb.mounted:
         from mercury.repair.usb import USB_REPAIR_COMMAND
 
         hints.append(f"Run: {USB_REPAIR_COMMAND}")
-    elif usb.quick_mount_command and not usb.mounted:
-        from mercury.repair.usb import USB_REPAIR_COMMAND
-
-        hints.append(f"Run: {USB_REPAIR_COMMAND}")
-    if usb.mercury_layout_present and (not config.local_toml_present or primary_setup_blocker):
+    if (
+        not hdd_writer
+        and usb.mercury_layout_present
+        and (not config.local_toml_present or primary_setup_blocker)
+    ):
         hints.append(f"Operator backup layout detected at {usb.mount_path}.")
     return tuple(hints)
 

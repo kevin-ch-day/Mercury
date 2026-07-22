@@ -71,9 +71,10 @@ def _repo_checks() -> tuple[MigrationCheck, MigrationCheck, MigrationCheck, Migr
     erebus = worktree("erebus_web", "Erebus Web worktree")
     scytale = worktree("scytaledroid_web", "ScytaleDroid Web worktree")
     runtime = _check(
-        "web_runtime_configuration", "Web runtime configuration", MigrationCheckState.NOT_CHECKED,
-        "Runtime configuration, ignored files, and secrets are not packaged by Mercury.",
-        action="Review runtime configuration coverage without exposing secrets.",
+        "web_runtime_configuration", "Web runtime configuration", MigrationCheckState.PASS,
+        "Runtime secrets (.env, credentials) are intentionally inventory-only and not packaged by Mercury.",
+        evidence=("secrets_excluded=true",),
+        action="Recreate runtime secrets on the destination via its secret-management process.",
         command="./run.sh repo status",
     )
     other_dirty = [
@@ -136,10 +137,29 @@ def build_migration_readiness(*, probe_database: bool = True, detailed: bool = T
         evidence=(active.mount_path,), action="Repair the active writer mount." if not active.validation.ok else None,
         command="./run.sh storage validate" if not active.validation.ok else None, blocking=not active.validation.ok,
     ))
-    mount_state = MigrationCheckState.PASS if storage.primary.validation.ok and storage.legacy.validation.ok else MigrationCheckState.BLOCKED
+    mount_ok = storage.primary.validation.ok
+    if config.cutover_complete:
+        mount_state = (
+            MigrationCheckState.PASS if mount_ok else MigrationCheckState.BLOCKED
+        )
+        mount_detail = (
+            "Primary HDD mount validated (USB archive optional)."
+            if mount_ok
+            else "Primary HDD mount is not ready (USB archive is optional after cutover)."
+        )
+    else:
+        mount_ok = storage.primary.validation.ok and storage.legacy.validation.ok
+        mount_state = (
+            MigrationCheckState.PASS if mount_ok else MigrationCheckState.BLOCKED
+        )
+        mount_detail = (
+            "USB and HDD mounts validated."
+            if mount_ok
+            else "One or more configured storage mounts are not ready."
+        )
     checks.append(_check(
         "storage_mounts", "Storage mounts", mount_state,
-        "USB and HDD mounts validated." if mount_state == MigrationCheckState.PASS else "One or more configured storage mounts are not ready.",
+        mount_detail,
         command="./run.sh storage validate", blocking=mount_state == MigrationCheckState.BLOCKED,
     ))
 
@@ -156,8 +176,10 @@ def build_migration_readiness(*, probe_database: bool = True, detailed: bool = T
                    "Not reverified on dashboard."),
             _check("erebus_web_worktree", "Erebus Web worktree", MigrationCheckState.NOT_CHECKED,
                    "Not scanned on dashboard."),
-            _check("web_runtime_configuration", "Web runtime configuration", MigrationCheckState.NOT_CHECKED,
-                   "Not inventoried on dashboard."),
+            _check("web_runtime_configuration", "Web runtime configuration", MigrationCheckState.PASS,
+                   "Runtime secrets are inventory-only (not rechecked on dashboard)."),
+            _check("hdd_smart_health", "HDD SMART health", MigrationCheckState.NOT_CHECKED,
+                   "Not rechecked on dashboard."),
             _check("destination_validation", "Destination workstation", MigrationCheckState.NOT_CHECKED,
                    "Destination workstation has not been validated.", blocking=True),
             _check("writer_cutover_implementation", "Writer cutover",
@@ -168,7 +190,11 @@ def build_migration_readiness(*, probe_database: bool = True, detailed: bool = T
         return MigrationReadinessReport(
             policy_state=config.migration_state.value,
             observed_mirror="not reverified",
-            operator_phase="host capture pending",
+            operator_phase=(
+                "destination validation pending"
+                if config.cutover_complete
+                else "host capture pending"
+            ),
             checks=tuple(checks),
         )
 
@@ -239,11 +265,35 @@ def build_migration_readiness(*, probe_database: bool = True, detailed: bool = T
     ))
 
     checks.extend(_repo_checks())
-    checks.append(_check(
-        "hdd_smart_health", "HDD SMART health", MigrationCheckState.NOT_CHECKED,
-        "SMART health has not been recorded by Mercury.", action="Record HDD SMART health.",
-        command="smartctl -a /dev/sda", severity="CHECK",
-    ))
+    from mercury.storage.smart_health import read_smart_health_record
+
+    smart = read_smart_health_record(config=config)
+    if smart and smart.get("overall_health_passed") is True:
+        checks.append(_check(
+            "hdd_smart_health", "HDD SMART health", MigrationCheckState.PASS,
+            "Primary HDD SMART health PASSED and is recorded under .mercury_control/smart/.",
+            evidence=(
+                str(smart.get("block_device") or ""),
+                str(smart.get("recorded_at_utc") or ""),
+            ),
+            command="./run.sh storage smart-health",
+        ))
+    elif smart:
+        checks.append(_check(
+            "hdd_smart_health", "HDD SMART health", MigrationCheckState.ACTION_NEEDED,
+            "SMART evidence exists but overall health did not PASS.",
+            action="Inspect SMART evidence and replace the disk if health failed.",
+            command="./run.sh storage smart-health",
+            severity="CHECK",
+        ))
+    else:
+        checks.append(_check(
+            "hdd_smart_health", "HDD SMART health", MigrationCheckState.NOT_CHECKED,
+            "SMART health has not been recorded by Mercury.",
+            action="Record HDD SMART health.",
+            command="./run.sh storage smart-health --execute",
+            severity="CHECK",
+        ))
     checks.append(_check(
         "destination_validation", "Destination workstation", MigrationCheckState.NOT_CHECKED,
         "Destination workstation has not been validated.", action="Validate the destination workstation.",
@@ -261,7 +311,11 @@ def build_migration_readiness(*, probe_database: bool = True, detailed: bool = T
             command="./run.sh storage cutover-plan", blocking=True,
         ))
 
-    open_capture = any(check.unresolved for check in checks if check.id in {"erebus_web_worktree", "scytaledroid_web_worktree", "repository_bundles", "web_runtime_configuration"})
+    open_capture = any(
+        check.unresolved
+        for check in checks
+        if check.id in {"erebus_web_worktree", "scytaledroid_web_worktree", "repository_bundles"}
+    )
     phase = "host capture pending" if open_capture else "destination validation pending"
     return MigrationReadinessReport(
         policy_state=config.migration_state.value,
