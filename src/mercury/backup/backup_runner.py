@@ -404,7 +404,15 @@ def execute_backup(
     elif not resolved.backup_execution_allowed():
         refusal = resolved.backup_refusal_reason()
     else:
-        refusal = None
+        from mercury.storage.host_maintenance import writes_allowed
+
+        if not writes_allowed():
+            refusal = (
+                "host maintenance refuses HDD-backed backups "
+                "(storage detached or writes_allowed=false)"
+            )
+        else:
+            refusal = None
     if refusal:
         base_result.refused = True
         base_result.refusal_reason = refusal

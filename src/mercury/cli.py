@@ -520,7 +520,10 @@ def migration_documents_cmd(
 
 @migration_app.command("package")
 def migration_package_cmd(
-    action: str = typer.Argument("preview", help="Only 'preview' is implemented in this phase."),
+    action: str = typer.Argument(
+        "preview",
+        help="preview | seal | create",
+    ),
     run_id: str = typer.Option(
         "20260722T055400Z_phase3b",
         "--run-id",
@@ -546,28 +549,189 @@ def migration_package_cmd(
         "--mercury-capture-id",
         help="Exact Mercury destination capture id under .mercury_control/validation/mercury/.",
     ),
+    preview_id: str | None = typer.Option(
+        None,
+        "--preview-id",
+        help="Exact sealed preview ID (required for create; optional pin for seal).",
+    ),
+    confirm: str | None = typer.Option(
+        None,
+        "--confirm",
+        help="Exact confirmation phrase for create.",
+    ),
+    erebus_commit: str = typer.Option(
+        "3f1bb5bd2229d98b9b76b9f1615238792f12a0b3",
+        "--erebus-commit",
+    ),
+    erebus_capture_id: str = typer.Option(
+        "erebus_destination_candidate_3f1bb5b_20260722T150930Z",
+        "--erebus-capture-id",
+    ),
 ) -> None:
-    """Preview an allowlisted destination package (does not create the package)."""
-    if action != "preview":
-        raise typer.BadParameter("Only 'preview' is supported; package creation is not authorized.")
+    """Preview, seal, or create an allowlisted destination package."""
     from mercury.core.usb_mount import resolve_operator_mount
     from mercury.migration.destination_package import preview_destination_package
     from mercury.migration.package_terminal import print_destination_package_preview
     from mercury.storage.retention import load_retention_policy
 
     policy = load_retention_policy()
-    report = preview_destination_package(
-        resolve_operator_mount(),
-        run_id=run_id,
-        policy=policy,
-        allow_scytaledroid=allow_scytaledroid,
-        scytaledroid_paths=list(scytaledroid_path or []),
-        mercury_commit=mercury_commit,
-        mercury_capture_id=mercury_capture_id,
+    mount = resolve_operator_mount()
+
+    if action == "preview":
+        report = preview_destination_package(
+            mount,
+            run_id=run_id,
+            policy=policy,
+            allow_scytaledroid=allow_scytaledroid,
+            scytaledroid_paths=list(scytaledroid_path or []),
+            mercury_commit=mercury_commit,
+            mercury_capture_id=mercury_capture_id,
+        )
+        code = print_destination_package_preview(report)
+        if code:
+            raise typer.Exit(code)
+        return
+
+    if action == "seal":
+        from mercury.migration.destination_package_seal import seal_destination_package_preview
+
+        if not mercury_commit or not mercury_capture_id:
+            raise typer.BadParameter("--mercury-commit and --mercury-capture-id are required to seal")
+        sealed = seal_destination_package_preview(
+            mount,
+            run_id=run_id,
+            mercury_commit=mercury_commit,
+            mercury_capture_id=mercury_capture_id,
+            policy=policy,
+            preview_id=preview_id,
+        )
+        output.heading("Destination package preview sealed")
+        output.field("Preview ID", sealed["preview_id"])
+        output.field("Preview SHA-256", sealed["preview_sha256"])
+        output.field("File count", str(sealed.get("file_count")))
+        output.field("Estimated bytes", str(sealed.get("estimated_size_bytes")))
+        output.field("Members", str(len(sealed.get("included") or [])))
+        output.field("Ok", "yes" if sealed.get("ok") else "no")
+        return
+
+    if action == "create":
+        from mercury.migration.destination_package_create import (
+            CREATE_CONFIRMATION,
+            create_destination_package,
+        )
+
+        if not preview_id:
+            raise typer.BadParameter("--preview-id is required for package create")
+        if not mercury_commit or not mercury_capture_id:
+            raise typer.BadParameter(
+                "--mercury-commit and --mercury-capture-id are required for package create"
+            )
+        if not confirm:
+            raise typer.BadParameter(f"--confirm '{CREATE_CONFIRMATION}' is required")
+        result = create_destination_package(
+            mount,
+            preview_id=preview_id,
+            run_id=run_id,
+            confirm=confirm,
+            mercury_commit=mercury_commit,
+            mercury_capture_id=mercury_capture_id,
+            erebus_commit=erebus_commit,
+            erebus_capture_id=erebus_capture_id,
+        )
+        output.heading("Destination package create")
+        output.field("Preview ID", result.preview_id or preview_id)
+        output.field("Package ID", result.package_id or "—")
+        output.field("Package root", str(result.package_root) if result.package_root else "—")
+        output.field("Verification", result.verification_status)
+        output.field("File count", str(result.file_count))
+        output.field("Total bytes", str(result.total_bytes))
+        if result.errors:
+            output.write("Errors:")
+            for err in result.errors:
+                output.write(f"  !! {err}")
+        if result.warnings:
+            output.write("Warnings:")
+            for warn in result.warnings:
+                output.write(f"  ! {warn}")
+        output.field("Ok", "yes" if result.ok else "no")
+        if not result.ok:
+            raise typer.Exit(1)
+        return
+
+    raise typer.BadParameter("action must be preview, seal, or create")
+
+
+@storage_app.command("detach")
+def storage_detach_cmd(
+    action: str = typer.Argument("status", help="status | preview | execute"),
+    confirm: str | None = typer.Option(None, "--confirm"),
+    mask_unit: bool = typer.Option(
+        False,
+        "--mask-unit",
+        help="Include reversible systemctl mask in operator command list (execute preview only).",
+    ),
+) -> None:
+    """Safe HDD detach workflow. Execute stops before privileged unmount."""
+    from mercury.storage.detach import (
+        DETACH_CONFIRMATION,
+        build_detach_status,
+        detach_execute_until_privileged,
+        detach_preview,
     )
-    code = print_destination_package_preview(report)
-    if code:
-        raise typer.Exit(code)
+
+    if action == "status":
+        status = build_detach_status()
+        output.heading("Mercury HDD detach status")
+        output.field("Expected device", status.expected_device)
+        output.field("Expected UUID", status.expected_uuid)
+        output.field("Mount", status.mount_path)
+        output.field("Mounted", "yes" if status.mounted else "no")
+        output.field("Mount source", status.mount_source or "—")
+        output.field("Mount UUID", status.mount_uuid or "—")
+        output.field("Package ID", status.package_id or "—")
+        output.field("Package verification", status.package_verification_status or "—")
+        output.field("Writer state", status.writer_state)
+        output.field("fstab configured", "yes" if status.fstab_configured else "no")
+        output.field("systemd mount active", "yes" if status.systemd_mount_active else "no")
+        output.field("Menu PIDs", ",".join(str(p) for p in status.mercury_menu_pids) or "none")
+        if status.open_handle_samples:
+            output.write("Open handle samples:")
+            for sample in status.open_handle_samples[:20]:
+                output.write(f"  · {sample}")
+        if status.blockers:
+            output.write("Blockers:")
+            for blocker in status.blockers:
+                output.write(f"  !! {blocker}")
+        output.field("Safe to proceed", "yes" if status.safe_to_proceed else "no")
+        return
+
+    if action == "preview":
+        status = build_detach_status()
+        output.heading("Mercury HDD detach preview")
+        for line in detach_preview(status):
+            output.write(f"  {line}")
+        return
+
+    if action == "execute":
+        if not confirm:
+            raise typer.BadParameter(f"--confirm '{DETACH_CONFIRMATION}' is required")
+        status, commands = detach_execute_until_privileged(
+            confirm=confirm, mask_systemd_unit=mask_unit
+        )
+        output.heading("Mercury HDD detach execute")
+        output.field("Safe to proceed", "yes" if status.safe_to_proceed else "no")
+        if status.blockers:
+            output.write("Blockers:")
+            for blocker in status.blockers:
+                output.write(f"  !! {blocker}")
+            raise typer.Exit(1)
+        output.write("Host write-disable marked (detaching).")
+        output.write("STOP before privileged unmount — run these as the operator:")
+        for cmd in commands:
+            output.write(f"  {cmd}")
+        return
+
+    raise typer.BadParameter("action must be status, preview, or execute")
 
 
 @migration_app.command("capture-web")

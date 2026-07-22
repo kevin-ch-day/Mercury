@@ -489,7 +489,14 @@ def build_cleanup_preview(
 
 
 def refuse_cleanup_execute(policy: RetentionPolicy | None = None) -> str:
+    from mercury.storage.host_maintenance import writes_allowed
+
     policy = policy or load_retention_policy()
+    if not writes_allowed():
+        return (
+            "cleanup execution refused: host maintenance writes_allowed=false "
+            "(HDD detached / destination rehearsal)"
+        )
     if policy.destination_validation_pending:
         return "cleanup execution refused: destination_validation_pending=true"
     if not policy.allow_execute:

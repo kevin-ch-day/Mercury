@@ -197,6 +197,10 @@ def snapshot_status(repo: RepoDefinition) -> tuple[str, bool]:
 
 def capture_web_worktrees(*, execute: bool = False, repositories: list[RepoDefinition] | None = None) -> list[WebCaptureResult]:
     """Preview or explicitly snapshot two configured web repos; never changes sources."""
+    if execute:
+        from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled
+
+        refuse_if_hdd_writes_disabled("worktree capture")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     root = resolve_operator_mount() / "mercury_worktree_snapshots" / stamp
     results: list[WebCaptureResult] = []
