@@ -15,7 +15,6 @@ from mercury.core.environment_status import (
 from mercury.core.path_permissions import chown_repair_command
 from mercury.core.paths import REPO_ROOT, REPOS_LOCAL
 from mercury.core.platform import detect_platform
-from mercury.core.safety import BACKUP_KIND_FULL
 
 
 @dataclass(frozen=True)
@@ -569,21 +568,78 @@ def _count_verified_backups(policy) -> tuple[int, int]:
     from mercury.backup.batch_runner import resolve_batch_sources
     from mercury.backup.find_latest_backup import find_latest_backup_directory
     from mercury.backup.verification import verify_backup_artifacts
+    from mercury.core.safety import BACKUP_KIND_FULL
 
     if policy.config_path is None:
         return 0, 0
     sources = resolve_batch_sources(live=False)
     verified = 0
     for name in sources:
+        if policy.backup_root_is_within_repo() and not policy.allow_unsafe_backup_root:
+            continue
+        # Count only the newest written backup (one integrity check per source).
         backup_dir = find_latest_backup_directory(policy.backup_root, name)
         if backup_dir is None:
-            continue
-        if policy.backup_root_is_within_repo() and not policy.allow_unsafe_backup_root:
             continue
         result = verify_backup_artifacts(backup_dir, database=name)
         if result.verified and result.backup_kind == BACKUP_KIND_FULL:
             verified += 1
     return verified, len(sources)
+
+
+def backup_identity_inventory(policy) -> list[dict[str, str | None]]:
+    """Doctor inventory distinguishing written / stamped / restore-checked IDs.
+
+    Uses lightweight metadata (manifest stamp + restore-check ledger). Full dump
+    checksum verification remains an explicit verify/restore-check action.
+    """
+    from mercury.backup.batch_runner import resolve_batch_sources
+    from mercury.backup.find_latest_backup import (
+        find_backup_directories,
+        find_latest_backup_directory,
+        find_latest_restore_checked_backup,
+    )
+    from mercury.backup.layout import MANIFEST_FILENAME
+    from mercury.backup.verification import manifest_verified_stamp
+
+    def _id_for(path) -> str | None:
+        if path is None:
+            return None
+        try:
+            import json
+
+            data = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
+            value = data.get("backup_id")
+            return str(value).strip() if value else None
+        except (OSError, ValueError, TypeError):
+            return None
+
+    def _latest_stamped(database: str):
+        matches = [
+            path
+            for path in find_backup_directories(policy.backup_root, database)
+            if manifest_verified_stamp(path / MANIFEST_FILENAME)
+        ]
+        if not matches:
+            return None
+        from mercury.backup.find_latest_backup import _sort_key
+
+        return max(matches, key=_sort_key)
+
+    rows: list[dict[str, str | None]] = []
+    for name in resolve_batch_sources(live=False):
+        written = find_latest_backup_directory(policy.backup_root, name)
+        stamped = _latest_stamped(name)
+        restore_checked = find_latest_restore_checked_backup(policy.backup_root, name)
+        rows.append(
+            {
+                "database": name,
+                "latest_written": _id_for(written),
+                "latest_verified": _id_for(stamped),
+                "latest_restore_checked": _id_for(restore_checked),
+            }
+        )
+    return rows
 
 
 def _collect_blockers(env, report: DoctorReport) -> list[str]:
@@ -669,4 +725,18 @@ def _collect_warnings(env, report: DoctorReport) -> list[str]:
         else:
             for name in missing_sources:
                 warnings.append(f"Source database missing on server: {name}")
+    try:
+        for row in backup_identity_inventory(env.policy):
+            written = row.get("latest_written")
+            verified = row.get("latest_verified")
+            restore_checked = row.get("latest_restore_checked")
+            if written and written != verified:
+                warnings.append(
+                    f"{row['database']}: latest_written={written} is not restore-ready; "
+                    f"latest_manifest_stamped={verified or 'none'}; "
+                    f"latest_restore_checked={restore_checked or 'none'} "
+                    "(do not treat latest-written as handoff-ready)."
+                )
+    except Exception:
+        pass
     return warnings

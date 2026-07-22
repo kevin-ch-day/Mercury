@@ -228,7 +228,13 @@ def assert_operator_usb_path(path: Path, *, usb_mount: Path | None = None) -> No
 
 
 def assert_operator_storage_path(path: Path, *, operator_mount: Path | None = None) -> None:
-    """Require a write path under the configured active operator-storage role."""
+    """Require a write path under the configured active operator-storage role.
+
+    Refuses host-shadow paths beneath an inactive mountpoint and paths that are
+    not under the currently active writer mount (legacy before cutover, primary after).
+    """
+    from mercury.core.storage_roots import load_storage_config
+
     mount = (operator_mount or resolve_operator_mount()).resolve()
     resolved = path.expanduser().resolve()
     try:
@@ -237,3 +243,15 @@ def assert_operator_storage_path(path: Path, *, operator_mount: Path | None = No
         raise ValueError(f"path is not under active operator storage {mount}: {resolved}") from exc
     if not usb_mount_is_active(mount):
         raise ValueError(f"required operator storage mount is not active: {mount}")
+    try:
+        cfg = load_storage_config(warn_deprecated=False)
+        writer = cfg.active_write_root.mount_path.expanduser().resolve()
+        if mount != writer and operator_mount is None:
+            raise ValueError(
+                f"active writer role '{cfg.active_write_role.value}' points at {writer}, "
+                f"not {mount}; refusing write"
+            )
+    except ValueError:
+        raise
+    except Exception:
+        pass

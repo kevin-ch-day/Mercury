@@ -9,7 +9,13 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from mercury.backup.find_latest_backup import find_latest_backup_directory
+from mercury.backup.find_latest_backup import (
+    BackupSelectionError,
+    find_latest_artifact_verified_backup,
+    find_latest_backup_directory,
+    find_latest_restore_checked_backup,
+    resolve_backup_directory,
+)
 from mercury.backup.layout import MANIFEST_FILENAME
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.execution_policy import load_execution_policy
@@ -25,7 +31,8 @@ CREATE_VIEW_RE = re.compile(r"CREATE(?:\s+OR\s+REPLACE)?\s+(?:ALGORITHM=\w+\s+)?
 
 TARGET_COMPLETENESS_SCOPE_NOTE = (
     "Target/schema completeness only: compares live object counts and critical tables "
-    "against the latest verified backup structure. This is not backup data freshness."
+    "against a specific backup_id baseline (default: latest artifact-verified). "
+    "This is not backup data freshness, restore-check status, or handoff eligibility."
 )
 
 # Erebus primary catalog tables required for VT batch and migration tracking.
@@ -43,12 +50,15 @@ CANONICAL_TABLES_BY_DATABASE: dict[str, tuple[str, ...]] = {
 
 
 class TargetCompletenessEntry(BaseModel):
-    """Compare live target catalog against the latest verified backup baseline."""
+    """Compare live target catalog against an exact backup_id baseline."""
 
     database: str
     backup_id: str | None = None
     backup_directory: str | None = None
     backup_verified: bool = False
+    latest_written_backup_id: str | None = None
+    latest_artifact_verified_backup_id: str | None = None
+    latest_restore_checked_backup_id: str | None = None
     backup_table_count: int | None = None
     backup_view_count: int | None = None
     backup_object_count: int | None = None
@@ -73,6 +83,25 @@ class TargetCompletenessReport(BaseModel):
     complete_count: int = 0
     incomplete_count: int = 0
     unknown_count: int = 0
+
+
+def _backup_id_for_path(backup_dir: Path | None) -> str | None:
+    if backup_dir is None:
+        return None
+    payload = _load_manifest_payload(backup_dir)
+    value = payload.get("backup_id")
+    return str(value).strip() if value else None
+
+
+def _summarize_backup_identities(backup_root: Path, database: str) -> dict[str, str | None]:
+    written = find_latest_backup_directory(backup_root, database)
+    verified = find_latest_artifact_verified_backup(backup_root, database)
+    restore_checked = find_latest_restore_checked_backup(backup_root, database)
+    return {
+        "latest_written_backup_id": _backup_id_for_path(written),
+        "latest_artifact_verified_backup_id": _backup_id_for_path(verified),
+        "latest_restore_checked_backup_id": _backup_id_for_path(restore_checked),
+    }
 
 
 def canonical_tables_for(database: str) -> tuple[str, ...]:
@@ -153,19 +182,21 @@ def fetch_live_base_table_names(
 def build_target_completeness_entry(
     database: str,
     *,
+    backup_id: str | None = None,
     live: bool = True,
     config: MariaDbConnectionConfig | None = None,
     inspect_fn=None,
     scalars_fn=None,
 ) -> TargetCompletenessEntry:
     """
-    Compare live target catalog counts against the latest verified backup baseline.
+    Compare live target catalog counts against an exact backup_id baseline.
 
     Read-only: inspects information_schema and parses backup artifacts only.
     """
     return build_target_completeness_entry_against_backup(
         source_database=database,
         target_database=database,
+        backup_id=backup_id,
         live=live,
         config=config,
         inspect_fn=inspect_fn,
@@ -177,16 +208,29 @@ def build_target_completeness_entry_against_backup(
     *,
     source_database: str,
     target_database: str,
+    backup_id: str | None = None,
     live: bool = True,
     config: MariaDbConnectionConfig | None = None,
     inspect_fn=None,
     scalars_fn=None,
 ) -> TargetCompletenessEntry:
-    """Compare a live target database against the latest verified backup of a source database."""
+    """Compare a live target database against an exact backup of a source database."""
     classification = classify_database(source_database)
     policy = load_execution_policy()
     entry = TargetCompletenessEntry(database=source_database, target_database=target_database)
     entry.notes.append("Read-only target completeness check; no restore executed.")
+    identities = _summarize_backup_identities(policy.backup_root, source_database)
+    entry.latest_written_backup_id = identities["latest_written_backup_id"]
+    entry.latest_artifact_verified_backup_id = identities["latest_artifact_verified_backup_id"]
+    entry.latest_restore_checked_backup_id = identities["latest_restore_checked_backup_id"]
+    if entry.latest_written_backup_id and entry.latest_written_backup_id != (
+        entry.latest_artifact_verified_backup_id or entry.latest_written_backup_id
+    ):
+        entry.notes.append(
+            f"latest_written={entry.latest_written_backup_id}; "
+            f"latest_artifact_verified={entry.latest_artifact_verified_backup_id or 'none'}; "
+            f"latest_restore_checked={entry.latest_restore_checked_backup_id or 'none'}."
+        )
 
     if not classification.backup_source:
         entry.completeness_status = "not_applicable"
@@ -199,10 +243,16 @@ def build_target_completeness_entry_against_backup(
             "Backup root is repo-local fallback; configure operator-storage backups before deployment checks."
         )
 
-    backup_dir = find_latest_backup_directory(policy.backup_root, source_database)
-    if backup_dir is None:
+    try:
+        backup_dir = resolve_backup_directory(
+            policy.backup_root,
+            source_database,
+            backup_id=backup_id,
+            prefer="artifact_verified",
+        )
+    except BackupSelectionError as exc:
         entry.completeness_status = "backup_unavailable"
-        entry.blockers.append("No on-disk backup found for production source.")
+        entry.blockers.append(str(exc))
         return entry
 
     verify = verify_backup_artifacts(
@@ -213,16 +263,24 @@ def build_target_completeness_entry_against_backup(
     entry.backup_directory = str(backup_dir)
     entry.backup_id = verify.backup_id
     entry.backup_verified = verify.verified
+    if backup_id and verify.backup_id and backup_id != verify.backup_id:
+        entry.completeness_status = "backup_unverified"
+        entry.blockers.append(
+            f"Requested backup_id '{backup_id}' resolved to unexpected id '{verify.backup_id}'."
+        )
+        return entry
     if not verify.verified:
         entry.completeness_status = "backup_unverified"
-        entry.blockers.append("Latest backup is not artifact-verified (manifest/checksum/size/role).")
+        entry.blockers.append(
+            f"Selected backup '{verify.backup_id}' is not artifact-verified (manifest/checksum/size/role)."
+        )
         return entry
 
     manifest_data = _load_manifest_payload(backup_dir)
     schema_artifact = _resolve_schema_artifact(backup_dir, manifest_data)
     if schema_artifact is None:
         entry.completeness_status = "backup_unavailable"
-        entry.blockers.append("Latest verified backup is missing schema/full dump artifacts.")
+        entry.blockers.append("Selected verified backup is missing schema/full dump artifacts.")
         return entry
 
     backup_tables, backup_views, backup_table_names = parse_schema_artifact(schema_artifact)

@@ -1149,10 +1149,15 @@ def backup_verify_cmd(
         "--path",
         help="Explicit backup directory (contains manifest.json).",
     ),
+    backup_id: str | None = typer.Option(
+        None,
+        "--backup-id",
+        help="Exact backup_id to verify (preferred over unqualified latest).",
+    ),
     latest: bool = typer.Option(
-        True,
+        False,
         "--latest/--no-latest",
-        help="Use latest backup directory under backup_root (default).",
+        help="Use latest *written* backup directory (inventory only; prefer --backup-id).",
     ),
     update_manifest: bool = typer.Option(
         True,
@@ -1168,23 +1173,44 @@ def backup_verify_cmd(
     """Verify on-disk backup artifacts (manifest, dumps, checksums)."""
     from pathlib import Path
 
-    from mercury.backup.find_latest_backup import find_latest_backup_directory
+    from mercury.backup.find_latest_backup import (
+        BackupSelectionError,
+        find_latest_backup_directory,
+        resolve_backup_directory,
+    )
     from mercury.core.execution_policy import load_execution_policy
     from mercury.backup.verification import verify_backup_directory
     from mercury.backup.terminal.verify import print_verification_result
 
+    policy = load_execution_policy()
     backup_dir: Path | None = Path(path).expanduser() if path else None
     if backup_dir is None:
-        if not latest:
-            typer.echo("Provide --path or use --latest (default).")
-            raise typer.Exit(1)
-        policy = load_execution_policy()
-        backup_dir = find_latest_backup_directory(policy.backup_root, db)
-        if backup_dir is None:
-            typer.echo(
-                f"No backup directory with manifest.json found for '{db}' under {policy.backup_root}"
-            )
-            raise typer.Exit(1)
+        if backup_id:
+            try:
+                backup_dir = resolve_backup_directory(
+                    policy.backup_root, db, backup_id=backup_id
+                )
+            except BackupSelectionError as exc:
+                typer.echo(str(exc))
+                raise typer.Exit(1) from exc
+        elif latest:
+            backup_dir = find_latest_backup_directory(policy.backup_root, db)
+            if backup_dir is None:
+                typer.echo(
+                    f"No backup directory with manifest.json found for '{db}' under {policy.backup_root}"
+                )
+                raise typer.Exit(1)
+        else:
+            try:
+                backup_dir = resolve_backup_directory(
+                    policy.backup_root, db, prefer="artifact_verified"
+                )
+            except BackupSelectionError:
+                typer.echo(
+                    "Provide --backup-id or --path (or --latest for newest written). "
+                    "Default without --backup-id requires an artifact-verified backup."
+                )
+                raise typer.Exit(1)
 
     result = verify_backup_directory(
         backup_dir,
@@ -1196,6 +1222,11 @@ def backup_verify_cmd(
         typer.echo(
             f"Backup directory is for '{result.database}', not '{db}'. "
             "Use --path with the correct directory or fix --db."
+        )
+        raise typer.Exit(1)
+    if backup_id and result.backup_id and backup_id != result.backup_id:
+        typer.echo(
+            f"Requested backup_id '{backup_id}' but directory contains '{result.backup_id}'."
         )
         raise typer.Exit(1)
     print_verification_result(result)
@@ -1368,6 +1399,7 @@ def backup_full_cmd(
     from mercury.backup.batch_runner import (
         BackupSourceSelectionError,
         FullBackupOutcome,
+        apply_full_backup_run_evidence,
         build_full_backup_run_result,
         new_full_backup_run_id,
         resolve_development_backup_sources,
@@ -1452,9 +1484,12 @@ def backup_full_cmd(
     )
     try:
         receipt = write_full_backup_run_receipt(result)
-        result = result.model_copy(update={"receipt_path": str(receipt)})
+        result = apply_full_backup_run_evidence(result, receipt_path=receipt)
     except Exception as exc:  # pragma: no cover - storage edge
-        output.write(f"Warning: could not write full-backup run receipt: {exc}")
+        output.write(f"Run evidence failed: could not write full-backup run receipt: {exc}")
+        result = apply_full_backup_run_evidence(
+            result, receipt_path=None, receipt_error=str(exc)
+        )
     print_full_backup_run_result(result)
     if result.outcome != FullBackupOutcome.PASS:
         raise typer.Exit(1)
@@ -2101,17 +2136,28 @@ def restore_check_readiness_cmd(
         "--db",
         help="Limit to one or more production backup source databases.",
     ),
+    backup_id: list[str] = typer.Option(
+        None,
+        "--backup-id",
+        help="Exact backup_id for readiness (repeatable; order matches --db when both given).",
+    ),
     demo: bool = typer.Option(
         False,
         "--demo",
         help="Use demo/catalog backup sources instead of live inventory.",
     ),
 ) -> None:
-    """Read-only deployment check: target/schema completeness vs backup baseline (not data freshness)."""
+    """Read-only deployment check: target/schema completeness vs exact backup baseline."""
     from mercury.backup.batch_runner import BackupSourceSelectionError, select_batch_sources
     from mercury.core.runtime import should_probe_database_status
-    from mercury.restore.readiness import build_target_completeness_report, restore_readiness_should_fail
+    from mercury.restore.readiness import (
+        build_target_completeness_entry,
+        build_target_completeness_report,
+        restore_readiness_should_fail,
+        TargetCompletenessReport,
+    )
     from mercury.restore.terminal.readiness import print_target_completeness_report
+    from mercury.core.execution_policy import load_execution_policy
 
     probe = should_probe_database_status() and not demo
     try:
@@ -2120,7 +2166,29 @@ def restore_check_readiness_cmd(
         typer.echo(str(exc))
         raise typer.Exit(1) from exc
 
-    report = build_target_completeness_report(databases=databases, live=not demo)
+    if backup_id and databases and len(backup_id) not in {1, len(databases)}:
+        typer.echo("Provide one --backup-id, or one --backup-id per --db.")
+        raise typer.Exit(1)
+
+    if backup_id and databases:
+        policy = load_execution_policy()
+        ids = backup_id * len(databases) if len(backup_id) == 1 else backup_id
+        entries = [
+            build_target_completeness_entry(name, backup_id=bid, live=not demo)
+            for name, bid in zip(databases, ids, strict=True)
+        ]
+        complete = sum(1 for entry in entries if entry.completeness_status == "complete")
+        incomplete = sum(1 for entry in entries if entry.completeness_status == "incomplete")
+        report = TargetCompletenessReport(
+            mode="live" if probe else "offline",
+            backup_root=str(policy.backup_root),
+            entries=entries,
+            complete_count=complete,
+            incomplete_count=incomplete,
+            unknown_count=len(entries) - complete - incomplete,
+        )
+    else:
+        report = build_target_completeness_report(databases=databases, live=not demo)
     print_target_completeness_report(report)
     if restore_readiness_should_fail(report, live=not demo):
         raise typer.Exit(1)
@@ -2129,12 +2197,27 @@ def restore_check_readiness_cmd(
 @restore_app.command("plan")
 def restore_check_plan_cmd(
     db: str = typer.Option(..., "--db", help="Production database to restore-check."),
+    backup_id: str = typer.Option(
+        ...,
+        "--backup-id",
+        help="Exact backup_id to restore-check (required for non-interactive use).",
+    ),
+    allow_unverified: bool = typer.Option(
+        False,
+        "--allow-unverified",
+        help="Unsafe: allow restore-check of an artifact that failed integrity verification.",
+    ),
 ) -> None:
-    """Dry-run plan to restore latest verified backup into _restorecheck_* (not executed)."""
+    """Dry-run plan to restore an exact backup into _restorecheck_* (not executed)."""
     from mercury.restore.check_plan import build_restore_check_plan
     from mercury.restore.terminal.check import print_restore_check_plan
 
-    plan = build_restore_check_plan(db)
+    plan = build_restore_check_plan(
+        db,
+        backup_id=backup_id,
+        require_backup_id=True,
+        allow_unverified=allow_unverified,
+    )
     print_restore_check_plan(plan)
     from mercury.logging.events import log_restore_check
 
@@ -2146,6 +2229,16 @@ def restore_check_plan_cmd(
 @restore_app.command("run")
 def restore_check_run_cmd(
     db: str = typer.Option(..., "--db", help="Production database to restore-check."),
+    backup_id: str = typer.Option(
+        ...,
+        "--backup-id",
+        help="Exact backup_id to restore-check (required for non-interactive use).",
+    ),
+    allow_unverified: bool = typer.Option(
+        False,
+        "--allow-unverified",
+        help="Unsafe: allow restore-check of an artifact that failed integrity verification.",
+    ),
     execute: bool = typer.Option(
         False,
         "--execute",
@@ -2161,7 +2254,12 @@ def restore_check_run_cmd(
     from mercury.restore.restore_runner import execute_restore_into_database
     from mercury.restore.terminal.runner import print_restore_execution_result
 
-    plan = build_restore_check_plan(db)
+    plan = build_restore_check_plan(
+        db,
+        backup_id=backup_id,
+        require_backup_id=True,
+        allow_unverified=allow_unverified,
+    )
     if not execute:
         print_restore_check_plan(plan)
         if not plan.allowed:

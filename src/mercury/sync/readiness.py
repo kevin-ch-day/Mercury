@@ -6,7 +6,10 @@ import json
 
 from pydantic import BaseModel, Field
 
-from mercury.backup.find_latest_backup import find_latest_backup_directory
+from mercury.backup.find_latest_backup import (
+    BackupSelectionError,
+    resolve_backup_directory,
+)
 from mercury.backup.freshness import (
     FRESHNESS_STALE,
     FRESHNESS_UNKNOWN,
@@ -83,7 +86,15 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
         if not pair.dev_listed:
             blockers.append(f"Dev target missing: {pair.expected_dev}")
 
-        backup_dir = find_latest_backup_directory(policy.backup_root, pair.prod)
+        backup_dir = None
+        try:
+            backup_dir = resolve_backup_directory(
+                policy.backup_root,
+                pair.prod,
+                prefer="artifact_verified",
+            )
+        except BackupSelectionError as exc:
+            blockers.append(str(exc))
         backup_verified = False
         backup_id: str | None = None
         backup_freshness: str | None = None
@@ -91,7 +102,8 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
         latest_dir: str | None = None
 
         if backup_dir is None:
-            blockers.append("No on-disk backup found for production source.")
+            if not any("No artifact-verified" in b or "No on-disk" in b for b in blockers):
+                blockers.append("No artifact-verified on-disk backup found for production source.")
         else:
             latest_dir = str(backup_dir)
             verify = verify_backup_artifacts(backup_dir, database=pair.prod, backup_kind=BACKUP_KIND_FULL)
@@ -104,10 +116,10 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
                 backup_age = format_backup_age(parse_backup_timestamp(created_at))
             if not verify.verified:
                 blockers.append(
-                    "Latest backup is not artifact-verified (manifest/checksum/size/role)."
+                    f"Pinned backup '{backup_id}' is not artifact-verified (manifest/checksum/size/role)."
                 )
             if verify.backup_kind != BACKUP_KIND_FULL:
-                blockers.append("Latest backup is not a verified full backup.")
+                blockers.append(f"Pinned backup '{backup_id}' is not a verified full backup.")
             elif backup_verified and live and should_probe_database_status():
                 freshness = assess_backup_freshness(
                     pair.prod,
@@ -118,11 +130,12 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
                 if freshness.freshness == FRESHNESS_STALE:
                     blockers.append(
                         "Backup artifacts are artifact-verified but freshness is stale; "
-                        "run full backup before prod→dev sync."
+                        f"pinned backup_id={backup_id}."
                     )
                 elif freshness.freshness == FRESHNESS_UNKNOWN:
                     blockers.append(
-                        "Backup freshness is unknown; run full backup before prod→dev sync."
+                        "Backup freshness is unknown; cannot approve sync planning "
+                        f"for pinned backup_id={backup_id}."
                     )
 
         ready = pair.dev_listed and backup_verified and not blockers

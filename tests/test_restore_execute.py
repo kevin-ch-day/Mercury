@@ -284,7 +284,7 @@ def test_restore_check_run_cli_exits_nonzero_on_post_import_verification_failure
 
     monkeypatch.setattr(
         "mercury.restore.check_plan.build_restore_check_plan",
-        lambda db: RestoreCheckPlan(
+        lambda db, **_kwargs: RestoreCheckPlan(
             source_prod=db,
             restore_target="_restorecheck_erebus_threat_intel_prod_20260611",
             backup_directory=str(backup_dir),
@@ -292,7 +292,7 @@ def test_restore_check_run_cli_exits_nonzero_on_post_import_verification_failure
             backup_verified=True,
             backup_id="erebus_threat_intel_prod-full-20260611_120000",
             allowed=True,
-            commands=[],
+            planned_commands=[],
             safety_notes=[],
         ),
     )
@@ -311,7 +311,15 @@ def test_restore_check_run_cli_exits_nonzero_on_post_import_verification_failure
 
     result = runner.invoke(
         app,
-        ["restore-check", "run", "--db", "erebus_threat_intel_prod", "--execute"],
+        [
+            "restore-check",
+            "run",
+            "--db",
+            "erebus_threat_intel_prod",
+            "--backup-id",
+            "erebus_threat_intel_prod-full-20260611_120000",
+            "--execute",
+        ],
     )
 
     assert result.exit_code == 1

@@ -55,6 +55,13 @@ class FullBackupOutcome(str, Enum):
     REFUSED = "REFUSED"
 
 
+class LaneResult(str, Enum):
+    PASS = "PASS"
+    FAIL = "FAIL"
+    SKIPPED = "SKIPPED"
+    PENDING = "PENDING"
+
+
 class BackupLaneSummary(BaseModel):
     requested: bool = False
     selected: int = 0
@@ -78,6 +85,10 @@ class FullBackupRunResult(BaseModel):
     production: BackupLaneSummary
     development: BackupLaneSummary
     receipt_path: str | None = None
+    receipt_sha256: str | None = None
+    backup_artifacts_result: LaneResult = LaneResult.PENDING
+    verification_result: LaneResult = LaneResult.PENDING
+    run_evidence_result: LaneResult = LaneResult.PENDING
     package_classification: str = "routine_only"
     phase3b_separation_note: str = (
         "Routine verified backups do not replace the sealed Phase 3B rehearsal package "
@@ -316,27 +327,99 @@ def new_full_backup_run_id(*, now: datetime | None = None) -> str:
     return f"{stamp}_full_backup"
 
 
+def _atomic_write_text(path: Path, content: str) -> None:
+    import os
+
+    path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+    temp_path = path.with_name(f".{path.name}.tmp")
+    with temp_path.open("w", encoding="utf-8") as handle:
+        handle.write(content)
+        handle.flush()
+        os.fsync(handle.fileno())
+    temp_path.replace(path)
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+    try:
+        dir_fd = os.open(str(path.parent), os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
+
+
 def write_full_backup_run_receipt(
     result: FullBackupRunResult,
     *,
     control_root: Path | None = None,
+    require_active_operator_mount: bool | None = None,
 ) -> Path:
-    """Persist a run-level receipt linking production/dev backup IDs (additive)."""
+    """Persist a sealed run-level receipt linking production/dev backup IDs.
+
+    When ``control_root`` is omitted, the active operator mount identity is
+    asserted before any write. Explicit ``control_root`` (tests) skips the live
+    mount assertion unless ``require_active_operator_mount=True``.
+    """
+    import hashlib
+
+    live_root = control_root is None
     if control_root is None:
         from mercury.core.usb_mount import resolve_operator_mount
         from mercury.core.storage_roles import CONTROL_DIRNAME
 
         control_root = resolve_operator_mount() / CONTROL_DIRNAME
+    if require_active_operator_mount is None:
+        require_active_operator_mount = live_root
+    if require_active_operator_mount:
+        from mercury.core.usb_mount import assert_operator_storage_path
+
+        assert_operator_storage_path(control_root)
+
     directory = control_root / "full_backup_runs"
     directory.mkdir(parents=True, mode=0o700, exist_ok=True)
     path = directory / f"{result.run_id}.json"
     payload = result.model_dump(mode="json")
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    try:
-        path.chmod(0o600)
-    except OSError:
-        pass
+    # Avoid circular self-hash fields in the sealed body.
+    payload.pop("receipt_path", None)
+    payload.pop("receipt_sha256", None)
+    text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    _atomic_write_text(path, text)
+    sidecar = path.with_suffix(path.suffix + ".sha256")
+    _atomic_write_text(sidecar, f"{digest}  {path.name}\n")
     return path
+
+
+def apply_full_backup_run_evidence(
+    result: FullBackupRunResult,
+    *,
+    receipt_path: Path | None,
+    receipt_error: str | None = None,
+) -> FullBackupRunResult:
+    """Attach receipt evidence and downgrade overall PASS → PARTIAL on evidence failure."""
+    import hashlib
+
+    updates: dict = {}
+    if receipt_path is not None and receipt_path.is_file():
+        text = receipt_path.read_text(encoding="utf-8")
+        updates["receipt_path"] = str(receipt_path)
+        updates["receipt_sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        updates["run_evidence_result"] = LaneResult.PASS
+    else:
+        updates["receipt_path"] = None
+        updates["receipt_sha256"] = None
+        updates["run_evidence_result"] = LaneResult.FAIL
+        issues = list(result.next_actions)
+        detail = receipt_error or "full-backup run receipt was not written"
+        issues.insert(0, f"Run evidence failed: {detail}")
+        updates["next_actions"] = issues
+        if result.outcome == FullBackupOutcome.PASS:
+            updates["outcome"] = FullBackupOutcome.PARTIAL
+            updates["package_classification"] = "verified_routine_evidence_incomplete"
+    return result.model_copy(update=updates)
 
 
 def build_full_backup_run_result(
@@ -388,12 +471,24 @@ def build_full_backup_run_result(
 
     if production_refused and production.written == 0:
         outcome = FullBackupOutcome.REFUSED
+        artifacts = LaneResult.FAIL
+        verification = LaneResult.SKIPPED
     elif not production_ok:
         outcome = FullBackupOutcome.FAIL
+        artifacts = LaneResult.PASS if production.written > 0 else LaneResult.FAIL
+        verification = (
+            LaneResult.PASS
+            if production.verified == production.written and production.written > 0 and production.failed == 0
+            else LaneResult.FAIL
+        )
     elif development_requested and not development_ok:
         outcome = FullBackupOutcome.PARTIAL
+        artifacts = LaneResult.PASS
+        verification = LaneResult.PASS
     else:
         outcome = FullBackupOutcome.PASS
+        artifacts = LaneResult.PASS
+        verification = LaneResult.PASS
 
     overall_written = production.written + development.written
     overall_verified = production.verified + development.verified
@@ -425,6 +520,9 @@ def build_full_backup_run_result(
         finished_at_utc=datetime.now(timezone.utc).isoformat(),
         production=production,
         development=development,
+        backup_artifacts_result=artifacts,
+        verification_result=verification,
+        run_evidence_result=LaneResult.PENDING,
         package_classification=package_classification,
         phase3b_separation_note=phase3b_note,
         next_actions=next_actions,

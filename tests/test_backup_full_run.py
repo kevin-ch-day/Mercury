@@ -8,7 +8,9 @@ from mercury.backup.batch_runner import (
     BackupBatchResult,
     BatchVerificationSummary,
     FullBackupOutcome,
+    LaneResult,
     UNEXPECTEDLY_SMALL_PRODUCTION_BYTES,
+    apply_full_backup_run_evidence,
     build_full_backup_run_result,
     new_full_backup_run_id,
     small_production_backup_warning,
@@ -276,6 +278,44 @@ def test_write_full_backup_run_receipt_links_ids(tmp_path: Path) -> None:
     assert "android_permission_intel-full-1" in text
     assert "20260722T141040Z_full_backup" in text
     assert "Phase 3B" in text
+    assert path.with_suffix(".json.sha256").is_file()
+    sealed = apply_full_backup_run_evidence(result, receipt_path=path)
+    assert sealed.run_evidence_result == LaneResult.PASS
+    assert sealed.outcome == FullBackupOutcome.PASS
+    assert sealed.receipt_sha256
+
+
+def test_missing_run_receipt_downgrades_pass_to_partial(tmp_path: Path) -> None:
+    batch = BackupBatchResult(
+        backup_kind="full",
+        execute=True,
+        sources=["android_permission_intel"],
+        results=[
+            _executed(
+                "android_permission_intel",
+                "android_permission_intel-full-1",
+                tmp_path / "d",
+            )
+        ],
+        executed_count=1,
+    )
+    (tmp_path / "d").mkdir()
+    result = build_full_backup_run_result(
+        run_id="r1",
+        started_at_utc="2026-07-22T14:10:40Z",
+        production_batch=batch,
+        production_verification=BatchVerificationSummary(
+            verified=1, backup_ids=["android_permission_intel-full-1"]
+        ),
+    )
+    assert result.outcome == FullBackupOutcome.PASS
+    sealed = apply_full_backup_run_evidence(
+        result, receipt_path=None, receipt_error="mount inactive"
+    )
+    assert sealed.outcome == FullBackupOutcome.PARTIAL
+    assert sealed.run_evidence_result == LaneResult.FAIL
+    assert sealed.backup_artifacts_result == LaneResult.PASS
+    assert sealed.verification_result == LaneResult.PASS
 
 
 def test_small_production_backup_warning() -> None:

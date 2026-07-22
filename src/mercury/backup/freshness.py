@@ -85,16 +85,34 @@ OPERATOR_FRESHNESS_GUIDANCE = (
 
 
 def backup_entry_verify_label(entry) -> str:
-    """Integrity/verification column — independent of freshness."""
+    """Integrity/verification column for the exact displayed backup ID.
+
+    Restore-check labels apply only when ``restore_check_status`` was bound to
+    this entry's ``backup_id`` (see :func:`mercury.backup.status.build_backup_status_report`).
+    Missing restore-check never inherits another backup's result.
+    """
     if entry is None:
         return "Missing"
     protection_status = getattr(entry, "protection_status", None)
     restore_status = getattr(entry, "restore_check_status", None)
-    if restore_status == "passed":
+    backup_id = getattr(entry, "backup_id", None)
+    restore_backup_id = getattr(entry, "restore_check_backup_id", None)
+    restore_matches = bool(
+        restore_status
+        and backup_id
+        and restore_backup_id
+        and backup_id == restore_backup_id
+    )
+    if restore_matches and restore_status == "passed":
         return "Restore-check passed"
-    if restore_status == "failed":
+    if restore_matches and restore_status in {"failed", "verification_failed"}:
         return "Restore-check failed"
     if protection_status == "verified":
+        stamp = getattr(entry, "manifest_verification_stamp", None)
+        if stamp is False:
+            return "Artifact OK (unstamped)"
+        if restore_status is None and backup_id:
+            return "Not restore-checked"
         return "Verified"
     if protection_status == "missing":
         return "Missing"
@@ -329,6 +347,13 @@ def assess_backup_freshness(
     Compare backup timestamp against latest read-only source DB activity.
 
     Conservative: when activity cannot be determined, freshness stays unknown.
+
+    Callers decide whether live probing is allowed (``live=True``). When an
+    explicit ``scalar_fn`` is injected (tests or custom probes), the global
+    ``should_probe_database_status()`` gate does **not** block evaluation —
+    the injected probe is treated as already authorized by the caller.
+    Production callers that omit ``scalar_fn`` still fail closed when the
+    runtime gate disables live probes.
     """
     assessment = BackupFreshnessAssessment(database=database, backup_at=backup_at)
     assessment.backup_age = format_backup_age(backup_at, now=now)
@@ -348,12 +373,24 @@ def assess_backup_freshness(
         )
         return assessment
 
-    if not live or not should_probe_database_status():
+    injected_probe = scalar_fn is not None
+    if not live:
+        assessment.notes.append("Live source activity not probed; freshness unknown.")
+        assessment.recommend_full_backup = True
+        return assessment
+    if not injected_probe and not should_probe_database_status():
         assessment.notes.append("Live source activity not probed; freshness unknown.")
         assessment.recommend_full_backup = True
         return assessment
 
     cfg = config or try_load_mariadb_config()
+    if cfg is None and not injected_probe:
+        assessment.notes.append("MariaDB not configured; freshness unknown.")
+        assessment.recommend_full_backup = True
+        return assessment
+    if cfg is None and injected_probe:
+        # Tests may pass a sentinel config object; fall through with that object.
+        cfg = config  # type: ignore[assignment]
     if cfg is None:
         assessment.notes.append("MariaDB not configured; freshness unknown.")
         assessment.recommend_full_backup = True

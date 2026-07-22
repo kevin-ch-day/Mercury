@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from mercury.backup.find_latest_backup import find_latest_backup_directory
+from mercury.backup.find_latest_backup import (
+    BackupSelectionError,
+    resolve_backup_directory,
+)
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
 from mercury.core.safety import BACKUP_KIND_FULL
@@ -18,12 +21,19 @@ def resolve_deployment_candidates(
     *,
     policy: ExecutionPolicy | None = None,
     databases: list[str] | None = None,
+    backup_ids: dict[str, str] | None = None,
+    require_backup_ids: bool = False,
     existing_on_server: set[str] | None = None,
     allow_development_deploy: bool = False,
 ) -> list[DeploymentCandidate]:
-    """Resolve latest verified production backups, or explicit configured dev backups."""
+    """Resolve verified backups by exact ID when provided, else latest artifact-verified.
+
+    Destination rehearsal/packaging must pass ``backup_ids`` (or ``require_backup_ids=True``)
+    so an unqualified “latest” cannot replace a pinned plan after creation.
+    """
     resolved_policy = policy or load_execution_policy()
     existing = existing_on_server or set()
+    pinned = backup_ids or {}
     development_sources = (
         set(resolve_development_backup_sources(live=False)) if allow_development_deploy else set()
     )
@@ -36,8 +46,17 @@ def resolve_deployment_candidates(
         classification = classify_database(name)
         if not classification.backup_source and not (allow_development_deploy and name in development_sources):
             continue
-        backup_dir = find_latest_backup_directory(resolved_policy.backup_root, name)
-        if backup_dir is None:
+        requested_id = pinned.get(name)
+        if require_backup_ids and not requested_id:
+            continue
+        try:
+            backup_dir = resolve_backup_directory(
+                resolved_policy.backup_root,
+                name,
+                backup_id=requested_id,
+                prefer="artifact_verified",
+            )
+        except BackupSelectionError:
             continue
         verification = verify_backup_artifacts(
             backup_dir,
@@ -46,6 +65,8 @@ def resolve_deployment_candidates(
             allow_development_backup=allow_development_deploy,
         )
         if not verification.verified:
+            continue
+        if requested_id and verification.backup_id and requested_id != verification.backup_id:
             continue
         manifest_path = backup_dir / "manifest.json"
         manifest_data: dict = {}

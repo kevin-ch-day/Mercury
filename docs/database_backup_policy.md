@@ -21,7 +21,16 @@ Schema-only uses planned `*.schema.sql.gz` files. Full verified backups are **re
 | **[3] Back up production databases** | Production-only write workflow (operator still runs **[4] Verify source backups** afterward unless using full backup). |
 | **[9] Back up development databases** | Development-only optional recovery capture. Not part of routine production protection or the default handoff package. |
 
-A dump exit status alone is not success for full backup: newly written production artifacts must verify before the operation is `PASS`.
+A dump exit status alone is not success for full backup: newly written production artifacts must verify before the operation is `PASS`, and a sealed run receipt is required for overall `PASS` (receipt failure yields `PARTIAL`).
+
+Verification vocabulary (exact displayed backup ID):
+
+| Field | Meaning |
+|-------|---------|
+| `artifact_integrity_verified` | On-disk checksum/manifest structure checks pass |
+| `manifest_verification_stamp` | `manifest.json` `verified` flag stamped true |
+| `restore_check_status` | Ledger restore-check for **this** `backup_id` only |
+| `handoff_eligible` | Artifact verified + stamped + restore-check passed + freshness OK |
 
 Routine verified backups remain separate from sealed migration packages (for example Phase 3B `20260722T055400Z_phase3b`) until restore-check and handoff packaging explicitly promote them.
 
