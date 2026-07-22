@@ -327,7 +327,8 @@ def style_inline_value(text: str) -> str:
 
     lower = text.lower()
     for word, style in _STATUS_WORDS.items():
-        if word == lower or f" {word}" in lower or lower.startswith(word):
+        # Exact token only — avoid painting whole sentences green on substring hits.
+        if word == lower:
             return markup(text, style)
 
     return markup(text, VALUE)
@@ -391,16 +392,15 @@ def style_table_cell(cell: str) -> str:
 
 
 def style_table_lines(lines: list[str]) -> list[str]:
-    """Apply header/rule styling and highlight status cells in table body."""
+    """Apply header/rule styling without destroying fixed column padding."""
     if not colors_enabled() or len(lines) < 2:
         return lines
     header, rule, *body = lines
     indent = len(header) - len(header.lstrip())
     prefix = header[:indent]
-    cells = re.split(r"  +", header[indent:].strip())
-    styled_header = prefix + "  ".join(markup(cell, TABLE_HEADER) for cell in cells)
+    # Style the full padded header/rule as one span so column widths stay intact.
+    styled_header = prefix + markup(header[indent:], TABLE_HEADER)
     styled_rule = prefix + markup(rule[indent:], TABLE_RULE)
-
     return [styled_header, styled_rule, *body]
 
 
@@ -479,8 +479,6 @@ def submenu_block(
     lines: list[str] = []
     if title:
         lines.extend(open_screen_lines(title))
-    else:
-        lines.append("")
     for key, label in options:
         lines.append(menu_item_line(key, label, indent=indent))
     lines.append(menu_bottom_option(bottom_label, indent=indent))

@@ -96,7 +96,30 @@ def test_style_table_lines_preserve_body_alignment_when_colored() -> None:
     try:
         styled = style_table_lines(lines)
         plain = [strip_markup(line) for line in styled]
+        assert plain[0] == lines[0], "colored header must keep fixed column padding"
+        assert plain[1] == lines[1]
         assert plain[2] == lines[2]
         assert plain[3] == lines[3]
     finally:
         set_color_enabled(None)
+
+
+def test_style_inline_value_does_not_paint_partial_ready_sentences() -> None:
+    from mercury.terminal.theme import OK, VALUE, markup, style_inline_value
+
+    set_color_enabled(True)
+    try:
+        partial = style_inline_value("2 of 4 server sources verified")
+        assert partial == markup("2 of 4 server sources verified", VALUE)
+        assert style_inline_value("ready") == markup("ready", OK)
+    finally:
+        set_color_enabled(None)
+
+
+def test_truncate_cell_keeps_meaningful_head_for_status_labels() -> None:
+    from mercury.terminal.table import truncate_cell
+
+    assert truncate_cell("Artifact OK (unstamped)", max_width=20) == "Artifact OK (unstam…"
+    assert "…fact" not in truncate_cell("Artifact OK (unstamped)", max_width=20)
+    assert truncate_cell("Not restore-checked", max_width=12) == "Not restore…"
+    assert "…ore-checked" not in truncate_cell("Not restore-checked", max_width=12)

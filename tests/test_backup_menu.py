@@ -464,10 +464,17 @@ def test_freshness_and_verify_columns_are_independent() -> None:
     entry = type(
         "Entry",
         (),
-        {"protection_status": "verified", "freshness": "stale"},
+        {
+            "protection_status": "verified",
+            "freshness": "stale",
+            "backup_id": "erebus_threat_intel_prod-full-1",
+            "restore_check_status": None,
+            "restore_check_backup_id": None,
+            "manifest_verification_stamp": True,
+        },
     )()
     assert _freshness_label(entry) == "Stale"
-    assert _verify_label(entry) == "Verified"
+    assert _verify_label(entry) == "Not restore-checked"
     unverified = type(
         "Entry",
         (),

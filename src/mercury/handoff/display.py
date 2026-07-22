@@ -13,15 +13,15 @@ HISTORY_SCREEN_TITLE = "Handoff History"
 RECEIVER_SCREEN_TITLE = "Receiving Workstation Guide"
 
 _PIPELINE_PHASES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
-    ("backup", "Backup", ("usb_root", "backups_verified", "backup_freshness")),
+    ("backup", "Backup", ("usb_root", "backups_verified", "backup_freshness", "restore_checks")),
     ("repo", "Repos", ("repo_bundles",)),
     ("bundle", "DB bundle", ("db_bundle_index", "manifest_freshness")),
     ("transfer", "Transfer", ("transfer_package",)),
 )
 
 _WIZARD_PHASE_KEYS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
-    ("backup", "Backup", ("usb_root", "backups_verified", "backup_freshness")),
-    ("verify", "Verify", ("backups_verified",)),
+    ("backup", "Backup", ("usb_root", "backups_verified", "backup_freshness", "restore_checks")),
+    ("verify", "Verify", ("backups_verified", "restore_checks")),
     ("repo_bundle", "Repo", ("repo_bundles",)),
     ("db_bundle", "DB bundle", ("db_bundle_index", "manifest_freshness")),
     ("transfer", "Transfer", ("transfer_package",)),
@@ -163,14 +163,28 @@ def handoff_dashboard_line(
     elif unknown_count:
         line = "[--] unknown freshness — [2] guided wizard"
     elif absent_count and effective_sources and verified_count >= effective_sources:
-        line = "[--] ready with absent sources — [10] checklist"
+        if latest_handoff_status == "complete":
+            line = "[--] ready with absent sources — [10] checklist"
+        elif latest_handoff_status:
+            line = f"[--] backups verified (absent sources) — handoff {latest_handoff_status}"
+        else:
+            line = "[--] backups verified (absent sources) — [10] checklist"
     elif effective_sources and verified_count == effective_sources:
-        line = "[ok] ready — [10] handoff · [2] wizard"
+        if latest_handoff_status == "complete":
+            line = "[ok] ready — [10] handoff · [2] wizard"
+        elif latest_handoff_status:
+            line = f"[--] backups verified — handoff {latest_handoff_status}"
+        else:
+            line = "[--] backups verified — [10] handoff · [2] wizard"
     else:
         line = "[--] incomplete — [10] checklist"
     if latest_transfer_at:
         line += f" · last transfer {latest_transfer_at}"
-    if latest_handoff_status and latest_handoff_status != "complete":
+    if (
+        latest_handoff_status
+        and latest_handoff_status != "complete"
+        and "handoff " not in line
+    ):
         line += f" ({latest_handoff_status})"
     return line
 
@@ -190,12 +204,12 @@ def receiver_handoff_steps(*, checklist: HandoffChecklist | None = None) -> list
         ),
         (
             "Install Mercury on receiver",
-            "ok",
+            "info",
             "Clone or copy Mercury, then run ./run.sh config init.",
         ),
         (
             "Validate receiver environment",
-            "ok",
+            "info",
             "Run ./run.sh doctor and ./run.sh db ping before any import.",
         ),
         (
@@ -213,7 +227,7 @@ def receiver_handoff_steps(*, checklist: HandoffChecklist | None = None) -> list
         ),
         (
             "Restore repository bundles",
-            "ok",
+            "info",
             "Run ./run.sh deploy repos --from-usb for operator-storage Git bundles.",
         ),
         (
@@ -223,7 +237,7 @@ def receiver_handoff_steps(*, checklist: HandoffChecklist | None = None) -> list
         ),
         (
             "Run restore-check drills",
-            "ok",
+            "warn",
             "Use restore-check against verified backups before relying on production paths.",
         ),
     ]

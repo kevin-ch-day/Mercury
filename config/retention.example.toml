@@ -1,0 +1,96 @@
+# Mercury retention / destination-package policy (example).
+# Copy to config/retention.toml for local overrides. Never commit secrets.
+
+[protection]
+protected_run_ids = [
+  "20260722T055400Z_phase3b",
+]
+protected_backup_ids = [
+  "erebus_threat_intel_prod-full-20260722_055507_238",
+  "android_permission_intel-full-20260722_055648_287",
+]
+protected_capture_ids = [
+  "erebus_destination_candidate_3f1bb5b_20260722T150930Z",
+]
+# Historical Phase 3B Mercury worktree identity — not the final destination commit.
+historical_phase3b_mercury_commit = "40b8f532ff2b49e9cdd699d4af01e88dde9aa8c0"
+# Leave empty until the final Mercury destination capture exists.
+current_destination_mercury_commit = ""
+current_destination_mercury_capture_id = ""
+historical_erebus_capture_ids = [
+  "erebus_destination_candidate_3f1bb5b_20260722T150930Z",
+]
+current_erebus_destination_commit = ""
+
+[exclusions]
+manual_review_roots = [
+  "scytaledroid_migration_checkpoints",
+  "scytaledroid_apk_store_backups",
+  "scytaledroid_artifacts",
+]
+exclude_from_destination_by_default = [
+  "scytaledroid_migration_checkpoints",
+  "scytaledroid_apk_store_backups",
+  "scytaledroid_artifacts",
+  "mercury_repo_clones",
+  "obsidiandroid_core_accounts",
+  "obsidiandroid_core_phase2b_preprovisioning",
+  "obsidiandroid_core_provisioning",
+  "obsidiandroid_core_results_provisioning",
+  "obsidiandroid_cutover_readiness",
+  "obsidiandroid_phase2c",
+  "obsidiandroid_phase2c_rehearsal",
+  "obsidiandroid_release_artifacts",
+]
+# Scytale inclusion requires an explicit approval flag + exact path list (never implied).
+allow_scytaledroid_in_destination = false
+scytaledroid_approved_paths = []
+
+[cleanup]
+destination_validation_pending = true
+allow_execute = false
+quarantine_only = true
+safe_candidate_estimate_gib = 6.5
+manual_review_project_estimate_gib = 266.0
+
+[cleanup.governed_roots]
+# Automatic cleanup may only plan inside these top-level names.
+names = [
+  "mercury_backups",
+  "mercury_worktree_snapshots",
+  "mercury_repo_backups",
+  "mercury_logs",
+  ".mercury_control",
+  "mercury_manifests",
+  "mercury_runbooks",
+  "mercury_restore_checks",
+  "mercury_state",
+]
+
+[production_backups]
+keep_latest_restore_checked = true
+keep_latest_verified = true
+keep_daily_days = 7
+keep_weekly_weeks = 4
+keep_monthly_months = 3
+min_valid_generations = 1
+
+[development_backups]
+keep_latest_verified = 2
+include_in_destination_handoff = false
+
+[worktree_snapshots]
+protect_phase_linked = true
+keep_days = 30
+
+[git_bundles]
+keep_latest_per_repo = 3
+keep_days = 90
+
+[logs]
+keep_days = 45
+always_keep_globs = ["*shadow*", "*cutover*", "*phase3b*"]
+
+[quarantine]
+expire_days = 30
+require_verify_before_purge = true

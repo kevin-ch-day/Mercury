@@ -10,7 +10,7 @@ def test_recovery_screen_shows_pipeline_and_receiver_options(
     monkeypatch,
     capsys,
 ) -> None:
-    from mercury.backup.status import BackupStatusReport
+    from mercury.backup.status import BackupStatusEntry, BackupStatusReport
     from mercury.handoff.snapshot import HandoffSnapshot
 
     report = BackupStatusReport(
@@ -22,7 +22,20 @@ def test_recovery_screen_shows_pipeline_and_receiver_options(
         missing_count=0,
         failed_count=0,
         unknown_freshness_count=0,
-        entries=[],
+        entries=[
+            BackupStatusEntry(
+                database="erebus_threat_intel_prod",
+                role="production",
+                protection_status="verified",
+                freshness="fresh",
+                backup_created_at="2026-07-22T16:41:00+00:00",
+                backup_id="erebus_threat_intel_prod-full-1",
+                artifact_integrity_verified=True,
+                manifest_verification_stamp=True,
+                restore_check_status=None,
+                handoff_eligible=False,
+            )
+        ],
     )
     checklist = HandoffChecklist(
         handoff_status="complete",
@@ -35,6 +48,10 @@ def test_recovery_screen_shows_pipeline_and_receiver_options(
     monkeypatch.setattr(
         "mercury.recovery.interactive_menu.build_handoff_snapshot",
         lambda **kwargs: HandoffSnapshot(bundle=None, checklist=checklist, live=False),  # type: ignore[arg-type]
+    )
+    monkeypatch.setattr(
+        "mercury.recovery.interactive_menu.resolve_operator_mount",
+        lambda: __import__("pathlib").Path("/mnt/MERCURY_DATA_V2"),
     )
     _render_recovery_screen(
         RecoveryScreenData(
@@ -49,3 +66,12 @@ def test_recovery_screen_shows_pipeline_and_receiver_options(
     assert "Pipeline:" in out
     assert "Receiving workstation guide" in out
     assert "receiving-workstation guide" in out
+    assert "FRESH" in out
+    assert "ARTIFACT" in out
+    assert "RC" in out
+    assert "Verified" in out
+    assert "None" in out
+    assert "…ore-checked" not in out
+    assert "Recovery gaps:" in out
+    assert "not restore-checked" in out
+    assert "baseline complete" not in out
