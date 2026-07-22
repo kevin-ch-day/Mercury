@@ -46,7 +46,21 @@ def test_usb_plan_uses_checkout_b_not_detach(tmp_path: Path) -> None:
 def test_finalize_deployed_repository_sets_branch_and_origin(tmp_path: Path) -> None:
     target = tmp_path / "repo"
     subprocess.run(["git", "init", str(target)], check=True, capture_output=True)
-    subprocess.run(["git", "-C", str(target), "commit", "--allow-empty", "-m", "seed"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(target), "config", "user.email", "mercury-ci@example.invalid"],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(target), "config", "user.name", "Mercury CI"],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(target), "commit", "--allow-empty", "-m", "seed"],
+        check=True,
+        capture_output=True,
+    )
 
     candidate = RepoDeployCandidate(
         key="demo",

@@ -238,6 +238,10 @@ def test_restore_check_plan_includes_target_completeness_without_blocking_restor
         "mercury.backup.freshness.backup_stale_handoff_blocker",
         lambda database, **kwargs: None,
     )
+    monkeypatch.setattr(
+        "mercury.restore.readiness.try_load_mariadb_config",
+        lambda: object(),
+    )
 
     plan = build_restore_check_plan("erebus_threat_intel_prod")
     assert plan.allowed is True

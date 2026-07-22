@@ -54,6 +54,8 @@ def _render_restore_screen(plans, *, show_title: bool) -> None:
         if not policy.live_execution_allowed():
             label = f"{label} (live mode required)"
         options.append(("2", label))
+    else:
+        options.append(("2", "Run restore-checks (none ready)"))
     restorecheck_count = len(_restorecheck_names_on_server())
     if restorecheck_count:
         options.append(("3", f"Clean up temp restore-check databases ({restorecheck_count})"))

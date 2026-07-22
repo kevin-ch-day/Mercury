@@ -83,9 +83,10 @@ def test_cli_manifest_preview_rejects_dev() -> None:
 def test_cli_backup_verify_exposes_explicit_dev_recovery_gate() -> None:
     result = run_cli("backup", "verify", "--help")
     assert result.returncode == 0
-    # Rich truncates long option labels at the fixed test-console width.
-    assert "allow-developmen" in result.stdout
-    assert "configured optional" in result.stdout
+    # Rich may truncate or ANSI-split long option labels depending on COLUMNS/TTY.
+    combined = result.stdout + result.stderr
+    assert "development recovery" in combined
+    assert "configured optional" in combined
 
 # merged from test_cli_m4.py
 def test_cli_db_active() -> None:

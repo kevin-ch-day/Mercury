@@ -595,6 +595,10 @@ def test_doctor_grant_repair_sql_for_fresh_rebuild(monkeypatch: pytest.MonkeyPat
         "mercury.deploy.privileges.deployment_grants_sufficient",
         lambda _cfg: (False, "missing grants: CREATE"),
     )
+    monkeypatch.setattr(
+        "mercury.database.mariadb.session.try_load_mariadb_config",
+        lambda: SimpleNamespace(user="linuxadmin"),
+    )
     report = DoctorReport(
         repo_root=Path("/tmp/mercury"),
         current_user="linuxadmin",

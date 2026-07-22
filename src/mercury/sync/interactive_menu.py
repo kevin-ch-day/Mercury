@@ -18,8 +18,6 @@ from mercury.sync.selection import select_sync_entries
 from mercury.sync.terminal.runner import print_sync_batch_result
 from mercury.sync.readiness import SyncReadinessReport, build_sync_readiness_report
 from mercury.sync.terminal.readiness import _pair_route_label, print_sync_readiness_report
-from mercury.sync.sync_plan import build_sync_plan_demo
-from mercury.reporting.terminal.plan import print_sync_plan
 
 SYNC_SCREEN_TITLE = "Production sync readiness"
 SYNC_SCREEN_SUBTITLE = (
@@ -250,8 +248,8 @@ def run_sync_menu(*, interactive: bool = True) -> None:
     """Show sync readiness and an action submenu until the user returns."""
     report = _load_report()
     if report is None:
-        print_sync_plan(build_sync_plan_demo(), compact=True)
-        return
+        # Offline / no MariaDB: still show the action menu using catalog readiness.
+        report = build_sync_readiness_report(live=False)
 
     show_title = True
     while True:
