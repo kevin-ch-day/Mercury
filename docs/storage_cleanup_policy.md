@@ -25,6 +25,23 @@ Cross-tree APK duplication (~78.5 GiB) is informational only and is **not** trea
 
 `storage cleanup execute` remains refused until destination validation succeeds and policy allows quarantine-only execution.
 
+## Destination planning documents
+
+Governed Phase 3B destination documents use schema `mercury.destination_document.v1`:
+
+- `source_host_inventory.json`
+- `environment_secret_name_inventory.json`
+- `destination_acceptance_checklist.json`
+- `rollback_instructions.json`
+
+```bash
+./run.sh migration documents generate --run-id 20260722T055400Z_phase3b \
+  --mercury-commit <full-sha> \
+  --mercury-capture-id <capture-id>
+```
+
+New generations write under `.mercury_control/destination/<run-id>/documents_runs/<stamp>/` and never overwrite the historical `documents/` tree. Package preview includes the latest complete run. Secret **names** only; values are never packaged. Destination-host fields may remain `UNRESOLVED_OPERATOR_INPUT` without blocking package membership.
+
 ## Config
 
 See `config/retention.example.toml`. Distinguishes:

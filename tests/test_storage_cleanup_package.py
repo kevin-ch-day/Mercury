@@ -289,6 +289,153 @@ def test_normal_preview_does_not_require_scytaledroid_deep_audit(tmp_path: Path)
     assert all("scytaledroid" not in m.path for m in report.included if m.kind != "document")
 
 
+def test_destination_documents_resolve_in_package_preview(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mercury.core.storage_roles import DEFAULT_PRIMARY_UUID
+    from mercury.migration.destination_documents import (
+        DOCUMENT_SCHEMA,
+        document_path,
+        generate_destination_documents,
+    )
+    import mercury.migration.destination_documents as docs_mod
+
+    phase = tmp_path / ".mercury_control" / "phase3b" / "20260722T055400Z_phase3b"
+    phase.mkdir(parents=True)
+    (phase / "phase3b_summary.json").write_text(
+        json.dumps(
+            {
+                "run_id": "20260722T055400Z_phase3b",
+                "host": "testhost",
+                "readiness_status": "READY",
+                "destination_cutover_started": False,
+                "zero_unexplained_restore_differences": True,
+                "restore_schemas_retained": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (phase / "preflight").mkdir()
+    (phase / "preflight" / "preflight.json").write_text(
+        json.dumps({"mariadb_version": "10.11.18-MariaDB", "df_h": "ok"}),
+        encoding="utf-8",
+    )
+    (phase / "dumps").mkdir()
+    (phase / "dumps" / "dump_metadata.json").write_text(
+        json.dumps(
+            {
+                "dumps": {
+                    "erebus_threat_intel_prod": {
+                        "directory": str(tmp_path / "b1"),
+                        "manifest": {
+                            "backup_id": "erebus_threat_intel_prod-full-20260722_055507_238",
+                            "dump_file": "e.sql.gz",
+                            "schema_file": "e.schema.sql.gz",
+                            "sha256": "a" * 64,
+                            "schema_sha256": "b" * 64,
+                            "size_bytes": 1,
+                        },
+                    },
+                    "android_permission_intel": {
+                        "directory": str(tmp_path / "b2"),
+                        "manifest": {
+                            "backup_id": "android_permission_intel-full-20260722_055648_287",
+                            "dump_file": "a.sql.gz",
+                            "schema_file": "a.schema.sql.gz",
+                            "sha256": "c" * 64,
+                            "schema_sha256": "d" * 64,
+                            "size_bytes": 1,
+                        },
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (phase / "restore").mkdir()
+    (phase / "restore" / "source_vs_restore_comparison.json").write_text(
+        "{}\n", encoding="utf-8"
+    )
+    merc = (
+        tmp_path
+        / ".mercury_control"
+        / "validation"
+        / "mercury"
+        / "mercury_destination_candidate_2596b85_20260722T180435Z"
+    )
+    merc.mkdir(parents=True)
+    (merc / "capture_identity.json").write_text(
+        json.dumps(
+            {
+                "capture_id": "mercury_destination_candidate_2596b85_20260722T180435Z",
+                "commit": "2596b8588c868a68d661dfaae23a5609cc77279a",
+                "tree": "6c5fd49394384a532ac0320119d1fcbd8c4a52a6",
+                "repository_url": "https://github.com/kevin-ch-day/Mercury.git",
+                "branch": "main",
+            }
+        ),
+        encoding="utf-8",
+    )
+    ereb = (
+        tmp_path
+        / ".mercury_control"
+        / "validation"
+        / "erebus"
+        / "erebus_destination_candidate_3f1bb5b_20260722T150930Z"
+    )
+    ereb.mkdir(parents=True)
+    (ereb / "capture_summary.json").write_text(
+        json.dumps(
+            {
+                "repository": {
+                    "url": "https://github.com/kevin-ch-day/erebus-engine-fedora.git",
+                    "branch": "main",
+                    "tree": "796f180621b938dcc7415d0bfaba8daa71a4e43f",
+                },
+                "intake_contract": {"sha256": "e" * 64},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / ".mercury_control" / "storage_identity.json").write_text(
+        json.dumps({"filesystem_uuid": DEFAULT_PRIMARY_UUID, "filesystem_label": "MERCURY_DATA_V2"}),
+        encoding="utf-8",
+    )
+
+    class _Ok:
+        ok = True
+        blocker = None
+        code = "ok"
+
+    monkeypatch.setattr(docs_mod, "validate_storage_mount", lambda **kwargs: _Ok())
+    result = generate_destination_documents(tmp_path, overwrite_legacy_documents=True)
+    assert result.ok, result.errors
+    assert document_path(
+        tmp_path, "20260722T055400Z_phase3b", "source_host_inventory"
+    ).is_file()
+    payload = json.loads(
+        document_path(
+            tmp_path, "20260722T055400Z_phase3b", "source_host_inventory"
+        ).read_text(encoding="utf-8")
+    )
+    assert payload["schema"] == DOCUMENT_SCHEMA
+    report = preview_destination_package(
+        tmp_path,
+        run_id="20260722T055400Z_phase3b",
+        policy=_policy(
+            current_destination_mercury_commit="2596b8588c868a68d661dfaae23a5609cc77279a",
+            current_destination_mercury_capture_id="mercury_destination_candidate_2596b85_20260722T180435Z",
+            current_erebus_destination_commit="3f1bb5bd2229d98b9b76b9f1615238792f12a0b3",
+        ),
+        mercury_commit="2596b8588c868a68d661dfaae23a5609cc77279a",
+        mercury_capture_id="mercury_destination_candidate_2596b85_20260722T180435Z",
+    )
+    assert not any(u.startswith("document:") for u in report.unresolved)
+    assert all(
+        m.path.startswith(str(tmp_path)) for m in report.included if m.kind == "document"
+    )
+
+
 def test_historical_vs_current_mercury_identities_distinguished() -> None:
     policy = _policy(
         historical_phase3b_mercury_commit="40b8f532ff2b49e9cdd699d4af01e88dde9aa8c0",

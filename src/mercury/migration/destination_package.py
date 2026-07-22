@@ -441,24 +441,102 @@ def preview_destination_package(
                     f"ScytaleDroid data appears without explicit approval: {member.path}"
                 )
 
-    # Destination package docs placeholders (logical members)
-    for doc_id in (
-        "source_host_inventory",
-        "environment_secret_name_inventory",
-        "destination_acceptance_checklist",
-        "rollback_instructions",
-    ):
+    # Destination package docs (governed evidence under .mercury_control/destination/)
+    from mercury.migration.destination_documents import (
+        DOCUMENT_IDS,
+        load_destination_documents,
+        resolve_active_documents_dir,
+        validate_documents_against_preview_pins,
+    )
+
+    loaded_docs = load_destination_documents(mount_root, run_id)
+    doc_mercury_commit = (mercury_commit or policy.current_destination_mercury_commit or "").strip()
+    doc_mercury_capture = (
+        mercury_capture_id or policy.current_destination_mercury_capture_id or ""
+    ).strip()
+    doc_erebus_commit = (policy.current_erebus_destination_commit or "").strip()
+    if not doc_erebus_commit and loaded_docs:
+        sample = next(iter(loaded_docs.values()))
+        doc_erebus_commit = str(sample.payload.get("erebus_commit") or "").strip()
+    if loaded_docs:
+        pin_errors = validate_documents_against_preview_pins(
+            loaded_docs,
+            run_id=run_id,
+            mercury_commit=doc_mercury_commit,
+            mercury_capture_id=doc_mercury_capture,
+            erebus_commit=doc_erebus_commit,
+            protected_backup_ids=policy.protected_backup_ids,
+        )
+        if pin_errors:
+            report.errors.extend(pin_errors)
+    for doc_id in DOCUMENT_IDS:
+        doc = loaded_docs.get(doc_id)
+        if doc is None:
+            report.included.append(
+                PackageMember(
+                    path=f"(generate:{doc_id})",
+                    kind="document",
+                    identity=doc_id,
+                    mode="copy",
+                    size_bytes=0,
+                    required=True,
+                )
+            )
+            report.unresolved.append(f"document:{doc_id}")
+            continue
+        try:
+            _assert_under_root(doc.path, mount_root)
+            _reject_symlink_escape(doc.path, mount_root)
+        except ValueError as exc:
+            report.errors.append(str(exc))
+            report.unresolved.append(f"document:{doc_id}")
+            continue
+        size = doc.path.stat().st_size if doc.path.is_file() else 0
         report.included.append(
             PackageMember(
-                path=f"(generate:{doc_id})",
+                path=str(doc.path),
                 kind="document",
                 identity=doc_id,
                 mode="copy",
-                size_bytes=0,
+                size_bytes=size,
                 required=True,
             )
         )
-        report.unresolved.append(f"document:{doc_id}")
+        report.file_count += 1
+        report.estimated_size_bytes += size
+        report.manifest_reference_count += 1
+
+    docs_root = resolve_active_documents_dir(mount_root, run_id)
+    if (
+        docs_root is not None
+        and loaded_docs
+        and len(loaded_docs) == len(DOCUMENT_IDS)
+        and not any(u.startswith("document:") for u in report.unresolved)
+    ):
+        for support_name in ("documents_index.json", "SHA256SUMS"):
+            support = docs_root / support_name
+            if not support.is_file():
+                continue
+            try:
+                _assert_under_root(support, mount_root)
+                _reject_symlink_escape(support, mount_root)
+            except ValueError as exc:
+                report.errors.append(str(exc))
+                continue
+            size = support.stat().st_size
+            report.included.append(
+                PackageMember(
+                    path=str(support),
+                    kind="document_support",
+                    identity=support_name,
+                    mode="copy",
+                    size_bytes=size,
+                    required=True,
+                )
+            )
+            report.file_count += 1
+            report.estimated_size_bytes += size
+            report.manifest_reference_count += 1
 
     hard_unresolved = [
         item

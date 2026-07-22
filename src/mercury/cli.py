@@ -452,6 +452,72 @@ def migration_package_status_cmd() -> None:
         output.write(f"  HDD mirror: {'Current' if verified == generation.generation else 'Refresh required'}")
 
 
+@migration_app.command("documents")
+def migration_documents_cmd(
+    action: str = typer.Argument("generate", help="Only 'generate' is supported."),
+    run_id: str = typer.Option(
+        "20260722T055400Z_phase3b",
+        "--run-id",
+        help="Exact sealed Phase 3B run id (no 'latest').",
+    ),
+    mercury_commit: str = typer.Option(
+        "2596b8588c868a68d661dfaae23a5609cc77279a",
+        "--mercury-commit",
+    ),
+    mercury_capture_id: str = typer.Option(
+        "mercury_destination_candidate_2596b85_20260722T180435Z",
+        "--mercury-capture-id",
+    ),
+    erebus_commit: str = typer.Option(
+        "3f1bb5bd2229d98b9b76b9f1615238792f12a0b3",
+        "--erebus-commit",
+    ),
+    erebus_capture_id: str = typer.Option(
+        "erebus_destination_candidate_3f1bb5b_20260722T150930Z",
+        "--erebus-capture-id",
+    ),
+    documents_run: str | None = typer.Option(
+        None,
+        "--documents-run",
+        help="Optional documents_runs/<id> stamp. Default: new UTC timestamp (never overwrites historical documents/).",
+    ),
+) -> None:
+    """Generate governed destination planning documents (does not create a package)."""
+    if action != "generate":
+        raise typer.BadParameter("Only 'generate' is supported.")
+    from mercury.core.usb_mount import resolve_operator_mount
+    from mercury.migration.destination_documents import generate_destination_documents
+    from mercury.storage.retention import load_retention_policy
+
+    result = generate_destination_documents(
+        resolve_operator_mount(),
+        run_id=run_id,
+        mercury_commit=mercury_commit,
+        mercury_capture_id=mercury_capture_id,
+        erebus_commit=erebus_commit,
+        erebus_capture_id=erebus_capture_id,
+        policy=load_retention_policy(),
+        documents_run=documents_run,
+    )
+    output.heading("Destination documents")
+    output.field("Run ID", result.run_id)
+    output.field("Linked preview", result.linked_preview_id)
+    output.field("Documents dir", str(result.documents_dir))
+    output.field("Mount UUID ok", "yes" if result.mount_uuid_ok else "no")
+    for doc in result.documents:
+        output.write(
+            f"  + {doc.document_id} · sha256={doc.sha256[:12]}… · "
+            f"unresolved={doc.unresolved_field_count} · {doc.path}"
+        )
+    if result.errors:
+        output.write("Errors:")
+        for err in result.errors:
+            output.write(f"  !! {err}")
+    output.field("Ok", "yes" if result.ok else "no")
+    if not result.ok:
+        raise typer.Exit(1)
+
+
 @migration_app.command("package")
 def migration_package_cmd(
     action: str = typer.Argument("preview", help="Only 'preview' is implemented in this phase."),
