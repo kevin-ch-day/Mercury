@@ -145,9 +145,43 @@ def _assert_no_excluded_project(path: Path, mount_root: Path) -> list[str]:
     return errors
 
 
-def _active_ops_blockers() -> list[str]:
+def _process_group_pids() -> set[int]:
+    """Current process group + ancestor chain (exclude self-detection)."""
+    found = {os.getpid(), os.getppid()}
+    try:
+        my_pgid = os.getpgid(0)
+    except OSError:
+        my_pgid = None
+    pid = os.getpid()
+    for _ in range(64):
+        try:
+            text = Path(f"/proc/{pid}/status").read_text(encoding="utf-8")
+        except OSError:
+            break
+        ppid = None
+        for line in text.splitlines():
+            if line.startswith("PPid:"):
+                ppid = int(line.split()[1])
+                break
+        if ppid is None or ppid <= 1 or ppid in found:
+            break
+        found.add(ppid)
+        pid = ppid
+    if my_pgid is not None:
+        for pid_dir in Path("/proc").glob("[0-9]*"):
+            try:
+                other = int(pid_dir.name)
+                if os.getpgid(other) == my_pgid:
+                    found.add(other)
+            except (OSError, ValueError):
+                continue
+    return found
+
+
+def _active_ops_blockers(*, ignore_pids: set[int] | None = None) -> list[str]:
     """Best-effort process scan; fail closed on known write ops."""
     errors: list[str] = []
+    ignore = set(ignore_pids or set()) | _process_group_pids()
     patterns = (
         "mariadb-dump",
         "mysqldump",
@@ -159,6 +193,12 @@ def _active_ops_blockers() -> list[str]:
     try:
         for pid_dir in Path("/proc").glob("[0-9]*"):
             try:
+                pid = int(pid_dir.name)
+            except ValueError:
+                continue
+            if pid in ignore:
+                continue
+            try:
                 cmd = (pid_dir / "cmdline").read_bytes().replace(b"\0", b" ").decode(
                     "utf-8", errors="replace"
                 )
@@ -167,10 +207,7 @@ def _active_ops_blockers() -> list[str]:
             lower = cmd.lower()
             for pat in patterns:
                 if pat in lower:
-                    errors.append(f"active operation detected: {pat} (pid {pid_dir.name})")
-            if "mercury menu" in lower or lower.rstrip().endswith("mercury menu"):
-                # Menu alone is not a package-create blocker, but note for detach.
-                pass
+                    errors.append(f"active operation detected: {pat} (pid {pid})")
     except OSError:
         pass
     return errors
