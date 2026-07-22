@@ -263,29 +263,35 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
             ["DATABASE", "FRESHNESS", "VERIFY", "SIZE", "LAST BACKUP"],
             rows,
             style=TableStyle(indent=0),
-            min_col_widths=[28, 10, 12, 10, 28],
-            max_col_widths=[36, 12, 20, 12, 44],
+            min_col_widths=[28, 10, 14, 10, 28],
+            max_col_widths=[36, 12, 22, 12, 44],
         )
         display_screen.write_structured_table(table)
-        display_screen.write_blank()
         counts = _status_counts(rows)
         problem_parts: list[str] = []
         for label in (
             "Stale",
             "Unknown",
+            "Empty",
             "Missing",
             "Unverified",
             "Verify failed",
             "Missing manifest",
             "Absent",
             "Restore-check failed",
-            "Artifact OK (unstamped)",
+            "RC passed · unstamped",
+            "OK unstamped",
+            "OK* · no RC",
             "Not restore-checked",
         ):
             count = counts.get(label, 0)
             if count:
                 if label == "Absent":
                     problem_parts.append(f"{count} absent from server")
+                elif label == "OK* · no RC":
+                    problem_parts.append(f"{count} OK* · no RC")
+                elif label == "RC passed · unstamped":
+                    problem_parts.append(f"{count} RC passed · unstamped")
                 else:
                     problem_parts.append(f"{count} {label.lower()}")
         if problem_parts:
@@ -306,8 +312,13 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
     else:
         display_screen.write_status("warn", "No databases in active backup scope.")
     for warning in getattr(status_report, "warnings", []) or []:
-        display_screen.write_status("warn", warning)
-    display_screen.write_blank()
+        # Phase 3B separation is informational, not a repair-style warning.
+        if "Phase 3B" in warning:
+            from mercury.terminal.theme import hint_text
+
+            output.write(hint_text(warning))
+        else:
+            display_screen.write_status("warn", warning)
     render_submenu(backup_menu_render_options(backup_ready=backup_ready), indent=0)
 
 
@@ -419,6 +430,7 @@ def _run_full_backup(plan: BackupPlanDryRun):
         policy=policy,
         sources=list(plan.backup_sources),
     )
+    display_screen.write_summary("Production")
     print_backup_batch_result(
         production_batch,
         compact=True,
@@ -449,8 +461,7 @@ def _run_full_backup(plan: BackupPlanDryRun):
                 "No configured development databases are present on this MariaDB server."
             )
         else:
-            display_screen.write_blank()
-            display_screen.write_summary("Development recovery backups")
+            display_screen.write_summary("Development recovery")
             development_batch = run_backup_batch(
                 BACKUP_KIND_FULL,
                 execute=True,
@@ -470,6 +481,12 @@ def _run_full_backup(plan: BackupPlanDryRun):
                 development_verification = verify_written_backup_batch(
                     development_batch, allow_development_backup=True
                 )
+                display_screen.write_summary(
+                    f"Development verification: {development_verification.verified} verified, "
+                    f"{development_verification.failed} failed."
+                )
+                for issue in development_verification.issues:
+                    display_screen.write_status("fail", issue)
 
     result = build_full_backup_run_result(
         run_id=run_id,

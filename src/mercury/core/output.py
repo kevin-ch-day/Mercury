@@ -156,7 +156,7 @@ def write_report_header(title: str) -> None:
 
 
 def write_hint(text: str) -> None:
-    write("")
+    """Write a muted operator note on the next line (no forced leading blank)."""
     write(hint_text(text))
 
 

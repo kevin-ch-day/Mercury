@@ -67,11 +67,168 @@ def test_build_handoff_checklist_marks_stale_backups_partial(
             latest_transfer_manifest_path=str(manifest_dir / "transfer_manifest_old.json"),
         ),
     )
+    monkeypatch.setattr(
+        "mercury.backup.status.latest_restore_check_by_backup_id",
+        lambda: {},
+    )
 
     checklist = build_handoff_checklist(live=True)
     assert checklist.handoff_status == "blocked · 1 failed check"
     labels = [step.label for step in checklist.steps]
     assert "Backup freshness" in labels
+    assert "Restore-checks" in labels
+    restore_step = next(step for step in checklist.steps if step.step_key == "restore_checks")
+    assert restore_step.status == "warn"
+    assert "1 of 1 verified sources not restore-checked" in restore_step.detail
+
+
+def test_restore_checks_warn_when_no_verified_sources(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from mercury.backup.status import RestoreCheckLedgerRecord
+
+    manifest_dir = tmp_path / "manifests"
+    manifest_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        "mercury.handoff.checklist.load_execution_policy",
+        lambda: type(
+            "Policy",
+            (),
+            {
+                "backup_root": tmp_path / "backups",
+                "backup_root_state": lambda self=None: "usb-mounted",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "mercury.handoff.checklist.build_state_summary",
+        lambda **kwargs: type("Summary", (), {"database_bundle_rows": 0})(),
+    )
+    monkeypatch.setattr(
+        "mercury.handoff.checklist.build_transfer_bundle",
+        lambda live=False: TransferBundle(
+            generated_at="2026-07-02T00:00:00+00:00",
+            host="fedora",
+            mode="live",
+            backup_root=str(tmp_path / "backups"),
+            required_usb_mount=str(tmp_path),
+            manifest_dir=str(manifest_dir),
+            runbook_dir=str(tmp_path / "runbooks"),
+            database_entries=[
+                TransferDatabaseEntry(
+                    database="erebus_threat_intel_prod",
+                    source_role="production source",
+                    verified=False,
+                    freshness=None,
+                    backup_id=None,
+                    backup_directory=None,
+                )
+            ],
+            verified_source_count=0,
+            missing_source_count=1,
+            failed_source_count=0,
+            stale_source_count=0,
+            unknown_freshness_source_count=0,
+            transfer_manifest_path=str(manifest_dir / "transfer_manifest_new.json"),
+            transfer_runbook_path=str(tmp_path / "runbooks" / "transfer_runbook_new.md"),
+            latest_transfer_manifest_path=None,
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.status.latest_restore_check_by_backup_id",
+        lambda: {
+            "ghost-full-1": RestoreCheckLedgerRecord(
+                database="erebus_threat_intel_prod",
+                backup_id="ghost-full-1",
+                status="passed",
+                timestamp="2026-07-22T06:00:00+00:00",
+            )
+        },
+    )
+    checklist = build_handoff_checklist(live=True)
+    restore_step = next(step for step in checklist.steps if step.step_key == "restore_checks")
+    assert restore_step.status == "warn"
+    assert "No verified backup IDs" in restore_step.detail
+
+
+def test_restore_checks_separates_failed_from_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from mercury.backup.status import RestoreCheckLedgerRecord
+
+    manifest_dir = tmp_path / "manifests"
+    manifest_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        "mercury.handoff.checklist.load_execution_policy",
+        lambda: type(
+            "Policy",
+            (),
+            {
+                "backup_root": tmp_path / "backups",
+                "backup_root_state": lambda self=None: "usb-mounted",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "mercury.handoff.checklist.build_state_summary",
+        lambda **kwargs: type("Summary", (), {"database_bundle_rows": 0})(),
+    )
+    monkeypatch.setattr(
+        "mercury.handoff.checklist.build_transfer_bundle",
+        lambda live=False: TransferBundle(
+            generated_at="2026-07-02T00:00:00+00:00",
+            host="fedora",
+            mode="live",
+            backup_root=str(tmp_path / "backups"),
+            required_usb_mount=str(tmp_path),
+            manifest_dir=str(manifest_dir),
+            runbook_dir=str(tmp_path / "runbooks"),
+            database_entries=[
+                TransferDatabaseEntry(
+                    database="erebus_threat_intel_prod",
+                    source_role="production source",
+                    verified=True,
+                    freshness="fresh",
+                    backup_id="erebus-full-1",
+                    backup_directory=str(tmp_path / "backups" / "erebus"),
+                ),
+                TransferDatabaseEntry(
+                    database="scytaledroid_core_prod",
+                    source_role="production source",
+                    verified=True,
+                    freshness="fresh",
+                    backup_id="scytale-full-1",
+                    backup_directory=str(tmp_path / "backups" / "scytale"),
+                ),
+            ],
+            verified_source_count=2,
+            missing_source_count=0,
+            failed_source_count=0,
+            stale_source_count=0,
+            unknown_freshness_source_count=0,
+            transfer_manifest_path=str(manifest_dir / "transfer_manifest_new.json"),
+            transfer_runbook_path=str(tmp_path / "runbooks" / "transfer_runbook_new.md"),
+            latest_transfer_manifest_path=None,
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.status.latest_restore_check_by_backup_id",
+        lambda: {
+            "erebus-full-1": RestoreCheckLedgerRecord(
+                database="erebus_threat_intel_prod",
+                backup_id="erebus-full-1",
+                status="failed",
+                timestamp="2026-07-22T06:00:00+00:00",
+            )
+        },
+    )
+    checklist = build_handoff_checklist(live=True)
+    restore_step = next(step for step in checklist.steps if step.step_key == "restore_checks")
+    assert restore_step.status == "warn"
+    assert "1 of 2 verified sources not restore-checked" in restore_step.detail
+    assert "1 of 2 verified sources restore-check failed" in restore_step.detail
 
 
 def test_handoff_aggregate_status_rules() -> None:

@@ -374,7 +374,47 @@ def test_print_batch_suggest_verify_defaults_off(
     print_backup_batch_result(batch, compact=True, menu=True)
     out = capsys.readouterr().out
     assert "Next: Verify source backups [4]" not in out
+    assert "Complete backup IDs" not in out
 
     print_backup_batch_result(batch, compact=True, menu=True, suggest_verify=True)
     out = capsys.readouterr().out
     assert "Next: Verify source backups [4]" in out
+
+
+def test_print_full_backup_run_result_is_dense(capsys: pytest.CaptureFixture[str]) -> None:
+    from mercury.backup.terminal.batch import print_full_backup_run_result
+
+    batch = BackupBatchResult(
+        backup_kind="full",
+        execute=True,
+        sources=["android_permission_intel", "erebus_threat_intel_prod"],
+        executed_count=2,
+        results=[
+            _executed("android_permission_intel", "android_permission_intel-full-1", Path("/tmp/a")),
+            _executed("erebus_threat_intel_prod", "erebus_threat_intel_prod-full-2", Path("/tmp/b")),
+        ],
+    )
+    result = build_full_backup_run_result(
+        run_id="20260722T161643Z_full_backup",
+        started_at_utc="2026-07-22T16:16:43Z",
+        production_batch=batch,
+        production_verification=BatchVerificationSummary(
+            verified=2,
+            backup_ids=[
+                "android_permission_intel-full-1",
+                "erebus_threat_intel_prod-full-2",
+            ],
+            evidence_paths=["/tmp/a/manifest.json", "/tmp/b/manifest.json"],
+        ),
+    )
+    print_full_backup_run_result(result)
+    out = capsys.readouterr().out
+    assert "Full Backup Result ·" in out
+    assert "verify evidence:" not in out
+    assert "Complete backup IDs" not in out
+    assert "PRODUCTION" not in out
+    assert "DEVELOPMENT" not in out
+    assert "Prod:" in out
+    assert "Overall:" in out
+    # No blank-line-separated backup_id dump in the final summary.
+    assert "backup_id:" not in out

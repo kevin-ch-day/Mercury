@@ -189,6 +189,71 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
             )
         )
 
+    if source_count:
+        from mercury.backup.status import latest_restore_check_by_backup_id
+
+        rc_by_id = latest_restore_check_by_backup_id()
+        verified_entries = [
+            entry
+            for entry in bundle.database_entries
+            if entry.verified and entry.backup_id
+        ]
+        verified_count = len(verified_entries)
+        restore_failed = [
+            entry.database
+            for entry in verified_entries
+            if entry.backup_id in rc_by_id
+            and rc_by_id[entry.backup_id].status in {"failed", "verification_failed"}
+        ]
+        not_restore_checked = [
+            entry.database
+            for entry in verified_entries
+            if entry.backup_id not in rc_by_id
+            or rc_by_id[entry.backup_id].status
+            not in {"passed", "failed", "verification_failed"}
+        ]
+
+        if verified_count == 0:
+            steps.append(
+                HandoffStep(
+                    step_key="restore_checks",
+                    label="Restore-checks",
+                    status="warn",
+                    detail="No verified backup IDs available for restore-check",
+                    action="Handoff [4] backup, then [5] verify",
+                )
+            )
+        elif restore_failed or not_restore_checked:
+            parts: list[str] = []
+            if not_restore_checked:
+                parts.append(
+                    f"{len(not_restore_checked)} of {verified_count} verified sources "
+                    "not restore-checked"
+                )
+            if restore_failed:
+                parts.append(
+                    f"{len(restore_failed)} of {verified_count} verified sources "
+                    "restore-check failed"
+                )
+            steps.append(
+                HandoffStep(
+                    step_key="restore_checks",
+                    label="Restore-checks",
+                    status="warn",
+                    detail="; ".join(parts),
+                    action="Backup Operations [5] restore-check",
+                )
+            )
+        else:
+            steps.append(
+                HandoffStep(
+                    step_key="restore_checks",
+                    label="Restore-checks",
+                    status="ok",
+                    detail="Current verified backup IDs have restore-check passed",
+                )
+            )
+
     if repo_package == "complete":
         steps.append(
             HandoffStep(

@@ -257,6 +257,19 @@ def test_display_status_labels() -> None:
     assert menu_handoff_problem_summary(["1 stale"]) == (
         "Fresh full backup needed before workstation handoff: 1 stale."
     )
+    assert menu_handoff_problem_summary(["4 not restore-checked"]) == (
+        "Restore-check required before workstation handoff: 4 not restore-checked."
+    )
+    assert menu_handoff_problem_summary(["1 stale", "2 not restore-checked"]) == (
+        "Before workstation handoff: 1 stale, 2 not restore-checked."
+    )
+    assert menu_handoff_problem_summary(["2 OK* · no RC"]) == (
+        "Manifest stamp / restore-check pending before workstation handoff: 2 OK* · no RC."
+    )
+    assert menu_handoff_problem_summary(["1 empty"]) == (
+        "Empty source schema(s) on server — preserve with one verified backup "
+        "before workstation handoff: 1 empty."
+    )
     assert "prod→dev sync" in protection_handoff_action_item(include_sync=True)
 
 
@@ -368,7 +381,7 @@ def test_restore_check_label_requires_matching_backup_id() -> None:
             "manifest_verification_stamp": False,
         },
     )()
-    assert backup_entry_verify_label(mismatched) == "Artifact OK (unstamped)"
+    assert backup_entry_verify_label(mismatched) == "OK* · no RC"
 
     matched = type(
         "E",
@@ -382,6 +395,49 @@ def test_restore_check_label_requires_matching_backup_id() -> None:
         },
     )()
     assert backup_entry_verify_label(matched) == "Restore-check passed"
+
+    matched_unstamped = type(
+        "E",
+        (),
+        {
+            "protection_status": "verified",
+            "backup_id": "db-full-OLD",
+            "restore_check_status": "passed",
+            "restore_check_backup_id": "db-full-OLD",
+            "manifest_verification_stamp": False,
+        },
+    )()
+    assert backup_entry_verify_label(matched_unstamped) == "RC passed · unstamped"
+
+
+def test_blank_timestamp_does_not_clobber_dated_restore_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mercury.backup.status import latest_restore_check_by_backup_id
+
+    monkeypatch.setattr(
+        "mercury.state.ledger.read_operator_database_backup_rows",
+        lambda: [
+            {
+                "database": "erebus_threat_intel_prod",
+                "backup_id": "erebus-full-1",
+                "restore_check_status": "passed",
+                "timestamp": "2026-07-22T06:00:00+00:00",
+                "warnings": "",
+                "backup_path": "",
+            },
+            {
+                "database": "erebus_threat_intel_prod",
+                "backup_id": "erebus-full-1",
+                "restore_check_status": "failed",
+                "timestamp": "",
+                "warnings": "",
+                "backup_path": "",
+            },
+        ],
+    )
+    latest = latest_restore_check_by_backup_id()
+    assert latest["erebus-full-1"].status == "passed"
 
 
 def test_restore_readiness_complete_while_freshness_stale(

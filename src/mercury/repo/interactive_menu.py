@@ -30,14 +30,14 @@ def run_offline_repo_menu(*, interactive: bool = True) -> None:
             return
         if choice == "1":
             plan = _plan()
-            display_screen.write_blank()
-            display_screen.write_fields(
-                {
-                    "Operation": "Create or update offline HDD Git worktrees",
-                    "Target": plan.root,
-                    "Source": "Latest committed repository history",
-                    "Safety": "Source repos untouched; dirty offline copies are blocked",
-                }
+            from mercury.terminal.theme import hint_text
+            from mercury import output
+
+            output.write(
+                hint_text(
+                    f"Sync offline HDD worktrees → {plan.root} "
+                    "(committed history only; source repos untouched; dirty offline copies blocked)"
+                )
             )
             if menu_prompts.ask_yes_no("Sync offline HDD repository copies now?", default=False) is not True:
                 display_screen.write_status("warn", "Offline repository sync cancelled.")

@@ -104,15 +104,20 @@ def backup_entry_verify_label(entry) -> str:
         and backup_id == restore_backup_id
     )
     if restore_matches and restore_status == "passed":
+        stamp = getattr(entry, "manifest_verification_stamp", None)
+        if stamp is False:
+            return "RC passed · unstamped"
         return "Restore-check passed"
     if restore_matches and restore_status in {"failed", "verification_failed"}:
         return "Restore-check failed"
     if protection_status == "verified":
         stamp = getattr(entry, "manifest_verification_stamp", None)
-        if stamp is False:
-            return "Artifact OK (unstamped)"
-        if restore_status is None and backup_id:
-            return "Not restore-checked"
+        unstamped = stamp is False
+        # Mismatched or missing restore-check must not look fully verified.
+        if backup_id and not restore_matches:
+            return "OK* · no RC" if unstamped else "Not restore-checked"
+        if unstamped:
+            return "OK unstamped"
         return "Verified"
     if protection_status == "missing":
         return "Missing"
@@ -142,29 +147,120 @@ def backup_entry_freshness_label(entry) -> str:
     return "Unknown"
 
 
+def backup_entry_artifact_label(entry) -> str:
+    """Artifact-integrity label only — never includes restore-check state."""
+    if entry is None:
+        return "Missing"
+    protection_status = getattr(entry, "protection_status", None)
+    if protection_status == "verified":
+        stamp = getattr(entry, "manifest_verification_stamp", None)
+        if stamp is False:
+            return "OK unstamped"
+        return "Verified"
+    if protection_status == "missing":
+        return "Missing"
+    if protection_status == "absent":
+        return "Absent"
+    if protection_status == "failed":
+        return "Failed"
+    if protection_status == "untrusted root":
+        return "No manifest"
+    return "Unverified"
+
+
 def backup_entry_status_label(entry) -> str:
     """Combined operator-facing status for compact recovery screens.
 
     Prefer separate freshness/verify columns on the Backup Operations table.
+    Freshness gaps outrank a restore-check/artifact pass so stale sources stay
+    visible, but integrity failures still win over freshness.
     """
     if entry is None:
         return "Missing"
     verify = backup_entry_verify_label(entry)
-    if verify != "Verified":
+    if verify in {
+        "Verify failed",
+        "Missing",
+        "Absent",
+        "Missing manifest",
+        "Unverified",
+        "Restore-check failed",
+    }:
         if verify == "Verify failed":
             return "Unverified"
         if verify == "Missing manifest":
             return "Warning"
         return verify
-    return backup_entry_freshness_label(entry)
+    freshness = backup_entry_freshness_label(entry)
+    if freshness in {"Stale", "Unknown", "Empty"}:
+        return freshness
+    if verify != "Verified":
+        return verify
+    return freshness
 
 
 def menu_handoff_problem_summary(problem_parts: list[str]) -> str:
-    return (
-        "Fresh full backup needed before workstation handoff: "
-        + ", ".join(problem_parts)
-        + "."
+    """Operator warning for Backup Operations gaps before handoff.
+
+    Chooses the lead phrase from the actual gap types so a restore-check-only
+    backlog is never described as needing another full backup.
+    """
+    joined = ", ".join(problem_parts)
+    lowered = [part.lower() for part in problem_parts]
+    restore_only = bool(lowered) and all(
+        "not restore-checked" in part
+        or "restore-check failed" in part
+        or "no rc" in part
+        for part in lowered
     )
+    stamp_only = bool(lowered) and all(
+        "artifact ok" in part
+        or "ok unstamped" in part
+        or "ok* · no rc" in part
+        or "rc passed · unstamped" in part
+        for part in lowered
+    )
+    backup_gaps = any(
+        token in part
+        for part in lowered
+        for token in (
+            "stale",
+            "unknown",
+            "missing",
+            "unverified",
+            "verify failed",
+            "missing manifest",
+            "absent from server",
+        )
+    )
+    empty_only = bool(lowered) and all("empty" in part for part in lowered)
+    # Unstamped + no RC is both a stamp and restore-check gap.
+    if stamp_only and any("no rc" in part for part in lowered):
+        return f"Manifest stamp / restore-check pending before workstation handoff: {joined}."
+    if restore_only:
+        return f"Restore-check required before workstation handoff: {joined}."
+    if stamp_only:
+        return f"Manifest stamp pending before workstation handoff: {joined}."
+    if empty_only:
+        return (
+            f"Empty source schema(s) on server — preserve with one verified backup "
+            f"before workstation handoff: {joined}."
+        )
+    if backup_gaps and any(
+        "restore-check" in part or "not restore-checked" in part or "no rc" in part
+        for part in lowered
+    ):
+        return f"Before workstation handoff: {joined}."
+    if any("empty" in part for part in lowered) and backup_gaps:
+        return f"Before workstation handoff: {joined}."
+    if any("empty" in part for part in lowered):
+        return (
+            f"Empty source schema(s) on server — preserve with one verified backup "
+            f"before workstation handoff: {joined}."
+        )
+    if backup_gaps:
+        return f"Fresh full backup needed before workstation handoff: {joined}."
+    return f"Before workstation handoff: {joined}."
 
 
 def protection_handoff_action_item(*, include_sync: bool = True) -> str:

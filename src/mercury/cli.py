@@ -32,6 +32,10 @@ state_app = typer.Typer(help="Portable Mercury operation ledger and summaries.")
 storage_app = typer.Typer(
     help="Primary/legacy storage status, audit, validate, migrate, and cutover tools."
 )
+cleanup_app = typer.Typer(
+    help="Retention cleanup status/preview (execute locked until destination validation)."
+)
+storage_app.add_typer(cleanup_app, name="cleanup")
 migration_app = typer.Typer(help="Read-only workstation migration readiness and blockers.")
 
 app.add_typer(env_app, name="env")
@@ -197,6 +201,52 @@ def storage_status_cmd() -> None:
     from mercury.storage.terminal import print_storage_status
 
     print_storage_status(build_storage_status_report())
+
+
+@cleanup_app.command("status")
+def storage_cleanup_status_cmd() -> None:
+    """Show cleanup/retention status (read-only; never deletes or quarantines)."""
+    from mercury.core.usb_mount import resolve_operator_mount
+    from mercury.storage.cleanup import build_cleanup_status
+    from mercury.storage.cleanup_terminal import print_cleanup_status
+    from mercury.storage.retention import load_retention_policy
+
+    policy = load_retention_policy()
+    report = build_cleanup_status(resolve_operator_mount(), policy=policy)
+    print_cleanup_status(report)
+
+
+@cleanup_app.command("preview")
+def storage_cleanup_preview_cmd(
+    write_plan: Path | None = typer.Option(
+        None,
+        "--write-plan",
+        help="Optional path to write the preview plan JSON (explicit opt-in only).",
+    ),
+) -> None:
+    """Preview cleanup classifications. Execute remains refused while validation is pending."""
+    from mercury.core.usb_mount import resolve_operator_mount
+    from mercury.storage.cleanup import build_cleanup_preview, refuse_cleanup_execute
+    from mercury.storage.cleanup_terminal import print_cleanup_preview
+    from mercury.storage.retention import load_retention_policy
+
+    policy = load_retention_policy()
+    report = build_cleanup_preview(
+        resolve_operator_mount(),
+        policy=policy,
+        write_plan_path=write_plan,
+    )
+    print_cleanup_preview(report)
+    output.write(f"  {refuse_cleanup_execute(policy)}")
+
+
+@cleanup_app.command("execute")
+def storage_cleanup_execute_cmd() -> None:
+    """Administratively disabled until destination validation succeeds."""
+    from mercury.storage.cleanup import refuse_cleanup_execute
+
+    output.write(refuse_cleanup_execute())
+    raise typer.Exit(2)
 
 
 @storage_app.command("validate")
@@ -400,6 +450,58 @@ def migration_package_status_cmd() -> None:
         output.write(f"  USB durable files: {generation.durable_files}")
         output.write(f"  HDD verified generation: {verified or 'none'}")
         output.write(f"  HDD mirror: {'Current' if verified == generation.generation else 'Refresh required'}")
+
+
+@migration_app.command("package")
+def migration_package_cmd(
+    action: str = typer.Argument("preview", help="Only 'preview' is implemented in this phase."),
+    run_id: str = typer.Option(
+        "20260722T055400Z_phase3b",
+        "--run-id",
+        help="Exact sealed Phase 3B run id (no 'latest').",
+    ),
+    allow_scytaledroid: bool = typer.Option(
+        False,
+        "--allow-scytaledroid",
+        help="Require also --scytaledroid-path for any Scytale inclusion.",
+    ),
+    scytaledroid_path: list[str] = typer.Option(
+        None,
+        "--scytaledroid-path",
+        help="Exact approved Scytale path (repeatable). Ignored unless --allow-scytaledroid.",
+    ),
+    mercury_commit: str | None = typer.Option(
+        None,
+        "--mercury-commit",
+        help="Exact current destination Mercury commit (full SHA).",
+    ),
+    mercury_capture_id: str | None = typer.Option(
+        None,
+        "--mercury-capture-id",
+        help="Exact Mercury destination capture id under .mercury_control/validation/mercury/.",
+    ),
+) -> None:
+    """Preview an allowlisted destination package (does not create the package)."""
+    if action != "preview":
+        raise typer.BadParameter("Only 'preview' is supported; package creation is not authorized.")
+    from mercury.core.usb_mount import resolve_operator_mount
+    from mercury.migration.destination_package import preview_destination_package
+    from mercury.migration.package_terminal import print_destination_package_preview
+    from mercury.storage.retention import load_retention_policy
+
+    policy = load_retention_policy()
+    report = preview_destination_package(
+        resolve_operator_mount(),
+        run_id=run_id,
+        policy=policy,
+        allow_scytaledroid=allow_scytaledroid,
+        scytaledroid_paths=list(scytaledroid_path or []),
+        mercury_commit=mercury_commit,
+        mercury_capture_id=mercury_capture_id,
+    )
+    code = print_destination_package_preview(report)
+    if code:
+        raise typer.Exit(code)
 
 
 @migration_app.command("capture-web")
@@ -1430,6 +1532,8 @@ def backup_full_cmd(
     )
     print_backup_batch_result(
         production_batch,
+        compact=True,
+        menu=True,
         databases_label="Production databases selected",
     )
 
@@ -1459,12 +1563,20 @@ def backup_full_cmd(
             )
             print_backup_batch_result(
                 development_batch,
+                compact=True,
+                menu=True,
                 databases_label="Development databases selected",
             )
             if execute and development_batch.executed_count:
                 development_verification = verify_written_backup_batch(
                     development_batch, allow_development_backup=True
                 )
+                output.write(
+                    f"Development verification: {development_verification.verified} verified · "
+                    f"{development_verification.failed} failed"
+                )
+                for issue in development_verification.issues:
+                    output.write(f"  {issue}")
 
     if not execute:
         if production_batch.errors or (

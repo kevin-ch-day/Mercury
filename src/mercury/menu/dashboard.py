@@ -241,9 +241,42 @@ def _migration_dashboard_rows(report, policy) -> list[str]:
         dashboard_row("Storage mirror", mirror_text),
         dashboard_row("Database backups", backups.summary),
         dashboard_row("Migration package", package_text),
+        dashboard_row("Destination package", _destination_package_dashboard_line()),
+        dashboard_row("Cleanup", _cleanup_dashboard_line()),
         dashboard_row("Migration phase", report.operator_phase.title()),
         dashboard_row("Cutover blockers", blocker_text),
     ]
+
+
+def _destination_package_dashboard_line() -> str:
+    from mercury.storage.retention import load_retention_policy
+
+    policy = load_retention_policy()
+    mercury_pending = not policy.current_destination_mercury_commit
+    size_note = "allowlist only · Scytale excluded"
+    if mercury_pending:
+        return (
+            "Explicit allowlist required · ScytaleDroid excluded by default · "
+            "Phase 3B pinned · Mercury committed capture pending · "
+            f"Estimated transfer size: {size_note}"
+        )
+    return (
+        "Explicit allowlist required · ScytaleDroid excluded by default · "
+        "Phase 3B pinned · "
+        f"Mercury capture {policy.current_destination_mercury_capture_id or policy.current_destination_mercury_commit[:12]} · "
+        f"Estimated transfer size: {size_note}"
+    )
+
+
+def _cleanup_dashboard_line() -> str:
+    from mercury.storage.retention import load_retention_policy
+
+    policy = load_retention_policy()
+    return (
+        "Preview available · Execution locked until destination validation · "
+        f"Safe candidate estimate: {policy.safe_candidate_estimate_gib:.1f} GiB · "
+        f"Manual-review project data: ~{policy.manual_review_project_estimate_gib:.0f} GiB"
+    )
 
 
 def _backup_target_summary(policy, env) -> str:

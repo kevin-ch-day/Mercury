@@ -227,8 +227,7 @@ def test_print_backup_batch_result_menu_shows_result_table(capsys) -> None:
 
     print_backup_batch_result(batch, compact=True, menu=True, suggest_verify=True)
     out = capsys.readouterr().out
-    assert "Backup mode" in out
-    assert "Written" in out
+    assert "written" in out
     assert "DATABASE" in out
     assert "RESULT" in out
     assert "BACKUP ID" in out

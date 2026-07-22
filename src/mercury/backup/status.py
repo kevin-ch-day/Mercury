@@ -107,8 +107,12 @@ def latest_restore_check_by_backup_id() -> dict[str, RestoreCheckLedgerRecord]:
         if not database or not backup_id or not status:
             continue
         existing = latest.get(backup_id)
-        if existing is not None and stamp and existing.timestamp and stamp < existing.timestamp:
-            continue
+        if existing is not None:
+            # Blank timestamps must not clobber a dated restore-check outcome.
+            if not stamp and existing.timestamp:
+                continue
+            if stamp and existing.timestamp and stamp < existing.timestamp:
+                continue
         warning = (row.get("warnings") or "").strip()
         target_schema = None
         if "_restorecheck_" in warning:
@@ -306,7 +310,6 @@ def build_backup_status_report(
                 )
             )
             missing_count += 1
-            unknown_freshness_count += 1
             continue
 
         backup_created_at = _load_backup_created_at(backup_dir)

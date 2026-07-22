@@ -100,7 +100,8 @@ def truncate_cell(value: str, *, max_width: int) -> str:
         return format_backup_id_display(text, max_len=max_width)
     if max_width <= 1:
         return "…"
-    return f"…{text[-(max_width - 1):]}"
+    # Status/labels: keep the meaningful head (avoid “…ore-checked”).
+    return f"{text[: max_width - 1]}…"
 
 
 def _normalize_rows(
