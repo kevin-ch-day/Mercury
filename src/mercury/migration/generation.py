@@ -118,9 +118,27 @@ def read_archive_receipt(*, config: StorageConfig | None = None) -> dict[str, An
 
 def write_immutable_receipt(filename: str, payload: dict[str, Any], *, config: StorageConfig | None = None, override: bool = False) -> Path:
     """Write an evidence receipt once; explicit override is intentionally rare."""
-    path = control_path(filename, config=config)
+    cfg = config or load_storage_config(warn_deprecated=False)
+    path = control_path(filename, config=cfg)
     if path.is_symlink():
         raise ValueError(f"Refusing receipt path symlink: {path}")
+    mount = cfg.primary.mount_path.expanduser().resolve()
+    # Do not follow a replaced symlink into a host path; refuse lexically first.
+    resolved = path.expanduser()
+    if not resolved.is_absolute():
+        resolved = (Path.cwd() / resolved).resolve()
+    else:
+        resolved = resolved.parent.resolve() / resolved.name
+    try:
+        resolved.relative_to(mount)
+    except ValueError as exc:
+        raise ValueError(
+            f"receipt path is not under primary mount {mount}: {resolved}"
+        ) from exc
+    if config is None:
+        from mercury.core.usb_mount import assert_operator_storage_path
+
+        assert_operator_storage_path(path)
     if path.exists() and not override:
         raise ValueError(f"Historical receipt already exists: {path}. Use an explicit administrative override to replace it.")
     path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)

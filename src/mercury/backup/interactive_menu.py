@@ -13,6 +13,7 @@ from mercury.menu import prompts as menu_prompts
 from mercury.terminal import screen as display_screen
 from mercury.backup.batch_runner import (
     build_full_backup_run_result,
+    apply_full_backup_run_evidence,
     new_full_backup_run_id,
     run_backup_batch,
     verify_written_backup_batch,
@@ -278,6 +279,8 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
             "Missing manifest",
             "Absent",
             "Restore-check failed",
+            "Artifact OK (unstamped)",
+            "Not restore-checked",
         ):
             count = counts.get(label, 0)
             if count:
@@ -479,9 +482,12 @@ def _run_full_backup(plan: BackupPlanDryRun):
     )
     try:
         receipt = write_full_backup_run_receipt(result)
-        result = result.model_copy(update={"receipt_path": str(receipt)})
-    except Exception as exc:  # noqa: BLE001 — receipt is best-effort; result still shown
-        display_screen.write_status("warn", f"Could not write full-backup run receipt: {exc}")
+        result = apply_full_backup_run_evidence(result, receipt_path=receipt)
+    except Exception as exc:  # noqa: BLE001 — classify evidence failure; never silently PASS
+        display_screen.write_status("fail", f"Could not write full-backup run receipt: {exc}")
+        result = apply_full_backup_run_evidence(
+            result, receipt_path=None, receipt_error=str(exc)
+        )
 
     print_full_backup_run_result(result)
     return result

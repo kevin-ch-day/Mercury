@@ -16,7 +16,7 @@ from mercury.backup.freshness import (
     parse_backup_timestamp,
 )
 from mercury.backup.layout import MANIFEST_FILENAME
-from mercury.backup.verification import verify_backup_artifacts
+from mercury.backup.verification import manifest_verified_stamp, verify_backup_artifacts
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
 from mercury.database.core import classify_database
 from mercury.database.mariadb.inspect import inspect_database_on_server
@@ -36,7 +36,14 @@ class BackupStatusEntry(BaseModel):
     backup_age: str | None = None
     recommend_full_backup: bool = False
     source_is_empty: bool = False
+    # Exact-ID restore-check fields (never inherited from a different backup_id).
     restore_check_status: str | None = None
+    restore_check_backup_id: str | None = None
+    restore_check_at: str | None = None
+    restore_check_target_schema: str | None = None
+    artifact_integrity_verified: bool | None = None
+    manifest_verification_stamp: bool | None = None
+    handoff_eligible: bool = False
     issues: list[str] = Field(default_factory=list)
 
 
@@ -52,6 +59,17 @@ class BackupStatusReport(BaseModel):
     absent_count: int = 0
     entries: list[BackupStatusEntry] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+
+
+class RestoreCheckLedgerRecord(BaseModel):
+    """Latest restore-check outcome for one exact backup_id."""
+
+    database: str
+    backup_id: str
+    status: str
+    timestamp: str | None = None
+    backup_path: str | None = None
+    target_schema: str | None = None
 
 
 def _role_label(database: str) -> str:
@@ -71,8 +89,8 @@ def _untrusted_root_warning(policy: ExecutionPolicy) -> str | None:
     return None
 
 
-def latest_restore_check_status_by_database() -> dict[str, str]:
-    """Latest restore-check outcome per database from the operator ledger."""
+def latest_restore_check_by_backup_id() -> dict[str, RestoreCheckLedgerRecord]:
+    """Latest restore-check outcome keyed by exact backup_id from the operator ledger."""
     try:
         from mercury.state.ledger import read_operator_database_backup_rows
 
@@ -80,16 +98,49 @@ def latest_restore_check_status_by_database() -> dict[str, str]:
     except Exception:
         return {}
 
-    latest: dict[str, tuple[str, str]] = {}
+    latest: dict[str, RestoreCheckLedgerRecord] = {}
     for row in rows:
         database = (row.get("database") or "").strip()
+        backup_id = (row.get("backup_id") or "").strip()
         status = (row.get("restore_check_status") or "").strip()
         stamp = (row.get("timestamp") or "").strip()
-        if not database or not status:
+        if not database or not backup_id or not status:
             continue
-        existing = latest.get(database)
+        existing = latest.get(backup_id)
+        if existing is not None and stamp and existing.timestamp and stamp < existing.timestamp:
+            continue
+        warning = (row.get("warnings") or "").strip()
+        target_schema = None
+        if "_restorecheck_" in warning:
+            # Best-effort: message often names the target schema.
+            for token in warning.replace(",", " ").split():
+                if token.startswith("_restorecheck_"):
+                    target_schema = token.strip(".;")
+                    break
+        latest[backup_id] = RestoreCheckLedgerRecord(
+            database=database,
+            backup_id=backup_id,
+            status=status,
+            timestamp=stamp or None,
+            backup_path=(row.get("backup_path") or "").strip() or None,
+            target_schema=target_schema,
+        )
+    return latest
+
+
+def latest_restore_check_status_by_database() -> dict[str, str]:
+    """Deprecated database-level view — prefer :func:`latest_restore_check_by_backup_id`.
+
+    Kept for recovery screens that still summarize “any restore-check ever” per
+    database. Must not be used to label a displayed backup ID.
+    """
+    by_id = latest_restore_check_by_backup_id()
+    latest: dict[str, tuple[str, str]] = {}
+    for record in by_id.values():
+        stamp = record.timestamp or ""
+        existing = latest.get(record.database)
         if existing is None or stamp >= existing[0]:
-            latest[database] = (stamp, status)
+            latest[record.database] = (stamp, record.status)
     return {database: status for database, (_stamp, status) in latest.items()}
 
 
@@ -158,18 +209,48 @@ def _source_is_empty_on_server(database: str, *, live: bool, present: bool) -> b
     )
 
 
+def _restore_fields_for_backup_id(
+    backup_id: str | None,
+    records: dict[str, RestoreCheckLedgerRecord],
+) -> dict[str, str | None]:
+    if not backup_id:
+        return {
+            "restore_check_status": None,
+            "restore_check_backup_id": None,
+            "restore_check_at": None,
+            "restore_check_target_schema": None,
+        }
+    record = records.get(backup_id)
+    if record is None:
+        return {
+            "restore_check_status": None,
+            "restore_check_backup_id": backup_id,
+            "restore_check_at": None,
+            "restore_check_target_schema": None,
+        }
+    return {
+        "restore_check_status": record.status,
+        "restore_check_backup_id": record.backup_id,
+        "restore_check_at": record.timestamp,
+        "restore_check_target_schema": record.target_schema,
+    }
+
+
 def build_backup_status_report(
     *,
     live: bool = False,
     selected: list[str] | None = None,
     policy: ExecutionPolicy | None = None,
 ) -> BackupStatusReport:
-    """Inspect the latest backup directory for each active source database."""
+    """Inspect the latest **written** backup directory for each active source database.
+
+    Restore-check labels are bound to the exact displayed ``backup_id`` only.
+    """
     resolved_policy = policy or load_execution_policy()
     sources = select_batch_sources(selected=selected, live=live)
     warning = _untrusted_root_warning(resolved_policy)
     server_names = _live_server_database_names(live=live)
-    restore_checks = latest_restore_check_status_by_database()
+    restore_by_id = latest_restore_check_by_backup_id()
 
     verified_count = 0
     missing_count = 0
@@ -185,7 +266,6 @@ def build_backup_status_report(
 
     for database in sources:
         role = _role_label(database)
-        restore_check_status = restore_checks.get(database)
         backup_dir = find_latest_backup_directory(resolved_policy.backup_root, database)
         absent_on_server = server_names is not None and database not in server_names
         source_is_empty = _source_is_empty_on_server(
@@ -200,7 +280,6 @@ def build_backup_status_report(
                         role=role,
                         protection_status="absent",
                         recommend_full_backup=False,
-                        restore_check_status=restore_check_status,
                         issues=[
                             "Database is not present on this MariaDB server; "
                             "backup cannot run until it is created or restored."
@@ -216,7 +295,6 @@ def build_backup_status_report(
                     protection_status="missing",
                     recommend_full_backup=True,
                     source_is_empty=source_is_empty,
-                    restore_check_status=restore_check_status,
                     issues=(
                         [
                             "Live database has no tables or views; create one verified backup "
@@ -240,6 +318,8 @@ def build_backup_status_report(
         )
 
         verification = verify_backup_artifacts(backup_dir, database=database)
+        stamp = manifest_verified_stamp(backup_dir / MANIFEST_FILENAME)
+        restore_fields = _restore_fields_for_backup_id(verification.backup_id, restore_by_id)
         status = "absent" if absent_on_server else ("verified" if verification.verified else "failed")
         issues = list(verification.issues)
         if warning:
@@ -269,6 +349,14 @@ def build_backup_status_report(
                 "Run full backup before workstation handoff."
             )
 
+        handoff_eligible = bool(
+            status == "verified"
+            and stamp is True
+            and restore_fields["restore_check_status"] == "passed"
+            and not absent_on_server
+            and not freshness.recommend_full_backup
+        )
+
         entries.append(
             BackupStatusEntry(
                 database=database,
@@ -290,8 +378,11 @@ def build_backup_status_report(
                     and not absent_on_server
                 ),
                 source_is_empty=source_is_empty,
-                restore_check_status=restore_check_status,
+                artifact_integrity_verified=verification.verified,
+                manifest_verification_stamp=stamp,
+                handoff_eligible=handoff_eligible,
                 issues=issues,
+                **restore_fields,
             )
         )
 

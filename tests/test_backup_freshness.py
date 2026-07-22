@@ -294,7 +294,7 @@ def test_print_backup_status_report_uses_display_labels(
     )
     print_backup_status_report(report)
     out = capsys.readouterr().out
-    assert "Verified" in out
+    assert "Not restore-checked" in out or "restore-checked" in out
     assert "Stale" in out
     assert "VERIFY" in out
     assert "Production databases" in out
@@ -306,7 +306,10 @@ def test_backup_status_includes_restore_check_and_phase3b_note(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from mercury.backup.status import build_backup_status_report
+    from mercury.backup.status import (
+        RestoreCheckLedgerRecord,
+        build_backup_status_report,
+    )
     from mercury.core.execution_policy import ExecutionPolicy
 
     monkeypatch.setattr(
@@ -322,8 +325,15 @@ def test_backup_status_includes_restore_check_and_phase3b_note(
         lambda **kwargs: {"erebus_threat_intel_prod"},
     )
     monkeypatch.setattr(
-        "mercury.backup.status.latest_restore_check_status_by_database",
-        lambda: {"erebus_threat_intel_prod": "passed"},
+        "mercury.backup.status.latest_restore_check_by_backup_id",
+        lambda: {
+            "erebus_threat_intel_prod-full-OLD": RestoreCheckLedgerRecord(
+                database="erebus_threat_intel_prod",
+                backup_id="erebus_threat_intel_prod-full-OLD",
+                status="passed",
+                timestamp="2026-07-22T06:00:00+00:00",
+            )
+        },
     )
     monkeypatch.setattr(
         "mercury.backup.status.sealed_phase3b_package_note",
@@ -339,8 +349,39 @@ def test_backup_status_includes_restore_check_and_phase3b_note(
             allow_unsafe_backup_root=True,
         ),
     )
-    assert report.entries[0].restore_check_status == "passed"
+    # Missing backup must not inherit an older database-level restore-check.
+    assert report.entries[0].restore_check_status is None
     assert any("Phase 3B" in warning for warning in report.warnings)
+
+
+def test_restore_check_label_requires_matching_backup_id() -> None:
+    from mercury.backup.freshness import backup_entry_verify_label
+
+    mismatched = type(
+        "E",
+        (),
+        {
+            "protection_status": "verified",
+            "backup_id": "db-full-NEW",
+            "restore_check_status": "passed",
+            "restore_check_backup_id": "db-full-OLD",
+            "manifest_verification_stamp": False,
+        },
+    )()
+    assert backup_entry_verify_label(mismatched) == "Artifact OK (unstamped)"
+
+    matched = type(
+        "E",
+        (),
+        {
+            "protection_status": "verified",
+            "backup_id": "db-full-OLD",
+            "restore_check_status": "passed",
+            "restore_check_backup_id": "db-full-OLD",
+            "manifest_verification_stamp": True,
+        },
+    )()
+    assert backup_entry_verify_label(matched) == "Restore-check passed"
 
 
 def test_restore_readiness_complete_while_freshness_stale(

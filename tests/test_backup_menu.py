@@ -369,10 +369,26 @@ def test_full_backup_can_include_dev_recovery_copy(monkeypatch: pytest.MonkeyPat
     assert result.development.requested is True
 
 
-def test_run_verify_menu_non_interactive(capsys: pytest.CaptureFixture[str]) -> None:
+def test_run_verify_menu_non_interactive(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Non-interactive verify menu must not scan live operator storage or wait on input."""
+    from mercury.backup.terminal.verify import VerifyMenuSummary
+    import mercury.verify.interactive_menu as verify_menu
+
+    monkeypatch.setattr(
+        verify_menu,
+        "run_verify_all_for_menu",
+        lambda *, update_manifest=False: VerifyMenuSummary(
+            verified=1,
+            missing=0,
+            failed=0,
+            rows=[["android_permission_intel", "shared", "verified"]],
+        ),
+    )
     run_verify_menu(interactive=False)
     out = capsys.readouterr().out
-    assert "verified" in out
+    assert "verified" in out.lower()
     assert "Rescan" in out
     assert "Verify all" in out
     assert "ROLE" in out

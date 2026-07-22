@@ -39,7 +39,7 @@ def test_development_selection_verifies_with_explicit_development_policy(
         "mercury.deploy.selection.resolve_development_backup_sources",
         lambda *, live=False: ["erebus_threat_intel_dev"],
     )
-    monkeypatch.setattr("mercury.deploy.selection.find_latest_backup_directory", lambda *_: backup_dir)
+    monkeypatch.setattr("mercury.deploy.selection.resolve_backup_directory", lambda *_args, **_kwargs: backup_dir)
 
     seen: dict[str, bool] = {}
 

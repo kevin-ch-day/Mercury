@@ -153,6 +153,18 @@ def record_smart_health(
         )
 
     path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+    mount = cfg.primary.mount_path.expanduser().resolve()
+    resolved = path.expanduser().resolve()
+    try:
+        resolved.relative_to(mount)
+    except ValueError as exc:
+        raise ValueError(
+            f"SMART evidence path is not under primary mount {mount}: {resolved}"
+        ) from exc
+    if config is None:
+        from mercury.core.usb_mount import assert_operator_storage_path
+
+        assert_operator_storage_path(path)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     path.chmod(0o600)
     ok = bool(payload["overall_health_passed"])

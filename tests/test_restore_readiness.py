@@ -340,7 +340,7 @@ def test_restore_check_plan_blocks_stale_backup(
     )
     monkeypatch.setattr(
         "mercury.restore.check_plan.build_target_completeness_entry",
-        lambda _database: None,
+        lambda _database, **_kwargs: None,
     )
 
     plan = build_restore_check_plan("erebus_threat_intel_prod")

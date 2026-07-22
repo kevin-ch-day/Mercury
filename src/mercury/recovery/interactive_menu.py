@@ -10,7 +10,6 @@ from mercury.backup.status import (
     BackupStatusEntry,
     BackupStatusReport,
     build_backup_status_report,
-    latest_restore_check_status_by_database,
 )
 from mercury.core.usb_mount import resolve_operator_mount
 from mercury.core.runtime import should_probe_database_status
@@ -54,9 +53,10 @@ def _latest_runbook(pattern: str) -> Path | None:
 
 def _load_recovery_screen() -> RecoveryScreenData:
     report = build_backup_status_report(live=should_probe_database_status())
+    # Database-keyed restore-check map is deprecated and unused for display decisions.
     return RecoveryScreenData(
         report=report,
-        restore_check_status=latest_restore_check_status_by_database(),
+        restore_check_status={},
         latest_transfer_runbook=_latest_runbook("transfer_runbook_*.md"),
         latest_database_runbook=_latest_runbook("*/database_transfer_runbook_*.md"),
     )
@@ -65,9 +65,9 @@ def _load_recovery_screen() -> RecoveryScreenData:
 def _restorecheck_label(status: str | None) -> str:
     if status == "passed":
         return "Passed"
-    if status == "failed":
+    if status in {"failed", "verification_failed"}:
         return "Failed"
-    return "Unknown"
+    return "Not checked"
 
 
 def _latest_verified_backup(report: BackupStatusReport) -> str:
@@ -85,12 +85,13 @@ def _latest_verified_backup(report: BackupStatusReport) -> str:
 def _recovery_table_rows(data: RecoveryScreenData) -> list[list[str]]:
     rows: list[list[str]] = []
     for entry in data.report.entries:
+        # Restore-check column follows the exact displayed backup_id on the entry.
         rows.append(
             [
                 entry.database,
                 _status_label(entry),
                 format_human_datetime(entry.backup_created_at),
-                _restorecheck_label(data.restore_check_status.get(entry.database)),
+                _restorecheck_label(entry.restore_check_status),
             ]
         )
     return rows

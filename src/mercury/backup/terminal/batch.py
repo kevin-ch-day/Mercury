@@ -217,12 +217,17 @@ def print_full_backup_run_result(result: FullBackupRunResult) -> None:
             "Backups written": result.overall_written,
             "Verified": result.overall_verified,
             "Failed": result.overall_failed,
+            "Artifacts": result.backup_artifacts_result.value,
+            "Verification": result.verification_result.value,
+            "Run evidence": result.run_evidence_result.value,
             "Result": result.outcome.value,
             "Package class": result.package_classification,
         }
     )
     if result.receipt_path:
         display_screen.write_hint(f"Run receipt: {result.receipt_path}")
+    if result.receipt_sha256:
+        display_screen.write_hint(f"Run receipt SHA-256: {result.receipt_sha256}")
     display_screen.write_hint(result.phase3b_separation_note)
 
     if result.outcome == FullBackupOutcome.PASS and result.next_actions:

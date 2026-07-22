@@ -386,6 +386,12 @@ def test_doctor_repair_plan_includes_web_directory_prep(
     repos_toml.write_text("[repos.erebus_web]\npath = \"/var/www/html/erebus-web\"\n", encoding="utf-8")
     monkeypatch.setattr("mercury.env.doctor.REPOS_LOCAL", repos_toml)
     monkeypatch.setattr("mercury.repo.load_repo_definitions", lambda: repos)
+    # Force the prep suggestion regardless of whether /var/www/html is writable
+    # on this developer workstation (live host coupling).
+    monkeypatch.setattr(
+        "mercury.repo.path_repair.web_repo_parent_dirs_needing_prep",
+        lambda _repos: [Path("/var/www/html")],
+    )
     report = SimpleNamespace(
         repo_root=REPO_ROOT,
         current_user="linuxadmin",

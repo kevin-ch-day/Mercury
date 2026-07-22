@@ -219,20 +219,17 @@ def test_doctor_repair_plan_suggests_usb_ro_remount_after_cutover(monkeypatch) -
 
 def test_dashboard_skips_usb_repair_banner_after_cutover() -> None:
     """USB repair banner alone must not surface a USB repair dashboard row post-cutover."""
-    from mercury.core.environment_status import _hdd_writer_active
+    import mercury.core.environment_status as env_status
 
     env = MagicMock()
     env.repairable_blockers = ()
     env.usb.repair_banner = "Mercury USB is not ready"
 
     rows: list[str] = []
-    with patch(
-        "mercury.core.environment_status._hdd_writer_active",
-        return_value=True,
-    ):
-        assert _hdd_writer_active() is True
+    with patch.object(env_status, "_hdd_writer_active", return_value=True):
+        assert env_status._hdd_writer_active() is True
         if env.repairable_blockers or env.usb.repair_banner:
-            if _hdd_writer_active():
+            if env_status._hdd_writer_active():
                 if env.repairable_blockers:
                     rows.append("Storage repair")
             else:
