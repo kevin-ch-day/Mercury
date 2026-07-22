@@ -93,7 +93,9 @@ def run_compressed_sql_import(
                     continue
                 try:
                     stdin.write(rewritten.encode("utf-8"))
-                except BrokenPipeError:
+                except (BrokenPipeError, ValueError):
+                    # Client closed early; ValueError covers "flush of closed file"
+                    # on some Python versions when the pipe is already gone.
                     break
     except OSError as exc:
         import_proc.kill()
@@ -102,8 +104,11 @@ def run_compressed_sql_import(
     finally:
         try:
             stdin.close()
-        except OSError:
+        except (OSError, ValueError):
             pass
+        # communicate() on Python 3.12 still flushes stdin if the handle is set,
+        # even after we closed it ourselves while streaming.
+        import_proc.stdin = None
 
     _, import_err = import_proc.communicate()
 
