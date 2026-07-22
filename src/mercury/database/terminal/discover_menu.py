@@ -12,7 +12,7 @@ from mercury.database.core import (
     sort_entries_for_display,
     sync_role_label,
 )
-from mercury.database.core.scope import is_in_scope
+from mercury.database.core.scope import is_active_dev_target, is_in_scope
 
 
 def build_discover_menu_fields(
@@ -24,7 +24,9 @@ def build_discover_menu_fields(
     scoped_inventory = filter_inventory(inventory)
     out_of_scope = inventory.count - scoped_inventory.count
     backup_sources = sum(1 for entry in scoped_inventory.entries if entry.backup_source)
-    sync_targets = sum(1 for entry in scoped_inventory.entries if entry.dev_target)
+    sync_targets = sum(
+        1 for entry in scoped_inventory.entries if is_active_dev_target(entry.name)
+    )
     fields: dict[str, object] = {
         "Active scope": scoped_inventory.count,
         "Backup sources": backup_sources,

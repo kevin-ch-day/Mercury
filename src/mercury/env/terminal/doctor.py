@@ -21,6 +21,7 @@ def print_doctor_report(report: DoctorReport) -> None:
     output.field("repos.toml", "present" if config.repos_toml_present else "missing")
     output.write("")
     output.write("Storage roles")
+    storage = None
     try:
         from mercury.storage.report import build_storage_status_report, suggested_primary_fstab_line
 
@@ -38,25 +39,41 @@ def print_doctor_report(report: DoctorReport) -> None:
     except Exception as exc:
         output.field("storage status", f"unavailable — {exc}")
     output.write("")
-    output.write("Legacy / active-write mount")
     usb = report.usb
-    output.field("mount", str(usb.mount_path))
-    output.field("mounted", "yes" if usb.mounted else "no")
-    if getattr(usb, "device_attached", False):
-        output.field("device", "attached")
-    elif not usb.mounted:
-        output.field("device", "not detected")
-    if getattr(usb, "quick_mount_command", None):
-        output.field("mount command", usb.quick_mount_command)
-    output.field("layout", "ready" if usb.mercury_layout_present else "incomplete or absent")
+    primary_active = bool(storage and storage.active_write_role.value == "primary")
+    if primary_active:
+        output.write("Active operator storage")
+        output.field("mount", str(storage.primary.mount_path))
+        output.field(
+            "status",
+            (
+                "mounted and writable"
+                if storage.primary.validation.ok and storage.primary.writable_policy
+                else (
+                    "mounted (read-only policy)"
+                    if storage.primary.validation.ok
+                    else (
+                        storage.primary.validation.blocker
+                        or storage.primary.validation.code.value
+                    )
+                )
+            ),
+        )
+        output.field("legacy archive", storage.legacy.one_line())
+    else:
+        output.write("Legacy / active-write mount")
+        output.field("mount", str(usb.mount_path))
+        output.field("mounted", "yes" if usb.mounted else "no")
+        if getattr(usb, "device_attached", False):
+            output.field("device", "attached")
+        elif not usb.mounted:
+            output.field("device", "not detected")
+        if getattr(usb, "quick_mount_command", None):
+            output.field("mount command", usb.quick_mount_command)
+        output.field("layout", "ready" if usb.mercury_layout_present else "incomplete or absent")
     for check in report.permission_checks:
-        if str(check.path).startswith(str(usb.mount_path)):
-            status = "ok" if not check.needs_repair else f"needs repair — {check.detail}"
-            output.field(check.label, status)
-    for check in report.permission_checks:
-        if not str(check.path).startswith(str(usb.mount_path)):
-            status = "ok" if not check.needs_repair else f"needs repair — {check.detail}"
-            output.field(check.label, status)
+        status = "ok" if not check.needs_repair else f"needs repair — {check.detail}"
+        output.field(check.label, status)
     output.write("")
     output.write("MariaDB")
     mariadb = report.mariadb
@@ -117,7 +134,8 @@ def print_doctor_report(report: DoctorReport) -> None:
     if _repair_plan_warranted(report):
         from mercury.repair.usb import USB_REPAIR_COMMAND
 
-        output.item(f"Quick USB fix: {USB_REPAIR_COMMAND}")
+        if not primary_active:
+            output.item(f"Quick USB fix: {USB_REPAIR_COMMAND}")
         output.item("Detailed steps: ./run.sh doctor --repair-plan")
 
 
@@ -127,6 +145,7 @@ def _repair_plan_warranted(report: DoctorReport) -> bool:
     repairable = {
         "local config not initialized",
         "Operator backup mount not detected",
+        "Primary HDD writer mount not ready",
     }
     if any(
         any(token in blocker for token in repairable)

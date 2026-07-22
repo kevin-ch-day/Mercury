@@ -32,13 +32,26 @@ class StorageRootStatus:
         return "[--]"
 
     def one_line(self) -> str:
-        detail = self.validation.blocker or (
-            "mounted and writable" if self.validation.ok else self.validation.code.value
-        )
+        if self.validation.ok:
+            detail = "mounted" + (
+                " and writable" if self.writable_policy else " (read-only policy)"
+            )
+        else:
+            detail = self.validation.blocker or self.validation.code.value
         active = " · ACTIVE WRITER" if self.is_active_writer else ""
         return (
             f"{self.status_tag} {self.label} ({self.role}) @ {self.mount_path} — {detail}{active}"
         )
+
+    @property
+    def physical_mount_mode(self) -> str:
+        """Best-effort kernel mount mode, independent of Mercury policy."""
+        options = (self.validation.identity.mount_options or "").split(",")
+        if "ro" in options:
+            return "read-only"
+        if "rw" in options:
+            return "read-write"
+        return "unknown"
 
 
 @dataclass(frozen=True)
@@ -58,13 +71,20 @@ class StorageStatusReport:
     def next_step(self) -> str:
         """Operator next action for migration (observe-only guidance)."""
         state = self.migration_state
+        if state in {
+            MigrationState.CUTOVER_COMPLETE,
+            MigrationState.LEGACY_LOCKED,
+        }:
+            if not self.primary.validation.ok:
+                return "storage validate / mount primary HDD"
+            return "storage status  # HDD writer active; USB optional archive"
         if state == MigrationState.VERIFYING:
             return "storage migrate-verify --update-state"
         if state in {
             MigrationState.VERIFIED,
             MigrationState.VERIFIED_PENDING_CUTOVER,
         }:
-            return "storage cutover-readiness  # cutover approve not enabled yet"
+            return "storage cutover-plan"
         if not self.primary.validation.ok:
             return "storage validate / mount primary"
         if state == MigrationState.COPYING:
@@ -116,6 +136,15 @@ class StorageStatusReport:
         ):
             warnings.append(
                 "Legacy root is marked archive but still writable in config — set writable=false."
+            )
+        if (
+            self.config.cutover_complete
+            and self.legacy.role == StorageRootRole.LEGACY_ARCHIVE.value
+            and self.legacy.physical_mount_mode == "read-write"
+        ):
+            warnings.append(
+                "Legacy USB archive is physically mounted read-write — Mercury blocks its writes, "
+                "but other processes can still modify it. Remount it read-only before transport."
             )
         if self.config.usb_mount_deprecated_override:
             warnings.append(
@@ -170,4 +199,13 @@ def suggested_primary_fstab_line(config: StorageConfig | None = None) -> str:
     return (
         f"UUID={cfg.primary.filesystem_uuid} {cfg.primary.mount_path} "
         f"{cfg.primary.filesystem_type} defaults,nofail,x-systemd.device-timeout=10s 0 2"
+    )
+
+
+def suggested_legacy_archive_fstab_line(config: StorageConfig | None = None) -> str:
+    """Draft fstab line that persists USB archive as read-only after cutover."""
+    cfg = config or load_storage_config(warn_deprecated=False)
+    return (
+        f"UUID={cfg.legacy.filesystem_uuid} {cfg.legacy.mount_path} "
+        f"{cfg.legacy.filesystem_type} defaults,ro,nofail,x-systemd.device-timeout=10s 0 2"
     )

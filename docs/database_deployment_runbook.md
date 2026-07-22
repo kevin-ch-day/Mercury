@@ -2,12 +2,12 @@
 
 Import verified Mercury operator-storage backups onto a **prepared Fedora/MariaDB host** after migration or hardware loss.
 
-Mercury recovery deployment assumes the host is already set up (MariaDB running, USB mount available). It is **not** prod→dev sync and **not** full workstation bootstrap.
+Mercury recovery deployment assumes the host is already set up (MariaDB running, canonical HDD/operator storage mounted). It is **not** prod→dev sync and **not** full workstation bootstrap.
 
 ## When to use
 
 - Prod/shared databases are **missing** on the new server.
-- Mercury USB is mounted at `/mnt/MERCURY_DATA_USB`.
+- Mercury operator storage is mounted (this deployment: HDD at `/mnt/MERCURY_DATA_V2`).
 - Backups are **verified** (manifest + checksum + size).
 
 This lane is **not** prod→dev sync. It recreates protected databases on the local host from artifact files.
@@ -52,12 +52,12 @@ Live execution requires in `config/local.toml`:
 [mercury]
 dry_run = false
 live_actions_enabled = true
-backup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"
+backup_root = "/mnt/MERCURY_DATA_V2/mercury_backups"
 ```
 
 ## Workflow phases
 
-1. **Preflight** — config, USB root, MariaDB connectivity/privileges, verified backups, disk space, existing DB overlap.
+1. **Preflight** — config, operator-storage root, MariaDB connectivity/privileges, verified backups, disk space, existing DB overlap.
 2. **Backup selection** — latest verified full backup per protected source (v1).
 3. **Plan** — shows target host, user, candidates, and shell/SQL steps.
 4. **Confirmation** — dry-run: none; live menu: `y/n`.

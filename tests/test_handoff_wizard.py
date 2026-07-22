@@ -61,6 +61,84 @@ def test_run_handoff_backup_phase_skips_when_nothing_needed(
     assert "not needed" in result.summary.lower()
 
 
+def test_run_handoff_backup_phase_verifies_written_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mercury.backup.batch_runner import BackupBatchResult, BatchVerificationSummary
+    from mercury.core.execution_policy import ExecutionPolicy
+
+    monkeypatch.setattr(
+        "mercury.handoff.wizard.sources_needing_backup",
+        lambda **kwargs: ["erebus_threat_intel_prod"],
+    )
+    monkeypatch.setattr(
+        "mercury.handoff.wizard.load_execution_policy",
+        lambda: ExecutionPolicy(
+            dry_run=False,
+            live_actions_enabled=True,
+            backup_root=Path("/tmp/backups"),
+            config_path=None,
+            allow_unsafe_backup_root=True,
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.handoff.wizard.run_backup_batch",
+        lambda *args, **kwargs: BackupBatchResult(
+            backup_kind="full",
+            execute=True,
+            sources=["erebus_threat_intel_prod"],
+            executed_count=1,
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.handoff.wizard.verify_written_backup_batch",
+        lambda batch: BatchVerificationSummary(verified=1, failed=0, backup_ids=["erebus-1"]),
+    )
+    result = run_handoff_backup_phase(live=True, execute=True)
+    assert result.status == "ok"
+    assert "verified" in result.summary.lower()
+
+
+def test_run_handoff_backup_phase_fails_when_verify_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mercury.backup.batch_runner import BackupBatchResult, BatchVerificationSummary
+    from mercury.core.execution_policy import ExecutionPolicy
+
+    monkeypatch.setattr(
+        "mercury.handoff.wizard.sources_needing_backup",
+        lambda **kwargs: ["erebus_threat_intel_prod"],
+    )
+    monkeypatch.setattr(
+        "mercury.handoff.wizard.load_execution_policy",
+        lambda: ExecutionPolicy(
+            dry_run=False,
+            live_actions_enabled=True,
+            backup_root=Path("/tmp/backups"),
+            config_path=None,
+            allow_unsafe_backup_root=True,
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.handoff.wizard.run_backup_batch",
+        lambda *args, **kwargs: BackupBatchResult(
+            backup_kind="full",
+            execute=True,
+            sources=["erebus_threat_intel_prod"],
+            executed_count=1,
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.handoff.wizard.verify_written_backup_batch",
+        lambda batch: BatchVerificationSummary(
+            verified=0, failed=1, issues=["erebus: checksum mismatch"]
+        ),
+    )
+    result = run_handoff_backup_phase(live=True, execute=True)
+    assert result.status == "failed"
+    assert "verification failed" in result.summary.lower()
+
+
 def test_run_guided_handoff_wizard_runs_phases_in_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

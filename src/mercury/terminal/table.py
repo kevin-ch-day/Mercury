@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from mercury.terminal.format import short_path
+from mercury.terminal.format import format_backup_id_display, short_path
 
 Align = Literal["left", "right"]
 
@@ -95,6 +95,9 @@ def truncate_cell(value: str, *, max_width: int) -> str:
         return text
     if "/" in text or text.startswith("…"):
         return short_path(text, max_len=max_width)
+    # Backup IDs: preserve database prefix and trailing unique stamp.
+    if "-full-" in text or "-schema_only-" in text:
+        return format_backup_id_display(text, max_len=max_width)
     if max_width <= 1:
         return "…"
     return f"…{text[-(max_width - 1):]}"

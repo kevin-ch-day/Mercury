@@ -23,9 +23,16 @@ ContinueReader = Callable[[], None]
 _reader: PromptReader | None = None
 _continue_reader: ContinueReader | None = None
 
-CONTINUE_PROMPT = "\nPress any key to continue..."
+CONTINUE_PROMPT = "\nPress Enter to continue..."
 
 QUIT_ALIASES = frozenset({"q", "quit", "exit"})
+
+
+def is_interactive_terminal() -> bool:
+    """True when prompts can safely read from and render to a terminal."""
+    import sys
+
+    return bool(getattr(sys.stdin, "isatty", lambda: False)() and getattr(sys.stdout, "isatty", lambda: False)())
 
 
 def menu_action_keys() -> list[str]:
@@ -124,34 +131,19 @@ def read_menu_option() -> str | None:
 
 
 def wait_for_continue(*, prompt: str = CONTINUE_PROMPT) -> None:
-    """Pause after a menu action until the user presses a key."""
+    """Pause after a menu action until the user presses Enter.
+
+    Non-interactive sessions and test seams never block.
+    """
     if _continue_reader is not None:
         _continue_reader()
         return
 
-    import sys
-
-    if not sys.stdin.isatty():
-        ask_safe(prompt)
+    if not is_interactive_terminal():
         return
 
     shown = continue_prompt() if prompt == CONTINUE_PROMPT else normalize_input_prompt(prompt)
-    output.write(shown)
-    try:
-        import termios
-        import tty
-
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        try:
-            tty.setraw(fd)
-            sys.stdin.read(1)
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-    except ImportError:
-        ask_safe(prompt)
-    except OSError:
-        ask_safe(prompt)
+    ask_safe(shown)
     output.write("")
 
 
@@ -161,6 +153,13 @@ def ask_yes_no(prompt: str, *, default: bool | None = None) -> bool | None:
 
     Returns True/False, or None on interrupt. Empty input uses ``default`` when set.
     """
+    question = prompt.strip()
+    if not question:
+        raise ValueError("yes/no prompt must include a question")
+    # A non-interactive process cannot answer safely. Callers already treat
+    # None as cancelled, while command-line automation uses explicit flags.
+    if _reader is None and not is_interactive_terminal():
+        return None
     if default is True:
         suffix = " [Y/n]: "
     elif default is False:
@@ -169,20 +168,20 @@ def ask_yes_no(prompt: str, *, default: bool | None = None) -> bool | None:
         suffix = " [y/n]: "
 
     while True:
-        raw = ask_stripped(f"{prompt}{suffix}")
+        raw = ask_stripped(f"\n{question}{suffix}")
         if raw is None:
             return None
         if not raw:
             if default is not None:
                 return default
-            output.write("Enter y or n.")
+            output.write("Please enter y (yes) or n (no).")
             continue
         lower = raw.lower()
         if lower in {"y", "yes"}:
             return True
         if lower in {"n", "no"}:
             return False
-        output.write("Enter y or n.")
+        output.write("Please enter y (yes) or n (no).")
 
 
 def ask_confirmation_phrase(expected: str, *, action: str = "continue") -> bool:
@@ -191,6 +190,8 @@ def ask_confirmation_phrase(expected: str, *, action: str = "continue") -> bool:
 
     Returns False on mismatch or interrupt.
     """
+    if _reader is None and not is_interactive_terminal():
+        return False
     prompt = f"\nConfirmation ({action}) [{expected}]: "
     raw = ask_stripped(prompt)
     if raw is None:

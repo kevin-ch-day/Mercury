@@ -13,6 +13,26 @@ Preservation targets are the source databases above. The `_dev` databases are re
 
 Schema-only uses planned `*.schema.sql.gz` files. Full verified backups are **required** before any prod-to-dev sync.
 
+## Backup Operations menu
+
+| Option | Meaning |
+|--------|---------|
+| **[2] Run full backup now** | Back up all configured **production** databases, **automatically verify** the newly written backup IDs from that run, then optionally back up and verify development databases for migration recovery. |
+| **[3] Back up production databases** | Production-only write workflow (operator still runs **[4] Verify source backups** afterward unless using full backup). |
+| **[9] Back up development databases** | Development-only optional recovery capture. Not part of routine production protection or the default handoff package. |
+
+A dump exit status alone is not success for full backup: newly written production artifacts must verify before the operation is `PASS`.
+
+Routine verified backups remain separate from sealed migration packages (for example Phase 3B `20260722T055400Z_phase3b`) until restore-check and handoff packaging explicitly promote them.
+
+CLI parity:
+
+| Command | Meaning |
+|---------|---------|
+| `mercury backup full` | Same contract as menu **[2]** (write + verify exact IDs + optional `--include-dev`) |
+| `mercury backup batch` / `all` | Write active sources; **`--verify` is default** on execute (`--no-verify` to skip) |
+| `mercury backup run` | Single-database write (verify separately or via batch/full) |
+
 ## What to back up
 
 | Pattern / name | Role | Backup source |
@@ -21,8 +41,8 @@ Schema-only uses planned `*.schema.sql.gz` files. Full verified backups are **re
 | `scytaledroid_core_prod` | Production | Yes |
 | `obsidiandroid_core_prod` | Production (ObsidianDroid) | Yes (backup-only; no automatic sync) |
 | `android_permission_intel` | Shared authority | Yes |
-| `erebus_threat_intel_dev` | Development | **No** — disposable refresh target |
-| `scytaledroid_core_dev` | Development | **No** — disposable refresh target |
+| `erebus_threat_intel_dev` | Development | **No by default** — optional recovery via Backup Operations [9] / full-backup optional prompt only |
+| `scytaledroid_core_dev` | Development | **No by default** — optional recovery via Backup Operations [9] / full-backup optional prompt only |
 | `_restorecheck_*` | Restore-check temp | **No** |
 | Other `*_prod` / `*_dev` | Out of current milestone scope (e.g. `gecko_research_database_*`, Komodo/market-event DBs) | **No** (visible for review; excluded by default) |
 | Other | Unknown | **No** (manual review) |
@@ -30,7 +50,7 @@ Schema-only uses planned `*.schema.sql.gz` files. Full verified backups are **re
 ## Rules
 
 1. **Back up only the active production sources and designated shared authority database.**
-2. **Never back up `*_dev` databases** — they are disposable refresh targets, rebuilt from verified source backups when needed.
+2. **Do not back up `*_dev` databases by default** — they are disposable refresh targets. Optional development recovery backups are an explicit menu path only and are never part of the default handoff package.
 3. **Never drop or overwrite `*_prod`.**
 4. **Restore-check databases** are temporary; exclude from all backup plans.
 5. **Unknown names** require manual review.
@@ -41,6 +61,15 @@ Schema-only uses planned `*.schema.sql.gz` files. Full verified backups are **re
 - A backup is **not protected** until verification passes (manifest + checksum + size + role checks).
 - **Schema-only** verified backups are useful for schema review and empty shells; they are **not** sufficient for full DR or prod-to-dev sync.
 - **Full verified** backups are required before prod-to-dev sync so Mercury can protect the source state before refreshing dev.
+
+### Live-presence status terms
+
+For a source included in a live protection report, `absent` means the source
+schema was not present on the MariaDB server that was probed. `missing` means
+the source schema was present on that server, but no qualifying backup package
+was found. These are deliberately different states: an absent schema does not
+become a missing backup merely because it is listed in the configured source
+catalog.
 
 ## Seed mode (M4 / M4.5)
 

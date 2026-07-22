@@ -67,11 +67,11 @@ def test_run_backup_menu_non_interactive(
     assert "Backup mode:" not in out
     assert "Action:" not in out
     assert "DATABASE" in out
-    assert "STATUS" in out
+    assert "FRESHNESS" in out
+    assert "VERIFY" in out
     assert "SIZE" in out
     assert "LAST BACKUP" in out
     assert "ARTIFACT" not in out
-    assert "FRESHNESS" not in out
     assert "android_permission_intel" in out
     assert "erebus_threat_intel_prod" in out
     assert "erebus_threat_intel_dev" not in out
@@ -83,13 +83,18 @@ def test_run_backup_menu_non_interactive(
     assert "Ignored databases:" not in out
     assert "Fresh full backup needed before workstation handoff" in out
     assert "\n[1] Refresh" in out
-    assert "\n[2] Run full backup now" in out
-    assert "\n[3] Verify source backups" in out
-    assert "\n[4] Restore-check source backups" in out
-    assert "\n[5] Write DB bundle and runbooks" in out
-    assert "\n[8] Open workstation handoff (main menu 9)" in out
+    assert "\n[2] Run full backup" in out
+    assert "\n[3] Back up production databases" in out
+    assert "\n[4] Verify source backups" in out
+    assert "\n[5] Restore-check source backups" in out
+    assert "\n[6] Write DB bundle and runbooks" in out
+    assert "\n[8] Open workstation handoff" in out
+    assert "\n[9] Back up development databases" in out
     assert "Verify on-disk backups" not in out
-    assert "\n[6] Preview backup plan" in out
+    assert "\n[7] Preview backup plan" in out
+    from mercury.backup.menu_options import ACTION_VERIFY, backup_menu_hint
+
+    assert backup_menu_hint(ACTION_VERIFY) == "Verify source backups [4]"
 
 
 def test_backup_menu_warning_summary_uses_visible_status_labels(
@@ -302,6 +307,68 @@ def test_run_backup_menu_executes_when_environment_ready(
     assert written == [True]
 
 
+def test_full_backup_can_include_dev_recovery_copy(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mercury.backup.batch_runner import BackupBatchResult, BatchVerificationSummary
+    from mercury.backup.interactive_menu import _run_full_backup
+    from mercury.database.backup_planning import build_backup_plan
+
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.menu_prompts.ask_yes_no",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.load_execution_policy",
+        lambda: ExecutionPolicy(
+            dry_run=True,
+            live_actions_enabled=False,
+            backup_root=Path("/tmp/mercury-test-backups"),
+            config_path=None,
+            allow_unsafe_backup_root=True,
+        ),
+    )
+
+    calls: list[str] = []
+
+    def fake_batch(*args, **kwargs):
+        sources = kwargs.get("sources") or []
+        allow_dev = kwargs.get("allow_development_backup")
+        calls.append("dev" if allow_dev else "production")
+        return BackupBatchResult(
+            backup_kind="full",
+            execute=True,
+            sources=list(sources) or ["android_permission_intel"],
+            executed_count=1,
+            results=[],
+        )
+
+    monkeypatch.setattr("mercury.backup.interactive_menu.run_backup_batch", fake_batch)
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.print_backup_batch_result",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.verify_written_backup_batch",
+        lambda batch, allow_development_backup=False: BatchVerificationSummary(verified=1),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.batch_runner.resolve_development_backup_sources",
+        lambda live=False: ["erebus_threat_intel_dev"],
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.write_full_backup_run_receipt",
+        lambda result: Path("/tmp/receipt.json"),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.print_full_backup_run_result",
+        lambda result: None,
+    )
+
+    result = _run_full_backup(build_backup_plan(["android_permission_intel"]))
+    assert calls == ["production", "dev"]
+    assert result is not None
+    assert result.development.requested is True
+
+
 def test_run_verify_menu_non_interactive(capsys: pytest.CaptureFixture[str]) -> None:
     run_verify_menu(interactive=False)
     out = capsys.readouterr().out
@@ -373,6 +440,25 @@ def test_status_label_mapping(entry, expected: str) -> None:
     from mercury.backup.interactive_menu import _status_label
 
     assert _status_label(entry) == expected
+
+
+def test_freshness_and_verify_columns_are_independent() -> None:
+    from mercury.backup.interactive_menu import _freshness_label, _verify_label
+
+    entry = type(
+        "Entry",
+        (),
+        {"protection_status": "verified", "freshness": "stale"},
+    )()
+    assert _freshness_label(entry) == "Stale"
+    assert _verify_label(entry) == "Verified"
+    unverified = type(
+        "Entry",
+        (),
+        {"protection_status": "failed", "freshness": "fresh"},
+    )()
+    assert _freshness_label(unverified) == "Fresh"
+    assert _verify_label(unverified) == "Verify failed"
 
 
 def test_status_label_mapping_for_missing_entry() -> None:

@@ -79,6 +79,16 @@ def test_live_report_ignores_out_of_scope_databases(monkeypatch) -> None:
     )
     monkeypatch.setattr("mercury.reporting.protection.discover", lambda *args, **kwargs: inventory, raising=False)
     monkeypatch.setattr("mercury.database.discovery.discover", lambda *args, **kwargs: inventory)
+    # The protection report delegates live-presence classification to backup
+    # status. Model the intended absent schema at that explicit boundary.
+    monkeypatch.setattr(
+        "mercury.backup.status._live_server_database_names",
+        lambda **kwargs: {
+            "erebus_threat_intel_prod",
+            "android_permission_intel",
+            "scytaledroid_core_prod",
+        },
+    )
 
     report = build_protection_report(live=True)
     assert report.inventory_count == 5

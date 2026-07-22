@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from mercury.backup.batch_runner import run_backup_batch
+from mercury.backup.batch_runner import run_backup_batch, verify_written_backup_batch
 from mercury.backup.bundle import (
     build_database_bundle_plan,
     bundle_package_status,
@@ -123,16 +123,31 @@ def run_handoff_backup_phase(*, live: bool | None = None, execute: bool = True) 
             summary=f"Backup finished with {len(batch.errors)} error(s).",
             detail="; ".join(batch.errors[:3]),
         )
-    status = "ok" if batch.executed_count else "failed"
-    summary = (
-        f"Executed {batch.executed_count} full backup(s) for {len(sources)} source(s)."
-        if batch.executed_count
-        else "No source backups executed."
-    )
+    if not batch.executed_count:
+        return HandoffWizardPhaseResult(
+            phase="backup",
+            status="failed",
+            summary="No source backups executed.",
+            detail=", ".join(sources),
+        )
+    verification = verify_written_backup_batch(batch)
+    if verification.failed:
+        return HandoffWizardPhaseResult(
+            phase="backup",
+            status="failed",
+            summary=(
+                f"Wrote {batch.executed_count} backup(s) but verification failed for "
+                f"{verification.failed} newly written ID(s)."
+            ),
+            detail="; ".join(verification.issues[:3]) or ", ".join(sources),
+        )
     return HandoffWizardPhaseResult(
         phase="backup",
-        status=status,
-        summary=summary,
+        status="ok",
+        summary=(
+            f"Executed and verified {verification.verified} full backup(s) "
+            f"for {len(sources)} source(s)."
+        ),
         detail=", ".join(sources),
     )
 

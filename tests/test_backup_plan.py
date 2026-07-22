@@ -225,7 +225,7 @@ def test_print_backup_batch_result_menu_shows_result_table(capsys) -> None:
         dry_run_count=0,
     )
 
-    print_backup_batch_result(batch, compact=True, menu=True)
+    print_backup_batch_result(batch, compact=True, menu=True, suggest_verify=True)
     out = capsys.readouterr().out
     assert "Backup mode" in out
     assert "Written" in out
@@ -234,5 +234,5 @@ def test_print_backup_batch_result_menu_shows_result_table(capsys) -> None:
     assert "BACKUP ID" in out
     assert "android_permission_intel" in out
     assert "written" in out
-    assert "Next: verify source backups [3]." in out
+    assert "Next: Verify source backups [4]." in out
 

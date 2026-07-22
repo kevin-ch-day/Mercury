@@ -80,8 +80,11 @@ def execute_deployment_for_candidate(
     import_runner: ImportRunner | None = None,
     sql_runner: SqlRunner | None = None,
     inspect_row_fn=None,
+    allow_development_deploy: bool = False,
 ) -> DeploymentExecutionResult:
-    assert_deployment_target(candidate.target_database)
+    assert_deployment_target(
+        candidate.target_database, allow_development_deploy=allow_development_deploy,
+    )
     opts = options or DeployOptions()
     dump_path = Path(candidate.dump_path)
     action_plan = resolve_deploy_action(
@@ -135,6 +138,7 @@ def execute_deployment_for_candidate(
         backup_dir,
         database=candidate.source_database,
         backup_kind=BACKUP_KIND_FULL,
+        allow_development_backup=allow_development_deploy,
     )
     if not verification.verified:
         return DeploymentExecutionResult(
@@ -220,6 +224,7 @@ def execute_deployment_batch(
     import_runner: ImportRunner | None = None,
     sql_runner: SqlRunner | None = None,
     inspect_row_fn=None,
+    allow_development_deploy: bool = False,
 ) -> DeploymentBatchResult:
     resolved = policy or load_execution_policy()
     opts = options or DeployOptions()
@@ -228,6 +233,7 @@ def execute_deployment_batch(
         databases=databases,
         options=opts,
         execute=execute,
+        allow_development_deploy=allow_development_deploy,
     )
     batch = DeploymentBatchResult(
         mode=plan.mode,
@@ -275,6 +281,7 @@ def execute_deployment_batch(
                 import_runner=import_runner,
                 sql_runner=sql_runner,
                 inspect_row_fn=inspect_row_fn,
+                allow_development_deploy=allow_development_deploy,
             )
         )
 

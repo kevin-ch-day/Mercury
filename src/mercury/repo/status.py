@@ -21,6 +21,7 @@ class RepoStatus(BaseModel):
     remote_url: str = "n/a"
     dirty: bool = False
     untracked_count: int = 0
+    migration_scope: bool = True
     ahead_count: int | None = None
     behind_count: int | None = None
     error: str | None = None
@@ -65,6 +66,7 @@ def _inspect_single_repo(repo: RepoDefinition) -> RepoStatus:
             path=repo.path,
             exists=False,
             git_repo=False,
+            migration_scope=repo.migration_scope,
             error="path not found",
         )
 
@@ -76,6 +78,7 @@ def _inspect_single_repo(repo: RepoDefinition) -> RepoStatus:
             display_name=repo.display_name,
             path=repo.path,
             git_repo=False,
+            migration_scope=repo.migration_scope,
             error="not a git repository",
         )
 
@@ -83,6 +86,7 @@ def _inspect_single_repo(repo: RepoDefinition) -> RepoStatus:
         key=repo.key,
         display_name=repo.display_name,
         path=repo.path,
+        migration_scope=repo.migration_scope,
     )
     try:
         status.commit = _git_output(repo.path, "rev-parse", "HEAD")

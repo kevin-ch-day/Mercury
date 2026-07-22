@@ -4,20 +4,24 @@ from __future__ import annotations
 
 from mercury.backup.backup_runner import BackupExecutionError
 from mercury.database.core import DatabaseRole, classify_database
+from mercury.database.core.scope import is_active_dev_target
 from mercury.deploy.models import DeployOptions
 
 
-def assert_deployment_target(database: str) -> None:
-    """Only approved backup-source database names may be deployment targets."""
+def assert_deployment_target(database: str, *, allow_development_deploy: bool = False) -> None:
+    """Reject unsafe deployment targets unless the explicit dev lane was selected."""
     classification = classify_database(database)
     if classification.role == DatabaseRole.RESTORE_CHECK_TEMP:
         raise BackupExecutionError(
             f"Refusing deployment target '{database}': _restorecheck_* names are temporary only."
         )
-    if not classification.backup_source:
-        raise BackupExecutionError(
-            f"Refusing deployment target '{database}': not an approved backup-source database."
-        )
+    if classification.backup_source:
+        return
+    if allow_development_deploy and is_active_dev_target(database):
+        return
+    raise BackupExecutionError(
+        f"Refusing deployment target '{database}': not an approved backup-source database."
+    )
 
 
 def planned_import_commands(

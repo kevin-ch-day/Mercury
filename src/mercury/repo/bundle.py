@@ -10,6 +10,7 @@ import subprocess
 from pydantic import BaseModel, Field
 
 from mercury.core.usb_mount import assert_operator_storage_path
+from mercury.core.artifact_permissions import ensure_private_directory, restrict_artifact_file
 from mercury.repo.config import RepoBundleSettings
 from mercury.repo.status import RepoStatus
 
@@ -72,9 +73,11 @@ def _temp_path(path: Path) -> Path:
 
 
 def _write_text_atomic(path: Path, content: str) -> None:
+    ensure_private_directory(path.parent)
     temp_path = _temp_path(path)
     temp_path.write_text(content, encoding="utf-8")
     temp_path.replace(path)
+    restrict_artifact_file(path)
 
 
 def _prune_repo_history(
@@ -125,6 +128,10 @@ def build_repo_bundle_plan(
     index_runbook_path = settings.runbook_dir / stamp_date / f"repo_transfer_runbook_{timestamp}.md"
     entries: list[RepoBundleEntry] = []
     for status in statuses:
+        # A configured checkout can be retained for operator visibility while
+        # deliberately excluded from the workstation migration package.
+        if not status.migration_scope:
+            continue
         bundle_path, manifest_path, runbook_path = _bundle_dirs(
             settings,
             status.display_name,
@@ -290,9 +297,9 @@ def execute_repo_bundle_plan(plan: RepoBundlePlan) -> RepoBundlePlan:
     for entry in plan.entries:
         if entry.error:
             continue
-        entry.planned_bundle_path.parent.mkdir(parents=True, exist_ok=True)
-        entry.planned_manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        entry.planned_runbook_path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_private_directory(entry.planned_bundle_path.parent)
+        ensure_private_directory(entry.planned_manifest_path.parent)
+        ensure_private_directory(entry.planned_runbook_path.parent)
         bundle_temp = _temp_path(entry.planned_bundle_path)
         manifest_temp = _temp_path(entry.planned_manifest_path)
         runbook_temp = _temp_path(entry.planned_runbook_path)
@@ -319,16 +326,19 @@ def execute_repo_bundle_plan(plan: RepoBundlePlan) -> RepoBundlePlan:
             entry.bundle_size_bytes = size_bytes
             entry.bundle_verified = True
             bundle_temp.replace(entry.planned_bundle_path)
+            restrict_artifact_file(entry.planned_bundle_path)
             manifest_temp.write_text(
                 json.dumps(_manifest_payload(plan, entry), indent=2) + "\n",
                 encoding="utf-8",
             )
             manifest_temp.replace(entry.planned_manifest_path)
+            restrict_artifact_file(entry.planned_manifest_path)
             runbook_temp.write_text(
                 _runbook_text(entry),
                 encoding="utf-8",
             )
             runbook_temp.replace(entry.planned_runbook_path)
+            restrict_artifact_file(entry.planned_runbook_path)
         finally:
             for temp_path in (bundle_temp, manifest_temp, runbook_temp):
                 try:
@@ -345,8 +355,8 @@ def execute_repo_bundle_plan(plan: RepoBundlePlan) -> RepoBundlePlan:
         entry.pruned_manifest_paths = pruned_manifests
         entry.pruned_runbook_paths = pruned_runbooks
         entry.executed = True
-    plan.planned_index_manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    plan.planned_index_runbook_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_private_directory(plan.planned_index_manifest_path.parent)
+    ensure_private_directory(plan.planned_index_runbook_path.parent)
     _write_text_atomic(
         plan.planned_index_manifest_path,
         json.dumps(_index_manifest_payload(plan), indent=2) + "\n",

@@ -79,6 +79,14 @@ def test_cli_manifest_preview_rejects_dev() -> None:
     assert result.returncode != 0
     assert "backup source" in (result.stdout + result.stderr).lower()
 
+
+def test_cli_backup_verify_exposes_explicit_dev_recovery_gate() -> None:
+    result = run_cli("backup", "verify", "--help")
+    assert result.returncode == 0
+    # Rich truncates long option labels at the fixed test-console width.
+    assert "allow-developmen" in result.stdout
+    assert "configured optional" in result.stdout
+
 # merged from test_cli_m4.py
 def test_cli_db_active() -> None:
     result = run_cli("db", "active")
@@ -91,3 +99,9 @@ def test_cli_sync_run_help_does_not_offer_yes_bypass() -> None:
     assert "--yes" not in result.stdout
     assert "SYNC DEV" in result.stdout
 
+
+def test_cli_migration_readiness_commands_are_registered() -> None:
+    result = run_cli("migration", "--help")
+    assert result.returncode == 0
+    assert "blockers" in result.stdout
+    assert "next" in result.stdout

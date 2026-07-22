@@ -438,7 +438,27 @@ def test_root_owned_usb_dir_needs_repair(tmp_path: Path) -> None:
         os.chown(logs, os.geteuid(), os.getegid())
 
 # from test_doctor.py
-def test_doctor_repair_plan_includes_chown_commands(tmp_path: Path) -> None:
+def test_doctor_repair_plan_includes_chown_commands(tmp_path: Path, monkeypatch) -> None:
+    from mercury.core.storage_roots import default_storage_config
+
+    monkeypatch.setattr(
+        "mercury.core.storage_roots.load_storage_config",
+        lambda warn_deprecated=True: default_storage_config(),
+    )
+    monkeypatch.setattr(
+        "mercury.storage.report.build_storage_status_report",
+        lambda: SimpleNamespace(
+            primary=SimpleNamespace(
+                validation=SimpleNamespace(
+                    identity=SimpleNamespace(is_mount=True, stale_mountpoint_entries=()),
+                    ok=True,
+                )
+            ),
+            legacy=SimpleNamespace(validation=SimpleNamespace(ok=False)),
+            config=default_storage_config(),
+            migration_state=default_storage_config().migration_state,
+        ),
+    )
     mount = tmp_path / "usb"
     logs = mount / "mercury_logs"
     logs.mkdir(parents=True)
@@ -518,7 +538,43 @@ def test_doctor_repair_plan_mariadb_root_auth() -> None:
     assert "unix_socket" in text
 
 # from test_doctor.py
-def test_doctor_repair_plan_usb_not_mounted() -> None:
+def test_doctor_repair_plan_usb_not_mounted(monkeypatch) -> None:
+    """Pre-cutover: USB repair still prepares mercury_* layout (ignore live local.toml)."""
+    from mercury.core.storage_roles import MigrationState, StorageWriteRole
+    from mercury.core.storage_roots import default_storage_config
+
+    pre = default_storage_config()
+    assert pre.migration_state != MigrationState.CUTOVER_COMPLETE
+    assert pre.active_write_role == StorageWriteRole.LEGACY
+
+    monkeypatch.setattr(
+        "mercury.core.storage_roots.load_storage_config",
+        lambda warn_deprecated=True: pre,
+    )
+
+    # Avoid live primary HDD probes influencing this USB-focused assertion.
+    class _PrimaryOk:
+        class validation:
+            class identity:
+                is_mount = True
+                stale_mountpoint_entries = ()
+
+            ok = True
+
+    class _LegacyOk:
+        class validation:
+            ok = False
+
+    monkeypatch.setattr(
+        "mercury.storage.report.build_storage_status_report",
+        lambda: SimpleNamespace(
+            primary=_PrimaryOk(),
+            legacy=_LegacyOk(),
+            config=pre,
+            migration_state=pre.migration_state,
+        ),
+    )
+
     report = SimpleNamespace(
         repo_root=REPO_ROOT,
         current_user="linuxadmin",
@@ -546,6 +602,70 @@ def test_doctor_repair_plan_usb_not_mounted() -> None:
     text = "\n".join(cmd for _title, cmds in plan for cmd in cmds)
     assert "repair-usb" in text
     assert "mercury_backups" in text
+    assert "config init" in text
+
+
+def test_doctor_repair_plan_usb_optional_after_cutover(monkeypatch) -> None:
+    """Post-cutover: USB mount is optional archive; no mercury_* mkdir on USB."""
+    from dataclasses import replace
+
+    from mercury.core.storage_roles import MigrationState, StorageRootRole, StorageWriteRole
+    from mercury.core.storage_roots import default_storage_config
+
+    base = default_storage_config()
+    post = replace(
+        base,
+        legacy=replace(base.legacy, role=StorageRootRole.LEGACY_ARCHIVE, writable=False),
+        active_write_role=StorageWriteRole.PRIMARY,
+        migration_state=MigrationState.CUTOVER_COMPLETE,
+    )
+    monkeypatch.setattr(
+        "mercury.core.storage_roots.load_storage_config",
+        lambda warn_deprecated=True: post,
+    )
+    monkeypatch.setattr(
+        "mercury.storage.report.build_storage_status_report",
+        lambda: SimpleNamespace(
+            primary=SimpleNamespace(
+                validation=SimpleNamespace(
+                    identity=SimpleNamespace(is_mount=True, stale_mountpoint_entries=()),
+                    ok=True,
+                )
+            ),
+            legacy=SimpleNamespace(validation=SimpleNamespace(ok=True)),
+            config=post,
+            migration_state=post.migration_state,
+        ),
+    )
+
+    report = SimpleNamespace(
+        repo_root=REPO_ROOT,
+        current_user="linuxadmin",
+        python_version="3.14",
+        platform_label="Fedora",
+        config=ConfigSetupStatus(False, False, False),
+        usb=UsbDiscovery(REQUIRED_BACKUP_MOUNT, False, False, None),
+        mariadb=_mariadb_stub(),
+        policy=ExecutionPolicy(
+            dry_run=True,
+            live_actions_enabled=False,
+            backup_root=REPO_ROOT / "backups",
+            config_path=None,
+        ),
+        permission_checks=[],
+        source_databases=[],
+        verified_backup_count=0,
+        verified_backup_total=0,
+        blockers=["local config not initialized"],
+        warnings=[],
+        self_healed=[],
+        recommended_next_step="./run.sh config init",
+    )
+    plan = build_repair_plan(report)
+    text = "\n".join(cmd for _title, cmds in plan for cmd in cmds)
+    assert "repair-usb" in text
+    assert "legacy archive after cutover" in text
+    assert "mercury_backups" not in text
     assert "config init" in text
 
 # from test_doctor.py
@@ -614,6 +734,7 @@ def test_init_customizes_mariadb_user_for_os_user(tmp_path: Path, monkeypatch) -
     monkeypatch.setattr("mercury.config.init.LOCAL_EXAMPLE", example_local)
     monkeypatch.setattr("mercury.config.init.LOCAL_CONFIG", local_local)
     monkeypatch.setattr("mercury.config.init.getpass.getuser", lambda: "linuxadmin")
+    monkeypatch.setattr("mercury.config.init.discover_primary_operator_root", lambda: None)
     monkeypatch.setattr(
         "mercury.config.init.discover_usb_target",
         lambda: SimpleNamespace(mercury_layout_present=True, mount_path=Path("/mnt/MERCURY_DATA_USB")),
@@ -624,6 +745,41 @@ def test_init_customizes_mariadb_user_for_os_user(tmp_path: Path, monkeypatch) -
     assert 'user = "linuxadmin"' in text
     assert any("linuxadmin" in line for line in results)
     assert any("Operator backup layout detected" in line for line in results)
+
+
+def test_init_prefers_mounted_canonical_hdd_over_legacy_usb(tmp_path: Path, monkeypatch) -> None:
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    example_local = config_dir / "local.example.toml"
+    example_local.write_text(
+        '[storage]\nactive_write_role = "legacy"\nmigration_state = "not_started"\n'
+        '[storage.legacy]\nrole = "transition_source"\nfilesystem_type = "ext4"\nwritable = true\n\n'
+        '[storage.space_policy]\nminimum_free_bytes = 1\n'
+        '[mercury]\nbackup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"\n'
+        'log_dir = "/mnt/MERCURY_DATA_USB/mercury_logs"\n',
+        encoding="utf-8",
+    )
+    for name in ("databases.example.toml", "repos.example.toml"):
+        (config_dir / name).write_text("[default]\n", encoding="utf-8")
+    monkeypatch.setattr("mercury.config.init.LOCAL_EXAMPLE", example_local)
+    monkeypatch.setattr("mercury.config.init.LOCAL_CONFIG", config_dir / "local.toml")
+    monkeypatch.setattr("mercury.config.init.DATABASES_EXAMPLE", config_dir / "databases.example.toml")
+    monkeypatch.setattr("mercury.config.init.DATABASES_LOCAL", config_dir / "databases.toml")
+    monkeypatch.setattr("mercury.config.init.REPOS_EXAMPLE", config_dir / "repos.example.toml")
+    monkeypatch.setattr("mercury.config.init.REPOS_LOCAL", config_dir / "repos.toml")
+    monkeypatch.setattr("mercury.config.init.discover_primary_operator_root", lambda: tmp_path / "hdd")
+    monkeypatch.setattr(
+        "mercury.config.init.discover_usb_target",
+        lambda: SimpleNamespace(mercury_layout_present=True, mount_path=Path("/mnt/MERCURY_DATA_USB")),
+    )
+
+    results = init_local_config()
+    text = (config_dir / "local.toml").read_text(encoding="utf-8")
+
+    assert 'active_write_role = "primary"' in text
+    assert 'migration_state = "cutover_complete"' in text
+    assert str(tmp_path / "hdd" / "mercury_backups") in text
+    assert any("Canonical HDD layout detected" in line for line in results)
 
 # from test_env_probe.py
 def test_probe_returns_expected_fields() -> None:
@@ -782,4 +938,3 @@ def test_live_mode_guide_has_no_decorative_bullets(capsys: pytest.CaptureFixture
     assert "OPERATOR SAFETY GUIDE" in out
     assert "◆" not in out
     assert "Destructive actions" in out
-

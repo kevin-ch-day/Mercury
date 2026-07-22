@@ -332,7 +332,12 @@ def build_migration_plan(
         )
     if cfg.active_write_role.value != "legacy":
         warnings.append(
-            f"active_write_role={cfg.active_write_role.value} (expected legacy until cutover)."
+            (
+                f"active_write_role={cfg.active_write_role.value} "
+                "(post-cutover; planner is unavailable)."
+                if cfg.cutover_complete
+                else f"active_write_role={cfg.active_write_role.value} (expected legacy until cutover)."
+            )
         )
 
     if not source_val.ok:

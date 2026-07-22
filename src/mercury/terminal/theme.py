@@ -493,7 +493,7 @@ def dashboard_panel(rows: list[str]) -> list[str]:
 
 
 def continue_prompt() -> str:
-    return prompt_text("\nPress any key to continue...")
+    return prompt_text("\nPress Enter to continue...")
 
 
 def get_theme() -> MercuryTheme:

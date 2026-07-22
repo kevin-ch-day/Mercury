@@ -26,8 +26,23 @@ def handle_menu_choice(choice: str) -> MenuResult:
     if not normalized:
         return "empty"
     if normalized in {"r", "repair"}:
-        from mercury.repair.startup import run_usb_repair_flow
+        from mercury.repair.startup import (
+            _hdd_writer_active,
+            primary_mount_hint,
+            run_usb_repair_flow,
+        )
 
+        if _hdd_writer_active():
+            hint = primary_mount_hint()
+            if hint:
+                menu_display.write_status("warn", hint)
+            else:
+                menu_display.write_summary(
+                    "HDD writer is ready. USB repair is optional archive maintenance "
+                    "(./run.sh repair-usb)."
+                )
+            log_menu_action(choice=normalized, title="Primary mount hint", result="continue")
+            return "continue"
         run_usb_repair_flow(interactive=True, default_yes=True)
         log_menu_action(choice=normalized, title="Repair USB", result="continue")
         return "continue"
@@ -58,9 +73,18 @@ def run_menu(interactive: bool = True, *, render_menu_text: Callable[[], str] | 
     """Show the Mercury menu. In interactive mode, loop until exit."""
     render = render_menu_text or _default_render_menu_text
     if interactive:
-        from mercury.repair.startup import maybe_prompt_usb_repair_at_startup
+        from mercury.repair.startup import (
+            maybe_prompt_usb_repair_at_startup,
+            primary_mount_hint,
+        )
 
         maybe_prompt_usb_repair_at_startup()
+        hint = primary_mount_hint()
+        if hint:
+            from mercury.terminal import screen as display_screen
+
+            display_screen.write_status("warn", hint)
+            output.write("")
 
     output.write(render())
 

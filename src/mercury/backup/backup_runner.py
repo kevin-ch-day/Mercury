@@ -30,11 +30,18 @@ from mercury.backup.dump_planner import (
     build_planned_dump,
     select_dump_tool,
 )
+from mercury.backup.content_contract import (
+    BackupContentContract,
+    build_backup_content_contract,
+    extract_dump_object_inventory,
+    fetch_live_object_inventory,
+)
 from mercury.backup.live_inventory import (
     fetch_live_server_database_names,
     live_source_missing_reason,
 )
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
+from mercury.core.artifact_permissions import ensure_private_directory, restrict_artifact_file
 from mercury.backup.manifest_preview import exclusion_reason
 from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
 
@@ -68,11 +75,22 @@ class BackupExecutionResult(BaseModel):
     manifest: BackupManifest | None = None
     live_actions_enabled: bool = False
     safety_notes: list[str] = Field(default_factory=list)
+    content_contract: BackupContentContract | None = None
 
 
-def assert_safe_backup_source(database: str) -> DatabaseClassification:
+def assert_safe_backup_source(
+    database: str, *, allow_development_backup: bool = False
+) -> DatabaseClassification:
     """Refuse backup when database is not an approved backup source."""
     classification = classify_database(database)
+    if (
+        allow_development_backup
+        and classification.role == DatabaseRole.DEVELOPMENT
+    ):
+        from mercury.database.core.scope import is_active_dev_recovery_database
+
+        if is_active_dev_recovery_database(database):
+            return classification
     if not classification.backup_source:
         reason = exclusion_reason(classification) or "Not a backup source."
         raise BackupExecutionError(
@@ -106,7 +124,7 @@ def _default_dump_runner(
     _config: MariaDbConnectionConfig,
 ) -> None:
     """Run mariadb-dump, compressing with gzip CLI or Python gzip."""
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_private_directory(output_path.parent)
     if shutil.which("gzip"):
         with output_path.open("wb") as handle:
             dump_proc = subprocess.Popen(
@@ -189,9 +207,10 @@ def plan_backup_execution(
     timestamp: str | None = None,
     live: bool = False,
     server_names: set[str] | None = None,
+    allow_development_backup: bool = False,
 ) -> BackupExecutionResult:
     """Build a backup execution plan without writing files or contacting the server."""
-    classification = assert_safe_backup_source(database)
+    classification = assert_safe_backup_source(database, allow_development_backup=allow_development_backup)
     resolved = policy or load_execution_policy()
     layout = build_backup_layout(database, date=date, timestamp=timestamp)
     dump_name, schema_name = _artifact_filenames(layout, kind)
@@ -274,6 +293,7 @@ def execute_backup(
     now: datetime | None = None,
     live: bool = False,
     server_names: set[str] | None = None,
+    allow_development_backup: bool = False,
 ) -> BackupExecutionResult:
     """
     Plan or execute a logical backup.
@@ -290,13 +310,16 @@ def execute_backup(
         kind,
         execute,
     )
-    classification = assert_safe_backup_source(database)
+    classification = assert_safe_backup_source(database, allow_development_backup=allow_development_backup)
     resolved = policy or load_execution_policy()
     instant = now or datetime.now(timezone.utc)
     layout = build_backup_layout(database, date=date, timestamp=timestamp, now=instant)
     dump_name, schema_name = _artifact_filenames(layout, kind)
 
-    backup_dir = resolved.backup_root / layout.date / database
+    # Layout paths include the immutable run timestamp.  Do not collapse this
+    # to date/database: that would overwrite a prior run's manifest, checksum,
+    # and report when more than one backup is made on the same day.
+    backup_dir = resolved.backup_root / layout.date / database / layout.timestamp
     relative_dir = layout.directory
 
     config = mariadb_config or try_load_mariadb_config()
@@ -348,6 +371,7 @@ def execute_backup(
         safety_notes=[
             f"Source role: {classification.role.value}",
             "Backup reads from source database only; never restores into *_prod.",
+            *( ["Explicit development recovery backup; excluded from routine production protection."] if allow_development_backup else []),
         ],
     )
 
@@ -391,17 +415,31 @@ def execute_backup(
     if config is None:
         config = load_mariadb_config()
 
+    # A live backup is not accepted solely because mariadb-dump exited zero.
+    # Record the source object set before writing artifacts, then require the
+    # emitted full dump (and its schema companion) to preserve that set.
+    live_inventory = None
+    if live:
+        try:
+            live_inventory = fetch_live_object_inventory(config, database)
+        except Exception as exc:
+            raise BackupExecutionError(
+                "Could not establish the live backup object contract; "
+                "refusing to create an unverifiable backup."
+            ) from exc
+
     runner = dump_runner or _default_dump_runner
     env = os.environ.copy()
     if config.password:
         env["MYSQL_PWD"] = config.password
 
-    backup_dir.mkdir(parents=True, exist_ok=True)
+    ensure_private_directory(backup_dir)
     checksum_targets: list[str] = []
 
     primary_path: Path | None = None
     schema_path: Path | None = None
     created_paths: list[Path] = []
+    content_contract: BackupContentContract | None = None
 
     try:
         if kind == BACKUP_KIND_SCHEMA_ONLY:
@@ -429,6 +467,26 @@ def execute_backup(
                 schema_temp.replace(schema_path)
                 created_paths.append(schema_path)
                 checksum_targets.append(schema_name)
+
+        if live_inventory is not None:
+            assert primary_path is not None
+            dump_inventory = extract_dump_object_inventory(primary_path)
+            schema_inventory = (
+                extract_dump_object_inventory(schema_path)
+                if kind == BACKUP_KIND_FULL and schema_path is not None
+                else None
+            )
+            content_contract = build_backup_content_contract(
+                live_inventory,
+                dump_inventory,
+                schema_inventory,
+            )
+            if not content_contract.verified:
+                detail = "; ".join(content_contract.issues[:3])
+                raise BackupExecutionError(
+                    "Backup content contract failed; artifacts were not accepted: "
+                    f"{detail or 'unknown object mismatch'}"
+                )
 
         checksum_path = backup_dir / CHECKSUM_FILENAME
         checksum_temp = backup_dir / f"{CHECKSUM_FILENAME}.tmp"
@@ -461,6 +519,12 @@ def execute_backup(
             dry_run=False,
             notes="Logical backup produced by Mercury.",
             verified=False,
+            dump_options=argv,
+            object_contract=(
+                content_contract.model_dump(mode="json")
+                if content_contract is not None
+                else None
+            ),
         )
 
         manifest_path = backup_dir / MANIFEST_FILENAME
@@ -480,6 +544,8 @@ def execute_backup(
         )
         report_temp.replace(report_path)
         created_paths.append(report_path)
+        for artifact in created_paths:
+            restrict_artifact_file(artifact)
     except Exception:
         cleanup_candidates = created_paths + list(backup_dir.glob("*.tmp"))
         for path in cleanup_candidates:
@@ -497,6 +563,7 @@ def execute_backup(
             "refused": False,
             "refusal_reason": None,
             "manifest": manifest,
+            "content_contract": content_contract,
             "safety_notes": base_result.safety_notes
             + ["Backup artifacts written; verification required before protected status."],
         }

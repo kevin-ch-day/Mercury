@@ -5,11 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from mercury.terminal.format import format_bytes
+from mercury.core.execution_policy import backup_root_state_is_ready
 
 
 def backup_root_mount_label(policy, *, styled: bool = False) -> str:
     state = policy.backup_root_state()
-    if state == "usb-mounted":
+    if backup_root_state_is_ready(state):
         return "[ok] mounted" if styled else "mounted"
     if state == "repo-local fallback":
         return "[!!] repo-local fallback" if styled else "repo-local fallback"
@@ -40,7 +41,7 @@ def backup_root_free_space_label(policy) -> str | None:
 
 def backup_root_storage_status_label(policy, *, styled: bool = False) -> str:
     state = policy.backup_root_state()
-    if state == "usb-mounted":
+    if backup_root_state_is_ready(state):
         return "[ok] ready" if styled else "ready"
     if state == "low free space":
         return "[--] warning" if styled else "warning"
@@ -50,7 +51,7 @@ def backup_root_storage_status_label(policy, *, styled: bool = False) -> str:
 def backup_root_summary_label(policy) -> str:
     state = policy.backup_root_state()
     target = str(policy.backup_root.resolve())
-    if state == "usb-mounted":
+    if backup_root_state_is_ready(state):
         return "[ok] storage ready"
     if state == "low free space":
         return "[--] storage warning"

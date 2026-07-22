@@ -34,42 +34,44 @@ def test_usb_repair_banner_when_device_attached_unmounted(tmp_path: Path) -> Non
     assert "./run.sh repair-usb" in banner
 
 
-def test_log_directory_repair_hint_suggests_repair_usb_when_unmounted(
+def test_log_directory_repair_hint_suggests_storage_validate_when_unmounted(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    mount = tmp_path / "mnt" / "MERCURY_DATA_USB"
-    log_dir = mount / "mercury_logs"
-
-    monkeypatch.setattr("mercury.core.usb_device.resolve_usb_mount", lambda **kwargs: mount)
-    monkeypatch.setattr(
-        "mercury.core.usb_device.probe_usb_device",
-        lambda **kwargs: UsbDeviceProbe(
-            mount_path=mount,
-            device_attached=True,
-            device_path=Path("/dev/sda1"),
-            systemd_mount_unit="mnt-MERCURY_DATA_USB.mount",
-            fstab_configured=True,
-            placeholder_mount_point=True,
-            quick_mount_command="sudo systemctl start mnt-MERCURY_DATA_USB.mount",
-        ),
-    )
-    monkeypatch.setattr("mercury.core.usb_device.usb_mount_is_active", lambda path, **kwargs: False)
-    hint = log_directory_repair_hint(log_dir)
-    assert "repair-usb" in hint
-
-
-def test_log_directory_repair_hint_suggests_repair_usb_for_owner_mismatch(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    mount = tmp_path / "mnt" / "MERCURY_DATA_USB"
+    mount = tmp_path / "mnt" / "MERCURY_DATA_V2"
     log_dir = mount / "mercury_logs"
     log_dir.mkdir(parents=True)
-    monkeypatch.setattr("mercury.core.usb_device.resolve_usb_mount", lambda **kwargs: mount)
-    monkeypatch.setattr("mercury.core.usb_device.usb_mount_is_active", lambda path, **kwargs: True)
+
+    monkeypatch.setattr(
+        "mercury.core.usb_mount.resolve_operator_mount",
+        lambda **kwargs: mount,
+    )
+    monkeypatch.setattr(
+        "mercury.core.usb_mount.storage_mount_is_active",
+        lambda path, **kwargs: False,
+    )
+    hint = log_directory_repair_hint(log_dir)
+    assert "storage validate" in hint
+
+
+def test_log_directory_repair_hint_suggests_chown_for_owner_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    mount = tmp_path / "mnt" / "MERCURY_DATA_V2"
+    log_dir = mount / "mercury_logs"
+    log_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        "mercury.core.usb_mount.resolve_operator_mount",
+        lambda **kwargs: mount,
+    )
+    monkeypatch.setattr(
+        "mercury.core.usb_mount.storage_mount_is_active",
+        lambda path, **kwargs: True,
+    )
     hint = log_directory_repair_hint(log_dir, permission_detail="not writable (owner: root)")
-    assert "repair-usb" in hint
+    assert "chown" in hint
+    assert str(log_dir) in hint
 
 
 def test_discover_usb_target_includes_repair_banner(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

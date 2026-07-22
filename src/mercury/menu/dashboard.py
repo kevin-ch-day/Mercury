@@ -11,7 +11,11 @@ from mercury.core.environment_status import (
     recommended_next_step,
     resolve_dashboard_blocker,
 )
-from mercury.core.execution_policy import destructive_ops_label, load_execution_policy
+from mercury.core.execution_policy import (
+    backup_root_state_is_ready,
+    destructive_ops_label,
+    load_execution_policy,
+)
 from mercury.core.platform import detect_platform
 from mercury.core.runtime import should_probe_database_status
 from mercury.core.storage_status import backup_root_free_space_label
@@ -24,6 +28,22 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     env = build_environment_status(probe_database=probe)
     policy = env.policy
     config_initialized = env.config.initialized
+
+    if config_initialized:
+        try:
+            from mercury.migration.readiness import build_migration_readiness
+
+            return _migration_dashboard_rows(
+                build_migration_readiness(
+                    probe_database=False, detailed=False
+                ),
+                policy,
+            )
+        except Exception as exc:
+            return [
+                dashboard_row("Active writer", _backup_target_summary(policy, env)),
+                dashboard_row("Migration status", f"unavailable: {exc}"),
+            ]
 
     rows: list[str] = []
     if env.config.initialized and env.mariadb.connection_works is True:
@@ -44,7 +64,6 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     except OSError:
         pass
 
-    deploy_status_line = "skipped until config initialized"
     sync_blocker = "None."
     stale_names: set[str] = set()
     unknown_names: set[str] = set()
@@ -57,12 +76,9 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     status_error: str | None = None
     ready = 0
     blocked = 0
-    deploy_complete = False
     if not config_initialized:
-        mariadb_line = "skipped until config initialized"
         backup_line = "skipped until config initialized"
         sync_line = "skipped until config initialized"
-        deploy_line = "skipped until config initialized"
         handoff_line = "skipped until config initialized"
         blocker = resolve_dashboard_blocker(
             setup_blocker=env.primary_setup_blocker,
@@ -88,16 +104,15 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             verified_names=verified_names,
             source_names=source_names,
         )
-        deploy_line = _deploy_target_summary(live=probe and env.mariadb.connection_works is True)
-        deploy_status_line = _deploy_status_line(live=probe and env.mariadb.connection_works is True)
-        deploy_complete = "deploy not needed" in deploy_line.lower()
         blocker = _resolve_environment_readiness(
             setup_blocker=env.primary_setup_blocker,
             config_initialized=True,
             verified_names=verified_names,
             source_names=source_names,
             sync_blocker=sync_blocker,
-            deploy_complete=deploy_complete,
+            # Deployment selection re-verifies every backup and is too costly
+            # for a menu redraw. Deployment screens own that detailed check.
+            deploy_complete=False,
             stale_count=len(stale_names),
             missing_count=missing_count,
             failed_count=failed_count,
@@ -119,7 +134,6 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             backup_line += f"; {len(unknown_names)} unknown freshness"
         if status_error:
             backup_line = status_error
-        mariadb_line = deploy_line
         sync_line = f"{ready} approved pairs ready"
         if blocked:
             sync_line += f"; {blocked} blocked"
@@ -127,11 +141,11 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             sync_line = "unavailable"
             handoff_line = "status error — see Protection"
         elif stale_names or missing_count or failed_count:
-            handoff_line = "partial — menu [9] or h for checklist"
+            handoff_line = "partial — menu [10] or h for checklist"
         elif unknown_names or absent_count:
-            handoff_line = "warnings — menu [9] guided wizard"
+            handoff_line = "warnings — menu [10] guided wizard"
         elif verified_names and present_on_server and len(verified_names) == present_on_server:
-            handoff_line = "backup lane ok — menu [9] handoff wizard"
+            handoff_line = "backup lane ok — menu [10] handoff wizard"
         else:
             handoff_line = "incomplete"
         latest_handoff_status: str | None = None
@@ -166,20 +180,26 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             dashboard_row("Cutover blockers", blocker),
         ]
     )
-    if config_initialized and deploy_complete and sync_blocker not in {"None.", ""}:
-        from mercury.deploy.rebuild_status import sync_blocker_is_rebuild_blocker
-
-        if not sync_blocker_is_rebuild_blocker(sync_blocker, deploy_complete=True):
-            rows.append(dashboard_row("Sync blocker", sync_blocker))
     if env.repairable_blockers or env.usb.repair_banner:
-        from mercury.repair.usb import USB_REPAIR_COMMAND
+        from mercury.core.environment_status import _hdd_writer_active
 
-        rows.append(
-            dashboard_row(
-                "USB repair",
-                f"Enter r at main menu or run {USB_REPAIR_COMMAND}",
+        if _hdd_writer_active():
+            if env.repairable_blockers:
+                rows.append(
+                    dashboard_row(
+                        "Storage repair",
+                        "Run ./run.sh storage validate (HDD is the active writer)",
+                    )
+                )
+        else:
+            from mercury.repair.usb import USB_REPAIR_COMMAND
+
+            rows.append(
+                dashboard_row(
+                    "USB repair",
+                    f"Enter r at main menu or run {USB_REPAIR_COMMAND}",
+                )
             )
-        )
     elif env.setup_hints:
         rows.append(dashboard_row("Setup", env.setup_hints[0]))
         for hint in env.setup_hints[1:]:
@@ -187,9 +207,48 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     return rows
 
 
+def _migration_dashboard_rows(report, policy) -> list[str]:
+    """Compact dashboard backed by one shared migration-evidence report."""
+    by_id = {check.id: check for check in report.checks}
+    active = by_id["active_writer"]
+    mirror = by_id["storage_mirror"]
+    duplicate = by_id["duplicate_primary_mount"]
+    backups = by_id["database_backups"]
+    unresolved = report.unresolved_checks
+    free = backup_root_free_space_label(policy)
+    active_text = active.summary
+    if free:
+        active_text += f" · {free} free"
+    mirror_text = "Verified" if mirror.state.value == "PASS" else mirror.summary
+    if duplicate.state.value == "WARNING":
+        mirror_text += " · HDD mounted twice"
+    package_text = "Review required" if report.overall_status.value != "PASS" else "Ready"
+    # Dashboard mode deliberately avoids scanning large worktrees or runtime
+    # configuration.  Do not turn the absence of that expensive scan into a
+    # claim that a capture is incomplete.
+    if any(
+        check.id in {"erebus_web_worktree", "scytaledroid_web_worktree"}
+        and check.unresolved
+        for check in report.checks
+    ):
+        package_text += " · capture status not rechecked"
+    next_open = next((check for check in unresolved if check.id == "destination_validation"), None)
+    blocker_text = f"{len(unresolved)} open"
+    if next_open is not None:
+        blocker_text += " · destination not validated"
+    return [
+        dashboard_row("Active writer", active_text),
+        dashboard_row("Storage mirror", mirror_text),
+        dashboard_row("Database backups", backups.summary),
+        dashboard_row("Migration package", package_text),
+        dashboard_row("Migration phase", report.operator_phase.title()),
+        dashboard_row("Cutover blockers", blocker_text),
+    ]
+
+
 def _backup_target_summary(policy, env) -> str:
     base = backup_target_dashboard_label(policy, env.usb)
-    if policy.backup_root_state() == "usb-mounted":
+    if backup_root_state_is_ready(policy.backup_root_state()):
         free_space = backup_root_free_space_label(policy)
         if free_space:
             return f"{base} · {free_space} free"

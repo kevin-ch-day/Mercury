@@ -93,6 +93,12 @@ def run_handoff_menu() -> None:
     _run_handoff_menu()
 
 
+def run_offline_repo_menu() -> None:
+    from mercury.repo.interactive_menu import run_offline_repo_menu as _run_offline_repo_menu
+
+    _run_offline_repo_menu()
+
+
 def run_storage_menu() -> None:
     from mercury.storage.interactive_menu import run_storage_menu as _run_storage_menu
 

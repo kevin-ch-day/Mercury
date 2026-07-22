@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from mercury.backup.layout import CHECKSUM_FILENAME, MANIFEST_FILENAME
 from mercury.backup.manifest import BackupKind, BackupManifest
 from mercury.backup.checksum import verify_checksums
-from mercury.database.core import classify_database
+from mercury.database.core import DatabaseRole, classify_database
 from mercury.backup.manifest_preview import ManifestPreview, build_manifest_preview
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
@@ -189,6 +189,7 @@ def verify_backup_artifacts(
     *,
     database: str | None = None,
     backup_kind: BackupKind | None = None,
+    allow_development_backup: bool = False,
 ) -> BackupVerificationResult:
     """
     Verify on-disk backup artifacts: manifest, dumps, checksums, role, and sizes.
@@ -206,6 +207,10 @@ def verify_backup_artifacts(
 
     classification = classify_database(resolved_db)
     role_ok = classification.backup_source
+    if allow_development_backup and classification.role == DatabaseRole.DEVELOPMENT:
+        from mercury.database.core.scope import is_active_dev_recovery_database
+
+        role_ok = is_active_dev_recovery_database(resolved_db)
 
     issues: list[str] = []
     manifest_exists = manifest_path.exists() and manifest is not None
@@ -319,11 +324,14 @@ def verify_backup_directory(
     *,
     database: str | None = None,
     update_manifest: bool = False,
+    allow_development_backup: bool = False,
 ) -> BackupVerificationResult:
     """
     Verify a backup directory on disk; optionally mark manifest verified=true when passing.
     """
-    result = verify_backup_artifacts(backup_dir, database=database)
+    result = verify_backup_artifacts(
+        backup_dir, database=database, allow_development_backup=allow_development_backup
+    )
     updated_manifest = False
     if update_manifest and result.verified:
         manifest_path = Path(result.manifest_path)

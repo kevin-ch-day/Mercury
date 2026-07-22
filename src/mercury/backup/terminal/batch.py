@@ -3,8 +3,23 @@
 from mercury import output
 from mercury.terminal import screen as display_screen
 from mercury.terminal.table import Table, TableStyle
+from mercury.terminal.format import format_backup_id_display, format_bytes
 from mercury.core.execution_policy import backup_mode_label, load_execution_policy
-from mercury.backup.batch_runner import BackupBatchResult
+from mercury.backup.batch_runner import (
+    BackupBatchResult,
+    FullBackupOutcome,
+    FullBackupRunResult,
+    small_production_backup_warning,
+)
+from mercury.backup.menu_options import ACTION_VERIFY, backup_menu_hint
+
+
+def print_batch_small_backup_warnings(batch: BackupBatchResult) -> None:
+    """Surface unexpectedly small newly written production dumps after a batch write."""
+    for result in batch.results:
+        warning = small_production_backup_warning(result)
+        if warning:
+            display_screen.write_status("warn", warning)
 
 
 def _write_refusal_line(refusal: str) -> None:
@@ -34,12 +49,14 @@ def print_backup_batch_result(
     *,
     compact: bool = False,
     menu: bool = False,
+    databases_label: str = "Production databases selected",
+    suggest_verify: bool = False,
 ) -> None:
     if compact and menu:
         display_screen.write_fields(
             {
                 "Backup mode": _batch_mode_label(batch),
-                "Source databases": len(batch.sources),
+                databases_label: len(batch.sources),
                 "Written": batch.executed_count,
                 "Preview": batch.dry_run_count,
                 "Refused": batch.refused_count,
@@ -50,7 +67,9 @@ def print_backup_batch_result(
                 [
                     result.database,
                     _result_label(result),
-                    result.manifest.backup_id if result.manifest else "-",
+                    format_backup_id_display(result.manifest.backup_id, max_len=40)
+                    if result.manifest
+                    else "-",
                 ]
                 for result in batch.results
             ]
@@ -64,15 +83,23 @@ def print_backup_batch_result(
                     max_col_widths=[36, 10, 40],
                 )
             )
+            display_screen.write_blank()
+            display_screen.write_summary("Complete backup IDs:")
+            for result in batch.results:
+                if result.manifest:
+                    path = result.backup_directory_path or "-"
+                    display_screen.write_hint(f"{result.manifest.backup_id} · {path}")
         refusal = next((r.refusal_reason for r in batch.results if r.refusal_reason), None)
         if refusal:
             display_screen.write_blank()
             _write_refusal_line(refusal)
         for error in batch.errors:
             display_screen.write_status("fail", error)
-        if batch.executed_count:
+        if batch.executed_count and suggest_verify:
             display_screen.write_blank()
-            display_screen.write_summary("Backups written. Next: verify source backups [3].")
+            display_screen.write_summary(
+                f"Backups written. Next: {backup_menu_hint(ACTION_VERIFY)}."
+            )
         elif batch.dry_run_count:
             display_screen.write_blank()
             display_screen.write_summary("Preview only; no files were written.")
@@ -86,7 +113,7 @@ def print_backup_batch_result(
         display_screen.write_fields(
             {
                 "Backup mode": _batch_mode_label(batch),
-                "Source databases": len(names),
+                databases_label: len(names),
             }
         )
         if names:
@@ -129,3 +156,84 @@ def print_backup_batch_result(
     if batch.execute and batch.refused_count and not batch.executed_count:
         output.write()
         output.write("Batch refused: check operator backup root, config/local.toml, or missing sources.")
+
+
+def print_full_backup_run_result(result: FullBackupRunResult) -> None:
+    """Combined summary for Backup Operations option [2]."""
+    display_screen.write_blank()
+    display_screen.write_summary("Full Backup Result")
+    output.rule()
+    display_screen.write_fields({"Run ID": result.run_id, "Result": result.outcome.value})
+    display_screen.write_blank()
+    display_screen.write_summary("PRODUCTION")
+    display_screen.write_fields(
+        {
+            "Selected": result.production.selected,
+            "Written": result.production.written,
+            "Verified": result.production.verified,
+            "Failed": result.production.failed,
+            "Total size": format_bytes(result.production.total_size_bytes),
+        }
+    )
+    for backup_id in result.production.backup_ids:
+        display_screen.write_hint(f"backup_id: {backup_id}")
+    for path in result.production.verification_evidence_paths:
+        display_screen.write_hint(f"verify evidence: {path}")
+    for warning in result.production.small_backup_warnings:
+        display_screen.write_status("warn", warning)
+    for issue in result.production.issues:
+        display_screen.write_status("fail", issue)
+
+    display_screen.write_blank()
+    display_screen.write_summary("DEVELOPMENT")
+    display_screen.write_fields(
+        {
+            "Requested": "Yes" if result.development.requested else "No",
+            "Selected": result.development.selected,
+            "Written": result.development.written,
+            "Verified": result.development.verified,
+            "Failed": result.development.failed,
+            "Total size": format_bytes(result.development.total_size_bytes),
+        }
+    )
+    if result.development.requested:
+        display_screen.write_summary(
+            "Development backups were created and verified for optional migration recovery. "
+            "They are not included in the default production handoff bundle unless explicitly selected."
+            if result.development.verified and result.development.failed == 0
+            else "Development backup lane was requested; review failures before relying on it."
+        )
+        for backup_id in result.development.backup_ids:
+            display_screen.write_hint(f"backup_id: {backup_id}")
+        for path in result.development.verification_evidence_paths:
+            display_screen.write_hint(f"verify evidence: {path}")
+        for issue in result.development.issues:
+            display_screen.write_status("fail", issue)
+
+    display_screen.write_blank()
+    display_screen.write_summary("OVERALL")
+    display_screen.write_fields(
+        {
+            "Backups written": result.overall_written,
+            "Verified": result.overall_verified,
+            "Failed": result.overall_failed,
+            "Result": result.outcome.value,
+            "Package class": result.package_classification,
+        }
+    )
+    if result.receipt_path:
+        display_screen.write_hint(f"Run receipt: {result.receipt_path}")
+    display_screen.write_hint(result.phase3b_separation_note)
+
+    if result.outcome == FullBackupOutcome.PASS and result.next_actions:
+        display_screen.write_blank()
+        display_screen.write_summary("Next:")
+        for action in result.next_actions:
+            display_screen.write_hint(action)
+    elif result.outcome != FullBackupOutcome.PASS:
+        display_screen.write_blank()
+        display_screen.write_summary(
+            "Handoff backup set is not ready — resolve failures before restore-check or bundle write."
+        )
+        for action in result.next_actions:
+            display_screen.write_hint(action)

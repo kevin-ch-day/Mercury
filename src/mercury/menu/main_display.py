@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from mercury.core.environment_status import build_environment_status
+from mercury.core.execution_policy import backup_root_state_is_ready
 from mercury.core.runtime import should_probe_database_status
 from mercury.terminal.format import format_bytes, short_path
 from mercury.terminal.theme import (
@@ -93,12 +94,13 @@ MENU_SECTIONS: list[tuple[str, list[MenuItem]]] = [
             MenuItem("1", "Backup source databases"),
             MenuItem("2", "Sync production to development"),
             MenuItem("3", "Reports and backup history"),
-            MenuItem("4", "Environment details"),
-            MenuItem("5", "Database inventory"),
-            MenuItem("6", "System doctor / repair guide"),
-            MenuItem("7", "System Deployment"),
-            MenuItem("8", "Disaster Recovery"),
-            MenuItem("9", "Workstation handoff"),
+            MenuItem("4", "Sync Offline GitHub Repositories"),
+            MenuItem("5", "Environment details"),
+            MenuItem("6", "Database inventory"),
+            MenuItem("7", "System doctor / repair guide"),
+            MenuItem("8", "System Deployment"),
+            MenuItem("9", "Disaster Recovery"),
+            MenuItem("10", "Workstation handoff"),
         ],
     ),
 ]
@@ -134,7 +136,7 @@ def _status_tags(*, probe_database: bool | None = None) -> tuple[str, str, str, 
     else:
         database_label = status["database"]
     backup_root = status["backup_root"]
-    backup_tag = "[!!]" if env.policy.backup_root_state() != "usb-mounted" else "[ok]"
+    backup_tag = "[ok]" if backup_root_state_is_ready(env.policy.backup_root_state()) else "[!!]"
     backup_detail = short_path(backup_root, max_len=40) if backup_root != "not configured" else "not configured"
     return (
         safety_tag,
@@ -234,8 +236,8 @@ def render_menu_help() -> str:
         rule,
         body_label("Operator console help"),
         help_line(f"Enter {key_label} for actions, 0 or q to exit."),
-        help_line("Shortcut: h opens workstation handoff (menu 9)."),
-        help_line("Handoff: menu 9 [2] guided wizard · [11] receiver guide · ./run.sh transfer receive"),
+        help_line("Shortcut: h opens workstation handoff (menu 10)."),
+        help_line("Handoff: menu 10 [2] guided wizard · [11] receiver guide · ./run.sh transfer receive"),
         help_line("Recovery: menu 8 for DR status; complete handoff media uses transfer receive on receiver."),
         "",
         help_line("For full detail, run the matching CLI command (e.g. ./run.sh db discover)."),
@@ -253,11 +255,14 @@ def _main_menu_body_lines(*, probe_database: bool | None = None) -> list[str]:
         rule,
         *_flat_menu_item_lines(),
     ]
-    from mercury.repair.startup import main_menu_usb_repair_hint
+    from mercury.repair.startup import main_menu_usb_repair_hint, primary_mount_hint
 
     hint = main_menu_usb_repair_hint()
     if hint:
         lines.extend(["", hint])
+    primary_hint = primary_mount_hint()
+    if primary_hint:
+        lines.extend(["", f"Quick fix: {primary_hint}"])
     lines.append("")
     return lines
 

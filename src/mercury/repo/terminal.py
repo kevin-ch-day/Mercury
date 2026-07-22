@@ -30,15 +30,16 @@ def print_repo_statuses(statuses: list[RepoStatus], *, verbose: bool = False) ->
                 status.branch,
                 status.commit[:12] if status.commit != "unknown" else status.commit,
                 status.state_label,
+                "included" if status.migration_scope else "excluded",
                 str(status.untracked_count),
                 status.upstream_label,
             ]
         )
     display_screen.write_blank()
     display_screen.write_compact_table(
-        ["REPOSITORY", "BRANCH", "COMMIT", "STATE", "UNTRACKED", "UPSTREAM"],
+        ["REPOSITORY", "BRANCH", "COMMIT", "STATE", "MIGRATION", "UNTRACKED", "UPSTREAM"],
         rows,
-        min_col_widths=[18, 12, 12, 8, 9, 10],
+        min_col_widths=[18, 12, 12, 8, 10, 9, 10],
     )
     if verbose:
         for status in statuses:
@@ -48,6 +49,7 @@ def print_repo_statuses(statuses: list[RepoStatus], *, verbose: bool = False) ->
                     "Repository": status.display_name,
                     "Path": status.path,
                     "Remote": status.remote_url,
+                    "Migration scope": "included" if status.migration_scope else "excluded",
                 }
             )
             if status.error:
@@ -108,7 +110,7 @@ def print_repo_bundle_plan(plan: RepoBundlePlan, *, executed: bool = False) -> N
     if executed:
         display_screen.write_blank()
         display_screen.write_summary(
-            "Bundles, per-repo manifests, transfer index manifest, and restore notes were written to the USB paths above."
+            "Bundles, per-repo manifests, transfer index manifest, and restore notes were written to the operator-storage paths above."
         )
         display_screen.write_summary(
             "Repo retention keeps one current verified bundle set per repo; older repo artifacts are pruned after successful replacement."

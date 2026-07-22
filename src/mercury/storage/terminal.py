@@ -42,6 +42,7 @@ def print_storage_status(report: StorageStatusReport) -> None:
             {
                 "  UUID": root.filesystem_uuid,
                 "  Policy writable": "yes" if root.writable_policy else "no",
+                "  Mount mode": root.physical_mount_mode,
                 "  Validation": root.validation.code.value,
             }
         )
@@ -60,19 +61,27 @@ def print_storage_status(report: StorageStatusReport) -> None:
             display_screen.write_status("warn", warning)
     display_screen.write_blank()
     display_screen.write_section("Operator notes")
-    display_screen.write_hint(
-        "Routine backups still target the active write role (legacy until cutover)."
-    )
+    if report.config.cutover_complete:
+        display_screen.write_hint("Routine backups and migration artifacts write to the canonical HDD. USB is recovery archive only.")
+        display_screen.write_hint("Package status: ./run.sh migration package-status")
+        display_screen.write_hint("USB archive receipt: ./run.sh storage archive-receipt")
+        display_screen.write_hint(
+            "Remount USB archive read-only: ./run.sh storage archive-remount-ro"
+        )
+        display_screen.write_hint("Destination readiness: ./run.sh migration next")
+    else:
+        display_screen.write_hint("Routine backups still target the active write role (legacy until cutover).")
     display_screen.write_hint(
         f"Primary fstab draft (not applied by Mercury): {suggested_primary_fstab_line(report.config)}"
     )
     display_screen.write_hint("Validate mounts: ./run.sh storage validate")
-    display_screen.write_hint("Dry-run migration inventory: ./run.sh storage migrate-plan")
-    display_screen.write_hint("Preview copy: ./run.sh storage migrate-run")
-    display_screen.write_hint("Verify copy: ./run.sh storage migrate-verify")
-    display_screen.write_hint("Conflict quarantine: ./run.sh storage migrate-quarantine")
-    display_screen.write_hint("Cutover checklist: ./run.sh storage cutover-readiness")
-    display_screen.write_hint(f"Suggested next: ./run.sh {report.next_step()}")
+    if not report.config.cutover_complete:
+        display_screen.write_hint("Dry-run migration inventory: ./run.sh storage migrate-plan")
+        display_screen.write_hint("Preview copy: ./run.sh storage migrate-run")
+        display_screen.write_hint("Verify copy: ./run.sh storage migrate-verify")
+        display_screen.write_hint("Conflict quarantine: ./run.sh storage migrate-quarantine")
+        display_screen.write_hint("Cutover checklist: ./run.sh storage cutover-readiness")
+        display_screen.write_hint(f"Suggested next: ./run.sh {report.next_step()}")
 
 
 def print_storage_validate(report: StorageStatusReport) -> int:
@@ -85,13 +94,20 @@ def print_storage_validate(report: StorageStatusReport) -> int:
 
 
 def print_storage_audit(report: StorageAuditReport) -> int:
-    """Print the configured-root audit. Returns non-zero for durable mismatches."""
+    """Print the configured-root audit with post-cutover historical semantics."""
     display_screen.open_screen("Mercury Storage Audit")
+    metadata_label = "Historical USB comparison" if report.post_cutover else "Metadata verification"
+    metadata_value = report.verification.summary_line()
+    if report.post_cutover and report.verification.mismatches:
+        metadata_value = (
+            f"archive drift observed · matched={report.verification.matched} "
+            f"differences={len(report.verification.mismatches)}"
+        )
     display_screen.write_fields(
         {
             "Source (legacy)": report.verification.source_mount,
             "Destination (primary)": report.verification.dest_mount,
-            "Metadata verification": report.verification.summary_line(),
+            metadata_label: metadata_value,
             "SHA-256 requested": "yes" if report.hashes_requested else "no",
         }
     )
@@ -122,13 +138,25 @@ def print_storage_audit(report: StorageAuditReport) -> int:
     display_screen.write_blank()
     if report.exit_code == 0:
         detail = "Byte-level audit passed." if report.hashes_requested else "Metadata audit passed."
-        display_screen.write_summary(f"{detail} Writers still remain on legacy until cutover.")
+        display_screen.write_summary(f"{detail} " + ("HDD remains the active writer." if report.config.cutover_complete else "Writers still remain on legacy until cutover."))
         return 0
     if report.exit_code == 1:
         display_screen.write_summary(
-            "Audit completed with warnings. Writers still remain on legacy until cutover."
+            "Audit completed with warnings. "
+            + (
+                "HDD remains the active writer; USB comparison is historical evidence only."
+                if report.post_cutover
+                else "Writers still remain on legacy until cutover."
+            )
         )
         return 1
+    if report.post_cutover:
+        display_screen.write_summary(
+            "Active HDD validation failed: "
+            + "; ".join(report.post_cutover_blockers)
+            + ". Repair the HDD mount before relying on Mercury."
+        )
+        return 2
     display_screen.write_summary("Audit found durable differences or verification blockers — do not cut over.")
     return 2
     display_screen.write_status(
@@ -372,7 +400,7 @@ def print_cutover_readiness(report: CutoverReadinessReport) -> int:
     display_screen.open_screen("Mercury Cutover Readiness")
     display_screen.write_fields(
         {
-            "Ready for future cutover": "yes" if report.ready else "no",
+            "Cutover status": "complete" if report.migration_state == "cutover_complete" else ("ready" if report.ready else "blocked"),
             "Active write role": report.active_write_role,
             "Migration state": report.migration_state,
             "Fstab draft (not applied)": report.fstab_draft,
@@ -394,6 +422,9 @@ def print_cutover_readiness(report: CutoverReadinessReport) -> int:
         for warning in report.warnings:
             display_screen.write_status("warn", warning)
     display_screen.write_blank()
+    if report.migration_state == "cutover_complete":
+        display_screen.write_summary("HDD is the active writer; USB is retained as recovery archive.")
+        return 0
     if report.ready:
         display_screen.write_summary(
             "Checklist passed. Cutover approve (switch writers / remount) is not enabled yet."
@@ -406,6 +437,19 @@ def print_cutover_readiness(report: CutoverReadinessReport) -> int:
 def print_cutover_plan(plan: CutoverPlan) -> int:
     """Render the future writer switch without offering an unsafe execute path."""
     display_screen.open_screen("Mercury Writer Cutover Plan")
+    if plan.already_complete:
+        display_screen.write_fields(
+            {
+                "Cutover status": "complete",
+                "Active writer": plan.readiness.active_write_role,
+                "USB role": "recovery archive",
+                "Execution available": "not applicable",
+            }
+        )
+        display_screen.write_blank()
+        display_screen.write_summary("HDD writer cutover is already complete. No writer switch is offered.")
+        display_screen.write_hint("Review active evidence: ./run.sh migration package-status")
+        return 0
     display_screen.write_fields(
         {
             "Storage mirror ready": "yes" if plan.readiness.ready else "no",

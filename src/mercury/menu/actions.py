@@ -26,18 +26,20 @@ def menu_actions() -> dict[str, MenuAction]:
         run_deploy_menu,
         run_recovery_menu,
         run_handoff_menu,
+        run_offline_repo_menu,
     )
 
     runners: dict[str, Callable[[], None]] = {
         "1": run_backup_batch_menu,
         "2": run_sync_plan,
         "3": run_reports_and_history,
-        "4": run_environment_check,
-        "5": run_discover_databases,
-        "6": run_doctor_menu,
-        "7": run_deploy_menu,
-        "8": run_recovery_menu,
-        "9": run_handoff_menu,
+        "4": run_offline_repo_menu,
+        "5": run_environment_check,
+        "6": run_discover_databases,
+        "7": run_doctor_menu,
+        "8": run_deploy_menu,
+        "9": run_recovery_menu,
+        "10": run_handoff_menu,
     }
     return {
         item.key: MenuAction(key=item.key, title=item.title, runner=runners[item.key])

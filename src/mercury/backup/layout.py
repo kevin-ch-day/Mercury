@@ -42,10 +42,10 @@ class BackupLayoutPaths(BaseModel):
 
     def future_schema_hint(self) -> str:
         """Line shown in schema-plan output."""
-        return f"backups/{self.date}/{self.database}/{self.schema_dump_file}"
+        return f"{self.directory}{self.schema_dump_file}"
 
     def future_full_hint(self) -> str:
-        return f"backups/{self.date}/{self.database}/{self.full_dump_file}"
+        return f"{self.directory}{self.full_dump_file}"
 
 
 def default_date(now: datetime | None = None) -> str:
@@ -59,10 +59,21 @@ def default_timestamp(now: datetime | None = None) -> str:
     return instant.strftime("%Y%m%d_%H%M%S") + f"_{instant.microsecond // 1000:03d}"
 
 
-def planned_backup_directory(database: str, date: str | None = None) -> str:
-    """Relative path: backups/YYYY-MM-DD/<database>/"""
+def planned_backup_directory(
+    database: str,
+    date: str | None = None,
+    timestamp: str | None = None,
+) -> str:
+    """Relative backup path, unique per run when a timestamp is supplied.
+
+    ``timestamp=None`` retains the legacy directory shape for display and
+    compatibility with historical artifacts. New ``BackupLayoutPaths`` always
+    supply a timestamp, preventing a second same-day backup from replacing an
+    earlier manifest, checksum, or report.
+    """
     day = date or default_date()
-    return f"backups/{day}/{database}/"
+    base = f"backups/{day}/{database}/"
+    return f"{base}{timestamp}/" if timestamp else base
 
 
 def planned_dump_filename(database: str, kind: str, timestamp: str | None = None) -> str:
@@ -82,7 +93,7 @@ def build_backup_layout(
     """Build consistent planned paths for backup / schema-plan / manifest-preview."""
     day = date or default_date(now)
     ts = timestamp or default_timestamp(now)
-    directory = planned_backup_directory(database, day)
+    directory = planned_backup_directory(database, day, ts)
     return BackupLayoutPaths(
         database=database,
         date=day,

@@ -64,6 +64,7 @@ class RepoDefinition(BaseModel):
     path: Path
     remote_url: str | None = None
     default_branch: str = "main"
+    migration_scope: bool = True
 
 
 class RepoSelectionError(ValueError):
@@ -126,6 +127,7 @@ def render_repo_config(definitions: list[RepoDefinition]) -> str:
                 f'display_name = "{definition.display_name}"',
                 f'path = "{definition.path}"',
                 f'default_branch = "{definition.default_branch}"',
+                f"migration_scope = {'true' if definition.migration_scope else 'false'}",
             ]
         )
         if definition.remote_url:
@@ -156,6 +158,7 @@ def build_workstation_repo_definitions(
                 path=repo_path,
                 remote_url=previous.remote_url if previous else None,
                 default_branch=previous.default_branch if previous else "main",
+                migration_scope=previous.migration_scope if previous else True,
             )
         )
         seen_keys.add(key)
@@ -170,6 +173,7 @@ def build_workstation_repo_definitions(
                 path=Path(raw_path),
                 remote_url=previous.remote_url if previous else None,
                 default_branch=previous.default_branch if previous else "main",
+                migration_scope=previous.migration_scope if previous else True,
             )
         )
         seen_keys.add(key)
@@ -227,6 +231,7 @@ def load_repo_definitions(path: Path | None = None) -> list[RepoDefinition]:
         repo_path = Path(str(raw_path)).expanduser().resolve()
         remote_url = raw.get("remote_url")
         default_branch = str(raw.get("default_branch") or "main")
+        migration_scope = bool(raw.get("migration_scope", True))
         repos.append(
             RepoDefinition(
                 key=str(key),
@@ -234,6 +239,7 @@ def load_repo_definitions(path: Path | None = None) -> list[RepoDefinition]:
                 path=repo_path,
                 remote_url=str(remote_url).strip() if remote_url else None,
                 default_branch=default_branch,
+                migration_scope=migration_scope,
             )
         )
     return repos

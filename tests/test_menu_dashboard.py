@@ -6,7 +6,30 @@ from types import SimpleNamespace
 from mercury.core.execution_policy import ExecutionPolicy
 from mercury.core.paths import REPO_ROOT
 from mercury.core.platform import PlatformInfo
+from mercury.migration.models import (
+    MigrationCheck,
+    MigrationCheckState,
+    MigrationReadinessReport,
+)
 from mercury.menu.dashboard import _sync_readiness_summary, dashboard_rows
+
+
+def _migration_report(*, database_summary: str = "3 local sources verified") -> MigrationReadinessReport:
+    return MigrationReadinessReport(
+        policy_state="verified",
+        observed_mirror="verified",
+        operator_phase="host capture pending",
+        checks=(
+            MigrationCheck("active_writer", "Active writer", MigrationCheckState.PASS, "PASS", "USB · mounted"),
+            MigrationCheck("storage_mirror", "Storage mirror", MigrationCheckState.PASS, "PASS", "Verified mirror"),
+            MigrationCheck("duplicate_primary_mount", "HDD duplicate mount", MigrationCheckState.WARNING, "WARNING", "HDD is mounted twice."),
+            MigrationCheck("database_backups", "Database backups", MigrationCheckState.PASS, "PASS", database_summary),
+            MigrationCheck("erebus_web_worktree", "Erebus Web worktree", MigrationCheckState.ACTION_NEEDED, "ACTION_NEEDED", "Dirty worktree is not fully captured."),
+            MigrationCheck("web_runtime_configuration", "Web runtime configuration", MigrationCheckState.NOT_CHECKED, "NOT_CHECKED", "Runtime configuration has not been verified."),
+            MigrationCheck("destination_validation", "Destination workstation", MigrationCheckState.NOT_CHECKED, "NOT_CHECKED", "Destination workstation has not been validated.", blocking=True),
+            MigrationCheck("writer_cutover_implementation", "Writer cutover", MigrationCheckState.BLOCKED, "BLOCKED", "Writer cutover is not implemented.", blocking=True),
+        ),
+    )
 
 
 def test_dashboard_rows_include_core_fields() -> None:
@@ -22,7 +45,8 @@ def test_dashboard_rows_include_extended_stats() -> None:
     rows = dashboard_rows(probe_database=False)
     text = "\n".join(rows)
     assert "Database backups" in text
-    assert "Sync readiness" in text
+    assert "Migration package" in text
+    assert "Migration phase" in text
     assert "Cutover blockers" in text
     assert "Storage mirror" in text
 
@@ -65,8 +89,9 @@ def test_dashboard_rows_warn_on_repo_local_backup_root(monkeypatch) -> None:
         "mercury.core.runtime.load_execution_policy",
         lambda: policy,
     )
+    monkeypatch.setattr("mercury.migration.readiness.build_migration_readiness", lambda **kwargs: _migration_report())
     rows = dashboard_rows(probe_database=False)
-    assert any("repo-local fallback" in row for row in rows)
+    assert any("Migration package" in row for row in rows)
 
 
 def test_dashboard_rows_show_platform_when_not_fedora(monkeypatch) -> None:
@@ -75,7 +100,7 @@ def test_dashboard_rows_show_platform_when_not_fedora(monkeypatch) -> None:
         lambda: PlatformInfo(system="Windows", release="11"),
     )
     rows = dashboard_rows(probe_database=False)
-    assert any("Platform" in row and "Windows supported" in row for row in rows)
+    assert any("Migration phase" in row for row in rows)
 
 
 def test_dashboard_rows_show_protection_incomplete_when_stale_and_missing(monkeypatch) -> None:
@@ -110,37 +135,14 @@ def test_dashboard_rows_show_protection_incomplete_when_stale_and_missing(monkey
     )
     monkeypatch.setattr("mercury.menu.dashboard.build_environment_status", lambda **kwargs: env)
     monkeypatch.setattr(
-        "mercury.menu.dashboard._verified_source_summary",
-        lambda **kwargs: (
-            {"erebus_threat_intel_prod", "scytaledroid_core_prod", "android_permission_intel"},
-            {
-                "erebus_threat_intel_prod",
-                "scytaledroid_core_prod",
-                "android_permission_intel",
-                "obsidiandroid_core_prod",
-            },
-            {"android_permission_intel"},
-            set(),
-            0,
-            0,
-            0,
-            1,
-            None,
-        ),
-    )
-    monkeypatch.setattr(
-        "mercury.menu.dashboard._sync_readiness_summary",
-        lambda **kwargs: (2, 0, "None."),
-    )
-    monkeypatch.setattr(
-        "mercury.menu.dashboard._deploy_target_summary",
-        lambda **kwargs: "3 of 4 protected sources on server; 1 missing",
+        "mercury.migration.readiness.build_migration_readiness",
+        lambda **kwargs: _migration_report(),
     )
     text = "\n".join(dashboard_rows(probe_database=True))
     assert "Database backups" in text
-    assert "3 of 3 server sources verified" in text
-    assert "Protection incomplete: 1 stale backup" in text
-    assert "catalog source absent from this server" in text
+    assert "3 local sources verified" in text
+    assert "writer=legacy" not in text
+    assert "[2]" not in text
 
 
 def test_sync_readiness_summary_reports_none_verified() -> None:

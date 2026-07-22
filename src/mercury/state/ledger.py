@@ -247,9 +247,13 @@ def _coerce_string(value: Any) -> str | None:
 
 def _ensure_state_root(state_root: Path | None = None) -> Path | None:
     root = (state_root or resolve_state_root()).expanduser().resolve()
+    from mercury.core.usb_mount import inactive_operator_mount_blocker
+
+    if inactive_operator_mount_blocker(root):
+        return None
     try:
         root.mkdir(parents=True, exist_ok=True)
-    except PermissionError:
+    except (PermissionError, OSError):
         return None
     return root
 
@@ -260,16 +264,24 @@ def _timestamp() -> str:
 
 def _append_jsonl(path: Path, payload: dict[str, Any]) -> bool:
     try:
+        from mercury.core.usb_mount import inactive_operator_mount_blocker
+
+        if inactive_operator_mount_blocker(path):
+            return False
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, sort_keys=True) + "\n")
-    except PermissionError:
+    except (PermissionError, OSError):
         return False
     return True
 
 
 def _append_csv(path: Path, fieldnames: list[str], row: dict[str, Any]) -> bool:
     try:
+        from mercury.core.usb_mount import inactive_operator_mount_blocker
+
+        if inactive_operator_mount_blocker(path):
+            return False
         path.parent.mkdir(parents=True, exist_ok=True)
         write_header = not path.exists()
         with path.open("a", encoding="utf-8", newline="") as handle:
@@ -277,7 +289,7 @@ def _append_csv(path: Path, fieldnames: list[str], row: dict[str, Any]) -> bool:
             if write_header:
                 writer.writeheader()
             writer.writerow({key: row.get(key, "") for key in fieldnames})
-    except PermissionError:
+    except (PermissionError, OSError):
         return False
     return True
 

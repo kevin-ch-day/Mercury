@@ -148,14 +148,14 @@ def test_backup_layout_stable_paths() -> None:
         timestamp=FIXED_TS,
     )
     assert layout.directory == planned_backup_directory(
-        "erebus_threat_intel_prod", FIXED_DATE
+        "erebus_threat_intel_prod", FIXED_DATE, FIXED_TS
     )
     assert layout.full_dump_file == "erebus_threat_intel_prod_20260530_120000.sql.gz"
     assert layout.schema_dump_file == (
         "erebus_threat_intel_prod_20260530_120000.schema.sql.gz"
     )
     assert layout.future_schema_hint() == (
-        "backups/2026-05-30/erebus_threat_intel_prod/"
+        "backups/2026-05-30/erebus_threat_intel_prod/20260530_120000/"
         "erebus_threat_intel_prod_20260530_120000.schema.sql.gz"
     )
 
@@ -178,7 +178,9 @@ def test_build_backup_layout_matches_legacy_helpers() -> None:
         date="2026-05-30",
         timestamp="20260530_120000",
     )
-    assert layout.directory == planned_backup_dir("erebus_threat_intel_prod", "2026-05-30")
+    assert layout.directory == planned_backup_dir(
+        "erebus_threat_intel_prod", "2026-05-30", "20260530_120000"
+    )
     assert layout.full_dump_file in planned_backup_files(
         "erebus_threat_intel_prod", "20260530_120000"
     )
@@ -203,4 +205,3 @@ def test_backup_manifest_model() -> None:
     )
     assert m.backup_kind == "full"
     assert m.verified is False
-

@@ -239,6 +239,7 @@ def print_receiver_handoff_guide(*, checklist: HandoffChecklist | None = None) -
             "./run.sh config init",
             "./run.sh doctor",
             "./run.sh deploy system",
+            "./run.sh deploy dev --dry-run  # optional development recovery databases",
             "./run.sh deploy repos --from-usb",
             "./run.sh restore-check readiness --live",
         ],

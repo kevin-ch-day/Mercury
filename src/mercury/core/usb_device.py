@@ -125,25 +125,32 @@ def log_directory_repair_hint(
 ) -> str:
     """Suggest mount or ownership repair when operator-storage logging is unavailable."""
     from mercury.core.path_permissions import chown_repair_command
+    from mercury.core.usb_mount import resolve_operator_mount, storage_mount_is_active
 
     resolved = log_dir.expanduser().resolve()
-    mount = resolve_usb_mount()
+    mount = resolve_operator_mount()
     try:
         resolved.relative_to(mount.resolve())
+        under_operator = True
     except ValueError:
+        under_operator = False
+
+    if under_operator and not storage_mount_is_active(mount):
+        return "./run.sh storage validate  # mount primary/active operator storage"
+
+    if not under_operator:
         if permission_detail and "owner:" in permission_detail and resolved.exists():
             return chown_repair_command(resolved)
         if resolved.exists():
             return chown_repair_command(resolved)
+        # Legacy USB-only hint when path is not under the active writer mount.
         return USB_REPAIR_COMMAND
 
-    if not usb_mount_is_active(mount):
-        return USB_REPAIR_COMMAND
     if permission_detail and "owner:" in permission_detail:
-        return USB_REPAIR_COMMAND
+        return chown_repair_command(resolved) if resolved.exists() else USB_REPAIR_COMMAND
     if resolved.exists():
-        return USB_REPAIR_COMMAND
-    return USB_REPAIR_COMMAND
+        return chown_repair_command(resolved)
+    return "./run.sh storage validate"
 
 
 def usb_repair_banner(probe: UsbDeviceProbe) -> str | None:

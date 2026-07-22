@@ -7,9 +7,13 @@ import socket
 from pathlib import Path
 
 from mercury.core.environment_status import build_environment_status
-from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
+from mercury.core.execution_policy import (
+    ExecutionPolicy,
+    backup_root_state_is_ready,
+    load_execution_policy,
+)
 from mercury.core.path_permissions import check_path_permission
-from mercury.core.setup_paths import MERCURY_USB_CHOWN_DIRS
+from mercury.core.setup_paths import MERCURY_OPERATOR_STORAGE_DIRS
 from mercury.database.mariadb.errors import MariaDbLiveError
 from mercury.database.mariadb.session import fetch_user_database_names, try_load_mariadb_config
 from mercury.deploy.models import DeploymentPreflight, PreflightCheck
@@ -34,13 +38,11 @@ def _check_privileges(config) -> PreflightCheck:
     )
 
 
-def _usb_writable_check(policy, env) -> PreflightCheck | None:
-    usb = getattr(env, "usb", None)
-    if usb is None or not getattr(usb, "mercury_layout_present", False):
-        return None
+def _operator_storage_writable_check(policy) -> PreflightCheck:
+    """Check configured active storage, not the legacy USB discovery object."""
     blocked_paths: list[str] = []
-    for dirname in MERCURY_USB_CHOWN_DIRS:
-        path = env.usb.mount_path / dirname
+    for dirname in MERCURY_OPERATOR_STORAGE_DIRS:
+        path = policy.operator_mount / dirname
         check = check_path_permission(path, label=dirname)
         if check.needs_repair:
             blocked_paths.append(dirname)
@@ -130,7 +132,7 @@ def run_deployment_preflight(
                 live_only=True,
             )
         )
-    elif resolved.backup_root_state() != "usb-mounted":
+    elif not backup_root_state_is_ready(resolved.backup_root_state()):
         checks.append(
             PreflightCheck(
                 label="Operator backup root",
@@ -146,9 +148,7 @@ def run_deployment_preflight(
                 detail="mounted and configured",
             )
         )
-    usb_writable = _usb_writable_check(resolved, env)
-    if usb_writable is not None:
-        checks.append(usb_writable)
+    checks.append(_operator_storage_writable_check(resolved))
 
     if env.mariadb.service_state == "inactive":
         checks.append(

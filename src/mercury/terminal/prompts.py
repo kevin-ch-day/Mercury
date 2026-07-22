@@ -7,7 +7,14 @@ raw terminal input functions.
 
 from __future__ import annotations
 
+import re
+
 from mercury.terminal.theme import prompt_text, strip_markup
+
+
+# Rich interprets bracketed choice hints such as ``[y/N]`` as markup. Preserve
+# the small set of literal terminal controls before removing real style tags.
+_LITERAL_CONTROL_RE = re.compile(r"\[(?:[yYnN]/[yYnN]|\d+|ok|--|!!|i)\]")
 
 
 def display_prompt(text: str) -> str:
@@ -22,5 +29,13 @@ def input_prompt(text: str) -> str:
 
 def normalize_input_prompt(prompt: str) -> str:
     """Strip any accidental markup from an already-built prompt string."""
-    return strip_markup(prompt)
+    literals: list[str] = []
 
+    def preserve(match: re.Match[str]) -> str:
+        literals.append(match.group(0))
+        return f"__MERCURY_LITERAL_CONTROL_{len(literals) - 1}__"
+
+    plain = strip_markup(_LITERAL_CONTROL_RE.sub(preserve, prompt))
+    for index, literal in enumerate(literals):
+        plain = plain.replace(f"__MERCURY_LITERAL_CONTROL_{index}__", literal)
+    return plain

@@ -106,6 +106,41 @@ def test_ask_yes_no_accepts_defaults() -> None:
         menu_prompts.set_prompt_reader(None)
 
 
+def test_ask_yes_no_uses_one_explicit_default_no_prompt() -> None:
+    seen: list[str] = []
+    menu_prompts.set_prompt_reader(lambda prompt: seen.append(prompt) or "y")
+    try:
+        assert menu_prompts.ask_yes_no("Proceed?", default=False) is True
+    finally:
+        menu_prompts.set_prompt_reader(None)
+    assert seen == ["\nProceed? [y/N]: "]
+
+
+def test_prompt_normalizer_preserves_literal_yes_no_hint() -> None:
+    assert menu_prompts.normalize_input_prompt("Sync now? [y/N]: ") == "Sync now? [y/N]: "
+
+
+def test_yes_no_declines_non_interactive_input(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _NonInteractive:
+        def isatty(self) -> bool:
+            return False
+
+    monkeypatch.setattr("sys.stdin", _NonInteractive())
+    monkeypatch.setattr("sys.stdout", _NonInteractive())
+    assert menu_prompts.ask_yes_no("Proceed?", default=False) is None
+    assert menu_prompts.ask_confirmation_phrase("SYNC DEV") is False
+
+
+def test_wait_for_continue_skips_non_interactive_input(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _NonInteractive:
+        def isatty(self) -> bool:
+            return False
+
+    monkeypatch.setattr("sys.stdin", _NonInteractive())
+    monkeypatch.setattr("sys.stdout", _NonInteractive())
+    menu_prompts.wait_for_continue()
+
+
 def test_ask_yes_no_parses_answer() -> None:
     inputs = iter(["yes", "n"])
     menu_prompts.set_prompt_reader(lambda _prompt: next(inputs))

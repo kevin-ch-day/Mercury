@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from mercury.core.execution_policy import load_execution_policy
+from mercury.core.execution_policy import backup_root_state_is_ready, load_execution_policy
 from mercury.core.runtime import should_probe_database_status
 from mercury.state.summary import build_state_summary
 from mercury.transfer.bundle import (
@@ -50,6 +50,17 @@ class HandoffChecklist(BaseModel):
             seen.add(step.action)
             actions.append(step.action)
         return actions
+
+
+def aggregate_handoff_status(steps: list[HandoffStep], *, package_status: str) -> str:
+    """Checklist failures override package-level warnings for operator safety."""
+    failed = sum(step.status == "fail" for step in steps)
+    warned = sum(step.status == "warn" for step in steps)
+    if failed:
+        return f"blocked · {failed} failed check" + ("s" if failed != 1 else "")
+    if warned or package_status != "complete":
+        return "complete with warnings"
+    return "complete"
 
 
 def _path_mtime(path: Path | None) -> datetime | None:
@@ -109,7 +120,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
     steps: list[HandoffStep] = []
 
     root_state = policy.backup_root_state()
-    if root_state == "usb-mounted":
+    if backup_root_state_is_ready(root_state):
         steps.append(
             HandoffStep(
                 step_key="usb_root",
@@ -125,7 +136,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 label="Operator backup root",
                 status="fail",
                 detail=root_state,
-                action="./run.sh repair-usb",
+                action="./run.sh storage validate",
             )
         )
 
@@ -306,8 +317,11 @@ def build_handoff_checklist_from_bundle(
         else None
     )
     db_index = _latest_glob_file(manifest_dir, "**/database_transfer_manifest_*.json")
+    steps = _build_steps(bundle, policy=policy)
     return HandoffChecklist(
-        handoff_status=handoff_status_for_bundle(bundle),
+        handoff_status=aggregate_handoff_status(
+            steps, package_status=handoff_status_for_bundle(bundle)
+        ),
         database_package=database_package_status_for_bundle(bundle),
         repository_package=repository_package_status_for_bundle(bundle),
         latest_transfer_manifest=str(transfer_path) if transfer_path else None,
@@ -315,7 +329,7 @@ def build_handoff_checklist_from_bundle(
         latest_database_bundle_manifest=str(db_index) if db_index else None,
         latest_database_bundle_age=_artifact_age_label(db_index),
         state_bundle_rows=rows,
-        steps=_build_steps(bundle, policy=policy),
+        steps=steps,
     )
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import stat
 import os
 from pathlib import Path
 import subprocess
@@ -11,6 +12,11 @@ import subprocess
 import pytest
 
 from mercury.repo.bundle import build_repo_bundle_plan, execute_repo_bundle_plan
+from mercury.repo.offline_clone import (
+    _subprocess_error_detail,
+    build_offline_clone_plan,
+    execute_offline_clone_plan,
+)
 from mercury.repo.config import (
     RepoBundleSettings,
     RepoDefinition,
@@ -38,6 +44,12 @@ def _git(path: Path, *args: str) -> None:
         text=True,
         env=env,
     )
+
+
+def _git_output(path: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=path, check=True, capture_output=True, text=True
+    ).stdout.strip()
 
 
 def _make_repo(tmp_path: Path, name: str) -> Path:
@@ -68,6 +80,111 @@ def test_inspect_repositories_reports_dirty_and_untracked(tmp_path: Path) -> Non
     assert status.dirty is True
     assert status.untracked_count == 1
     assert status.state_label == "dirty"
+
+
+def test_offline_clone_sync_creates_independent_hdd_worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source = _make_repo(tmp_path, "source")
+    status = inspect_repositories([RepoDefinition(key="source", display_name="Source", path=source)])[0]
+    hdd = tmp_path / "hdd"
+    plan = build_offline_clone_plan([status], root=hdd / "mercury_repo_clones")
+
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_operator_mount", lambda **kwargs: hdd)
+    monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
+    executed = execute_offline_clone_plan(plan)
+
+    entry = executed.entries[0]
+    assert entry.executed is True
+    assert entry.action == "clone"
+    assert entry.destination_path != source
+    assert (entry.destination_path / "README.md").is_file()
+    assert _git_output(entry.destination_path, "rev-parse", "HEAD") == status.commit
+    assert executed.receipt_path is not None and executed.receipt_path.is_file()
+    assert stat.S_IMODE(executed.receipt_path.stat().st_mode) == 0o600
+    receipt = json.loads(executed.receipt_path.read_text(encoding="utf-8"))
+    assert receipt["repositories"][0]["commit"] == status.commit
+    assert receipt["repositories"][0]["synced"] is True
+
+    (entry.destination_path / "README.md").write_text("offline edit\n", encoding="utf-8")
+    blocked = build_offline_clone_plan([status], root=hdd / "mercury_repo_clones")
+    assert blocked.entries[0].action == "blocked"
+    assert "local changes" in (blocked.entries[0].error or "")
+
+
+def test_offline_clone_preview_blocks_damaged_copy_before_head_comparison(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _make_repo(tmp_path, "source")
+    status = inspect_repositories([RepoDefinition(key="source", display_name="Source", path=source)])[0]
+    hdd = tmp_path / "hdd"
+    destination = hdd / "mercury_repo_clones" / "source"
+    subprocess.run(["git", "clone", "--no-hardlinks", str(source), str(destination)], check=True, capture_output=True, text=True)
+    monkeypatch.setattr(
+        "mercury.repo.offline_clone._destination_integrity_error",
+        lambda _path: "pack index unavailable",
+    )
+
+    plan = build_offline_clone_plan([status], root=hdd / "mercury_repo_clones")
+
+    assert plan.entries[0].action == "blocked"
+    assert "integrity check failed" in (plan.entries[0].error or "")
+
+
+def test_offline_clone_error_detail_is_bounded() -> None:
+    exc = subprocess.CalledProcessError(
+        1, ["git", "fetch"], stderr="one\ntwo\nthree\nfour\nfive\n",
+    )
+
+    detail = _subprocess_error_detail(exc)
+
+    assert detail == "one | two | three | … 2 additional Git error line(s)"
+
+
+def test_failed_fresh_offline_clone_leaves_no_managed_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _make_repo(tmp_path, "source")
+    status = inspect_repositories([RepoDefinition(key="source", display_name="Source", path=source)])[0]
+    hdd = tmp_path / "hdd"
+    plan = build_offline_clone_plan([status], root=hdd / "mercury_repo_clones")
+
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_operator_mount", lambda **kwargs: hdd)
+    monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
+    monkeypatch.setattr(
+        "mercury.repo.offline_clone._head",
+        lambda _path: (_ for _ in ()).throw(ValueError("forced verification failure")),
+    )
+
+    executed = execute_offline_clone_plan(plan)
+
+    assert executed.entries[0].action == "blocked"
+    assert not executed.entries[0].destination_path.exists()
+    assert not list(executed.root.glob(".source.staging-*"))
+
+
+def test_offline_clone_terminal_marks_executed_entries_as_synced(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    from mercury.repo.offline_clone import OfflineCloneEntry, OfflineClonePlan
+    from mercury.repo.offline_terminal import print_offline_clone_plan
+
+    plan = OfflineClonePlan(
+        root=tmp_path,
+        entries=[
+            OfflineCloneEntry(
+                key="mercury",
+                display_name="Mercury",
+                source_path=tmp_path / "source",
+                destination_path=tmp_path / "copy",
+                commit="a" * 40,
+                source_dirty=True,
+                action="clone",
+                executed=True,
+            )
+        ],
+    )
+
+    print_offline_clone_plan(plan, executed=True)
+    text = capsys.readouterr().out
+    assert "synced" in text
+    assert "source dirty" in text
 
 
 def test_inspect_repositories_reports_ahead_behind_when_available(tmp_path: Path) -> None:
@@ -109,7 +226,7 @@ def test_execute_repo_bundle_plan_writes_bundle_manifest_and_runbook(
     plan = build_repo_bundle_plan(statuses, settings)
     state_root = tmp_path / "state"
 
-    monkeypatch.setattr("mercury.core.usb_mount.resolve_usb_mount", lambda **kwargs: usb_root)
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_operator_mount", lambda **kwargs: usb_root)
     monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
     monkeypatch.setattr("mercury.state.ledger.resolve_state_root", lambda policy=None: state_root)
 
@@ -119,6 +236,8 @@ def test_execute_repo_bundle_plan_writes_bundle_manifest_and_runbook(
     assert entry.planned_bundle_path.exists()
     assert entry.planned_manifest_path.exists()
     assert entry.planned_runbook_path.exists()
+    assert stat.S_IMODE(entry.planned_bundle_path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(entry.planned_bundle_path.parent.stat().st_mode) == 0o700
 
     manifest = json.loads(entry.planned_manifest_path.read_text(encoding="utf-8"))
     assert manifest["repo_name"] == "ScytaleDroid"
@@ -167,7 +286,7 @@ def test_execute_repo_bundle_plan_prunes_older_repo_artifacts_after_success(
             return cls.current.astimezone(tz)
 
     monkeypatch.setattr("mercury.repo.bundle.datetime", _FakeDateTime)
-    monkeypatch.setattr("mercury.core.usb_mount.resolve_usb_mount", lambda **kwargs: usb_root)
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_operator_mount", lambda **kwargs: usb_root)
     monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
     monkeypatch.setattr("mercury.state.ledger.resolve_state_root", lambda policy=None: state_root)
 
@@ -279,6 +398,32 @@ def test_render_repo_config_contains_expected_entries(tmp_path: Path) -> None:
     assert 'display_name = "Mercury"' in text
     assert f'path = "{tmp_path / "Mercury"}"' in text
     assert "[repos.erebus_engine]" in text
+
+
+def test_bundle_plan_excludes_repositories_outside_migration_scope(tmp_path: Path) -> None:
+    from mercury.repo.bundle import build_repo_bundle_plan
+    from mercury.repo.config import RepoBundleSettings
+    from mercury.repo.status import RepoStatus
+
+    settings = RepoBundleSettings(
+        repo_backup_root=tmp_path / "bundles",
+        manifest_dir=tmp_path / "manifests",
+        runbook_dir=tmp_path / "runbooks",
+    )
+    statuses = [
+        RepoStatus(key="included", display_name="Included", path=tmp_path / "included"),
+        RepoStatus(
+            key="excluded",
+            display_name="Excluded",
+            path=tmp_path / "excluded",
+            dirty=True,
+            migration_scope=False,
+        ),
+    ]
+
+    plan = build_repo_bundle_plan(statuses, settings)
+
+    assert [entry.key for entry in plan.entries] == ["included"]
 
 
 def test_write_local_repo_config_writes_existing_known_paths(
