@@ -6,6 +6,14 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  MERCURY_NO_COLOR: "1"
+  NO_COLOR: "1"
+  COLUMNS: "120"
+  MERCURY_DRY_RUN: "1"
+  MERCURY_LIVE_ACTIONS: "0"
+  TZ: UTC
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -36,6 +44,9 @@ jobs:
 
       - name: Run tests
         run: python -m pytest -q
+        env:
+          # Force offline local.toml even if a future checkout ever ships one.
+          MERCURY_LOCAL_CONFIG: ${{ runner.temp }}/mercury-ci-absent-local.toml
 
       - name: Smoke test CLI entrypoints
         run: |

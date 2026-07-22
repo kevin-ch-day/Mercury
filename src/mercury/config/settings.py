@@ -2,7 +2,7 @@
 
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.platform import detect_platform
-from mercury.core.paths import DATABASES_LOCAL, LOCAL_CONFIG, REPOS_LOCAL
+from mercury.core.paths import DATABASES_LOCAL, REPOS_LOCAL, resolve_local_config
 from mercury.repo.config import load_repo_definitions
 from mercury.database.core import configured_database_names
 from mercury.database.mariadb.session import try_load_mariadb_config
@@ -26,7 +26,9 @@ def config_status() -> dict[str, str]:
             "present" if DATABASES_LOCAL.exists() else "not configured (use databases.example.toml)"
         ),
         "local.toml": (
-            "present" if LOCAL_CONFIG.exists() else "not configured (use local.example.toml)"
+            "present"
+            if resolve_local_config().exists()
+            else "not configured (use local.example.toml)"
         ),
         "repos.toml": (
             "present" if REPOS_LOCAL.exists() else "not configured (use repos.example.toml)"

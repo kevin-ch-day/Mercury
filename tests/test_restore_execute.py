@@ -326,15 +326,30 @@ def test_restore_check_run_cli_exits_nonzero_on_post_import_verification_failure
     assert "verification failed" in result.stdout.lower()
 
 # merged from test_restore_menu.py
-def test_run_restore_menu_non_interactive(capsys: pytest.CaptureFixture[str]) -> None:
+def test_run_restore_menu_non_interactive(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mercury.core.execution_policy import ExecutionPolicy
+
+    monkeypatch.setattr("mercury.restore.interactive_menu._load_plans", lambda: [])
+    monkeypatch.setattr(
+        "mercury.restore.interactive_menu.load_execution_policy",
+        lambda: ExecutionPolicy(
+            dry_run=True,
+            live_actions_enabled=False,
+            backup_root=Path("/tmp/mercury-restore-menu"),
+            allow_unsafe_backup_root=True,
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.restore.interactive_menu._restorecheck_names_on_server",
+        lambda: [],
+    )
     run_restore_menu(interactive=False)
     out = capsys.readouterr().out
     assert "Restore-check Operations" in out
-    assert "Ready sources" in out
-    assert "Blocked sources" in out
-    assert "Plan mode" in out
-    assert "DATABASE" in out
-    assert "STATUS" in out
+    assert "No backup sources found" in out
     assert "\n      [1] Refresh" in out
-    assert "Run restore-checks" in out
+    assert "Run restore-checks (none ready)" in out
     assert "[0] Back" in out

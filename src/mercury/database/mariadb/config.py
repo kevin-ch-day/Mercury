@@ -6,7 +6,7 @@ from pathlib import Path
 import tomllib
 from pydantic import BaseModel, Field
 
-from mercury.core.paths import LOCAL_CONFIG, LOCAL_EXAMPLE
+from mercury.core.paths import LOCAL_EXAMPLE, resolve_local_config
 
 DEFAULT_PASSWORD_ENV = "MERCURY_MARIADB_PASSWORD"
 DEFAULT_UNIX_SOCKET = "/var/lib/mysql/mysql.sock"
@@ -64,11 +64,11 @@ def _resolve_password(mariadb: dict[str, object], *, optional: bool = False) -> 
 
 def load_mariadb_config(path: Path | None = None) -> MariaDbConnectionConfig:
     """Load [mariadb] from config/local.toml."""
-    config_path = path or LOCAL_CONFIG
+    config_path = path or resolve_local_config()
     if not config_path.exists():
         raise MariaDbConfigError(
             f"{config_path} not found. Run: mercury config init\n"
-            f"Then configure [mariadb] in {LOCAL_CONFIG.name} "
+            f"Then configure [mariadb] in {resolve_local_config().name} "
             f"(see {LOCAL_EXAMPLE.name})."
         )
 

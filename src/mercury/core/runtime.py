@@ -1,7 +1,7 @@
 """Runtime mode and operator status for menu/CLI."""
 
 from mercury.core.execution_policy import backup_root_state_is_ready, load_execution_policy
-from mercury.core.paths import LOCAL_CONFIG, REPO_ROOT
+from mercury.core.paths import REPO_ROOT, resolve_local_config
 from mercury.core.safety import MODE_SEED
 
 try:
@@ -79,7 +79,7 @@ def operator_status(*, database_connected: bool | None = None, probe_database: b
         database_connected = False
 
     db_label = "connected" if database_connected else "not connected"
-    if database_connected and LOCAL_CONFIG.exists():
+    if database_connected and resolve_local_config().exists():
         cfg = None
         try:
             from mercury.database.mariadb.session import try_load_mariadb_config

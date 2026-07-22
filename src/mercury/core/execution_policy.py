@@ -9,7 +9,7 @@ from pathlib import Path
 
 import tomllib
 
-from mercury.core.paths import LOCAL_CONFIG, REPO_ROOT
+from mercury.core.paths import REPO_ROOT, resolve_local_config
 from mercury.core.platform import detect_platform
 from mercury.core.safety import DRY_RUN_ONLY, LIVE_ACTIONS_ENABLED
 from mercury.core.usb_mount import (
@@ -293,7 +293,7 @@ def resolve_backup_root(
     if env_value and str(env_value).strip():
         return Path(str(env_value).strip()).expanduser().resolve()
 
-    config_path = local_config or LOCAL_CONFIG
+    config_path = local_config or resolve_local_config()
     section = _load_mercury_section(config_path)
     configured = section.get("backup_root")
     if configured and str(configured).strip():
@@ -322,7 +322,7 @@ def load_execution_policy(
     - MERCURY_DRY_RUN / MERCURY_LIVE_ACTIONS environment variables
     - explicit overrides (tests)
     """
-    config_path = local_config or LOCAL_CONFIG
+    config_path = local_config or resolve_local_config()
     section = _load_mercury_section(config_path)
 
     dry_run = DRY_RUN_ONLY

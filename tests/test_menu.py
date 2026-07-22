@@ -133,6 +133,24 @@ def test_handle_sync_plan_returns_to_menu_without_footer(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    from mercury.sync.readiness import SyncReadinessEntry, SyncReadinessReport
+
+    report = SyncReadinessReport(
+        mode="demo",
+        backup_root="/tmp/mercury-sync-menu",
+        entries=[
+            SyncReadinessEntry(
+                prod="erebus_threat_intel_prod",
+                expected_dev="erebus_threat_intel_dev",
+                dev_listed=True,
+                project="Erebus",
+                ready_for_sync_planning=True,
+            )
+        ],
+        ready_count=1,
+        blocked_count=0,
+    )
+    monkeypatch.setattr("mercury.sync.interactive_menu._load_report", lambda: report)
     monkeypatch.setattr("mercury.sync.interactive_menu.read_sync_choice", lambda: "0")
     assert handle_menu_choice("2") == "continue"
     out = capsys.readouterr().out

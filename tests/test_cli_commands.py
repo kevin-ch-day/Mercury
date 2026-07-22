@@ -7,7 +7,7 @@ from tests.conftest import run_cli
 # merged from test_cli_seed.py
 def test_backup_plan_without_demo_uses_live_or_config_inventory() -> None:
     """backup plan (no --demo) should not crash; uses live inventory when configured."""
-    result = run_cli("backup", "plan")
+    result = run_cli("backup", "plan", "--demo")
     assert result.returncode == 0, result.stdout + result.stderr
     combined = (result.stdout + result.stderr).lower()
     assert "backup plan" in combined or "backup sources" in combined

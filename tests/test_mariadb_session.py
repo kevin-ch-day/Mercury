@@ -146,18 +146,15 @@ def test_live_and_demo_inventory_same_display_fields(
 def test_cli_discover_without_config_fails(tmp_path: Path) -> None:
     empty_config = tmp_path / "config"
     empty_config.mkdir()
-    (empty_config / "local.toml").write_text("[mercury]\nmode='seed'\n", encoding="utf-8")
+    absent = empty_config / "local.toml"
 
-    env = subprocess_env()
+    env = subprocess_env({"MERCURY_LOCAL_CONFIG": str(absent)})
     env.pop("MERCURY_MARIADB_PASSWORD", None)
 
     result = run_cli("db", "discover", cwd=tmp_path, env=env)
     combined = result.stdout + result.stderr
-    if (Path(__file__).resolve().parents[1] / "config" / "local.toml").exists():
-        assert result.returncode == 0 or "demo" in combined.lower() or "local.toml" in combined.lower()
-    else:
-        assert result.returncode != 0
-        assert "demo" in combined.lower() or "local.toml" in combined.lower()
+    assert result.returncode != 0
+    assert "demo" in combined.lower() or "local.toml" in combined.lower()
 
 
 def test_system_databases_constant() -> None:
@@ -227,16 +224,12 @@ def test_probe_display_includes_version(capsys: pytest.CaptureFixture[str]) -> N
 
 
 def test_cli_db_ping_without_config() -> None:
-    from tests.conftest import repo_local_config, run_cli
+    from tests.conftest import run_cli, subprocess_env
 
-    result = run_cli("db", "ping")
-    if repo_local_config().exists():
-        assert result.returncode == 0
-        assert "MariaDB" in result.stdout
-        assert "connected" in result.stdout.lower() or "mariadb" in result.stdout.lower()
-    else:
-        assert result.returncode != 0
-        assert "local.toml" in (result.stdout + result.stderr).lower()
+    absent = "/tmp/mercury-pytest-absent-local.toml"
+    result = run_cli("db", "ping", env=subprocess_env({"MERCURY_LOCAL_CONFIG": absent}))
+    assert result.returncode != 0
+    assert "local.toml" in (result.stdout + result.stderr).lower()
 
 
 def test_probe_requires_config_when_no_config_passed(tmp_path: Path) -> None:

@@ -19,7 +19,7 @@ from mercury.database.mariadb.config import (
     load_mariadb_config,
 )
 from mercury.database.mariadb.errors import MariaDbDriverMissingError, MariaDbLiveError
-from mercury.core.paths import LOCAL_CONFIG
+from mercury.core.paths import resolve_local_config
 
 SYSTEM_DATABASES = frozenset(
     {
@@ -202,7 +202,7 @@ def probe_mariadb_server(
 
     No CREATE/DROP/ALTER/INSERT/UPDATE/DELETE. Safe to run before backups are enabled.
     """
-    path = config_path or LOCAL_CONFIG
+    path = config_path or resolve_local_config()
     cfg = config
     if cfg is None:
         cfg = load_mariadb_config(path)

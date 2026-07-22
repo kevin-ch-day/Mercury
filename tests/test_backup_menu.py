@@ -405,7 +405,7 @@ def test_backup_menu_uses_human_last_backup_format(
         plan = build_backup_plan(["android_permission_intel"])
         _render_backup_screen(plan, show_title=False)
         out = capsys.readouterr().out
-        assert "6/9/2026 10:01 AM CDT" in out
+        assert "6/9/2026 10:01 AM" in out
         assert "1h ago" not in out
         assert "MiB" in out
         assert "Backup mode:" not in out

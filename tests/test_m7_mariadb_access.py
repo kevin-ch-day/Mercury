@@ -19,6 +19,7 @@ from tests.conftest import (
     platform_prod_databases_present,
     repo_local_config,
     run_cli,
+    subprocess_env,
 )
 
 LOCAL_CONFIG = repo_local_config()
@@ -31,6 +32,11 @@ def _client_config() -> MariaDbConnectionConfig:
 
 def _live_mariadb_available() -> bool:
     return LOCAL_CONFIG.exists() and mariadb_client_connects(SOCKET_PATH)
+
+
+def _live_cli_env() -> dict[str, str]:
+    """Subprocess env that still sees the operator local.toml for live DB CLI tests."""
+    return subprocess_env({"MERCURY_LOCAL_CONFIG": str(LOCAL_CONFIG)})
 
 
 @pytest.mark.skipif(not mariadb_client_connects(SOCKET_PATH), reason="MariaDB client connection unavailable")
@@ -100,7 +106,7 @@ unix_socket = "/var/lib/mysql/mysql.sock"
 def test_cli_db_ping_with_local_config() -> None:
     if not _live_mariadb_available():
         pytest.skip("local config or MariaDB socket unavailable")
-    result = run_cli("db", "ping")
+    result = run_cli("db", "ping", env=_live_cli_env())
     assert result.returncode == 0, result.stdout + result.stderr
     assert "connected" in result.stdout.lower()
     assert "MariaDB" in result.stdout or "mariadb" in result.stdout.lower()
@@ -111,7 +117,7 @@ def test_cli_db_discover_live() -> None:
         pytest.skip("local config or MariaDB connection unavailable")
     if not platform_prod_databases_present():
         pytest.skip("Platform prod databases not present on MariaDB server")
-    result = run_cli("db", "discover")
+    result = run_cli("db", "discover", env=_live_cli_env())
     assert result.returncode == 0, result.stdout + result.stderr
     assert "erebus_threat_intel_prod" in result.stdout
 
@@ -119,6 +125,6 @@ def test_cli_db_discover_live() -> None:
 def test_cli_db_access() -> None:
     if not _live_mariadb_available():
         pytest.skip("local config or MariaDB socket unavailable")
-    result = run_cli("db", "access")
+    result = run_cli("db", "access", env=_live_cli_env())
     assert result.returncode == 0, result.stdout + result.stderr
     assert "PLATFORM DATABASE ACCESS" in result.stdout or "Platform database access" in result.stdout

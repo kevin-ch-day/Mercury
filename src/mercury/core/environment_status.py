@@ -20,7 +20,7 @@ from mercury.core.usb_mount import (
 )
 from mercury.core.path_permissions import PathPermissionCheck
 from mercury.core.setup_paths import assess_mercury_path_permissions
-from mercury.core.paths import DATABASES_LOCAL, LOCAL_CONFIG, REPOS_LOCAL
+from mercury.core.paths import DATABASES_LOCAL, REPOS_LOCAL, resolve_local_config
 from mercury.core.storage_status import backup_root_summary_label
 from mercury.database.mariadb.probe import probe_client_tooling
 
@@ -104,7 +104,7 @@ class EnvironmentStatus:
 
 def assess_config_setup() -> ConfigSetupStatus:
     return ConfigSetupStatus(
-        local_toml_present=LOCAL_CONFIG.exists(),
+        local_toml_present=resolve_local_config().exists(),
         databases_toml_present=DATABASES_LOCAL.exists(),
         repos_toml_present=REPOS_LOCAL.exists(),
     )

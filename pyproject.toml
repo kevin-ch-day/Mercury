@@ -38,3 +38,6 @@ packages = ["src/mercury"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "uses_operator_local_config: allow reading the real config/local.toml during the test",
+]

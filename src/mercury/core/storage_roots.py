@@ -15,7 +15,7 @@ from typing import Any
 import tomllib
 from pydantic import BaseModel
 
-from mercury.core.paths import LOCAL_CONFIG
+from mercury.core.paths import resolve_local_config
 from mercury.core.storage_roles import (
     CONTROL_DIRNAME,
     DEFAULT_FILESYSTEM_TYPE,
@@ -312,7 +312,7 @@ def load_storage_config(
     Until cutover, missing ``[storage]`` yields legacy USB as ``transition_source``
     and ``active_write_role=legacy``, matching current operational behavior.
     """
-    config_path = local_config or LOCAL_CONFIG
+    config_path = local_config or resolve_local_config()
     base = default_storage_config()
     data: dict[str, Any] = {}
     if config_path.exists():

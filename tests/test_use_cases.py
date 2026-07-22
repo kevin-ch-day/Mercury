@@ -105,7 +105,7 @@ def test_cli_backup_batch_dry_run() -> None:
 
 
 def test_cli_sync_readiness() -> None:
-    result = run_cli("sync", "readiness")
+    result = run_cli("sync", "readiness", "--demo")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Backup root:" in result.stdout
     assert "PROJECT" in result.stdout

@@ -581,8 +581,46 @@ def test_dry_run_plan_treats_privilege_gap_as_warning_not_blocker(
     policy = _usb_policy(tmp_path)
     _seed_all_verified(policy)
     monkeypatch.setattr(
+        "mercury.deploy.preflight.build_environment_status",
+        lambda **kwargs: SimpleNamespace(
+            config=SimpleNamespace(initialized=True, local_toml_present=True),
+            mariadb=SimpleNamespace(
+                service_state="active",
+                mariadb_client_found=True,
+                connection_works=True,
+                configured_user="linuxadmin",
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.deploy.preflight.try_load_mariadb_config",
+        lambda: MariaDbConnectionConfig(
+            host="127.0.0.1",
+            port=3306,
+            user="linuxadmin",
+            password="",
+            use_client=True,
+            unix_socket="/var/lib/mysql/mysql.sock",
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.deploy.plan.try_load_mariadb_config",
+        lambda: MariaDbConnectionConfig(
+            host="127.0.0.1",
+            port=3306,
+            user="linuxadmin",
+            password="",
+            use_client=True,
+            unix_socket="/var/lib/mysql/mysql.sock",
+        ),
+    )
+    monkeypatch.setattr(
         "mercury.deploy.preflight.deployment_grants_sufficient",
         lambda _cfg: (False, "missing grants: CREATE"),
+    )
+    monkeypatch.setattr(
+        "mercury.deploy.preflight.fetch_user_database_names",
+        lambda _cfg: [],
     )
     plan = build_deployment_plan(policy=policy, execute=False)
     assert plan.candidates

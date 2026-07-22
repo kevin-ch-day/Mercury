@@ -69,7 +69,7 @@ def _env_result() -> EnvProbeResult:
 def test_assess_config_setup_reflects_missing_local_files(monkeypatch, tmp_path: Path) -> None:
     config_dir = tmp_path / "config"
     config_dir.mkdir()
-    monkeypatch.setattr("mercury.core.environment_status.LOCAL_CONFIG", config_dir / "local.toml")
+    monkeypatch.setenv("MERCURY_LOCAL_CONFIG", str(config_dir / "local.toml"))
     monkeypatch.setattr("mercury.core.environment_status.DATABASES_LOCAL", config_dir / "databases.toml")
     monkeypatch.setattr("mercury.core.environment_status.REPOS_LOCAL", config_dir / "repos.toml")
 
@@ -154,7 +154,7 @@ def test_build_environment_status_prioritizes_setup_blocker(monkeypatch, tmp_pat
     repo_backups = tmp_path / "repo" / "backups"
     repo_backups.mkdir(parents=True)
 
-    monkeypatch.setattr("mercury.core.environment_status.LOCAL_CONFIG", tmp_path / "missing-local.toml")
+    monkeypatch.setenv("MERCURY_LOCAL_CONFIG", str(tmp_path / "missing-local.toml"))
     monkeypatch.setattr("mercury.core.environment_status.DATABASES_LOCAL", tmp_path / "missing-databases.toml")
     monkeypatch.setattr("mercury.core.environment_status.REPOS_LOCAL", tmp_path / "missing-repos.toml")
     monkeypatch.setattr("mercury.core.environment_status.usb_mount_is_active", lambda path, **kwargs: True)
@@ -860,7 +860,7 @@ def test_build_environment_check_fields_connected(monkeypatch, tmp_path: Path) -
 def test_build_environment_check_fields_not_configured(monkeypatch, tmp_path: Path) -> None:
     config_dir = tmp_path / "config"
     config_dir.mkdir()
-    monkeypatch.setattr("mercury.core.environment_status.LOCAL_CONFIG", config_dir / "local.toml")
+    monkeypatch.setenv("MERCURY_LOCAL_CONFIG", str(config_dir / "local.toml"))
     monkeypatch.setattr("mercury.core.environment_status.DATABASES_LOCAL", config_dir / "databases.toml")
     monkeypatch.setattr("mercury.core.environment_status.REPOS_LOCAL", config_dir / "repos.toml")
     monkeypatch.setattr(

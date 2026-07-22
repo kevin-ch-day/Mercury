@@ -9,7 +9,7 @@ from pathlib import Path
 
 import tomllib
 
-from mercury.core.paths import LOCAL_CONFIG
+from mercury.core.paths import resolve_local_config
 from mercury.core.platform import PlatformInfo, detect_platform
 
 ENV_USB_MOUNT = "MERCURY_USB_MOUNT"
@@ -72,7 +72,7 @@ def resolve_usb_mount(*, local_config: Path | None = None) -> Path:
             )
         return Path(str(env_value).strip()).expanduser().resolve()
 
-    config_path = local_config or LOCAL_CONFIG
+    config_path = local_config or resolve_local_config()
     try:
         from mercury.core.storage_roots import load_storage_config
         from mercury.core.storage_roles import StorageWriteRole
@@ -102,7 +102,7 @@ def resolve_usb_mount(*, local_config: Path | None = None) -> Path:
 
 def resolve_operator_mount(*, local_config: Path | None = None) -> Path:
     """Resolve the currently configured writer mount (legacy before cutover, primary after)."""
-    config_path = local_config or LOCAL_CONFIG
+    config_path = local_config or resolve_local_config()
     try:
         from mercury.core.storage_roots import load_storage_config
         from mercury.core.storage_roles import StorageWriteRole

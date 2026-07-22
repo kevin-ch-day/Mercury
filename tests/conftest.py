@@ -109,8 +109,24 @@ def subprocess_env(extra: dict[str, str] | None = None) -> dict[str, str]:
         ENV_STATE_ROOT,
         tempfile.mkdtemp(prefix="mercury-pytest-state-"),
     )
+    # Match GitHub Actions: no operator local.toml, stable help width, no color.
+    merged.setdefault(
+        "MERCURY_LOCAL_CONFIG",
+        str(Path(tempfile.mkdtemp(prefix="mercury-pytest-nocfg-")) / "local.toml"),
+    )
+    merged.setdefault("MERCURY_NO_COLOR", "1")
+    merged.setdefault("NO_COLOR", "1")
+    merged.setdefault("COLUMNS", "120")
+    merged.setdefault("MERCURY_DRY_RUN", "1")
+    merged.setdefault("MERCURY_LIVE_ACTIONS", "0")
+    merged.pop("MERCURY_FORCE_COLOR", None)
     if extra:
-        merged.update(extra)
+        # Allow callers to clear isolation by passing an empty string.
+        for key, value in extra.items():
+            if value == "" and key in merged:
+                merged.pop(key, None)
+            else:
+                merged[key] = value
     return merged
 
 
@@ -232,6 +248,30 @@ def write_pre_cutover_storage_toml(
         )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
+
+
+@pytest.fixture(autouse=True)
+def _isolate_operator_local_config(
+    request: pytest.FixtureRequest,
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[None]:
+    """Hide operator ``config/local.toml`` so unit tests match clean CI runners.
+
+    Live MariaDB integration modules keep reading the real file via
+    ``repo_local_config()`` / ``live_mariadb_client_config()``. Opt out with
+    ``@pytest.mark.uses_operator_local_config``.
+    """
+    if "uses_operator_local_config" in request.keywords:
+        yield
+        return
+    missing = tmp_path_factory.mktemp("isolated-local-config") / "local.toml"
+    monkeypatch.setenv("MERCURY_LOCAL_CONFIG", str(missing))
+    monkeypatch.setenv("MERCURY_DRY_RUN", "1")
+    monkeypatch.setenv("MERCURY_LIVE_ACTIONS", "0")
+    monkeypatch.setenv("MERCURY_NO_COLOR", "1")
+    monkeypatch.setenv("COLUMNS", "120")
+    yield
 
 
 @pytest.fixture(autouse=True)
