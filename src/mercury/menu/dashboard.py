@@ -217,6 +217,18 @@ def _migration_dashboard_rows(report, policy) -> list[str]:
     unresolved = report.unresolved_checks
     free = backup_root_free_space_label(policy)
     active_text = active.summary
+    try:
+        from mercury.storage.host_maintenance import load_host_maintenance
+
+        host = load_host_maintenance()
+        if host.storage_availability in {"detaching", "detached"} or not host.writes_allowed:
+            active_text = (
+                f"HDD {host.storage_availability} · writes disabled · "
+                "destination rehearsal (cutover NOT complete)"
+            )
+            free = None
+    except OSError:
+        pass
     if free:
         active_text += f" · {free} free"
     mirror_text = "Verified" if mirror.state.value == "PASS" else mirror.summary
