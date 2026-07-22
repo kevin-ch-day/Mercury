@@ -261,8 +261,12 @@ def _migration_dashboard_rows(report, policy) -> list[str]:
 
 
 def _destination_package_dashboard_line() -> str:
+    from mercury.storage.host_maintenance import load_host_maintenance
     from mercury.storage.retention import load_retention_policy
 
+    host = load_host_maintenance()
+    if host.package_verification_status == "DESTINATION_PACKAGE_VERIFIED" and host.package_id:
+        return f"VERIFIED · {host.package_id}"
     policy = load_retention_policy()
     mercury_pending = not policy.current_destination_mercury_commit
     size_note = "allowlist only · Scytale excluded"
