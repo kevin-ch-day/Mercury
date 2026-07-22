@@ -563,9 +563,30 @@ def build_document_bodies(
 
     mercury_tree = str(mercury_identity.get("tree") or "")
     erebus_tree = str((erebus_summary.get("repository") or {}).get("tree") or "")
+    mercury_short = mercury_commit[:7] if mercury_commit else "unknown"
+    mercury_bundle_dir = mercury_cap / "bundle"
+    mercury_bundle_name = UNRESOLVED
+    mercury_bundle_prereq_short = UNRESOLVED
+    mercury_bundle_prereq_full = UNRESOLVED
+    _known_prereq = {
+        "2596b85": "2596b8588c868a68d661dfaae23a5609cc77279a",
+        "31ebc49": "31ebc49c8c6a5ecbb012b1f4c1963f6114985092",
+    }
+    if mercury_bundle_dir.is_dir():
+        preferred = sorted(mercury_bundle_dir.glob("mercury_main_*_from_*.bundle"))
+        matching = [p for p in preferred if mercury_short in p.name]
+        any_bundles = matching or preferred or sorted(mercury_bundle_dir.glob("*.bundle"))
+        if any_bundles:
+            chosen = any_bundles[0]
+            mercury_bundle_name = chosen.name
+            if "_from_" in chosen.stem:
+                mercury_bundle_prereq_short = chosen.stem.split("_from_", 1)[1]
+                mercury_bundle_prereq_full = _known_prereq.get(
+                    mercury_bundle_prereq_short, UNRESOLVED
+                )
     mercury_bundle_rel = (
         f".mercury_control/validation/mercury/{mercury_capture_id}/bundle/"
-        f"mercury_main_2596b85_from_31ebc49.bundle"
+        f"{mercury_bundle_name}"
     )
     erebus_bundle_rel = (
         f".mercury_control/validation/erebus/{erebus_capture_id}/"
@@ -876,10 +897,12 @@ def build_document_bodies(
                 or "https://github.com/kevin-ch-day/Mercury.git",
                 "branch": mercury_identity.get("branch") or "main",
                 "bundle_path_relative": mercury_bundle_rel,
+                "bundle_prerequisite_short": mercury_bundle_prereq_short,
+                "bundle_prerequisite_commit": mercury_bundle_prereq_full,
                 "bundle_verify_commands": [
                     f"git bundle verify {mercury_bundle_rel}",
-                    "git clone --no-checkout <seed_repo_with_31ebc49> /tmp/mercury_recon",
-                    "git -C /tmp/mercury_recon checkout --detach 31ebc49c8c6a5ecbb012b1f4c1963f6114985092",
+                    f"git clone --no-checkout <seed_repo_containing_{mercury_bundle_prereq_short}> /tmp/mercury_recon",
+                    f"git -C /tmp/mercury_recon checkout --detach {mercury_bundle_prereq_full}",
                     f"git -C /tmp/mercury_recon fetch {mercury_bundle_rel} HEAD:refs/heads/rebased-main",
                     "git -C /tmp/mercury_recon checkout rebased-main",
                     f"test $(git -C /tmp/mercury_recon rev-parse HEAD) = {mercury_commit}",
