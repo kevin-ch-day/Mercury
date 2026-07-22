@@ -408,8 +408,9 @@ def execute_backup(
 
         if not writes_allowed():
             refusal = (
-                "host maintenance refuses HDD-backed backups "
-                "(storage detached or writes_allowed=false)"
+                "Mercury writes are disabled for safe HDD detach "
+                "(host maintenance writes_allowed=false). "
+                "Use Storage Operations → Reconnect / Validate Mercury HDD to restore writes."
             )
         else:
             refusal = None

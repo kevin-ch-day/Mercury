@@ -51,7 +51,6 @@ from mercury.backup.verification import (
 )
 from mercury.backup.terminal.verify import (
     print_demo_backup_list,
-    print_report_preview,
     print_verification_plan,
 )
 from mercury.backup.terminal.status import print_backup_status_report
@@ -103,7 +102,6 @@ __all__ = [
     "print_backup_plan",
     "print_backup_status_report",
     "print_demo_backup_list",
-    "print_report_preview",
     "print_verification_plan",
     "verify_backup_artifacts",
     "verify_backup_directory",

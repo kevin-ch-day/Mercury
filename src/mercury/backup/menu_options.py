@@ -59,13 +59,30 @@ BACKUP_MENU_OPTIONS: Final[list[tuple[str, str, str, str]]] = [
     ),
 ]
 
+# Actions that write under the Mercury HDD (or mutate manifests / restore schemas).
+BACKUP_MENU_WRITE_ACTIONS: Final[frozenset[str]] = frozenset(
+    {
+        ACTION_FULL_BACKUP,
+        ACTION_PRODUCTION_BACKUP,
+        ACTION_VERIFY,  # stamps manifests when update_manifest=True
+        ACTION_RESTORE_CHECK,  # creates restore-check schemas + ledger evidence
+        ACTION_BUNDLE,
+        ACTION_DEV_BACKUP,
+    }
+)
 
-def backup_menu_render_options(*, backup_ready: bool = True) -> list[tuple[str, str]]:
+DETACH_UNAVAILABLE_SUFFIX = "unavailable · detach mode"
+
+
+def backup_menu_render_options(
+    *,
+    writes_allowed: bool = True,
+) -> list[tuple[str, str]]:
     """Options for ``render_submenu``."""
     options: list[tuple[str, str]] = []
     for key, label, action_id, _help in BACKUP_MENU_OPTIONS:
-        if action_id == ACTION_FULL_BACKUP and not backup_ready:
-            options.append((key, "Run full backup"))
+        if not writes_allowed and action_id in BACKUP_MENU_WRITE_ACTIONS:
+            options.append((key, f"{label}  {DETACH_UNAVAILABLE_SUFFIX}"))
         else:
             options.append((key, label))
     return options

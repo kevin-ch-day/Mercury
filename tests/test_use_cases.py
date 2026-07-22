@@ -123,6 +123,8 @@ def test_cli_restore_check_plan() -> None:
         "plan",
         "--db",
         "erebus_threat_intel_prod",
+        "--backup-id",
+        "missing-backup-id",
         env=env,
     )
     assert result.returncode != 0

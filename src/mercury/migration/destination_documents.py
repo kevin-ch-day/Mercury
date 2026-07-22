@@ -1187,6 +1187,8 @@ def generate_destination_documents(
     historical ``documents/`` tree unless ``overwrite_legacy_documents`` is set
     (tests only).
     """
+    from mercury.storage.host_maintenance import writes_allowed
+
     policy = policy or load_retention_policy()
     stamp = documents_run or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     if overwrite_legacy_documents:
@@ -1199,6 +1201,12 @@ def generate_destination_documents(
         documents_dir=out_dir,
         linked_preview_id=linked_preview_id,
     )
+    if not writes_allowed():
+        result.errors.append(
+            "destination document write refused: host maintenance writes_allowed=false "
+            "(Mercury HDD detach / destination rehearsal in progress)"
+        )
+        return result
     validation = validate_storage_mount(
         mount_path=mount_root,
         expected_uuid=expected_uuid,
@@ -1493,7 +1501,3 @@ def evaluate_package_create_preconditions(
             refusals.extend(verify_document_payload_checksum(doc.payload))
     return refusals
 
-
-# Keep alias used by older callers / tests that imported documents_dir_for as legacy path.
-def documents_dir_for_legacy(mount_root: Path, run_id: str) -> Path:
-    return legacy_documents_dir(mount_root, run_id)

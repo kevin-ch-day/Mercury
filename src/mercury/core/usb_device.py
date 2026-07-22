@@ -113,11 +113,6 @@ def probe_usb_device(*, mount_path: Path | None = None) -> UsbDeviceProbe:
     )
 
 
-def operator_usb_repair_hint(*, mount_path: Path | None = None) -> str:
-    """Return the best single operator command to fix an unmounted Mercury USB."""
-    return USB_REPAIR_COMMAND
-
-
 def log_directory_repair_hint(
     log_dir: Path,
     *,

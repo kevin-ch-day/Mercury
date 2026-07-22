@@ -12,7 +12,6 @@ from mercury.terminal import screen as display_screen
 from mercury.backup.on_disk_index import DemoBackupList, OnDiskBackupList, latest_records_by_database
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.database.core import shared_authority_note
-from mercury.reporting.preview import BackupReportPreview, format_report_preview_markdown
 from mercury.backup.verification import (
     MANIFEST_VERIFIED_STAMP_NOTE,
     BackupVerificationResult,
@@ -239,10 +238,6 @@ def print_on_disk_backup_list(
         if record.created_at:
             output.write(f"  created_at: {display_format.format_human_datetime(record.created_at)}")
     output.write("")
-
-
-def print_report_preview(report: BackupReportPreview) -> None:
-    output.write(format_report_preview_markdown(report))
 
 
 def print_verification_result(result: BackupVerificationResult, *, compact: bool = False) -> None:

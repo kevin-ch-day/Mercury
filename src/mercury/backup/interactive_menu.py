@@ -12,12 +12,14 @@ from mercury.menu import main_display as menu_display
 from mercury.menu import prompts as menu_prompts
 from mercury.terminal import screen as display_screen
 from mercury.backup.batch_runner import (
-    build_full_backup_run_result,
     apply_full_backup_run_evidence,
+    build_full_backup_global_refusal_result,
+    build_full_backup_run_result,
     new_full_backup_run_id,
     run_backup_batch,
     verify_written_backup_batch,
     write_full_backup_run_receipt,
+    write_host_local_refusal_record,
 )
 from mercury.backup import (
     BackupStatusEntry,
@@ -38,7 +40,10 @@ from mercury.backup.terminal.batch import (
     print_backup_batch_result,
     print_batch_small_backup_warnings,
     print_full_backup_run_result,
+    print_global_backup_refusal,
 )
+from mercury.backup.write_preflight import assess_backup_write_preflight
+from mercury.storage.host_maintenance import load_host_maintenance, writes_allowed
 from mercury.backup.terminal.bundle import print_database_bundle_plan
 from mercury.backup.terminal.verify import print_verify_menu_summary, run_verify_all_for_menu
 from mercury.backup.on_disk_index import build_on_disk_backup_list, latest_records_by_database
@@ -71,9 +76,9 @@ def _backup_target_label(policy) -> str:
 
 
 def read_backup_choice() -> str | None:
-    # Keep the backup screen dense: its action list already follows the status table.
+    # Leading blank matches the section gap after [0] Back.
     while True:
-        choice = menu_prompts.ask_stripped("Choice: ")
+        choice = menu_prompts.ask_stripped("\nChoice: ")
         if choice is None or choice == "0":
             return choice
         if choice:
@@ -82,9 +87,22 @@ def read_backup_choice() -> str | None:
 
 
 def _write_backup_fields(fields: dict[str, str]) -> None:
-    """Tab-separate compact backup status rows without changing global reports."""
+    """Write aligned storage-summary fields (label column padded for readability)."""
+    if not fields:
+        return
+    label_width = max(len(name) for name in fields) + 1  # include colon
     for name, value in fields.items():
-        output.write(f"  {name}:\t{value}")
+        label = f"{name}:"
+        output.write(f"  {label:<{label_width}}  {value}")
+
+
+def _write_phase3b_note(warning: str) -> None:
+    from mercury.terminal.theme import hint_text
+
+    for part in warning.splitlines():
+        text = part.strip()
+        if text:
+            output.write(hint_text(text))
 
 
 def _storage_usage_fields(policy) -> dict[str, str]:
@@ -93,9 +111,38 @@ def _storage_usage_fields(policy) -> dict[str, str]:
     usb = discover_usb_target()
     root = policy.backup_root.resolve()
     state = policy.backup_root_state()
-    fields: dict[str, str] = {
+    host = load_host_maintenance()
+    hdd_writes = writes_allowed(host)
+
+    if not hdd_writes:
+        storage_label = "mounted" if root.exists() else "not mounted"
+        if backup_root_state_is_ready(state) and root.exists():
+            storage_label = "mounted and validated"
+        elif state == "usb not mounted":
+            storage_label = "operator storage not mounted"
+        fields: dict[str, str] = {
+            "Backup root": str(root),
+            "Storage": storage_label,
+            "Write state": "disabled · HDD detach maintenance",
+            "Active writer": host.active_write_role or "none",
+            "Backup actions": "unavailable",
+        }
+        if root.exists():
+            try:
+                usage = shutil.disk_usage(root)
+                fields["Free"] = format_bytes(usage.free)
+            except OSError:
+                fields["Free"] = "unknown"
+        else:
+            fields["Free"] = "n/a"
+        return fields
+
+    fields = {
         "Backup root": str(root),
         "Environment": _backup_target_label(policy),
+        "Write state": "enabled",
+        "Active writer": host.active_write_role or "primary",
+        "Backup actions": "available",
     }
     if not usb.mounted:
         try:
@@ -252,12 +299,13 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
     if show_title:
         menu_display.open_screen(BACKUP_SCREEN_TITLE)
     policy = load_execution_policy()
-    backup_ready = policy.backup_execution_allowed()
     _write_backup_fields(_storage_usage_fields(policy))
     display_screen.write_blank()
     status_report = build_backup_status_report(live=should_probe_database_status())
     status_entries = {entry.database: entry for entry in status_report.entries}
     rows = _backup_screen_rows(plan, status_entries=status_entries)
+
+    body_notes: list[tuple[str, str]] = []  # ("warn"|"info"|"hint"|"summary", text)
     if rows:
         table = Table.from_headers(
             ["DATABASE", "FRESHNESS", "VERIFY", "SIZE", "LAST BACKUP"],
@@ -303,23 +351,47 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
                 if only_absent
                 else menu_handoff_problem_summary(problem_parts)
             )
-            output.write(f"[INFO] {message}" if only_absent else f"[WARN] {message}")
+            body_notes.append(("info" if only_absent else "warn", message))
         else:
-            display_screen.write_summary(
-                "All visible production backups are verified and fresh "
-                "(freshness and integrity are separate checks)."
+            body_notes.append(
+                (
+                    "summary",
+                    "All visible production backups are verified and fresh "
+                    "(freshness and integrity are separate checks).",
+                )
             )
     else:
         display_screen.write_status("warn", "No databases in active backup scope.")
+
     for warning in getattr(status_report, "warnings", []) or []:
         # Phase 3B separation is informational, not a repair-style warning.
         if "Phase 3B" in warning:
-            from mercury.terminal.theme import hint_text
-
-            output.write(hint_text(warning))
+            body_notes.append(("hint", warning))
         else:
-            display_screen.write_status("warn", warning)
-    render_submenu(backup_menu_render_options(backup_ready=backup_ready), indent=0)
+            body_notes.append(("status_warn", warning))
+
+    if body_notes:
+        display_screen.write_blank()
+        for kind, text in body_notes:
+            if kind == "warn":
+                output.write(f"[WARN] {text}")
+            elif kind == "info":
+                output.write(f"[INFO] {text}")
+            elif kind == "hint":
+                _write_phase3b_note(text)
+            elif kind == "summary":
+                display_screen.write_summary(text)
+            else:
+                display_screen.write_status("warn", text)
+
+    # One blank line before the numbered menu (after table and any notes).
+    display_screen.write_blank()
+    render_submenu(
+        backup_menu_render_options(
+            writes_allowed=writes_allowed(),
+        ),
+        indent=0,
+    )
 
 
 def _preview_backup_plan(plan: BackupPlanDryRun) -> None:
@@ -340,6 +412,14 @@ def _preview_backup_plan(plan: BackupPlanDryRun) -> None:
 
 def _run_backup(plan: BackupPlanDryRun) -> None:
     """Production-only backup workflow (menu [3])."""
+    preflight = assess_backup_write_preflight()
+    if not preflight.allowed:
+        print_global_backup_refusal(
+            reason="Mercury is in HDD detach maintenance mode",
+            detail_lines=preflight.detail_lines,
+            next_steps=preflight.next_steps,
+        )
+        return
     policy = load_execution_policy()
     batch = run_backup_batch(
         BACKUP_KIND_FULL,
@@ -362,6 +442,15 @@ def _run_development_backup(*, require_confirmation: bool = True):
     """Development-only optional recovery backup (menu [9])."""
     from mercury.backup.batch_runner import resolve_development_backup_sources
 
+    preflight = assess_backup_write_preflight()
+    if not preflight.allowed:
+        print_global_backup_refusal(
+            reason="Mercury is in HDD detach maintenance mode",
+            detail_lines=preflight.detail_lines,
+            next_steps=preflight.next_steps,
+        )
+        return None
+
     sources = resolve_development_backup_sources(live=should_probe_database_status())
     if not sources:
         display_screen.write_summary(
@@ -376,6 +465,7 @@ def _run_development_backup(*, require_confirmation: bool = True):
             "Purpose": "Optional pre-migration recovery capture",
         }
     )
+    display_screen.write_blank()
     display_screen.write_summary(
         "This is not part of routine production protection or the default handoff package."
     )
@@ -415,6 +505,30 @@ def _run_development_backup(*, require_confirmation: bool = True):
 
 def _run_full_backup(plan: BackupPlanDryRun):
     """Full backup: production write+verify, optional development write+verify."""
+    preflight = assess_backup_write_preflight()
+    if not preflight.allowed:
+        started = datetime.now(timezone.utc)
+        run_id = new_full_backup_run_id(now=started)
+        result = build_full_backup_global_refusal_result(
+            run_id=run_id,
+            started_at_utc=started.isoformat(),
+            reason=preflight.reason,
+        )
+        print_global_backup_refusal(
+            reason="Mercury is in HDD detach maintenance mode",
+            detail_lines=preflight.detail_lines,
+            next_steps=preflight.next_steps,
+        )
+        try:
+            audit = write_host_local_refusal_record(result)
+            result = apply_full_backup_run_evidence(result, receipt_path=audit)
+        except Exception:
+            result = apply_full_backup_run_evidence(
+                result, receipt_path=None, receipt_error="host-local refusal audit not written"
+            )
+        print_full_backup_run_result(result)
+        return result
+
     include_dev = menu_prompts.ask_yes_no(
         "Also back up configured development databases for migration recovery?",
         default=False,
@@ -511,6 +625,18 @@ def _run_full_backup(plan: BackupPlanDryRun):
 
 
 def _run_verify_sources() -> None:
+    preflight = assess_backup_write_preflight()
+    if not preflight.allowed:
+        # Manifest stamping writes under the HDD — refuse in detach mode.
+        print_global_backup_refusal(
+            reason=(
+                "Verify with manifest stamping refused. "
+                f"{preflight.reason}"
+            ),
+            detail_lines=preflight.detail_lines,
+            next_steps=preflight.next_steps,
+        )
+        return
     summary = run_verify_all_for_menu(update_manifest=True)
     print_verify_menu_summary(summary)
     display_screen.write_blank()
@@ -524,6 +650,15 @@ def _write_backup_bundle() -> None:
     from mercury.backup.bundle import bundle_package_status
     from mercury.core.handoff_status import handoff_write_ack_prompt, handoff_write_requires_force
     from mercury.menu.prompts import ask_yes_no
+
+    preflight = assess_backup_write_preflight()
+    if not preflight.allowed:
+        print_global_backup_refusal(
+            reason="Mercury is in HDD detach maintenance mode",
+            detail_lines=preflight.detail_lines,
+            next_steps=preflight.next_steps,
+        )
+        return
 
     plan = build_database_bundle_plan(live=should_probe_database_status())
     print_database_bundle_plan(plan, executed=False)
@@ -582,7 +717,18 @@ def run_backup_menu(*, interactive: bool = True) -> None:
             continue
 
         if choice == "5":
-            run_restore_menu()
+            preflight = assess_backup_write_preflight()
+            if not preflight.allowed:
+                print_global_backup_refusal(
+                    reason=(
+                        "Restore-check refused. "
+                        f"{preflight.reason}"
+                    ),
+                    detail_lines=preflight.detail_lines,
+                    next_steps=preflight.next_steps,
+                )
+            else:
+                run_restore_menu()
             show_title = pause_and_redraw()
             continue
 

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import pytest
+
 from mercury.core.storage_roots import default_storage_config
 from mercury.core.usb_mount import assert_operator_storage_path, resolve_operator_mount
 from mercury.core.execution_policy import load_execution_policy
 from mercury.storage.cutover_plan import build_cutover_plan
+from mercury.storage.host_maintenance import HostMaintenanceState, save_host_maintenance
 
 
 def test_cutover_plan_lists_all_coordinated_writer_paths(monkeypatch) -> None:
@@ -61,11 +64,35 @@ def test_operator_storage_guard_accepts_primary_writer_path(tmp_path, monkeypatc
     monkeypatch.setattr(
         "mercury.core.usb_mount.usb_mount_is_active", lambda _mount: True
     )
-
+    # Host maintenance isolation (conftest) leaves writes allowed by default.
     assert_operator_storage_path(
         primary / "mercury_repo_backups",
         operator_mount=resolve_operator_mount(local_config=config),
     )
+
+
+def test_operator_storage_guard_refuses_when_writes_disabled(tmp_path, monkeypatch) -> None:
+    primary = tmp_path / "primary"
+    primary.mkdir()
+    host = tmp_path / "host_maintenance.json"
+    monkeypatch.setenv("MERCURY_HOST_MAINTENANCE_PATH", str(host))
+    save_host_maintenance(
+        HostMaintenanceState(
+            storage_availability="detaching",
+            writes_allowed=False,
+            active_write_role="none",
+        ),
+        path=host,
+    )
+    monkeypatch.setattr(
+        "mercury.core.usb_mount.usb_mount_is_active", lambda _mount: True
+    )
+
+    with pytest.raises(RuntimeError, match="writes_allowed|refused"):
+        assert_operator_storage_path(
+            primary / "mercury_repo_backups",
+            operator_mount=primary,
+        )
 
 
 def test_execution_policy_uses_primary_mount_after_coordinated_path_change(tmp_path) -> None:

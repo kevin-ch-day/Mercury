@@ -72,9 +72,20 @@ def resolve_log_dir(*, override: Path | str | None = None) -> Path:
     configured = section.get("log_dir")
     if configured and str(configured).strip():
         path = Path(str(configured).strip())
-        return path.resolve() if path.is_absolute() else (REPO_ROOT / path).resolve()
+        resolved = path.resolve() if path.is_absolute() else (REPO_ROOT / path).resolve()
+    else:
+        resolved = LOGS_DIR.resolve()
 
-    return LOGS_DIR.resolve()
+    # Detach / write-disabled: never open new log files on the Mercury HDD.
+    try:
+        from mercury.storage.detach_logging import default_detach_log_dir
+        from mercury.storage.host_maintenance import path_is_under_primary_mount, writes_allowed
+
+        if not writes_allowed() and path_is_under_primary_mount(resolved):
+            return default_detach_log_dir().resolve()
+    except Exception:
+        pass
+    return resolved
 
 
 def resolve_log_level(*, override: str | int | None = None) -> int:

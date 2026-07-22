@@ -210,7 +210,3 @@ def load_retention_policy(*, config_path: Path | None = None) -> RetentionPolicy
         ),
         source_path=path,
     )
-
-
-def retention_config_search_paths() -> list[Path]:
-    return [RETENTION_LOCAL, RETENTION_EXAMPLE, REPO_ROOT / "config" / "retention.example.toml"]

@@ -334,6 +334,9 @@ def verify_backup_directory(
     )
     updated_manifest = False
     if update_manifest and result.verified:
+        from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled
+
+        refuse_if_hdd_writes_disabled("backup manifest verification stamp")
         manifest_path = Path(result.manifest_path)
         manifest = _load_manifest(manifest_path)
         if manifest is not None:

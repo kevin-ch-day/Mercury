@@ -70,6 +70,15 @@ def init_command_logging(
         level=log_level,
         log_dir=log_dir,
     )
+    # If host maintenance has disabled HDD writes, force handlers off the Mercury mount.
+    try:
+        from mercury.storage.host_maintenance import writes_allowed
+        from mercury.storage.detach_logging import redirect_logging_off_hdd
+
+        if not writes_allowed() and log_dir is None:
+            redirect_logging_off_hdd()
+    except Exception:
+        pass
     log_session_start(argv=sys.argv)
 
 

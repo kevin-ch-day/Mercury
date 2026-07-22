@@ -197,6 +197,9 @@ def execute_repo_deploy_batch(
         )
 
     if execute and batch.deployed_count:
+        from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled
+
+        refuse_if_hdd_writes_disabled("repo deployment report write")
         report_dir = resolve_repo_deploy_report_dir()
         day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         target = report_dir / day

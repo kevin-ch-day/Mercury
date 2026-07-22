@@ -21,6 +21,23 @@ from mercury.handoff.checklist import build_handoff_checklist
 from mercury.repo.bundle import build_repo_bundle_plan, execute_repo_bundle_plan
 from mercury.transfer import build_transfer_bundle, write_transfer_bundle
 from mercury.transfer.bundle import handoff_status_for_bundle, resolve_transfer_live
+from mercury.backup.write_preflight import assess_backup_write_preflight
+
+
+def _maintenance_block_phase(phase: str) -> HandoffWizardPhaseResult | None:
+    """Refuse HDD-mutating handoff phases while detach maintenance is active."""
+    preflight = assess_backup_write_preflight()
+    if preflight.allowed:
+        return None
+    return HandoffWizardPhaseResult(
+        phase=phase,
+        status="failed",
+        summary=(
+            "Handoff write refused: Mercury HDD detach maintenance is active "
+            f"({preflight.storage_availability}, writes_allowed=false)."
+        ),
+        detail=preflight.reason,
+    )
 
 
 class HandoffWizardPhaseResult(BaseModel):
@@ -108,6 +125,9 @@ def run_handoff_backup_phase(*, live: bool | None = None, execute: bool = True) 
             summary=f"Would run full backup for {len(sources)} source(s).",
             detail=", ".join(sources),
         )
+    blocked = _maintenance_block_phase("backup")
+    if blocked is not None:
+        return blocked
     policy = load_execution_policy()
     batch = run_backup_batch(
         BACKUP_KIND_FULL,
@@ -159,6 +179,9 @@ def run_handoff_verify_phase(*, execute: bool = True) -> HandoffWizardPhaseResul
             status="skipped",
             summary="Would verify all backup sources and update manifests.",
         )
+    blocked = _maintenance_block_phase("verify")
+    if blocked is not None:
+        return blocked
     summary = run_verify_all_for_menu(update_manifest=True)
     if summary.failed or summary.missing:
         return HandoffWizardPhaseResult(
@@ -183,6 +206,9 @@ def run_handoff_repo_bundle_phase(*, execute: bool = True) -> HandoffWizardPhase
             status="skipped",
             summary="Would write repository bundles to operator storage.",
         )
+    blocked = _maintenance_block_phase("repo_bundle")
+    if blocked is not None:
+        return blocked
     from mercury.repo.config import load_repo_bundle_settings, load_repo_definitions
     from mercury.repo.status import inspect_repositories
 
@@ -242,6 +268,9 @@ def run_handoff_db_bundle_phase(
             status="skipped",
             summary=f"Would write database bundle index (package: {package_status}).",
         )
+    blocked = _maintenance_block_phase("db_bundle")
+    if blocked is not None:
+        return blocked
     if handoff_write_requires_force(package_status) and not force:
         prompt = handoff_write_ack_prompt(package_status)
         if confirm is not None and confirm(prompt, default=False) is not True:
@@ -286,6 +315,9 @@ def run_handoff_transfer_phase(
             status="skipped",
             summary=f"Would write combined transfer package (handoff: {handoff_status}).",
         )
+    blocked = _maintenance_block_phase("transfer")
+    if blocked is not None:
+        return blocked
     if handoff_write_requires_force(handoff_status) and not force:
         prompt = handoff_write_ack_prompt(handoff_status)
         if confirm is not None and confirm(prompt, default=False) is not True:

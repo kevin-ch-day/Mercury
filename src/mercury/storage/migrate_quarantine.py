@@ -99,6 +99,13 @@ def quarantine_migration_conflicts(
 
     dry_run = not execute
     if execute:
+        from mercury.storage.host_maintenance import writes_allowed
+
+        if not writes_allowed():
+            blockers.append(
+                "Live quarantine refused: host maintenance writes_allowed=false "
+                "(Mercury HDD detach / destination rehearsal in progress)."
+            )
         if (confirmation or "").strip() != QUARANTINE_CONFIRMATION_PHRASE:
             blockers.append(
                 f"Live quarantine requires typing {QUARANTINE_CONFIRMATION_PHRASE!r}."

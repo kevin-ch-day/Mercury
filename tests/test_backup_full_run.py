@@ -207,6 +207,8 @@ def test_full_backup_refused_when_nothing_written() -> None:
         production_verification=None,
     )
     assert result.outcome == FullBackupOutcome.REFUSED
+    assert result.backup_artifacts_result == LaneResult.NOT_ATTEMPTED
+    assert result.verification_result == LaneResult.NOT_APPLICABLE
 
 
 def test_verify_written_backup_batch_targets_exact_directory(

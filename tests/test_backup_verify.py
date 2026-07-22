@@ -168,16 +168,22 @@ def test_verify_backup_directory_updates_manifest(tmp_path: Path) -> None:
     assert manifest["verified"] is True
 
 
-def test_cli_backup_verify_missing_backup() -> None:
+def test_cli_backup_verify_missing_backup(tmp_path: Path) -> None:
+    """Hermetic: empty backup root so lookup cannot hit the live Mercury HDD."""
+    env = os.environ.copy()
+    env["MERCURY_BACKUP_ROOT"] = str(tmp_path / "empty-backups")
     result = run_cli(
         "backup",
         "verify",
         "--db",
         "erebus_threat_intel_prod",
         "--no-latest",
+        "--no-update-manifest",
+        env=env,
     )
     assert result.returncode != 0
-    assert "provide --path" in (result.stdout + result.stderr).lower()
+    combined = (result.stdout + result.stderr).lower()
+    assert "provide --backup-id or --path" in combined or "provide --path" in combined
 
 
 def test_cli_verify_all_summary_on_partial_backups(tmp_path: Path) -> None:

@@ -103,7 +103,11 @@ def read_verified_generation(*, config: StorageConfig | None = None) -> str | No
 
 def record_verified_generation(generation: PackageGeneration, *, config: StorageConfig | None = None) -> Path:
     """Record pre-cutover final-mirror evidence (not used as live HDD status)."""
-    path = generation_record_path(config=config); path.parent.mkdir(parents=True, exist_ok=True)
+    from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled
+
+    refuse_if_hdd_writes_disabled("verified generation record write")
+    path = generation_record_path(config=config)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(generation.payload(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path
 
@@ -135,10 +139,14 @@ def write_immutable_receipt(filename: str, payload: dict[str, Any], *, config: S
         raise ValueError(
             f"receipt path is not under primary mount {mount}: {resolved}"
         ) from exc
+    from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled
+
     if config is None:
         from mercury.core.usb_mount import assert_operator_storage_path
 
-        assert_operator_storage_path(path)
+        assert_operator_storage_path(path, action="immutable control receipt write")
+    else:
+        refuse_if_hdd_writes_disabled("immutable control receipt write")
     if path.exists() and not override:
         raise ValueError(f"Historical receipt already exists: {path}. Use an explicit administrative override to replace it.")
     path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)

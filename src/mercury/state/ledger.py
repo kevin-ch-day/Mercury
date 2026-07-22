@@ -306,6 +306,14 @@ def _append_operation(event_type: str, payload: dict[str, Any], *, state_root: P
     root = _ensure_state_root(state_root)
     if root is None:
         return None
+    # Detach / write-disabled: never append ledger rows under the Mercury HDD.
+    try:
+        from mercury.storage.host_maintenance import path_is_under_primary_mount, writes_allowed
+
+        if not writes_allowed() and path_is_under_primary_mount(root):
+            return None
+    except Exception:
+        pass
     if not _append_jsonl(root / OPERATIONS_JSONL, _operation_payload(event_type, payload)):
         return None
     return root

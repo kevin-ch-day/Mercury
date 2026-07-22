@@ -142,20 +142,6 @@ def find_latest_artifact_verified_backup(
     return None
 
 
-def find_latest_verified_backup(
-    backup_root: Path,
-    database: str,
-    *,
-    allow_development_backup: bool = False,
-) -> Path | None:
-    """Alias for :func:`find_latest_artifact_verified_backup` (artifact integrity)."""
-    return find_latest_artifact_verified_backup(
-        backup_root,
-        database,
-        allow_development_backup=allow_development_backup,
-    )
-
-
 def find_latest_restore_checked_backup(
     backup_root: Path,
     database: str,

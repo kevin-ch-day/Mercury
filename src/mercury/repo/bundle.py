@@ -169,7 +169,7 @@ def build_repo_bundle_plan(
 
 def _ensure_operator_storage_path(path: Path) -> None:
     """Refuse bundle writes outside the configured active writer mount."""
-    assert_operator_storage_path(path)
+    assert_operator_storage_path(path, action="repository backup bundle write")
 
 
 def _manifest_payload(plan: RepoBundlePlan, entry: RepoBundleEntry) -> dict[str, object]:
@@ -290,9 +290,6 @@ def _index_runbook_text(plan: RepoBundlePlan) -> str:
 
 
 def execute_repo_bundle_plan(plan: RepoBundlePlan) -> RepoBundlePlan:
-    from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled
-
-    refuse_if_hdd_writes_disabled("repository backup bundle write")
     _ensure_operator_storage_path(plan.repo_backup_root)
     _ensure_operator_storage_path(plan.manifest_dir)
     _ensure_operator_storage_path(plan.runbook_dir)

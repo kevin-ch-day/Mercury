@@ -41,29 +41,46 @@ def _after_handoff_write() -> None:
 
 
 def _render_handoff_options() -> None:
+    from mercury.backup.menu_options import DETACH_UNAVAILABLE_SUFFIX
+    from mercury.storage.host_maintenance import writes_allowed
+
     display_screen.write_blank()
-    render_submenu(
-        [
-            ("1", "Refresh status"),
-            ("2", "Build Migration Package"),
-            ("3", "Capture Web Worktrees"),
-            ("4", "Receiver Guide"),
-            ("5", "Handoff Tools"),
-        ],
-        indent=0,
-    )
+    write_ok = writes_allowed()
+    options = [
+        ("1", "Refresh status"),
+        (
+            "2",
+            "Build Migration Package"
+            if write_ok
+            else f"Build Migration Package  {DETACH_UNAVAILABLE_SUFFIX}",
+        ),
+        (
+            "3",
+            "Capture Web Worktrees"
+            if write_ok
+            else f"Capture Web Worktrees  {DETACH_UNAVAILABLE_SUFFIX}",
+        ),
+        ("4", "Receiver Guide"),
+        ("5", "Handoff Tools"),
+    ]
+    render_submenu(options, indent=0)
 
 
 def _render_handoff_tools() -> None:
+    from mercury.backup.menu_options import DETACH_UNAVAILABLE_SUFFIX
+    from mercury.storage.host_maintenance import writes_allowed
+
     display_screen.open_screen("Handoff Tools")
+    write_ok = writes_allowed()
+    suffix = f"  {DETACH_UNAVAILABLE_SUFFIX}" if not write_ok else ""
     render_submenu(
         [
-            ("1", "Resume Package Build"),
-            ("2", "Run Backup"),
-            ("3", "Verify Backups"),
-            ("4", "Create Repository Bundles"),
-            ("5", "Create Database Bundle"),
-            ("6", "Create Transfer Package"),
+            ("1", f"Resume Package Build{suffix}"),
+            ("2", f"Run Backup{suffix}"),
+            ("3", f"Verify Backups{suffix}"),
+            ("4", f"Create Repository Bundles{suffix}"),
+            ("5", f"Create Database Bundle{suffix}"),
+            ("6", f"Create Transfer Package{suffix}"),
             ("7", "Review Checklist"),
             ("8", "Handoff History"),
         ],
@@ -72,10 +89,22 @@ def _render_handoff_tools() -> None:
 
 
 def _run_handoff_tools(snapshot) -> None:
+    from mercury.backup.write_preflight import assess_backup_write_preflight
+
     _render_handoff_tools()
     choice = read_submenu_choice()
     if choice in {None, "0"}:
         return
+    write_choices = {"1", "2", "3", "4", "5", "6"}
+    if choice in write_choices:
+        preflight = assess_backup_write_preflight()
+        if not preflight.allowed:
+            display_screen.write_status(
+                "fail",
+                "Handoff Tools write refused: Mercury HDD detach maintenance is active.",
+            )
+            display_screen.write_summary(preflight.reason)
+            return
     if choice == "1":
         _run_guided_wizard(start_phase="verify")
     elif choice == "2":
@@ -171,11 +200,32 @@ def run_handoff_menu(*, interactive: bool = True) -> None:
             show_title = pause_and_redraw()
             continue
         if choice == "2":
-            _run_guided_wizard()
+            from mercury.backup.write_preflight import assess_backup_write_preflight
+
+            preflight = assess_backup_write_preflight()
+            if not preflight.allowed:
+                display_screen.write_status(
+                    "fail",
+                    "Guided handoff write refused: Mercury HDD detach maintenance is active.",
+                )
+                display_screen.write_summary(preflight.reason)
+            else:
+                _run_guided_wizard()
             show_title = pause_and_redraw()
             continue
         if choice == "3":
+            from mercury.backup.write_preflight import assess_backup_write_preflight
             from mercury.migration.web_capture import capture_web_worktrees
+
+            preflight = assess_backup_write_preflight()
+            if not preflight.allowed:
+                display_screen.write_status(
+                    "fail",
+                    "Web capture refused: Mercury HDD detach maintenance is active.",
+                )
+                display_screen.write_summary(preflight.reason)
+                show_title = pause_and_redraw()
+                continue
 
             results = capture_web_worktrees(execute=False)
             for result in results:

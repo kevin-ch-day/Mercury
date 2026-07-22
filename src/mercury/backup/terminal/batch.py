@@ -40,16 +40,57 @@ def _result_label(result) -> str:
     return "planned"
 
 
+def _batch_is_maintenance_refusal(batch: BackupBatchResult) -> bool:
+    needles = ("host maintenance", "writes_allowed=false", "detach")
+    for result in batch.results:
+        reason = (result.refusal_reason or "").lower()
+        if any(token in reason for token in needles):
+            return True
+    return any(
+        any(token in error.lower() for token in needles) for error in batch.errors
+    )
+
+
 def _batch_mode_label(batch: BackupBatchResult) -> str:
     if batch.execute:
-        policy = load_execution_policy()
-        return backup_mode_label(policy) if batch.executed_count else "preview blocked or refused"
+        if batch.executed_count:
+            policy = load_execution_policy()
+            return backup_mode_label(policy)
+        if _batch_is_maintenance_refusal(batch):
+            return "Operation refused before execution"
+        return "Operation refused before execution"
     return "preview only"
 
 
 def _write_dense_lines(lines: list[str]) -> None:
     for line in lines:
         output.write(hint_text(line))
+
+
+def print_global_backup_refusal(
+    *,
+    reason: str,
+    detail_lines: tuple[str, ...] | list[str] = (),
+    next_steps: tuple[str, ...] | list[str] = (),
+) -> None:
+    """Single global refusal summary — no per-database tables."""
+    from mercury.menu import main_display as menu_display
+
+    menu_display.open_screen("Full Backup")
+    display_screen.write_fields({"Result": "REFUSED"})
+    display_screen.write_blank()
+    output.write(reason if reason.endswith(".") else f"{reason}.")
+    for line in detail_lines:
+        output.write(f"  {line}")
+    display_screen.write_blank()
+    display_screen.write_summary("No production or development backup was attempted.")
+    if next_steps:
+        display_screen.write_blank()
+        output.write("To back up again:")
+        for index, step in enumerate(next_steps, start=1):
+            output.write(f"  {index}. {step}")
+    display_screen.write_blank()
+    display_screen.write_summary("No backup files or HDD evidence were written.")
 
 
 def print_backup_batch_result(
@@ -89,19 +130,29 @@ def print_backup_batch_result(
             )
         refusal = next((r.refusal_reason for r in batch.results if r.refusal_reason), None)
         if refusal:
+            display_screen.write_blank()
             _write_refusal_line(refusal)
         for error in batch.errors:
             display_screen.write_status("fail", error)
         if batch.executed_count and suggest_verify:
+            display_screen.write_blank()
             display_screen.write_summary(
                 f"Backups written. Next: {backup_menu_hint(ACTION_VERIFY)}."
             )
         elif batch.dry_run_count:
+            display_screen.write_blank()
             display_screen.write_summary("Preview only; no files were written.")
         elif batch.refused_count and batch.execute:
-            display_screen.write_summary(
-                "No backups written. Check storage/config or missing sources."
-            )
+            display_screen.write_blank()
+            if _batch_is_maintenance_refusal(batch):
+                display_screen.write_summary(
+                    "No backups were attempted because Mercury writes are disabled for safe HDD detach. "
+                    "Use Storage Operations → Reconnect / Validate Mercury HDD to restore writes later."
+                )
+            else:
+                display_screen.write_summary(
+                    "No backups written. Check storage/config or missing sources."
+                )
         return
 
     if compact:
@@ -152,6 +203,29 @@ def print_backup_batch_result(
 
 def print_full_backup_run_result(result: FullBackupRunResult) -> None:
     """Final full-backup summary — overall status only (lane tables already printed)."""
+    if result.global_refusal:
+        from mercury.menu import main_display as menu_display
+
+        menu_display.open_screen("Full Backup Result")
+        display_screen.write_fields(
+            {
+                "Result": "REFUSED",
+                "Reason": result.refusal_reason or "Mercury writes are disabled",
+                "Production": "Not attempted",
+                "Development": "Not attempted",
+                "Verification": "Not applicable",
+                "HDD evidence": "Not written",
+            }
+        )
+        if result.refusal_audit_result == "RECORDED_HOST_LOCAL":
+            display_screen.write_blank()
+            display_screen.write_summary(
+                "Host-local refusal audit recorded (not backup or handoff evidence)."
+            )
+        display_screen.write_blank()
+        display_screen.write_summary("No backup state changed.")
+        return
+
     display_screen.write_summary(
         f"Full Backup Result · {result.outcome.value} · {result.run_id}"
     )
@@ -175,17 +249,23 @@ def print_full_backup_run_result(result: FullBackupRunResult) -> None:
     )
     _write_dense_lines([overall])
     receipt_lines: list[str] = []
-    if result.receipt_path:
+    if result.receipt_path and result.run_evidence_result.value == "PASS":
         receipt_lines.append(f"Receipt: {result.receipt_path}")
-    if result.receipt_sha256:
+    if result.receipt_sha256 and result.run_evidence_result.value == "PASS":
         receipt_lines.append(f"SHA-256: {result.receipt_sha256}")
     if receipt_lines:
         _write_dense_lines(receipt_lines)
-    output.write(hint_text(result.phase3b_separation_note))
+    display_screen.write_blank()
+    for part in result.phase3b_separation_note.splitlines():
+        text = part.strip()
+        if text:
+            output.write(hint_text(text))
 
     if result.outcome == FullBackupOutcome.PASS and result.next_actions:
+        display_screen.write_blank()
         display_screen.write_summary("Next: " + "; ".join(result.next_actions))
     elif result.outcome != FullBackupOutcome.PASS:
+        display_screen.write_blank()
         display_screen.write_summary(
             "Handoff backup set is not ready — resolve failures before restore-check or bundle write."
         )

@@ -148,8 +148,8 @@ def _transfer_output_paths(settings: RepoBundleSettings, stamp: str) -> tuple[Pa
     return manifest_path, runbook_path
 
 
-def _ensure_usb_path(path: Path) -> None:
-    assert_operator_storage_path(path)
+def _ensure_operator_storage_path(path: Path) -> None:
+    assert_operator_storage_path(path, action="transfer bundle write")
 
 
 def _latest_transfer_artifact(directory: Path, pattern: str) -> Path | None:
@@ -354,8 +354,8 @@ def _runbook_text(bundle: TransferBundle) -> str:
 def write_transfer_bundle(bundle: TransferBundle) -> TransferBundle:
     manifest_path = Path(bundle.transfer_manifest_path)
     runbook_path = Path(bundle.transfer_runbook_path)
-    _ensure_usb_path(manifest_path)
-    _ensure_usb_path(runbook_path)
+    _ensure_operator_storage_path(manifest_path)
+    _ensure_operator_storage_path(runbook_path)
     ensure_private_directory(manifest_path.parent)
     ensure_private_directory(runbook_path.parent)
     manifest_path.write_text(bundle.model_dump_json(indent=2) + "\n", encoding="utf-8")

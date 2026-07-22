@@ -132,22 +132,6 @@ def latest_restore_check_by_backup_id() -> dict[str, RestoreCheckLedgerRecord]:
     return latest
 
 
-def latest_restore_check_status_by_database() -> dict[str, str]:
-    """Deprecated database-level view — prefer :func:`latest_restore_check_by_backup_id`.
-
-    Kept for recovery screens that still summarize “any restore-check ever” per
-    database. Must not be used to label a displayed backup ID.
-    """
-    by_id = latest_restore_check_by_backup_id()
-    latest: dict[str, tuple[str, str]] = {}
-    for record in by_id.values():
-        stamp = record.timestamp or ""
-        existing = latest.get(record.database)
-        if existing is None or stamp >= existing[0]:
-            latest[record.database] = (stamp, record.status)
-    return {database: status for database, (_stamp, status) in latest.items()}
-
-
 def sealed_phase3b_package_note() -> str | None:
     """Observe-only note when the sealed Phase 3B package is present on operator storage."""
     try:
@@ -163,8 +147,9 @@ def sealed_phase3b_package_note() -> str | None:
         if root.is_dir():
             return (
                 "Sealed Phase 3B rehearsal package present "
-                "(20260722T055400Z_phase3b). Latest routine backups do not replace it "
-                "until restore-check and handoff packaging explicitly promote them."
+                "(20260722T055400Z_phase3b).\n"
+                "Latest routine backups do not replace it until restore-check and "
+                "handoff packaging explicitly promote them."
             )
     except Exception:
         return None

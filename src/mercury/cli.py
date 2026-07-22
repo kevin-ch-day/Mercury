@@ -681,10 +681,10 @@ def storage_detach_cmd(
 ) -> None:
     """Safe HDD detach. Prefer the Storage menu wizard for interactive sudo."""
     from mercury.storage.detach import (
-        DETACH_CONFIRMATION,
         build_detach_status,
         detach_preview,
     )
+    from mercury.storage.detach_wizard import DETACH_CONFIRMATION
 
     if action == "status":
         status = build_detach_status()
@@ -1601,6 +1601,17 @@ def backup_verify_cmd(
     from mercury.backup.terminal.verify import print_verification_result
 
     policy = load_execution_policy()
+    if update_manifest:
+        from mercury.backup.write_preflight import assess_backup_write_preflight
+
+        preflight = assess_backup_write_preflight()
+        if not preflight.allowed:
+            typer.echo(
+                "Manifest stamping refused: Mercury HDD detach maintenance is active. "
+                "Re-run with --no-update-manifest for a read-only verify."
+            )
+            raise typer.Exit(2)
+
     backup_dir: Path | None = Path(path).expanduser() if path else None
     if backup_dir is None:
         if backup_id:
@@ -1676,6 +1687,16 @@ def backup_run_cmd(
         typer.echo("Invalid --kind. Use: full or schema_only")
         raise typer.Exit(1)
 
+    if execute:
+        from mercury.backup.write_preflight import assess_backup_write_preflight
+
+        preflight = assess_backup_write_preflight()
+        if not preflight.allowed:
+            typer.echo(f"Backup refused: {preflight.reason}")
+            for line in preflight.detail_lines:
+                typer.echo(f"  {line}")
+            raise typer.Exit(2)
+
     try:
         result = execute_backup(db, normalized, execute=execute, live=True)  # type: ignore[arg-type]
     except BackupExecutionError as exc:
@@ -1732,6 +1753,16 @@ def backup_batch_cmd(
         typer.echo(str(exc))
         raise typer.Exit(1) from exc
 
+    if execute:
+        from mercury.backup.write_preflight import assess_backup_write_preflight
+
+        preflight = assess_backup_write_preflight()
+        if not preflight.allowed:
+            typer.echo(f"Backup batch refused: {preflight.reason}")
+            for line in preflight.detail_lines:
+                typer.echo(f"  {line}")
+            raise typer.Exit(2)
+
     batch = run_backup_batch(
         normalized,  # type: ignore[arg-type]
         execute=execute,
@@ -1768,6 +1799,13 @@ def backup_dev_cmd(
 
     if execute and confirm != "BACKUP DEV DATABASES":
         raise typer.BadParameter("--execute requires --confirm 'BACKUP DEV DATABASES'")
+    if execute:
+        from mercury.backup.write_preflight import assess_backup_write_preflight
+
+        preflight = assess_backup_write_preflight()
+        if not preflight.allowed:
+            typer.echo(f"Development backup refused: {preflight.reason}")
+            raise typer.Exit(2)
     sources = resolve_development_backup_sources(live=not demo)
     if not sources:
         output.write("No configured development databases are present on this MariaDB server.")
@@ -1818,6 +1856,7 @@ def backup_full_cmd(
         BackupSourceSelectionError,
         FullBackupOutcome,
         apply_full_backup_run_evidence,
+        build_full_backup_global_refusal_result,
         build_full_backup_run_result,
         new_full_backup_run_id,
         resolve_development_backup_sources,
@@ -1825,12 +1864,41 @@ def backup_full_cmd(
         select_batch_sources,
         verify_written_backup_batch,
         write_full_backup_run_receipt,
+        write_host_local_refusal_record,
     )
-    from mercury.backup.terminal.batch import print_backup_batch_result, print_full_backup_run_result
+    from mercury.backup.terminal.batch import (
+        print_backup_batch_result,
+        print_full_backup_run_result,
+        print_global_backup_refusal,
+    )
+    from mercury.backup.write_preflight import assess_backup_write_preflight
     from mercury.core.safety import BACKUP_KIND_FULL
 
     if include_dev and confirm_dev != "BACKUP DEV DATABASES":
         raise typer.BadParameter("--include-dev requires --confirm-dev 'BACKUP DEV DATABASES'")
+
+    if execute:
+        preflight = assess_backup_write_preflight()
+        if not preflight.allowed:
+            started = datetime.now(timezone.utc)
+            run_id = new_full_backup_run_id(now=started)
+            result = build_full_backup_global_refusal_result(
+                run_id=run_id,
+                started_at_utc=started.isoformat(),
+                reason=preflight.reason,
+            )
+            print_global_backup_refusal(
+                reason="Mercury is in HDD detach maintenance mode",
+                detail_lines=preflight.detail_lines,
+                next_steps=preflight.next_steps,
+            )
+            try:
+                audit = write_host_local_refusal_record(result)
+                result = apply_full_backup_run_evidence(result, receipt_path=audit)
+            except Exception:
+                result = apply_full_backup_run_evidence(result, receipt_path=None)
+            print_full_backup_run_result(result)
+            raise typer.Exit(2)
 
     try:
         sources = select_batch_sources(live=not demo)
@@ -1866,33 +1934,37 @@ def backup_full_cmd(
     development_batch = None
     development_verification = None
     if include_dev:
-        dev_sources = resolve_development_backup_sources(live=not demo)
-        if not dev_sources:
-            output.write("No configured development databases are present on this MariaDB server.")
+        # Dev confirmation already validated; still refuse if maintenance flipped mid-run.
+        if execute and not assess_backup_write_preflight().allowed:
+            typer.echo("Development backup skipped: Mercury writes became disabled.")
         else:
-            development_batch = run_backup_batch(
-                BACKUP_KIND_FULL,
-                execute=execute,
-                live=not demo,
-                sources=dev_sources,
-                allow_development_backup=True,
-            )
-            print_backup_batch_result(
-                development_batch,
-                compact=True,
-                menu=True,
-                databases_label="Development databases selected",
-            )
-            if execute and development_batch.executed_count:
-                development_verification = verify_written_backup_batch(
-                    development_batch, allow_development_backup=True
+            dev_sources = resolve_development_backup_sources(live=not demo)
+            if not dev_sources:
+                output.write("No configured development databases are present on this MariaDB server.")
+            else:
+                development_batch = run_backup_batch(
+                    BACKUP_KIND_FULL,
+                    execute=execute,
+                    live=not demo,
+                    sources=dev_sources,
+                    allow_development_backup=True,
                 )
-                output.write(
-                    f"Development verification: {development_verification.verified} verified · "
-                    f"{development_verification.failed} failed"
+                print_backup_batch_result(
+                    development_batch,
+                    compact=True,
+                    menu=True,
+                    databases_label="Development databases selected",
                 )
-                for issue in development_verification.issues:
-                    output.write(f"  {issue}")
+                if execute and development_batch.executed_count:
+                    development_verification = verify_written_backup_batch(
+                        development_batch, allow_development_backup=True
+                    )
+                    output.write(
+                        f"Development verification: {development_verification.verified} verified · "
+                        f"{development_verification.failed} failed"
+                    )
+                    for issue in development_verification.issues:
+                        output.write(f"  {issue}")
 
     if not execute:
         if production_batch.errors or (
@@ -1921,6 +1993,64 @@ def backup_full_cmd(
     print_full_backup_run_result(result)
     if result.outcome != FullBackupOutcome.PASS:
         raise typer.Exit(1)
+
+
+@backup_app.command("full-receipts")
+def backup_full_receipts_cmd(
+    action: str = typer.Argument(
+        "plan",
+        help="Only 'plan' is supported (observe-only quarantine plan).",
+    ),
+) -> None:
+    """Classify full-backup run receipts; plan quarantine for invalid maintenance artifacts."""
+    from mercury.backup.full_backup_receipts import (
+        INVALID_MAINTENANCE_CLASS,
+        plan_quarantine_invalid_full_backup_receipts,
+    )
+    from mercury.core.usb_mount import resolve_operator_mount
+    from mercury.terminal import screen as display_screen
+
+    if action != "plan":
+        typer.echo("Only 'plan' is implemented (no moves, no deletes).")
+        raise typer.Exit(1)
+
+    mount = resolve_operator_mount()
+    plan = plan_quarantine_invalid_full_backup_receipts(mount)
+    display_screen.open_screen("Full-backup receipt plan")
+    display_screen.write_fields(
+        {
+            "Mount": str(plan.mount_root),
+            "Quarantine dir": str(plan.quarantine_dir),
+            "Governed": plan.governed_count,
+            "Invalid maintenance": plan.invalid_count,
+            "Total scanned": len(plan.entries),
+        }
+    )
+    display_screen.write_blank()
+    if not plan.entries:
+        display_screen.write_summary("No full_backup_runs receipts found.")
+        return
+    rows = [
+        [
+            entry.run_id,
+            entry.classification,
+            entry.outcome or "-",
+            str(entry.overall_written),
+        ]
+        for entry in plan.entries
+    ]
+    display_screen.write_compact_table(
+        ["RUN ID", "CLASS", "OUTCOME", "WRITTEN"],
+        rows,
+        min_col_widths=[28, 18, 10, 8],
+        max_col_widths=[40, 28, 12, 8],
+    )
+    display_screen.write_blank()
+    display_screen.write_summary(
+        "Observe-only. Invalid maintenance receipts are not backup/handoff evidence. "
+        f"Later quarantine target: {plan.quarantine_dir} "
+        f"(class={INVALID_MAINTENANCE_CLASS}). Do not delete; retain .sha256 sidecars."
+    )
 
 
 @backup_app.command("all")
@@ -1972,9 +2102,19 @@ def backup_verify_all_cmd(
     """Verify latest on-disk backup for each backup source."""
     from mercury.backup.batch_runner import BackupSourceSelectionError, select_batch_sources
     from mercury.backup.find_latest_backup import find_latest_backup_directory
+    from mercury.backup.write_preflight import assess_backup_write_preflight
     from mercury.core.execution_policy import load_execution_policy
     from mercury.backup.verification import verify_backup_directory
     from mercury.backup.terminal.verify import print_verification_result
+
+    if update_manifest:
+        preflight = assess_backup_write_preflight()
+        if not preflight.allowed:
+            typer.echo(
+                "Manifest stamping refused: Mercury HDD detach maintenance is active. "
+                "Re-run with --no-update-manifest for a read-only verify."
+            )
+            raise typer.Exit(2)
 
     policy = load_execution_policy()
     try:

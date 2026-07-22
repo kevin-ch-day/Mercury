@@ -465,6 +465,13 @@ def build_cleanup_preview(
     )
 
     if write_plan_path is not None:
+        from mercury.storage.host_maintenance import (
+            path_is_under_primary_mount,
+            refuse_if_hdd_writes_disabled,
+        )
+
+        if path_is_under_primary_mount(write_plan_path, mount=mount_root):
+            refuse_if_hdd_writes_disabled("cleanup plan write")
         write_plan_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "generated_at": report.generated_at,

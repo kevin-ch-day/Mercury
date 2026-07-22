@@ -249,6 +249,13 @@ def run_migration(
 
     dry_run = not execute
     if execute:
+        from mercury.storage.host_maintenance import writes_allowed
+
+        if not writes_allowed():
+            blockers.append(
+                "Live migrate refused: host maintenance writes_allowed=false "
+                "(Mercury HDD detach / destination rehearsal in progress)."
+            )
         if (confirmation or "").strip() != MIGRATE_PRIMARY_CONFIRMATION_PHRASE:
             blockers.append(
                 f"Live migrate requires typing {MIGRATE_PRIMARY_CONFIRMATION_PHRASE!r} "

@@ -77,10 +77,6 @@ def is_active_sync_source(prod_name: str) -> bool:
     return is_active_sync_pair(prod_name, expected_dev)
 
 
-def filter_in_scope_names(names: list[str]) -> list[str]:
-    return [name for name in names if is_in_scope(name)]
-
-
 def filter_inventory(inventory: DatabaseInventory) -> DatabaseInventory:
     """Drop out-of-scope databases from an inventory snapshot."""
     entries = [entry for entry in inventory.entries if is_in_scope(entry.name)]

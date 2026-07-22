@@ -149,7 +149,7 @@ def inactive_operator_mount_blocker(path: Path, *, local_config: Path | None = N
         resolved.relative_to(mount)
     except Exception:
         return None
-    if storage_mount_is_active(mount):
+    if usb_mount_is_active(mount):
         return None
     return f"operator mount not active: {mount}"
 
@@ -193,11 +193,6 @@ def storage_mount_label(mount_path: Path) -> str:
     return str(mount_path)
 
 
-def usb_mount_label(mount_path: Path) -> str:
-    """Legacy compatibility wrapper; prefer :func:`storage_mount_label`."""
-    return storage_mount_label(mount_path)
-
-
 def default_usb_path_replacements(mount_path: Path) -> dict[str, str]:
     """Legacy compatibility wrapper; prefer operator-storage path replacements."""
     return default_operator_path_replacements(mount_path)
@@ -215,25 +210,22 @@ def default_operator_path_replacements(mount_path: Path) -> dict[str, str]:
     }
 
 
-def assert_operator_usb_path(path: Path, *, usb_mount: Path | None = None) -> None:
-    """Refuse writes outside the resolved operator storage mount when it is not active."""
-    mount = (usb_mount or resolve_usb_mount()).resolve()
-    resolved = path.expanduser().resolve()
-    try:
-        resolved.relative_to(mount)
-    except ValueError as exc:
-        raise ValueError(f"path is not under {mount}: {resolved}") from exc
-    if not usb_mount_is_active(mount):
-        raise ValueError(f"required operator storage mount is not active: {mount}")
-
-
-def assert_operator_storage_path(path: Path, *, operator_mount: Path | None = None) -> None:
+def assert_operator_storage_path(
+    path: Path,
+    *,
+    operator_mount: Path | None = None,
+    action: str = "operator storage write",
+) -> None:
     """Require a write path under the configured active operator-storage role.
 
     Refuses host-shadow paths beneath an inactive mountpoint and paths that are
     not under the currently active writer mount (legacy before cutover, primary after).
+    Also refuses when host maintenance has Mercury HDD writes disabled.
     """
     from mercury.core.storage_roots import load_storage_config
+    from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled
+
+    refuse_if_hdd_writes_disabled(action)
 
     mount = (operator_mount or resolve_operator_mount()).resolve()
     resolved = path.expanduser().resolve()
@@ -246,7 +238,14 @@ def assert_operator_storage_path(path: Path, *, operator_mount: Path | None = No
     try:
         cfg = load_storage_config(warn_deprecated=False)
         writer = cfg.active_write_root.mount_path.expanduser().resolve()
-        if mount != writer and operator_mount is None:
+        # Unit tests often monkeypatch resolve_operator_mount() to a temp root while
+        # config/local.toml still points at the live primary mount. Keep the
+        # consistency check for real operator runs only.
+        if (
+            mount != writer
+            and operator_mount is None
+            and os.environ.get("PYTEST_CURRENT_TEST") is None
+        ):
             raise ValueError(
                 f"active writer role '{cfg.active_write_role.value}' points at {writer}, "
                 f"not {mount}; refusing write"

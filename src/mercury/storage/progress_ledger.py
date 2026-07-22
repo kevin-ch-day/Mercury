@@ -17,7 +17,9 @@ def ledger_path(primary_mount: Path) -> Path:
 
 def ensure_ledger(primary_mount: Path) -> Path:
     from mercury.core.usb_mount import inactive_operator_mount_blocker
+    from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled
 
+    refuse_if_hdd_writes_disabled("migration progress ledger write")
     path = ledger_path(primary_mount)
     # Refuse shadow writes onto an empty configured mountpoint; allow explicit
     # temp/test primary paths that are not under the live operator mount.
@@ -74,6 +76,9 @@ def completed_paths(primary_mount: Path) -> set[str]:
 
 
 def clear_ledger(primary_mount: Path) -> None:
+    from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled
+
+    refuse_if_hdd_writes_disabled("migration progress ledger clear")
     path = ledger_path(primary_mount)
     if path.exists():
         path.write_text("", encoding="utf-8")

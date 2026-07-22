@@ -84,8 +84,36 @@ def refuse_if_hdd_writes_disabled(action: str = "HDD-backed write") -> None:
         f"{action} refused: host maintenance "
         f"storage_availability={state.storage_availability} "
         f"writes_allowed={state.writes_allowed} "
-        f"(destination rehearsal / HDD detach in progress; cutover is NOT complete)"
+        f"(HDD detach / destination rehearsal; restore writes after reconnect)"
     )
+
+
+def path_is_under_primary_mount(path: Path | str, *, mount: Path | str | None = None) -> bool:
+    """True when ``path`` resolves beneath the Mercury primary mount (HDD)."""
+    from mercury.core.storage_roles import DEFAULT_PRIMARY_MOUNT
+
+    target = Path(path).expanduser()
+    try:
+        resolved = target.resolve()
+    except OSError:
+        resolved = target if target.is_absolute() else Path.cwd() / target
+    if mount is None:
+        try:
+            from mercury.core.storage_roots import load_storage_config
+
+            mount = load_storage_config(warn_deprecated=False).primary.mount_path
+        except Exception:
+            mount = DEFAULT_PRIMARY_MOUNT
+    base = Path(mount).expanduser()
+    try:
+        base_resolved = base.resolve()
+    except OSError:
+        base_resolved = base
+    try:
+        resolved.relative_to(base_resolved)
+        return True
+    except ValueError:
+        return False
 
 
 def mark_detaching(
@@ -120,17 +148,3 @@ def mark_detached(path: Path | None = None) -> HostMaintenanceState:
     save_host_maintenance(state, path=path)
     return state
 
-
-def mark_reattached_writes_disabled(path: Path | None = None) -> HostMaintenanceState:
-    """HDD is present again; keep writes disabled until explicit restore."""
-    state = load_host_maintenance(path)
-    state.storage_availability = "attached"
-    state.writes_allowed = False
-    state.active_write_role = "none"
-    state.destination_rehearsal_in_progress = True
-    state.notes = (
-        "Mercury HDD reattached; writes disabled pending operator confirmation. "
-        "Destination cutover is NOT complete."
-    )
-    save_host_maintenance(state, path=path)
-    return state

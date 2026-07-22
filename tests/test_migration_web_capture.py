@@ -30,7 +30,9 @@ def _capture(monkeypatch, tmp_path: Path, definition: RepoDefinition):
     operator = tmp_path / "operator"
     operator.mkdir()
     monkeypatch.setattr(web_capture, "resolve_operator_mount", lambda: operator)
-    monkeypatch.setattr(web_capture, "assert_operator_storage_path", lambda _path: None)
+    monkeypatch.setattr(
+        web_capture, "assert_operator_storage_path", lambda _path, **_kwargs: None
+    )
     results = web_capture.capture_web_worktrees(execute=True, repositories=[definition])
     assert results[0].error is None
     assert results[0].restore_checked is True
@@ -97,7 +99,9 @@ def test_capture_worktrees_accepts_non_web_configured_repo(monkeypatch, tmp_path
     from mercury.migration import web_capture
     operator = tmp_path / "operator"; operator.mkdir()
     monkeypatch.setattr(web_capture, "resolve_operator_mount", lambda: operator)
-    monkeypatch.setattr(web_capture, "assert_operator_storage_path", lambda _path: None)
+    monkeypatch.setattr(
+        web_capture, "assert_operator_storage_path", lambda _path, **_kwargs: None
+    )
     result = web_capture.capture_worktrees(execute=True, repositories=[definition])
     assert result[0].key == "mercury"
     assert result[0].restore_checked is True

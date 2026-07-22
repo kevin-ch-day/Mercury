@@ -207,7 +207,7 @@ def build_offline_clone_plan(statuses: list[RepoStatus], *, root: Path | None = 
 
 def execute_offline_clone_plan(plan: OfflineClonePlan) -> OfflineClonePlan:
     """Create or update clean independent clones; never changes source checkouts."""
-    assert_operator_storage_path(plan.root)
+    assert_operator_storage_path(plan.root, action="offline repository clone write")
     ensure_private_directory(plan.root)
     for entry in plan.entries:
         if entry.action in {"current", "blocked"}:

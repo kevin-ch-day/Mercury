@@ -31,10 +31,7 @@ from mercury.database.core.inventory import inventory_summary, record_from_name
 from mercury.database.core.inventory_ops import (
     backup_source_entries,
     backup_source_names,
-    classify_inventory,
-    dev_target_entries,
     entries_by_role,
-    entry_by_name,
     format_entry_line,
     format_entry_columns,
     inventory_role_summary,
@@ -57,7 +54,6 @@ from mercury.database.core.scope import (
     is_active_sync_source,
     OUT_OF_SCOPE_DATABASES,
     filter_inventory,
-    filter_in_scope_names,
     is_in_scope,
 )
 from mercury.database.core.sources import (
@@ -89,11 +85,8 @@ __all__ = [
     "inventory_summary",
     "backup_source_names",
     "backup_source_entries",
-    "dev_target_entries",
     "entries_by_role",
-    "entry_by_name",
     "projects_map",
-    "classify_inventory",
     "is_live_inventory",
     "format_entry_line",
     "format_entry_columns",
@@ -112,7 +105,6 @@ __all__ = [
     "OBSIDIANDROID_PROD_DATABASE",
     "OUT_OF_SCOPE_DATABASES",
     "filter_inventory",
-    "filter_in_scope_names",
     "is_in_scope",
     "SOURCE_LOCAL",
     "SOURCE_EXAMPLE",

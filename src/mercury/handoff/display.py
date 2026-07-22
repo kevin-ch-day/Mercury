@@ -264,18 +264,6 @@ def receiver_quick_start_lines() -> list[str]:
     ]
 
 
-def step_status_kind(status: str) -> StatusKind:
-    mapping: dict[str, StatusKind] = {
-        "ok": "ok",
-        "warn": "warn",
-        "fail": "fail",
-        "skip": "info",
-        "skipped": "info",
-        "cancelled": "warn",
-    }
-    return mapping.get(status, "info")
-
-
 def step_status_label(status: str) -> str:
     mapping = {
         "ok": "OK",

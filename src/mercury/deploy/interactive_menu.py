@@ -67,6 +67,7 @@ def _render_hub(*, show_title: bool) -> None:
             ("4", "Restore-check backups before deployment"),
             ("5", "Generate deployment runbook"),
             ("6", "Deploy selected databases"),
+            ("7", "Deploy selected repositories"),
         ]
     )
 
@@ -337,6 +338,8 @@ def run_deploy_menu(*, interactive: bool = True) -> None:
             _generate_deployment_runbook()
         elif choice == "6":
             _db_submenu()
+        elif choice == "7":
+            _repo_submenu()
         else:
             menu_display.write_status("fail", menu_prompts.invalid_choice_message(choice))
         pause_and_redraw()

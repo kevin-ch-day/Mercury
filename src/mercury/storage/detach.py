@@ -12,22 +12,15 @@ from pathlib import Path
 from mercury.core.storage_roles import DEFAULT_PRIMARY_MOUNT, DEFAULT_PRIMARY_UUID
 from mercury.storage.block_device import resolve_mercury_block_device
 from mercury.storage.detach_wizard import (
-    DETACH_CONFIRMATION,
-    format_wizard_report,
     latest_verified_package,
     run_detach_preflight,
-    run_detach_wizard,
 )
 from mercury.storage.host_maintenance import load_host_maintenance
 
 __all__ = [
-    "DETACH_CONFIRMATION",
     "DetachStatus",
     "build_detach_status",
     "detach_preview",
-    "detach_execute_until_privileged",
-    "run_detach_wizard",
-    "format_wizard_report",
 ]
 
 
@@ -145,31 +138,3 @@ def detach_preview(status: DetachStatus | None = None) -> list[str]:
         f"Preflight: {status.result_hint or 'unknown'}",
     ]
 
-
-def detach_execute_until_privileged(
-    *,
-    confirm: str,
-    mask_systemd_unit: bool = False,
-) -> tuple[DetachStatus, list[str]]:
-    """Legacy CLI helper: run preflight and print that the menu wizard should continue.
-
-    Does not unmount. Prefer the storage menu Safe Disconnect wizard for full flow.
-    """
-    del mask_systemd_unit  # masking is not default; ignored
-    if confirm != DETACH_CONFIRMATION:
-        status = build_detach_status()
-        status.blockers.append(f"confirmation must be exactly {DETACH_CONFIRMATION!r}")
-        status.safe_to_proceed = False
-        return status, []
-
-    result = run_detach_wizard(execute=False, confirm=confirm, skip_log_redirect=True)
-    status = build_detach_status()
-    status.safe_to_proceed = result.ok
-    status.blockers = list(result.blockers)
-    status.result_hint = result.result_state
-    lines = format_wizard_report(result)
-    lines.append(
-        "Continue in the Mercury menu: Storage → Safe disconnect Mercury HDD "
-        "(guided wizard with interactive sudo)."
-    )
-    return status, lines

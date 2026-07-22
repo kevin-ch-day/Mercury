@@ -424,17 +424,9 @@ def load_storage_config(
     )
 
 
-def control_namespace_path(primary: StorageRootConfig) -> Path:
-    return primary.control_dir
-
-
 def allowed_destination_only_paths() -> frozenset[str]:
     """Relative paths allowed as destination-only during migration verify."""
     return frozenset({CONTROL_DIRNAME})
-
-
-def layout_dirnames() -> tuple[str, ...]:
-    return MERCURY_LAYOUT_DIRS
 
 
 def write_freeze_active(config: StorageConfig) -> bool:

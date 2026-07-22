@@ -55,11 +55,21 @@ def run_verify_menu(*, interactive: bool = True) -> None:
             continue
 
         if choice == "2":
-            summary = run_verify_all_for_menu(update_manifest=True)
-            display_screen.write_summary(
-                f"Verification complete — {summary.verified} verified, "
-                f"{summary.missing} missing, {summary.failed} failed."
-            )
+            from mercury.backup.write_preflight import assess_backup_write_preflight
+
+            preflight = assess_backup_write_preflight()
+            if not preflight.allowed:
+                display_screen.write_status(
+                    "fail",
+                    "Manifest stamping refused: Mercury HDD detach maintenance is active.",
+                )
+                display_screen.write_summary(preflight.reason)
+            else:
+                summary = run_verify_all_for_menu(update_manifest=True)
+                display_screen.write_summary(
+                    f"Verification complete — {summary.verified} verified, "
+                    f"{summary.missing} missing, {summary.failed} failed."
+                )
             show_title = pause_and_redraw()
             continue
 

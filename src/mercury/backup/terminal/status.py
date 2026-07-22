@@ -52,7 +52,10 @@ def print_backup_status_report(report: BackupStatusReport) -> None:
     if report.warnings:
         display_screen.write_blank()
         for warning in report.warnings:
-            display_screen.write_status("warn", warning)
+            for part in str(warning).splitlines():
+                text = part.strip()
+                if text:
+                    display_screen.write_status("warn", text)
 
     empty_sources = [entry.database for entry in report.entries if entry.source_is_empty]
     if empty_sources:

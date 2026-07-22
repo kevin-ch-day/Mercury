@@ -97,6 +97,154 @@ def test_run_backup_menu_non_interactive(
     assert backup_menu_hint(ACTION_VERIFY) == "Verify source backups [4]"
 
 
+def test_backup_menu_section_spacing_boundaries(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    """Blank-line section gaps without asserting timestamps, sizes, or width."""
+    from mercury.backup.interactive_menu import _render_backup_screen, read_backup_choice
+    from mercury.database.backup_planning import build_backup_plan
+
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.build_prod_dev_pairs",
+        lambda names: [],
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.latest_records_by_database",
+        lambda listing: [
+            type(
+                "Record",
+                (),
+                {
+                    "database": "android_permission_intel",
+                    "created_at": "2026-06-09T15:01:26+00:00",
+                    "size_bytes": 10465313,
+                },
+            )()
+        ],
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.build_on_disk_backup_list",
+        lambda _root: object(),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.build_backup_status_report",
+        lambda live=False: type(
+            "Report",
+            (),
+            {
+                "entries": [
+                    type(
+                        "Entry",
+                        (),
+                        {
+                            "database": "android_permission_intel",
+                            "protection_status": "verified",
+                            "freshness": "fresh",
+                            "backup_age": "1h ago",
+                            "backup_id": "android_permission_intel-full-20260609_150126",
+                            "restore_check_status": None,
+                        },
+                    )()
+                ],
+                "stale_count": 0,
+                "unknown_freshness_count": 0,
+                "warnings": [
+                    "Sealed Phase 3B rehearsal package present "
+                    "(20260722T055400Z_phase3b).\n"
+                    "Latest routine backups do not replace it until restore-check and "
+                    "handoff packaging explicitly promote them."
+                ],
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.load_execution_policy",
+        lambda: type(
+            "Policy",
+            (),
+            {
+                "backup_root": tmp_path / "backups",
+                "backup_execution_allowed": lambda self=None: True,
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu._storage_usage_fields",
+        lambda policy: {
+            "Backup root": str(tmp_path / "backups"),
+            "Environment": "operator storage mounted",
+            "Used": "1 GiB",
+            "Total": "10 GiB",
+            "Free": "9 GiB",
+            "Usage": "10%",
+            "Status": "ok",
+        },
+    )
+
+    plan = build_backup_plan(["android_permission_intel"])
+    _render_backup_screen(plan, show_title=True)
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+
+    def index_of(predicate):
+        for index, line in enumerate(lines):
+            if predicate(line):
+                return index
+        raise AssertionError(f"line not found for {predicate!r}\n{out}")
+
+    title_i = index_of(lambda line: line.strip() == "Backup Operations")
+    status_i = index_of(lambda line: line.lstrip().startswith("Status:"))
+    header_i = index_of(lambda line: line.startswith("DATABASE"))
+    assert status_i > title_i
+    assert lines[status_i + 1] == ""
+    assert header_i == status_i + 2
+
+    # Last table body row is the database name line (not the rule).
+    db_i = index_of(lambda line: line.startswith("android_permission_intel"))
+    assert lines[db_i + 1] == ""
+
+    warn_i = index_of(lambda line: "[WARN]" in line and "Restore-check required" in line)
+    assert warn_i == db_i + 2
+
+    phase_i = index_of(lambda line: "Sealed Phase 3B rehearsal package present" in line)
+    assert phase_i == warn_i + 1
+    assert "Latest routine backups" not in lines[phase_i]
+    follow_i = index_of(lambda line: line.startswith("Latest routine backups do not replace"))
+    assert follow_i == phase_i + 1
+    assert lines[follow_i + 1] == ""
+
+    menu_i = index_of(lambda line: line.startswith("[1] Refresh"))
+    assert menu_i == follow_i + 2
+    back_i = index_of(lambda line: line.startswith("[0] Back"))
+    assert back_i > menu_i
+    # No blank lines between consecutive menu choices.
+    for index in range(menu_i, back_i):
+        assert lines[index] != ""
+
+    # Aligned field values: Status value starts at same column as Backup root value.
+    root_line = next(line for line in lines if "Backup root:" in line)
+    status_line = next(line for line in lines if line.lstrip().startswith("Status:"))
+    root_value_at = root_line.index(":") + 1
+    while root_value_at < len(root_line) and root_line[root_value_at] == " ":
+        root_value_at += 1
+    status_value_at = status_line.index(":") + 1
+    while status_value_at < len(status_line) and status_line[status_value_at] == " ":
+        status_value_at += 1
+    assert root_value_at == status_value_at
+
+    prompts: list[str] = []
+
+    def _capture_prompt(prompt: str) -> str:
+        prompts.append(prompt)
+        return "0"
+
+    monkeypatch.setattr("mercury.menu.prompts.ask_safe", _capture_prompt)
+    assert read_backup_choice() == "0"
+    assert prompts and prompts[0].startswith("\nChoice:")
+
+
 def test_backup_menu_warning_summary_uses_visible_status_labels(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

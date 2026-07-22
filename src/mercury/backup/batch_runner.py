@@ -60,6 +60,9 @@ class LaneResult(str, Enum):
     FAIL = "FAIL"
     SKIPPED = "SKIPPED"
     PENDING = "PENDING"
+    NOT_ATTEMPTED = "NOT_ATTEMPTED"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+    NOT_WRITTEN = "NOT_WRITTEN"
 
 
 class BackupLaneSummary(BaseModel):
@@ -98,6 +101,15 @@ class FullBackupRunResult(BaseModel):
     overall_written: int = 0
     overall_verified: int = 0
     overall_failed: int = 0
+    # Global preflight refusal (no database selection / no HDD writes attempted).
+    global_refusal: bool = False
+    refusal_reason: str | None = None
+    refusal_audit_result: str | None = None  # RECORDED_HOST_LOCAL | NOT_RECORDED
+    operation_result: str | None = None
+
+    @property
+    def effective_operation_result(self) -> str:
+        return self.operation_result or self.outcome.value
 
 
 def resolve_batch_sources(*, live: bool = False) -> list[str]:
@@ -362,10 +374,16 @@ def write_full_backup_run_receipt(
     When ``control_root`` is omitted, the active operator mount identity is
     asserted before any write. Explicit ``control_root`` (tests) skips the live
     mount assertion unless ``require_active_operator_mount=True``.
+
+    Host-maintenance write-disabled mode must never receive a governed HDD receipt.
     """
     import hashlib
 
     live_root = control_root is None
+    if result.global_refusal:
+        raise RuntimeError(
+            "refusing to write governed full-backup receipt for a global preflight refusal"
+        )
     if control_root is None:
         from mercury.core.usb_mount import resolve_operator_mount
         from mercury.core.storage_roles import CONTROL_DIRNAME
@@ -376,7 +394,9 @@ def write_full_backup_run_receipt(
     if require_active_operator_mount:
         from mercury.core.usb_mount import assert_operator_storage_path
 
-        assert_operator_storage_path(control_root)
+        assert_operator_storage_path(
+            control_root, action="full-backup run receipt write"
+        )
 
     directory = control_root / "full_backup_runs"
     directory.mkdir(parents=True, mode=0o700, exist_ok=True)
@@ -393,6 +413,44 @@ def write_full_backup_run_receipt(
     return path
 
 
+def write_host_local_refusal_record(
+    result: FullBackupRunResult,
+    *,
+    refusal_root: Path | None = None,
+) -> Path:
+    """Persist a minimal host-local refusal audit (never under the Mercury HDD)."""
+    import hashlib
+    import os
+
+    from mercury.backup.write_preflight import default_host_local_refusal_root
+
+    root = refusal_root or default_host_local_refusal_root()
+    root.mkdir(parents=True, mode=0o700, exist_ok=True)
+    path = root / f"{result.run_id}_refused.json"
+    payload = result.model_dump(mode="json")
+    payload.update(
+        {
+            "evidence_class": "host_local_refusal",
+            "not_backup_evidence": True,
+            "not_handoff_evidence": True,
+            "operation_result": result.effective_operation_result,
+        }
+    )
+    payload.pop("receipt_path", None)
+    payload.pop("receipt_sha256", None)
+    text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    _atomic_write_text(path, text)
+    sidecar = path.with_suffix(path.suffix + ".sha256")
+    _atomic_write_text(sidecar, f"{digest}  {path.name}\n")
+    try:
+        os.chmod(path, 0o600)
+        os.chmod(sidecar, 0o600)
+    except OSError:
+        pass
+    return path
+
+
 def apply_full_backup_run_evidence(
     result: FullBackupRunResult,
     *,
@@ -403,6 +461,20 @@ def apply_full_backup_run_evidence(
     import hashlib
 
     updates: dict = {}
+    if result.global_refusal:
+        updates["run_evidence_result"] = LaneResult.NOT_WRITTEN
+        updates["receipt_path"] = None
+        updates["receipt_sha256"] = None
+        if receipt_path is not None and receipt_path.is_file():
+            # Host-local refusal audit only — never "evidence PASS".
+            updates["refusal_audit_result"] = "RECORDED_HOST_LOCAL"
+            updates["receipt_path"] = str(receipt_path)
+            text = receipt_path.read_text(encoding="utf-8")
+            updates["receipt_sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        elif result.refusal_audit_result is None:
+            updates["refusal_audit_result"] = "NOT_RECORDED"
+        return result.model_copy(update=updates)
+
     if receipt_path is not None and receipt_path.is_file():
         text = receipt_path.read_text(encoding="utf-8")
         updates["receipt_path"] = str(receipt_path)
@@ -420,6 +492,41 @@ def apply_full_backup_run_evidence(
             updates["outcome"] = FullBackupOutcome.PARTIAL
             updates["package_classification"] = "verified_routine_evidence_incomplete"
     return result.model_copy(update=updates)
+
+
+def build_full_backup_global_refusal_result(
+    *,
+    run_id: str,
+    started_at_utc: str,
+    reason: str,
+) -> FullBackupRunResult:
+    """Classify a full backup that never began (global preflight refusal)."""
+    return FullBackupRunResult(
+        run_id=run_id,
+        outcome=FullBackupOutcome.REFUSED,
+        operation_result="REFUSED",
+        started_at_utc=started_at_utc,
+        finished_at_utc=datetime.now(timezone.utc).isoformat(),
+        production=BackupLaneSummary(requested=False, selected=0),
+        development=BackupLaneSummary(requested=False, selected=0),
+        backup_artifacts_result=LaneResult.NOT_ATTEMPTED,
+        verification_result=LaneResult.NOT_APPLICABLE,
+        run_evidence_result=LaneResult.NOT_WRITTEN,
+        package_classification="not_attempted_maintenance_refusal",
+        phase3b_separation_note=(
+            "No backup state changed. Sealed Phase 3B rehearsal package remains authoritative."
+        ),
+        next_actions=[
+            "Storage Operations → Reconnect / Validate Mercury HDD",
+            "Restore Mercury writes, then return to Backup Operations",
+        ],
+        overall_written=0,
+        overall_verified=0,
+        overall_failed=0,
+        global_refusal=True,
+        refusal_reason=reason,
+        refusal_audit_result=None,
+    )
 
 
 def build_full_backup_run_result(
@@ -471,8 +578,9 @@ def build_full_backup_run_result(
 
     if production_refused and production.written == 0:
         outcome = FullBackupOutcome.REFUSED
-        artifacts = LaneResult.FAIL
-        verification = LaneResult.SKIPPED
+        artifacts = LaneResult.NOT_ATTEMPTED
+        verification = LaneResult.NOT_APPLICABLE
+        package_classification = "refused_no_artifacts"
     elif not production_ok:
         outcome = FullBackupOutcome.FAIL
         artifacts = LaneResult.PASS if production.written > 0 else LaneResult.FAIL
@@ -481,21 +589,23 @@ def build_full_backup_run_result(
             if production.verified == production.written and production.written > 0 and production.failed == 0
             else LaneResult.FAIL
         )
+        package_classification = "routine_only"
     elif development_requested and not development_ok:
         outcome = FullBackupOutcome.PARTIAL
         artifacts = LaneResult.PASS
         verification = LaneResult.PASS
+        package_classification = "verified_routine_partial_dev"
     else:
         outcome = FullBackupOutcome.PASS
         artifacts = LaneResult.PASS
         verification = LaneResult.PASS
+        package_classification = "verified_routine"
 
     overall_written = production.written + development.written
     overall_verified = production.verified + development.verified
     overall_failed = production.failed + development.failed
 
     next_actions: list[str] = []
-    package_classification = "routine_only"
     if outcome == FullBackupOutcome.PASS:
         next_actions = backup_menu_next_actions(ACTION_RESTORE_CHECK, ACTION_BUNDLE)
         package_classification = "verified_routine"
@@ -506,6 +616,8 @@ def build_full_backup_run_result(
             backup_menu_next_actions(ACTION_RESTORE_CHECK)[0],
         ]
         package_classification = "verified_routine_partial_dev"
+    elif outcome == FullBackupOutcome.REFUSED:
+        next_actions = []
 
     phase3b_note = (
         "Routine verified backups remain separate from sealed Phase 3B rehearsal package "
@@ -516,13 +628,16 @@ def build_full_backup_run_result(
     return FullBackupRunResult(
         run_id=run_id,
         outcome=outcome,
+        operation_result=outcome.value,
         started_at_utc=started_at_utc,
         finished_at_utc=datetime.now(timezone.utc).isoformat(),
         production=production,
         development=development,
         backup_artifacts_result=artifacts,
         verification_result=verification,
-        run_evidence_result=LaneResult.PENDING,
+        run_evidence_result=(
+            LaneResult.NOT_WRITTEN if outcome == FullBackupOutcome.REFUSED else LaneResult.PENDING
+        ),
         package_classification=package_classification,
         phase3b_separation_note=phase3b_note,
         next_actions=next_actions,

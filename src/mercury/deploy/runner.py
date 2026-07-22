@@ -56,6 +56,9 @@ def resolve_deployment_report_dir(policy: ExecutionPolicy) -> Path:
 def _write_deployment_report(batch: DeploymentBatchResult, policy: ExecutionPolicy) -> Path | None:
     if batch.mode == "dry-run":
         return None
+    from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled
+
+    refuse_if_hdd_writes_disabled("deployment report write")
     report_dir = resolve_deployment_report_dir(policy)
     day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     target = report_dir / day

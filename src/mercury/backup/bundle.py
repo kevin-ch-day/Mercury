@@ -118,8 +118,8 @@ def build_database_bundle_plan(
     )
 
 
-def _ensure_usb_path(path: Path) -> None:
-    assert_operator_storage_path(path)
+def _ensure_operator_storage_path(path: Path) -> None:
+    assert_operator_storage_path(path, action="database bundle write")
 
 
 def bundle_package_status(plan: DatabaseBundlePlan) -> str:
@@ -269,10 +269,10 @@ def _index_runbook_text(plan: DatabaseBundlePlan) -> str:
 
 
 def write_database_bundle_plan(plan: DatabaseBundlePlan) -> DatabaseBundlePlan:
-    _ensure_usb_path(plan.manifest_dir)
-    _ensure_usb_path(plan.runbook_dir)
-    _ensure_usb_path(plan.planned_index_manifest_path)
-    _ensure_usb_path(plan.planned_index_runbook_path)
+    _ensure_operator_storage_path(plan.manifest_dir)
+    _ensure_operator_storage_path(plan.runbook_dir)
+    _ensure_operator_storage_path(plan.planned_index_manifest_path)
+    _ensure_operator_storage_path(plan.planned_index_runbook_path)
 
     for entry in plan.entries:
         entry.planned_manifest_path.parent.mkdir(parents=True, exist_ok=True)
