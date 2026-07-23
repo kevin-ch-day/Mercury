@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from mercury.core.paths import LOCAL_CONFIG, OUTPUT_DIR
+from mercury.core.paths import OUTPUT_DIR, resolve_local_config
 from mercury.core.storage_roles import CONTROL_DIRNAME, MigrationState
 from mercury.core.storage_roots import StorageConfig, allowed_destination_only_paths, load_storage_config
 from mercury.core.storage_validate import validate_storage_mount
@@ -207,7 +207,7 @@ def verify_migration(
         if report.ok:
             notes.extend(
                 patch_migration_state(
-                    MigrationState.VERIFIED, local_config=local_config or LOCAL_CONFIG
+                    MigrationState.VERIFIED, local_config=local_config or resolve_local_config()
                 )
             )
         report = replace(report, warnings=tuple(list(report.warnings) + notes))

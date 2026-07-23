@@ -7,7 +7,7 @@ import tomllib
 
 from pydantic import BaseModel, Field
 
-from mercury.core.paths import LOCAL_CONFIG, REPOS_EXAMPLE, REPOS_LOCAL
+from mercury.core.paths import REPOS_EXAMPLE, REPOS_LOCAL, resolve_local_config
 from mercury.core.usb_mount import resolve_operator_mount
 
 
@@ -246,7 +246,7 @@ def load_repo_definitions(path: Path | None = None) -> list[RepoDefinition]:
 
 
 def load_repo_bundle_settings(path: Path | None = None) -> RepoBundleSettings:
-    config_path = path or LOCAL_CONFIG
+    config_path = path or resolve_local_config()
     data = _load_toml(config_path)
     section = data.get("mercury")
     if not isinstance(section, dict):

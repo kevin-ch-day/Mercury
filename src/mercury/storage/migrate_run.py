@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from mercury.core.paths import LOCAL_CONFIG, OUTPUT_DIR
+from mercury.core.paths import OUTPUT_DIR, resolve_local_config
 from mercury.core.safety import MIGRATE_PRIMARY_CONFIRMATION_PHRASE
 from mercury.core.storage_roles import CONTROL_DIRNAME, MigrationState, STORAGE_SCHEMA_VERSION
 from mercury.core.storage_roots import StorageConfig, StorageIdentityDocument, load_storage_config
@@ -169,7 +169,7 @@ def patch_migration_state(
     """
     import tomllib
 
-    path = local_config or LOCAL_CONFIG
+    path = local_config or resolve_local_config()
     if not path.exists():
         return [f"{path}: missing — cannot update migration_state"]
     desired = MigrationState(str(state))
@@ -342,7 +342,7 @@ def run_migration(
     if update_state:
         warnings.extend(
             patch_migration_state(
-                MigrationState.COPYING, local_config=local_config or LOCAL_CONFIG
+                MigrationState.COPYING, local_config=local_config or resolve_local_config()
             )
         )
 
@@ -437,7 +437,7 @@ def run_migration(
             )
         if update_state and not result.errors:
             notes = patch_migration_state(
-                MigrationState.COPIED, local_config=local_config or LOCAL_CONFIG
+                MigrationState.COPIED, local_config=local_config or resolve_local_config()
             )
             result = replace(result, warnings=tuple(list(result.warnings) + notes))
 

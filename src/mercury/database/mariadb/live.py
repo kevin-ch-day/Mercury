@@ -4,7 +4,7 @@ from mercury.database.core import DatabaseInventory, SOURCE_LIVE, record_from_na
 from mercury.database.mariadb.client import connection_label
 from mercury.database.mariadb.config import MariaDbConnectionConfig
 from mercury.database.mariadb.session import fetch_user_database_names
-from mercury.core.paths import LOCAL_CONFIG
+from mercury.core.paths import resolve_local_config
 
 READ_ONLY_SQL = "SHOW DATABASES"
 
@@ -19,7 +19,7 @@ def discover_databases_live(
     inventory = DatabaseInventory(
         connection=connection_label(config),
         mode="mariadb_readonly",
-        primary_config=str(LOCAL_CONFIG.name),
+        primary_config=str(resolve_local_config().name),
     )
     inventory.entries = [
         record_from_name(

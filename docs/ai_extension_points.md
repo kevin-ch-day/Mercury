@@ -216,6 +216,22 @@ New code in `src/` and `tests/` must use canonical paths. Shims remain for exter
 
 ---
 
+## Test isolation (CI parity)
+
+Unit tests must not depend on the operator's real `config/local.toml`, live MariaDB, or git identity.
+
+| Mechanism | Purpose |
+|-----------|---------|
+| `MERCURY_LOCAL_CONFIG` | Redirects `resolve_local_config()` (policy, MariaDB, storage, init loaders) |
+| Autouse in `tests/conftest.py` | Points `MERCURY_LOCAL_CONFIG` at a missing temp path; sets dry-run / no-color / `COLUMNS=120` |
+| `@pytest.mark.uses_operator_local_config` | Opt out when a test must read the real operator file |
+| `subprocess_env()` / `plain_cli_text()` | CLI subprocess isolation + ANSI-stable help asserts |
+| Live MariaDB CLI tests | Pass `MERCURY_LOCAL_CONFIG=<repo>/config/local.toml` explicitly |
+
+Do not branch assertions on `config/local.toml`.exists()`. Prefer tmp configs, monkeypatches, or `--demo`.
+
+---
+
 ## Anti-patterns (do not)
 
 - Weakening safety checks or skipping `assert_safe_backup_source`

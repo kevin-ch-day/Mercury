@@ -7,7 +7,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from mercury.core.paths import LOCAL_CONFIG, LOGS_DIR, REPO_ROOT
+from mercury.core.paths import LOCAL_EXAMPLE, LOGS_DIR, REPO_ROOT, resolve_local_config
 
 LOGGER_NAME = "mercury"
 DATABASE_LOGGER_NAME = f"{LOGGER_NAME}.database"
@@ -38,11 +38,12 @@ def env_bool(name: str) -> bool | None:
 
 
 def load_mercury_section() -> dict[str, object]:
-    if not LOCAL_CONFIG.exists():
+    config_path = resolve_local_config()
+    if not config_path.exists():
         return {}
     import tomllib
 
-    with LOCAL_CONFIG.open("rb") as handle:
+    with config_path.open("rb") as handle:
         data = tomllib.load(handle)
     section = data.get("mercury")
     if isinstance(section, dict):

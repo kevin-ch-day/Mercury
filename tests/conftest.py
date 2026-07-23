@@ -99,6 +99,15 @@ def repo_local_config() -> Path:
     return REPO_ROOT / "config" / "local.toml"
 
 
+def plain_cli_text(*chunks: str) -> str:
+    """Strip ANSI and collapse whitespace for stable CLI help/assert matching."""
+    import re
+
+    combined = "".join(chunks)
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", combined)
+    return re.sub(r"\s+", " ", plain)
+
+
 def subprocess_env(extra: dict[str, str] | None = None) -> dict[str, str]:
     """Environment for subprocess CLI tests (editable install or src on PYTHONPATH)."""
     merged = os.environ.copy()
@@ -248,6 +257,16 @@ def write_pre_cutover_storage_toml(
         )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
+
+
+@pytest.fixture(autouse=True)
+def _reset_terminal_color() -> Iterator[None]:
+    """Prevent color-override leaks across theme/menu tests."""
+    from mercury.terminal.theme import set_color_enabled
+
+    set_color_enabled(None)
+    yield
+    set_color_enabled(None)
 
 
 @pytest.fixture(autouse=True)

@@ -81,13 +81,11 @@ def test_cli_manifest_preview_rejects_dev() -> None:
 
 
 def test_cli_backup_verify_exposes_explicit_dev_recovery_gate() -> None:
-    import re
+    from tests.conftest import plain_cli_text, run_cli
 
     result = run_cli("backup", "verify", "--help")
     assert result.returncode == 0
-    # Rich may truncate option names and inject ANSI; normalize before matching.
-    plain = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout + result.stderr)
-    collapsed = re.sub(r"\s+", " ", plain)
+    collapsed = plain_cli_text(result.stdout, result.stderr)
     assert "allow-developmen" in collapsed
     assert "configured optional" in collapsed
     assert "development" in collapsed and "recovery" in collapsed

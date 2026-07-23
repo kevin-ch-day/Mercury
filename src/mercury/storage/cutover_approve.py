@@ -7,7 +7,7 @@ import hashlib
 import re
 import subprocess
 
-from mercury.core.paths import LOCAL_CONFIG
+from mercury.core.paths import resolve_local_config
 from mercury.core.storage_roles import MigrationState, StorageWriteRole
 from mercury.core.storage_roots import load_storage_config
 from mercury.migration.generation import CUTOVER_RECEIPT_FILE, build_usb_generation, read_verified_generation, write_immutable_receipt
@@ -27,7 +27,7 @@ def approve_hdd_writer_cutover(*, confirmation: str, local_config: Path | None =
     """Atomically select the verified primary HDD; preserves a rollback config copy."""
     if confirmation.strip() != CONFIRMATION:
         raise ValueError(f"Type {CONFIRMATION} to approve HDD writer cutover.")
-    path = local_config or LOCAL_CONFIG
+    path = local_config or resolve_local_config()
     config = load_storage_config(local_config=path, warn_deprecated=False)
     readiness = build_cutover_readiness(local_config=path, config=config)
     generation = build_usb_generation(config=config)

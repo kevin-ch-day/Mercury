@@ -14,12 +14,12 @@ from mercury.core.path_permissions import safe_ensure_directory
 from mercury.core.paths import (
     DATABASES_EXAMPLE,
     DATABASES_LOCAL,
-    LOCAL_CONFIG,
     LOCAL_EXAMPLE,
     LOGS_DIR,
     REPO_ROOT,
     REPOS_EXAMPLE,
     REPOS_LOCAL,
+    resolve_local_config,
 )
 
 _USB_PATH_REPLACEMENTS: tuple[tuple[str, str], ...] = (
@@ -38,17 +38,17 @@ MERCURY_USB_ARTIFACT_KEYS: tuple[str, ...] = (
 
 
 def _load_local_toml() -> dict[str, object]:
-    if not LOCAL_CONFIG.exists():
+    if not resolve_local_config().exists():
         return {}
     import tomllib
 
-    with LOCAL_CONFIG.open("rb") as handle:
+    with resolve_local_config().open("rb") as handle:
         return tomllib.load(handle)
 
 
 def missing_mercury_usb_artifact_keys(*, local_config: Path | None = None) -> list[str]:
     """Return [mercury] keys missing from an existing local.toml."""
-    config_path = local_config or LOCAL_CONFIG
+    config_path = local_config or resolve_local_config()
     if not config_path.exists():
         return list(MERCURY_USB_ARTIFACT_KEYS)
     import tomllib
@@ -106,7 +106,7 @@ def _append_mercury_keys(text: str, additions: dict[str, str]) -> str:
 
 def missing_storage_section(*, local_config: Path | None = None) -> bool:
     """True when local.toml has no [storage] section yet."""
-    config_path = local_config or LOCAL_CONFIG
+    config_path = local_config or resolve_local_config()
     if not config_path.exists():
         return True
     import tomllib
@@ -121,7 +121,7 @@ def repair_local_config_paths() -> list[str]:
     Add missing operator-storage artifact paths to an existing local.toml without overwriting
     operator settings. Also ensure a baseline [storage] section exists when absent.
     """
-    if not LOCAL_CONFIG.exists():
+    if not resolve_local_config().exists():
         return ["local.toml: not found — run: mercury config init"]
 
     data = _load_local_toml()
@@ -130,7 +130,7 @@ def repair_local_config_paths() -> list[str]:
         return ["local.toml: [mercury] section missing — run: mercury config init"]
 
     notes: list[str] = []
-    text = LOCAL_CONFIG.read_text(encoding="utf-8")
+    text = resolve_local_config().read_text(encoding="utf-8")
 
     if missing_storage_section():
         storage_block = _default_storage_toml_block(mercury)
@@ -147,7 +147,7 @@ def repair_local_config_paths() -> list[str]:
     elif not notes:
         notes.append("local.toml: all operator-storage artifact paths already present")
 
-    LOCAL_CONFIG.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+    resolve_local_config().write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
 
     usb = discover_usb_target()
     if usb.mercury_layout_present:
@@ -208,7 +208,7 @@ def init_local_config(*, force: bool = False) -> list[str]:
     pairs = [
         (DATABASES_EXAMPLE, DATABASES_LOCAL, "databases.toml"),
         (REPOS_EXAMPLE, REPOS_LOCAL, "repos.toml"),
-        (LOCAL_EXAMPLE, LOCAL_CONFIG, "local.toml"),
+        (LOCAL_EXAMPLE, resolve_local_config(), "local.toml"),
     ]
     for src, dest, label in pairs:
         if not src.exists():
@@ -220,7 +220,7 @@ def init_local_config(*, force: bool = False) -> list[str]:
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dest)
         results.append(f"{label}: created from {src.name}")
-        if dest == LOCAL_CONFIG:
+        if dest == resolve_local_config():
             results.extend(_customize_created_local_config(dest))
 
     primary = discover_primary_operator_root()
@@ -234,7 +234,7 @@ def init_local_config(*, force: bool = False) -> list[str]:
         results.append(
             f"Operator backup layout detected at {usb.mount_path} — local.toml uses legacy USB paths."
         )
-    elif LOCAL_CONFIG.exists():
+    elif resolve_local_config().exists():
         results.append(
             "Operator backup mount not detected — local.toml uses temporary repo-local paths "
             "(dev/dry-run only; not production protection)."

@@ -265,6 +265,8 @@ Restore-check behavior: successful restore-check imports auto-drop the `_restore
 | `execute_backup(..., dump_runner=fake)` | Backup without real `mariadb-dump` |
 | `probe_mariadb_server(..., probe_fn=fake)` | Connectivity without socket |
 | `ExecutionPolicy(...)` / `local_config=` | Dry-run vs live gates |
+| `MERCURY_LOCAL_CONFIG` / `plain_cli_text()` | Offline CI parity; stable Rich help asserts |
+| `@pytest.mark.uses_operator_local_config` | Opt out of autouse local.toml isolation |
 | `monkeypatch.setattr("mercury.paths.OUTPUT_DIR", tmp_path)` | File output in tests |
 | `subprocess.run([sys.executable, "-m", "mercury.cli", ...])` | CLI integration (separate process) |
 
@@ -289,7 +291,8 @@ Full test file index: [docs/ai_extension_points.md](docs/ai_extension_points.md#
 - **Import cycles** in `database/mariadb/` — keep shared exceptions in `errors.py`; avoid `client.py` ↔ `session.py` circular imports.
 - **`CURRENT_USER()` alias** — do not alias as `current_user` in SQL passed to the MariaDB CLI (reserved-word syntax error); use a neutral alias.
 - **`resolve_mariadb_target(None)`** loads `config/local.toml` when present — tests that need “offline” placeholders must pass an explicit config object or mock `try_load_mariadb_config`.
-- **CLI subprocess tests** spawn a fresh interpreter — monkeypatching in-process does not affect them.
+- **Operator `local.toml` on the developer host** — unit tests isolate via `MERCURY_LOCAL_CONFIG` (see `tests/conftest.py`); do not branch assertions on the real file existing.
+- **CLI subprocess tests** spawn a fresh interpreter — monkeypatching in-process does not affect them; use `subprocess_env()`.
 - **Root + pymysql on Fedora** often fails (unix_socket auth plugin); prefer `use_client = true` for local dev.
 
 ## What to build next (typical milestones)

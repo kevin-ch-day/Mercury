@@ -704,7 +704,7 @@ def test_init_creates_files(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr("mercury.config.init.REPOS_EXAMPLE", example_repos)
     monkeypatch.setattr("mercury.config.init.REPOS_LOCAL", local_repos)
     monkeypatch.setattr("mercury.config.init.LOCAL_EXAMPLE", example_local)
-    monkeypatch.setattr("mercury.config.init.LOCAL_CONFIG", local_local)
+    monkeypatch.setenv("MERCURY_LOCAL_CONFIG", str(local_local))
     monkeypatch.setattr(
         "mercury.config.init.discover_usb_target",
         lambda: SimpleNamespace(mercury_layout_present=False, mount_path=Path("/mnt/MERCURY_DATA_USB")),
@@ -738,7 +738,7 @@ def test_init_customizes_mariadb_user_for_os_user(tmp_path: Path, monkeypatch) -
     monkeypatch.setattr("mercury.config.init.REPOS_EXAMPLE", example_repos)
     monkeypatch.setattr("mercury.config.init.REPOS_LOCAL", local_repos)
     monkeypatch.setattr("mercury.config.init.LOCAL_EXAMPLE", example_local)
-    monkeypatch.setattr("mercury.config.init.LOCAL_CONFIG", local_local)
+    monkeypatch.setenv("MERCURY_LOCAL_CONFIG", str(local_local))
     monkeypatch.setattr("mercury.config.init.getpass.getuser", lambda: "linuxadmin")
     monkeypatch.setattr("mercury.config.init.discover_primary_operator_root", lambda: None)
     monkeypatch.setattr(
@@ -768,7 +768,7 @@ def test_init_prefers_mounted_canonical_hdd_over_legacy_usb(tmp_path: Path, monk
     for name in ("databases.example.toml", "repos.example.toml"):
         (config_dir / name).write_text("[default]\n", encoding="utf-8")
     monkeypatch.setattr("mercury.config.init.LOCAL_EXAMPLE", example_local)
-    monkeypatch.setattr("mercury.config.init.LOCAL_CONFIG", config_dir / "local.toml")
+    monkeypatch.setenv("MERCURY_LOCAL_CONFIG", str(config_dir / "local.toml"))
     monkeypatch.setattr("mercury.config.init.DATABASES_EXAMPLE", config_dir / "databases.example.toml")
     monkeypatch.setattr("mercury.config.init.DATABASES_LOCAL", config_dir / "databases.toml")
     monkeypatch.setattr("mercury.config.init.REPOS_EXAMPLE", config_dir / "repos.example.toml")

@@ -53,7 +53,7 @@ def test_repair_local_config_paths_adds_missing_keys(
         'user = "secadmin"\n',
         encoding="utf-8",
     )
-    monkeypatch.setattr("mercury.config.init.LOCAL_CONFIG", local)
+    monkeypatch.setenv("MERCURY_LOCAL_CONFIG", str(local))
     monkeypatch.setattr(
         "mercury.config.init.discover_usb_target",
         lambda: type(
@@ -91,7 +91,7 @@ def test_repair_local_adds_storage_when_paths_already_present(
         'runbook_dir = "/mnt/MERCURY_DATA_USB/mercury_runbooks"\n',
         encoding="utf-8",
     )
-    monkeypatch.setattr("mercury.config.init.LOCAL_CONFIG", local)
+    monkeypatch.setenv("MERCURY_LOCAL_CONFIG", str(local))
     monkeypatch.setattr(
         "mercury.config.init.discover_usb_target",
         lambda: type(
