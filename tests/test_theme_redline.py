@@ -293,13 +293,21 @@ def test_redline_header_and_recommended_marker() -> None:
     set_color_enabled(False)
     clear_style_cache()
     header = menu_header_lines("ignored", variant="redline_a")
-    # Dual-rail frame: steel edge, title, subtitle, signal edge.
-    assert len(header) == 4
-    assert "MERCURY // REDLINE" in header[1]
-    assert "BACKUP" in header[2]
+    # Title, subtitle, single signal edge (no leading dotted rail).
+    assert len(header) == 3
+    assert header[0] == "MERCURY // REDLINE"
+    assert "BACKUP" in header[1]
+    assert set(header[2]) <= {"━", "="}
     item = menu_item_line("1", "Safely disconnect Mercury HDD", recommended=True)
     assert "▸" in item
     assert "RECOMMENDED" in item
+    from mercury.terminal.theme import section_title, strip_markup
+
+    set_color_enabled(True)
+    clear_style_cache()
+    section = strip_markup(section_title("CURRENT SESSION"))
+    assert section.startswith("■ ")
+    assert "▸" not in section
 
 
 def test_redline_design_principles_in_preview() -> None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from mercury import output
 from mercury.menu import prompts as menu_prompts
 from mercury.terminal import screen as display_screen
-from mercury.terminal.color_capability import detect_color_mode, requested_color_mode
+from mercury.terminal.color_capability import detect_color_mode
 from mercury.terminal.theme import (
     colors_enabled,
     dashboard_row,
@@ -20,7 +20,6 @@ from mercury.terminal.theme_settings import (
     THEME_DISPLAY_NAMES,
     THEME_REDLINE,
     active_theme_id,
-    default_theme_path,
     load_theme_selection,
     reload_appearance,
     reset_theme_selection,
@@ -31,22 +30,18 @@ from mercury.terminal.theme_tokens import ColorMode
 
 # Symbolic Options actions (numbers assigned at render time).
 OPTIONS_APPEARANCE = "appearance"
-OPTIONS_DISPLAY = "display"
+OPTIONS_COLOR = "color"
 OPTIONS_RESET = "reset"
 APPEARANCE_USE_REDLINE = "use_redline"
 APPEARANCE_USE_CLASSIC = "use_classic"
-APPEARANCE_PREVIEW = "preview"
-APPEARANCE_COLOR = "color"
-APPEARANCE_RESET = "reset"
+APPEARANCE_PREVIEW_REDLINE = "preview_redline"
+APPEARANCE_PREVIEW_CLASSIC = "preview_classic"
+APPEARANCE_COMPARE = "compare"
 
-
-def _preference_source_label(source: str) -> str:
-    return {
-        "env": "Environment (MERCURY_THEME)",
-        "file": "Host-local",
-        "default": "Compiled default",
-        "override": "Session override",
-    }.get(source, source)
+_HOST_LOCAL_FOOTER = (
+    "Settings are stored locally and never written to the Mercury HDD."
+)
+_OPTIONS_LABEL_WIDTH = 16
 
 
 def _color_mode_label(mode_id: str) -> str:
@@ -78,7 +73,12 @@ def _print_screen_header(title: str) -> None:
 
 def _print_status_block(rows: list[tuple[str, str]]) -> None:
     for label, value in rows:
-        output.write(dashboard_row(label, value, label_width=14))
+        output.write(dashboard_row(label, value, label_width=_OPTIONS_LABEL_WIDTH))
+
+
+def _print_host_local_footer() -> None:
+    output.write("")
+    output.write(_HOST_LOCAL_FOOTER)
 
 
 def _write_action_menu(actions: list[tuple[str, str]]) -> None:
@@ -105,13 +105,9 @@ def _print_theme_updated(theme_id: str, *, path, active: str) -> None:
         _print_status_block(
             [
                 ("Saved theme", THEME_DISPLAY_NAMES.get(theme_id, theme_id)),
-                (
-                    "Active now",
-                    THEME_DISPLAY_NAMES.get(active, active),
-                ),
+                ("Active now", THEME_DISPLAY_NAMES.get(active, active)),
                 ("Blocked by", "MERCURY_THEME environment override"),
                 ("Stored at", str(path)),
-                ("Mercury HDD", "Unchanged"),
             ]
         )
     else:
@@ -120,9 +116,9 @@ def _print_theme_updated(theme_id: str, *, path, active: str) -> None:
             [
                 ("Active theme", THEME_DISPLAY_NAMES.get(theme_id, theme_id)),
                 ("Stored locally", "Yes"),
-                ("Mercury HDD", "Unchanged"),
             ]
         )
+    _print_host_local_footer()
     output.write("")
 
 
@@ -131,14 +127,16 @@ def run_options_menu() -> None:
     while True:
         selection = load_theme_selection()
         display_screen.open_screen("OPTIONS")
-        pref = _preference_source_label(selection.source)
         color_line = (
-            f"{_color_mode_label(selection.color_mode)} · {_detected_color_label()} detected"
+            f"{_color_mode_label(selection.color_mode)} · {_detected_color_label()}"
             if selection.color_mode == "auto"
             else _color_mode_label(selection.color_mode)
         )
         if not colors_enabled():
             color_line = f"{color_line} (NO_COLOR wins)"
+        scope = "Host-local · interactive only"
+        if selection.source == "env":
+            scope = "Environment override (MERCURY_THEME)"
         _print_status_block(
             [
                 (
@@ -146,15 +144,14 @@ def run_options_menu() -> None:
                     THEME_DISPLAY_NAMES.get(selection.theme_id, selection.theme_id),
                 ),
                 ("Color mode", color_line),
-                ("Preference", pref),
-                ("Mercury HDD", "Not affected"),
+                ("Scope", scope),
             ]
         )
         output.write("")
         actions = [
-            (OPTIONS_APPEARANCE, "Appearance and theme"),
-            (OPTIONS_DISPLAY, "Display preferences"),
-            (OPTIONS_RESET, "Reset options"),
+            (OPTIONS_APPEARANCE, "Change or preview theme"),
+            (OPTIONS_COLOR, "Change color mode"),
+            (OPTIONS_RESET, "Reset appearance"),
         ]
         _write_action_menu(actions)
         selected = _read_action_choice(actions)
@@ -165,46 +162,16 @@ def run_options_menu() -> None:
         if selected == OPTIONS_APPEARANCE:
             run_appearance_menu()
             continue
-        if selected == OPTIONS_DISPLAY:
-            run_display_preferences_menu()
+        if selected == OPTIONS_COLOR:
+            run_color_mode_menu()
             continue
         if selected == OPTIONS_RESET:
             run_reset_options()
             continue
 
 
-def run_display_preferences_menu() -> None:
-    """Narrow display settings hub (currently color mode only)."""
-    while True:
-        selection = load_theme_selection()
-        display_screen.open_screen("DISPLAY PREFERENCES")
-        color_line = (
-            f"{_color_mode_label(selection.color_mode)} · {_detected_color_label()} detected"
-            if selection.color_mode == "auto"
-            else _color_mode_label(selection.color_mode)
-        )
-        _print_status_block(
-            [
-                ("Color mode", color_line),
-                ("Scope", "Interactive TTY only"),
-                ("Mercury HDD", "Not affected"),
-            ]
-        )
-        output.write("")
-        actions = [("color", "Color mode")]
-        _write_action_menu(actions)
-        selected = _read_action_choice(actions)
-        if selected is None:
-            return
-        if selected == "":
-            continue
-        if selected == "color":
-            run_color_mode_menu()
-            continue
-
-
 def run_appearance_menu() -> None:
-    """Host-local theme selection (no Mercury HDD required)."""
+    """Host-local theme selection and synthetic previews."""
     while True:
         selection = load_theme_selection()
         active = selection.theme_id
@@ -215,15 +182,11 @@ def run_appearance_menu() -> None:
         rows = [
             ("Active theme", THEME_DISPLAY_NAMES.get(active, active)),
             ("Available", available),
-            (
-                "Color mode",
-                f"{_color_mode_label(selection.color_mode)} · {_detected_color_label()}",
-            ),
-            ("Stored at", str(default_theme_path())),
         ]
         if selection.source == "env":
             rows.append(("Note", "MERCURY_THEME overrides host-local file"))
         _print_status_block(rows)
+        _print_host_local_footer()
         output.write("")
 
         actions: list[tuple[str, str]] = []
@@ -231,9 +194,9 @@ def run_appearance_menu() -> None:
             actions.append((APPEARANCE_USE_REDLINE, "Use Mercury Redline"))
         if active != THEME_CLASSIC:
             actions.append((APPEARANCE_USE_CLASSIC, "Use Mercury Classic"))
-        actions.append((APPEARANCE_PREVIEW, "Preview themes"))
-        actions.append((APPEARANCE_COLOR, "Color mode"))
-        actions.append((APPEARANCE_RESET, "Reset to default"))
+        actions.append((APPEARANCE_PREVIEW_REDLINE, "Preview Mercury Redline"))
+        actions.append((APPEARANCE_PREVIEW_CLASSIC, "Preview Mercury Classic"))
+        actions.append((APPEARANCE_COMPARE, "Compare both themes"))
 
         _write_action_menu(actions)
         selected = _read_action_choice(actions)
@@ -247,14 +210,17 @@ def run_appearance_menu() -> None:
         if selected == APPEARANCE_USE_CLASSIC:
             _apply_theme(THEME_CLASSIC)
             continue
-        if selected == APPEARANCE_PREVIEW:
-            run_theme_preview_menu()
+        if selected == APPEARANCE_PREVIEW_REDLINE:
+            _preview_then_offer(THEME_REDLINE)
             continue
-        if selected == APPEARANCE_COLOR:
-            run_color_mode_menu()
+        if selected == APPEARANCE_PREVIEW_CLASSIC:
+            _preview_then_offer(THEME_CLASSIC)
             continue
-        if selected == APPEARANCE_RESET:
-            run_reset_options()
+        if selected == APPEARANCE_COMPARE:
+            print_theme_preview(theme_id=THEME_CLASSIC)
+            output.write("")
+            print_theme_preview(theme_id=THEME_REDLINE)
+            menu_prompts.wait_for_continue()
             continue
 
 
@@ -263,37 +229,6 @@ def _apply_theme(theme_id: str) -> None:
     reload_appearance()
     _print_theme_updated(theme_id, path=path, active=active_theme_id())
     menu_prompts.wait_for_continue()
-
-
-def run_theme_preview_menu() -> None:
-    """Synthetic previews only — does not change preference until Apply."""
-    while True:
-        display_screen.open_screen("THEME PREVIEW")
-        output.write("Synthetic gallery · no HDD / package / host-maintenance access")
-        output.write("")
-        actions = [
-            ("preview_redline", "Preview Mercury Redline"),
-            ("preview_classic", "Preview Mercury Classic"),
-            ("compare", "Compare both themes"),
-        ]
-        _write_action_menu(actions)
-        selected = _read_action_choice(actions)
-        if selected is None:
-            return
-        if selected == "":
-            continue
-        if selected == "preview_redline":
-            _preview_then_offer(THEME_REDLINE)
-            continue
-        if selected == "preview_classic":
-            _preview_then_offer(THEME_CLASSIC)
-            continue
-        if selected == "compare":
-            print_theme_preview(theme_id=THEME_CLASSIC)
-            output.write("")
-            print_theme_preview(theme_id=THEME_REDLINE)
-            menu_prompts.wait_for_continue()
-            continue
 
 
 def _preview_then_offer(theme_id: str) -> None:
@@ -321,6 +256,7 @@ def run_color_mode_menu() -> None:
         if not colors_enabled():
             rows.append(("Note", "NO_COLOR disables interactive color"))
         _print_status_block(rows)
+        _print_host_local_footer()
         output.write("")
         actions: list[tuple[str, str]] = []
         for mode_id, label in COLOR_MODE_CHOICES:
@@ -339,9 +275,9 @@ def run_color_mode_menu() -> None:
             [
                 ("Color mode", _color_mode_label(selected)),
                 ("Stored at", str(path)),
-                ("Mercury HDD", "Unchanged"),
             ]
         )
+        _print_host_local_footer()
         output.write("")
         menu_prompts.wait_for_continue()
 
@@ -357,7 +293,7 @@ def run_reset_options() -> None:
         return
     removed = reset_theme_selection()
     reload_appearance()
-    _print_screen_header("Options reset")
+    _print_screen_header("Appearance reset")
     _print_status_block(
         [
             (
@@ -366,8 +302,23 @@ def run_reset_options() -> None:
             ),
             ("Color mode", "Auto"),
             ("Removed", str(removed) if removed else "(no preference file)"),
-            ("Mercury HDD", "Unchanged"),
         ]
     )
+    _print_host_local_footer()
     output.write("")
+    menu_prompts.wait_for_continue()
+
+
+# Backward-compatible alias (Health / older callers).
+def run_display_preferences_menu() -> None:
+    """Deprecated hub — color mode is now a first-class Options action."""
+    run_color_mode_menu()
+
+
+# Keep a thin preview-menu entry for any external callers.
+def run_theme_preview_menu() -> None:
+    """Synthetic compare flow (also inlined on Appearance)."""
+    print_theme_preview(theme_id=THEME_CLASSIC)
+    output.write("")
+    print_theme_preview(theme_id=THEME_REDLINE)
     menu_prompts.wait_for_continue()

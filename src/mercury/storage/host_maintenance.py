@@ -90,6 +90,9 @@ class HostMaintenanceState:
     source_delta_first_write_at: str = ""
     source_delta_first_write_operation: str = ""
     source_delta_first_artifact_id: str = ""
+    # Set by a successful Safe Disconnect; cleared on reconnect.
+    intentional_safe_disconnect: bool = False
+    last_safe_disconnect_result: str = ""
 
 
 def _coerce_bool(value: object, default: bool = False) -> bool:
@@ -212,6 +215,12 @@ def load_host_maintenance(path: Path | None = None) -> HostMaintenanceState:
             or data.get("first_post_package_artifact_id")
             or ""
         ),
+        intentional_safe_disconnect=_coerce_bool(
+            data.get("intentional_safe_disconnect", False)
+        ),
+        last_safe_disconnect_result=str(
+            data.get("last_safe_disconnect_result") or ""
+        ),
     )
 
 
@@ -311,7 +320,12 @@ def mark_detaching(
     return state
 
 
-def mark_detached(path: Path | None = None) -> HostMaintenanceState:
+def mark_detached(
+    path: Path | None = None,
+    *,
+    result_state: str = "",
+    intentional: bool = True,
+) -> HostMaintenanceState:
     state = load_host_maintenance(path)
     state.storage_availability = "detached"
     state.writes_allowed = False
@@ -320,12 +334,50 @@ def mark_detached(path: Path | None = None) -> HostMaintenanceState:
     state.destination_rehearsal_active = True
     state.destination_rehearsal_in_progress = True
     state.destination_rehearsal_planned = True
+    state.intentional_safe_disconnect = bool(intentional)
+    if result_state:
+        state.last_safe_disconnect_result = result_state
     state.notes = (
         "Mercury HDD detached for destination rehearsal; refuse HDD-backed writes. "
         "Destination cutover is NOT complete."
     )
     save_host_maintenance(state, path=path)
     return state
+
+
+def intentional_safe_disconnect_active(
+    state: HostMaintenanceState | None = None,
+) -> bool:
+    """True after a successful Safe Disconnect awaiting physical move.
+
+    Also recognizes hosts detached before ``intentional_safe_disconnect`` existed
+    when the package is verified and destination-rehearsal notes are present.
+    """
+    state = state or load_host_maintenance()
+    availability = str(getattr(state, "storage_availability", "") or "")
+    if availability != "detached":
+        return False
+    if bool(getattr(state, "writes_allowed", False)):
+        return False
+    role = str(getattr(state, "active_write_role", "none") or "none")
+    if role not in {"", "none"}:
+        return False
+    if bool(getattr(state, "intentional_safe_disconnect", False)):
+        return True
+    verified = (
+        str(getattr(state, "package_verification_status", "") or "")
+        == "DESTINATION_PACKAGE_VERIFIED"
+    )
+    rehearsal = bool(
+        getattr(state, "destination_rehearsal_active", False)
+        or getattr(state, "destination_rehearsal_in_progress", False)
+    )
+    notes = str(getattr(state, "notes", "") or "").lower()
+    return bool(
+        verified
+        and rehearsal
+        and ("detached for destination" in notes or "destination rehearsal" in notes)
+    )
 
 
 def mark_recovery_artifact_after_package(

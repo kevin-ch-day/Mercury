@@ -47,6 +47,7 @@ class MainMenuRecommendation:
             "safe_disconnect": "Safely disconnect the Mercury HDD",
             "reconnect": "Reconnect and validate Mercury HDD",
             "attach": "Attach HDD and choose Reconnect",
+            "physical_move": "Move HDD to destination workstation",
             "diagnose": "Diagnose attached storage",
             "verify_package": "Verify destination package",
         }
@@ -55,6 +56,9 @@ class MainMenuRecommendation:
 
 def main_menu_action_for_recommendation(recommended_action: str) -> str | None:
     """Map recommendation service actions onto Phase 3 main-menu action IDs."""
+    if recommended_action == "physical_move":
+        # Destination-move detach: do not recommend Reconnect on the source host.
+        return None
     if recommended_action in {
         MAIN_BACKUP_SYNC,
         MAIN_STORAGE,
@@ -191,6 +195,30 @@ def build_main_menu_recommendation(
 
     # HDD absent → software-only posture.
     if not connected or availability == "detached":
+        from mercury.storage.host_maintenance import intentional_safe_disconnect_active
+
+        if intentional_safe_disconnect_active(state):
+            return MainMenuRecommendation(
+                host_role=host_role if host_role != "SOURCE_OPERATION" else "DESTINATION_REHEARSAL",
+                storage_state="detached_intentional",
+                migration_state=migration_state,
+                backup_state=backup_state,
+                package_state=package,
+                recommended_action="physical_move",
+                explanation="Move HDD to destination workstation",
+                allowed_actions=(
+                    MAIN_STORAGE,
+                    MAIN_RECOVERY,
+                    MAIN_REPORTS,
+                    MAIN_HEALTH,
+                    MAIN_ADVANCED,
+                ),
+                software_only=True,
+                facts={
+                    "package_id": package_id,
+                    "intentional_safe_disconnect": True,
+                },
+            )
         return MainMenuRecommendation(
             host_role=host_role,
             storage_state="detached",

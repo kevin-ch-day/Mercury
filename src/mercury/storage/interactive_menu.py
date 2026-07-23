@@ -196,28 +196,35 @@ def _run_status_and_validation() -> None:
     render_submenu([("1", "Run validation again")], indent=2)
 
 
-def run_safe_disconnect_wizard() -> bool:
+def run_safe_disconnect_wizard() -> bool | str:
     """Public entry for Safe Disconnect (post Backup and Sync, storage menu).
 
-    Returns ``False`` when the operator cancels before a terminal detach outcome,
-    so callers (startup intent) can re-offer the chooser.
+    Returns:
+      ``False`` — cancelled before a terminal detach outcome (re-show chooser)
+      ``True`` — completed navigation that should continue into the main menu
+      ``\"exit\"`` — operator chose Exit after a successful physical-move screen
     """
     return _run_safe_disconnect_wizard_impl()
 
 
-def _run_safe_disconnect_wizard() -> bool:
+def _run_safe_disconnect_wizard() -> bool | str:
     return _run_safe_disconnect_wizard_impl()
 
 
-def _run_safe_disconnect_wizard_impl() -> bool:
+def _run_safe_disconnect_wizard_impl() -> bool | str:
     from mercury.storage.detach_wizard import (
-        DETACH_CONFIRMATION,
+        format_disconnect_complete,
+        format_privileged_detach_report,
         format_wizard_report,
         run_detach_wizard,
     )
     from mercury.storage.block_device import resolve_mercury_block_device
-
-    from mercury.storage.detach_presentation import print_safe_disconnect_intro
+    from mercury.storage.detach_presentation import (
+        print_physical_move_ready,
+        print_privileged_detach_prompt,
+        print_safe_disconnect_intro,
+    )
+    from mercury.terminal.theme import colors_enabled, rule_line, section_title
 
     resolved = resolve_mercury_block_device(require_mounted=False)
     print_safe_disconnect_intro(identity=resolved.identity if resolved.identity else None)
@@ -228,12 +235,15 @@ def _run_safe_disconnect_wizard_impl() -> bool:
     if menu_prompts.ask_yes_no(
         "Continue with safe-disconnect checks?", default=False
     ) is not True:
-        display_screen.write_summary("Cancelled.")
+        display_screen.write_summary(
+            "Safe Disconnect cancelled before preflight.\n"
+            "The Mercury HDD remains mounted and powered."
+        )
         return False
 
     preview = run_detach_wizard(execute=False, skip_log_redirect=False)
     while True:
-        for line in format_wizard_report(preview):
+        for line in format_wizard_report(preview, mode="full"):
             output.write(line)
         if preview.ok:
             break
@@ -242,53 +252,109 @@ def _run_safe_disconnect_wizard_impl() -> bool:
             "Blocked. [R] Recheck  [B] Back  [0] Cancel: "
         ).strip().lower()
         if choice in {"0", "b", "back", "q", "cancel"}:
-            display_screen.write_summary("Detach cancelled.")
+            display_screen.write_summary(
+                "Safe Disconnect cancelled before preflight.\n"
+                "The Mercury HDD remains mounted and powered."
+            )
             return False
         if choice not in {"r", "recheck"}:
-            display_screen.write_summary("Detach cancelled.")
+            display_screen.write_summary(
+                "Safe Disconnect cancelled before preflight.\n"
+                "The Mercury HDD remains mounted and powered."
+            )
             return False
         preview = run_detach_wizard(execute=False, skip_log_redirect=False)
 
     output.write("")
+    print_privileged_detach_prompt(identity=preview.identity)
     output.write("Administrator access is required to inspect open files and unmount the HDD.")
     output.write("Mercury does not read or store your password.")
     output.write("The standard operating-system sudo prompt may appear.")
-    if menu_prompts.ask_yes_no("Proceed to privileged detach?", default=False) is not True:
-        display_screen.write_summary("Stopped before privileged steps.")
-        return False
-
-    phrase = menu_prompts.ask("Type DETACH MERCURY HDD to execute: ").strip()
-    if phrase != DETACH_CONFIRMATION:
-        display_screen.write_status("fail", "Confirmation phrase mismatch — aborted.")
+    if menu_prompts.ask_yes_no(
+        "Unmount and power off this Mercury HDD now?", default=False
+    ) is not True:
+        display_screen.write_summary(
+            "Safe Disconnect stopped before unmount.\n"
+            "The Mercury HDD remains mounted and powered."
+        )
         return False
 
     while True:
         result = run_detach_wizard(
             execute=True,
-            confirm=DETACH_CONFIRMATION,
+            confirm=True,
             skip_log_redirect=False,
             skip_sudo_validate=False,
             power_off=True,
         )
-        for line in format_wizard_report(result):
-            output.write(line)
-        if result.safe_to_physically_disconnect or result.result_state in {
-            "DETACH_CANCELLED",
-            "DETACH_BLOCKED_SUDO",
-            "HDD_ALREADY_DETACHED",
-        }:
-            # Terminal outcomes (including blocked sudo / already detached) leave
-            # the wizard; treat as completed navigation rather than chooser cancel.
+        if result.result_state == "DETACH_BLOCKED_SUDO":
+            for line in format_privileged_detach_report(result):
+                output.write(line)
+            display_screen.write_summary(
+                "Privileged detach did not run.\n"
+                "The Mercury HDD remains mounted unless the status below states otherwise."
+            )
+            output.write(f"Result: {result.result_state}")
             return True
+
+        if result.safe_to_physically_disconnect:
+            for line in format_privileged_detach_report(result):
+                output.write(line)
+            output.write("")
+            for line in format_disconnect_complete(result):
+                if line == "SAFE DISCONNECT COMPLETE" and colors_enabled():
+                    output.write(section_title(line))
+                elif len(line) > 10 and set(line) <= {"━", "─", "="}:
+                    output.write(
+                        rule_line(level="major")
+                        if "━" in line and colors_enabled()
+                        else line
+                    )
+                else:
+                    output.write(line)
+            output.write("")
+            return _run_physical_move_ready_screen(result)
+
+        for line in format_privileged_detach_report(result):
+            output.write(line)
+        if result.blockers:
+            display_screen.write_status("fail", f"Detach blocked: {result.result_state}")
         choice = menu_prompts.ask(
             "Blocked. [R] Recheck  [B] Back  [0] Cancel: "
         ).strip().lower()
         if choice in {"0", "b", "back", "q", "cancel"}:
-            display_screen.write_summary("Detach cancelled.")
+            display_screen.write_summary(
+                "Safe Disconnect stopped before unmount.\n"
+                "The Mercury HDD remains mounted and powered."
+            )
             return False
         if choice not in {"r", "recheck", ""}:
-            display_screen.write_summary("Detach cancelled.")
+            display_screen.write_summary(
+                "Safe Disconnect stopped before unmount.\n"
+                "The Mercury HDD remains mounted and powered."
+            )
             return False
+
+
+def _run_physical_move_ready_screen(result) -> str:
+    """Show Physical Move Ready; prefer Exit Mercury over reconnect."""
+    from mercury.storage.detach_presentation import print_physical_move_ready
+    from mercury.storage.detach_wizard import format_disconnect_complete
+
+    while True:
+        print_physical_move_ready(
+            identity=result.identity,
+            package_id=result.package_id,
+        )
+        choice = (menu_prompts.ask("Choice") or "").strip()
+        if choice in {"", "0"}:
+            return "exit"
+        if choice == "1":
+            for line in format_disconnect_complete(result):
+                output.write(line)
+            menu_prompts.wait_for_continue()
+            continue
+        output.write(menu_prompts.invalid_choice_message(choice))
 
 
 def _print_reconnect_result(result) -> None:

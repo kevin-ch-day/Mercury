@@ -64,3 +64,4 @@ def test_safe_disconnect_wizard_uses_new_prompt(monkeypatch) -> None:
     assert menu._run_safe_disconnect_wizard_impl() is False
     assert any("safe-disconnect checks" in p for p in calls)
     assert "Continue with preflight?" not in calls
+    assert not any("DETACH MERCURY HDD" in p for p in calls)

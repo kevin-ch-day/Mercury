@@ -230,13 +230,29 @@ def _migration_dashboard_rows(report, policy) -> list[str]:
         migration_display = _compact_phase_line(report.operator_phase, unresolved)
 
         if snap.state == StorageLifecycleState.DETACHED:
+            from mercury.storage.host_maintenance import (
+                intentional_safe_disconnect_active,
+                load_host_maintenance,
+            )
+
+            intentional = intentional_safe_disconnect_active(load_host_maintenance())
+            hdd_label = (
+                "Powered off · safe to unplug"
+                if intentional
+                else "Not connected"
+            )
             rows = [
-                dashboard_row("Mercury HDD", "Not connected"),
+                dashboard_row("Mercury HDD", hdd_label),
                 dashboard_row("Writer", "Disabled"),
                 dashboard_row("Recommended", next_line),
-                dashboard_row("Package", package_line if package_line != "Pending" else "Located on detached HDD"),
+                dashboard_row(
+                    "Package",
+                    package_line
+                    if package_line != "Pending"
+                    else ("VERIFIED · destination rehearsal" if intentional else "Located on detached HDD"),
+                ),
             ]
-            if snap.host_role == MigrationHostRole.SOURCE_OPERATION:
+            if snap.host_role == MigrationHostRole.SOURCE_OPERATION and not intentional:
                 rows.insert(3, dashboard_row("Host role", "Source reference system"))
             return rows
 

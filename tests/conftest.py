@@ -171,6 +171,40 @@ def _assume_fedora_platform_for_policy_tests(
 
 
 @pytest.fixture(autouse=True)
+def _isolate_host_theme_preference(
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[None]:
+    """Keep host-local theme.json (and MERCURY_THEME) from affecting the suite.
+
+    Operators may select Redline on the live host; tests must still see the
+    compiled Classic default unless they opt into a fixture path.
+    """
+    theme_path = tmp_path_factory.mktemp("mercury-theme") / "theme.json"
+    monkeypatch.setenv("MERCURY_THEME_PATH", str(theme_path))
+    monkeypatch.delenv("MERCURY_THEME", raising=False)
+    monkeypatch.delenv("MERCURY_COLOR_MODE", raising=False)
+    # Do not clear NO_COLOR / MERCURY_NO_COLOR — subprocess_env and many tests
+    # rely on them. Clear force-color so preference detection stays deterministic.
+    monkeypatch.delenv("MERCURY_FORCE_COLOR", raising=False)
+
+    from mercury.terminal.color_capability import set_color_mode_override
+    from mercury.terminal.design_system import clear_style_cache
+    from mercury.terminal.theme import set_color_enabled
+    from mercury.terminal.theme_settings import set_theme_override
+
+    set_theme_override(None)
+    set_color_enabled(None)
+    set_color_mode_override(None)
+    clear_style_cache()
+    yield
+    set_theme_override(None)
+    set_color_enabled(None)
+    set_color_mode_override(None)
+    clear_style_cache()
+
+
+@pytest.fixture(autouse=True)
 def _reset_menu_prompt_reader() -> Iterator[None]:
     from mercury.menu.prompts import set_continue_reader, set_prompt_reader
 

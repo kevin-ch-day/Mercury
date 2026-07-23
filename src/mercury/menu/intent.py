@@ -265,8 +265,11 @@ def dispatch_startup_intent(intent: str) -> str | None:
     if intent == INTENT_SAFE_DISCONNECT:
         from mercury.storage.interactive_menu import run_safe_disconnect_wizard
 
-        if not run_safe_disconnect_wizard():
+        outcome = run_safe_disconnect_wizard()
+        if outcome is False:
             return OUTCOME_CANCELLED
+        if outcome == "exit":
+            return OUTCOME_EXIT
         return OUTCOME_CONTINUE
     if intent == INTENT_DESTINATION_REHEARSAL:
         from mercury.menu.task_menus import run_destination_rehearsal_hub

@@ -48,6 +48,8 @@ def mark_attached_pending_confirm(*, path: Path | None = None) -> HostMaintenanc
     state.destination_rehearsal_active = True
     state.destination_rehearsal_in_progress = True
     state.destination_rehearsal_planned = True
+    state.intentional_safe_disconnect = False
+    state.last_safe_disconnect_result = ""
     state.notes = (
         "Mercury HDD reconnected; writes remain disabled until explicit operator confirmation. "
         "Destination cutover is NOT complete."

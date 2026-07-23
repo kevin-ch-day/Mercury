@@ -208,8 +208,8 @@ def section_title(title: str) -> str:
         return title
     s = active_styles()
     if s.theme_id == THEME_REDLINE:
-        # Angular marker (geometry), bone-white title — not soft ornaments.
-        return markup("▸ ", s.brand_marker) + markup(title, s.value)
+        # Small square marker — reserve ▸ for recommended actions only.
+        return markup("■ ", s.brand_marker) + markup(title, s.value)
     return markup(title, s.section)
 
 
@@ -279,10 +279,9 @@ def menu_header_lines(subtitle: str, *, variant: str | None = None) -> list[str]
 
     if not colors_enabled():
         if use.startswith("redline"):
-            # Distinguish rails without color: staccato steel vs solid edge.
-            rail = "┄" if unicode_box_supported() else "-"
+            # Single signal edge under the identity (no leading dotted rail).
             edge = "━" if unicode_box_supported() else "="
-            return [rail * width, primary, secondary, edge * width]
+            return [primary, secondary, edge * width]
         ch = "─" if unicode_box_supported() else "-"
         return [primary, secondary, ch * width]
 
@@ -293,7 +292,6 @@ def menu_header_lines(subtitle: str, *, variant: str | None = None) -> list[str]
             + markup(" REDLINE", s.title)
         )
         return [
-            rule_line(width=width, level="minor"),
             primary_styled,
             markup(secondary, s.subtitle),
             rule_line(width=width, level="major"),

@@ -119,3 +119,67 @@ def print_safe_disconnect_intro(*, identity) -> None:
             output.write(f"  {item}")
 
     _section("PRE-FLIGHT AUTHORIZATION")
+
+
+def print_privileged_detach_prompt(*, identity) -> None:
+    """Stage-2 authorization chrome before sudo / unmount / power-off."""
+    from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
+    styles = active_styles()
+    _section("PRIVILEGED DETACH")
+    output.write("Mercury will now:")
+    model = (getattr(identity, "model", None) if identity else None) or "the Mercury HDD"
+    label = (getattr(identity, "label", None) if identity else None) or DEFAULT_PRIMARY_LABEL
+    bullets = (
+        "inspect system-wide open handles",
+        "flush pending filesystem writes",
+        f"unmount {label}",
+        "verify UUID detachment",
+        f"power off {model}",
+    )
+    for item in bullets:
+        if colors_enabled():
+            output.write(f"  {markup('•', styles.brand_marker)} {markup(item, styles.value)}")
+        else:
+            output.write(f"  • {item}")
+    output.write("")
+
+
+def print_physical_move_ready(*, identity, package_id: str = "") -> None:
+    """Post-success destination-move screen (not a reconnect recommendation)."""
+    from mercury.core.storage_roles import DEFAULT_LEGACY_LABEL, DEFAULT_PRIMARY_LABEL
+    from mercury.terminal.theme import menu_item_line
+
+    styles = active_styles()
+    title = "PHYSICAL MOVE READY"
+    if colors_enabled():
+        output.write(section_title(title))
+    else:
+        output.write(title)
+    output.write(rule_line(level="major"))
+
+    model = (getattr(identity, "model", None) if identity else None) or "WDC Mercury HDD"
+    label = (getattr(identity, "label", None) if identity else None) or DEFAULT_PRIMARY_LABEL
+    rows = [
+        ("Mercury HDD", "Powered off · safe to unplug"),
+        ("Package", "VERIFIED" if package_id else "Recorded"),
+        ("Source host", "Complete"),
+        ("Next step", "Move the HDD to the destination workstation"),
+    ]
+    for name, value in rows:
+        output.write(dashboard_row(name, value, label_width=14))
+    output.write("")
+    output.write("Physically unplug:")
+    if colors_enabled():
+        output.write(f"  {markup(f'{model} · {label}', styles.value)}")
+    else:
+        output.write(f"  {model} · {label}")
+    output.write("Do not unplug:")
+    if colors_enabled():
+        output.write(f"  {markup(DEFAULT_LEGACY_LABEL, styles.value_muted)}")
+    else:
+        output.write(f"  {DEFAULT_LEGACY_LABEL}")
+    output.write("")
+    output.write(menu_item_line("1", "View disconnect receipt", indent=2))
+    output.write(menu_item_line("0", "Exit Mercury", indent=2))
+    output.write("")

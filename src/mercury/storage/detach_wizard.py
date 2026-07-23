@@ -37,7 +37,22 @@ from mercury.storage.host_maintenance import (
     writes_allowed,
 )
 
-DETACH_CONFIRMATION = "DETACH MERCURY HDD"
+DETACH_CONFIRMATION = "DETACH MERCURY HDD"  # Legacy CLI alias; menu uses y/N only.
+PRIVILEGED_PHASE_NAMES = frozenset({"holders", "flush", "unmount", "power_off"})
+
+
+def detach_execute_approved(confirm: object) -> bool:
+    """True when privileged detach is authorized (menu y/N or legacy CLI phrase)."""
+    if confirm is True:
+        return True
+    if confirm is False or confirm is None:
+        return False
+    text = str(confirm).strip()
+    if not text:
+        return False
+    if text == DETACH_CONFIRMATION:
+        return True
+    return text.casefold() in {"y", "yes", "true", "1", "execute"}
 PHASE3B_RUN_ID = "20260722T055400Z_phase3b"
 
 # Explicit result states (operator-facing).
@@ -566,8 +581,23 @@ def run_detach_preflight(
     )
     result.ok = True
     result.result_state = "PREFLIGHT_OK"
-    result.user_messages.append("Preflight passed; privileged holder checks and unmount not yet run.")
+    result.user_messages.append(
+        "Preflight passed; privileged holder checks and unmount not yet run."
+    )
     return result
+
+
+def _strip_preview_only_messages(result: DetachWizardResult) -> None:
+    """Remove conclusions that only apply before privileged execution."""
+    drop_substrings = (
+        "Preflight passed; privileged holder checks and unmount not yet run",
+        "Preview only — no unmount or power-off performed",
+    )
+    result.user_messages = [
+        msg
+        for msg in result.user_messages
+        if not any(part in msg for part in drop_substrings)
+    ]
 
 
 def run_detach_wizard(
@@ -617,11 +647,14 @@ def run_detach_wizard(
         )
         return preflight
 
-    if confirm != DETACH_CONFIRMATION:
+    # Privileged phase begins — preview/preflight-only conclusions must not leak.
+    _strip_preview_only_messages(preflight)
+
+    if not detach_execute_approved(confirm):
         preflight.ok = False
         preflight.result_state = DETACH_CANCELLED
         preflight.blockers.append(
-            f"confirmation must be exactly {DETACH_CONFIRMATION!r}"
+            "privileged detach was not approved"
         )
         return preflight
 
@@ -685,7 +718,7 @@ def run_detach_wizard(
         return preflight
 
     preflight.phases.append(
-        PhaseResult("holders", True, lines=["[PASS] No open file handles"])
+        PhaseResult("holders", True, lines=["[PASS] No system-wide open file handles"])
     )
 
     # Flush + I/O
@@ -811,10 +844,17 @@ def run_detach_wizard(
     # Host-shadow: writes must stay refused
     if writes_allowed():
         preflight.warnings.append("writes_allowed unexpectedly true after unmount")
-    mark_detached()
+    mark_detached(result_state=SAFE_TO_PHYSICALLY_DISCONNECT_UNMOUNTED, intentional=True)
 
     preflight.phases.append(
-        PhaseResult("unmount", True, lines=["[PASS] HDD unmounted"])
+        PhaseResult(
+            "unmount",
+            True,
+            lines=[
+                "[PASS] HDD unmounted",
+                "[PASS] UUID no longer mounted",
+            ],
+        )
     )
 
     # Power-off with re-resolve
@@ -851,6 +891,10 @@ def run_detach_wizard(
         if any("absent" in e.lower() for e in reresolve.errors):
             preflight.ok = True
             preflight.result_state = HDD_POWERED_OFF_SAFE_TO_DISCONNECT
+            mark_detached(
+                result_state=HDD_POWERED_OFF_SAFE_TO_DISCONNECT,
+                intentional=True,
+            )
             preflight.phases.append(
                 PhaseResult(
                     "power_off",
@@ -862,6 +906,10 @@ def run_detach_wizard(
             return preflight
         preflight.ok = True
         preflight.result_state = SAFE_TO_PHYSICALLY_DISCONNECT_UNMOUNTED
+        mark_detached(
+            result_state=SAFE_TO_PHYSICALLY_DISCONNECT_UNMOUNTED,
+            intentional=True,
+        )
         preflight.warnings.append(
             "Filesystem unmounted, but parent identity could not be re-resolved for power-off"
         )
@@ -919,10 +967,13 @@ def run_detach_wizard(
     if power_ok:
         preflight.ok = True
         preflight.result_state = HDD_POWERED_OFF_SAFE_TO_DISCONNECT
+        mark_detached(
+            result_state=HDD_POWERED_OFF_SAFE_TO_DISCONNECT,
+            intentional=True,
+        )
         preflight.phases.append(PhaseResult("power_off", True, lines=[power_msg]))
         preflight.user_messages.extend(
             [
-                "Result: SAFE TO DISCONNECT",
                 f"You may now unplug: {identity.model or 'WDC'} · {DEFAULT_PRIMARY_LABEL} · UUID {expected_uuid}",
                 f"Do not unplug: {DEFAULT_LEGACY_LABEL}",
             ]
@@ -930,6 +981,10 @@ def run_detach_wizard(
     else:
         preflight.ok = True
         preflight.result_state = SAFE_TO_PHYSICALLY_DISCONNECT_UNMOUNTED
+        mark_detached(
+            result_state=SAFE_TO_PHYSICALLY_DISCONNECT_UNMOUNTED,
+            intentional=True,
+        )
         preflight.phases.append(PhaseResult("power_off", True, lines=[power_msg]))
         preflight.user_messages.append(
             "SAFE TO PHYSICALLY DISCONNECT (unmounted; wait for activity light)."
@@ -937,7 +992,23 @@ def run_detach_wizard(
     return preflight
 
 
-def format_wizard_report(result: DetachWizardResult) -> list[str]:
+def format_wizard_report(
+    result: DetachWizardResult,
+    *,
+    mode: str = "full",
+) -> list[str]:
+    """Operator-facing detach report.
+
+    Modes:
+      full — preflight/preview (package, drive, all phases)
+      privileged — only newly executed privileged phases
+      complete — canonical success summary (no phase spam)
+    """
+    if mode == "complete":
+        return format_disconnect_complete(result)
+    if mode == "privileged":
+        return format_privileged_detach_report(result)
+
     lines = ["SAFE DISCONNECT MERCURY HDD", "─" * 62]
     if result.package_id:
         lines.append(f"Package: {result.package_id}")
@@ -961,4 +1032,55 @@ def format_wizard_report(result: DetachWizardResult) -> list[str]:
         lines.append("Close the holder or resolve the issue, then choose [R] Recheck.")
     for msg in result.user_messages:
         lines.append(msg)
+    return lines
+
+
+def format_privileged_detach_report(result: DetachWizardResult) -> list[str]:
+    """Privileged-phase lines only (no duplicated preflight block)."""
+    lines = ["PRIVILEGED DETACH", "─" * 62]
+    for phase in result.phases:
+        if phase.name not in PRIVILEGED_PHASE_NAMES:
+            continue
+        if phase.lines:
+            lines.extend(phase.lines)
+        elif phase.detail:
+            status = "PASS" if phase.ok else "FAIL"
+            lines.append(f"[{status}] {phase.name}: {phase.detail}")
+    if result.blockers and not result.safe_to_physically_disconnect:
+        lines.append(f"Result: {result.result_state}")
+        lines.append("Blocked by:")
+        for b in result.blockers:
+            lines.append(f"  · {b}")
+    return lines
+
+
+def format_disconnect_complete(result: DetachWizardResult) -> list[str]:
+    """Canonical post-success summary — one result code, no preview leftovers."""
+    from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL, DEFAULT_PRIMARY_UUID
+
+    ident = result.identity
+    model = (ident.model if ident else None) or EXPECTED_PRIMARY_MODEL
+    label = (ident.label if ident else None) or DEFAULT_PRIMARY_LABEL
+    uuid = (ident.uuid if ident else None) or DEFAULT_PRIMARY_UUID
+    powered_off = result.result_state == HDD_POWERED_OFF_SAFE_TO_DISCONNECT
+    lines = [
+        "SAFE DISCONNECT COMPLETE",
+        "━" * 62,
+        f"  Device       {model}",
+        f"  Storage      {label}",
+        f"  UUID         {uuid}",
+        f"  Filesystem   Unmounted",
+        f"  Device power {'Off' if powered_off else 'Unmounted (software power-off unavailable)'}",
+    ]
+    if result.package_id:
+        lines.append(f"  Package      {result.package_id}")
+    lines.extend(
+        [
+            "",
+            "[PASS] Mercury HDD is safe to physically disconnect.",
+            "Do not unplug:",
+            f"  {DEFAULT_LEGACY_LABEL}",
+            f"Result: {result.result_state}",
+        ]
+    )
     return lines

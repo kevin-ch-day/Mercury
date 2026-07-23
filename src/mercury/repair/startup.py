@@ -210,6 +210,13 @@ def main_menu_invalid_choice_suffix() -> str:
 
 def primary_mount_hint() -> str | None:
     """Post-cutover hint when the HDD writer is not mounted."""
+    try:
+        from mercury.storage.host_maintenance import intentional_safe_disconnect_active
+
+        if intentional_safe_disconnect_active():
+            return None
+    except Exception:
+        pass
     if not _hdd_writer_active():
         return None
     try:

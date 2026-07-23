@@ -328,7 +328,37 @@ def test_apply_theme_reports_env_override(
     assert active_theme_id() == THEME_CLASSIC
 
 
-def test_display_preferences_opens_color_mode(
+def test_options_menu_is_flat_three_actions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Options has theme / color / reset only — no Display preferences hub."""
+    captured: list[str] = []
+    monkeypatch.setattr(
+        "mercury.output.write",
+        lambda s: captured.append(str(s)),
+    )
+    monkeypatch.setattr(
+        "mercury.menu.options_menu.display_screen.open_screen",
+        lambda *_a, **_k: None,
+    )
+    monkeypatch.setattr(
+        "mercury.menu.prompts.ask",
+        lambda *_a, **_k: "0",
+    )
+
+    from mercury.menu.options_menu import run_options_menu
+
+    run_options_menu()
+    joined = "\n".join(strip_markup(line) for line in captured)
+    assert "Change or preview theme" in joined
+    assert "Change color mode" in joined
+    assert "Reset appearance" in joined
+    assert "Display preferences" not in joined
+    assert "Scope" in joined
+    assert "Host-local" in joined
+
+
+def test_color_mode_opens_from_options(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls = {"color": 0}
@@ -336,7 +366,7 @@ def test_display_preferences_opens_color_mode(
         "mercury.menu.options_menu.run_color_mode_menu",
         lambda: calls.__setitem__("color", calls["color"] + 1),
     )
-    answers = iter(["1", "0"])
+    answers = iter(["2", "0"])  # Change color mode, then Back
     monkeypatch.setattr(
         "mercury.menu.prompts.ask",
         lambda *_a, **_k: next(answers),
@@ -347,8 +377,25 @@ def test_display_preferences_opens_color_mode(
         lambda *_a, **_k: None,
     )
 
+    from mercury.menu.options_menu import run_options_menu
+
+    run_options_menu()
+    assert calls["color"] == 1
+
+
+def test_display_preferences_alias_opens_color_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"color": 0}
+    monkeypatch.setattr(
+        "mercury.menu.options_menu.run_color_mode_menu",
+        lambda: calls.__setitem__("color", calls["color"] + 1),
+    )
+
     from mercury.menu.options_menu import run_display_preferences_menu
 
+    # Alias should call color mode directly (which we stubbed).
+    # Replace the function body path: alias invokes run_color_mode_menu.
     run_display_preferences_menu()
     assert calls["color"] == 1
 

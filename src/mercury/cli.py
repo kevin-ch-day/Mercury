@@ -729,7 +729,8 @@ def storage_detach_cmd(
             raise typer.Exit(1)
         if not confirm:
             output.write(
-                "Preflight only. Re-run with --confirm 'DETACH MERCURY HDD' to execute "
+                "Preflight only. Re-run with --confirm yes (or legacy "
+                f"'{DETACH_CONFIRMATION}') to execute "
                 "(interactive sudo; password never captured by Mercury)."
             )
             return
@@ -743,15 +744,20 @@ def storage_detach_cmd(
             skip_log_redirect=False,
             power_off=power_off,
         )
-        for line in format_wizard_report(live):
+        for line in format_wizard_report(live, mode="privileged" if live.ok else "full"):
             output.write(line)
+        if live.safe_to_physically_disconnect:
+            for line in format_wizard_report(live, mode="complete"):
+                output.write(line)
         if not live.safe_to_physically_disconnect:
             raise typer.Exit(1)
         return
 
     if action == "execute":
         if not confirm:
-            raise typer.BadParameter(f"--confirm '{DETACH_CONFIRMATION}' is required")
+            raise typer.BadParameter(
+                "--confirm yes (or legacy 'DETACH MERCURY HDD') is required"
+            )
         # Full wizard path (interactive sudo). Prefer menu; CLI available for scripts/TTY.
         from mercury.storage.detach_wizard import format_wizard_report, run_detach_wizard
 
@@ -762,8 +768,13 @@ def storage_detach_cmd(
             skip_log_redirect=False,
             power_off=power_off,
         )
-        for line in format_wizard_report(result):
+        for line in format_wizard_report(
+            result, mode="privileged" if result.safe_to_physically_disconnect else "full"
+        ):
             output.write(line)
+        if result.safe_to_physically_disconnect:
+            for line in format_wizard_report(result, mode="complete"):
+                output.write(line)
         if not result.safe_to_physically_disconnect:
             raise typer.Exit(1)
         return

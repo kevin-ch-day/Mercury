@@ -117,6 +117,13 @@ def hdd_menu_header_state(snapshot: StorageLifecycleSnapshot) -> str:
         StorageLifecycleState.DETACHED,
         StorageLifecycleState.DEVICE_NOT_FOUND,
     }:
+        try:
+            from mercury.storage.host_maintenance import intentional_safe_disconnect_active
+
+            if intentional_safe_disconnect_active():
+                return "Powered off · safe to unplug"
+        except Exception:
+            pass
         return "Not connected"
     return snapshot.label
 
