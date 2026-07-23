@@ -77,7 +77,9 @@ def handle_menu_choice(choice: str) -> MenuResult:
             assess_operation_availability,
         )
 
-        # Phase 1: allow entering Backup so recoverable/strong restore-and-continue can run.
+        # Phase 2: when writes are disabled, route Backup into the guided session
+        # (storage preflight + restore + recommended lanes). Expert submenu remains
+        # reachable from within Backup Operations after the writer is restored.
         if action.action_id == ACTION_BACKUP:
             availability = assess_operation_availability("database_backup")
             if availability.classification in {
@@ -85,8 +87,10 @@ def handle_menu_choice(choice: str) -> MenuResult:
                 AvailabilityClassification.STRONG_CONFIRMATION,
                 AvailabilityClassification.AVAILABLE,
             }:
+                from mercury.backup.session_wizard import run_backup_sync_wizard
+
                 with log_operation(action.title, logger_name="mercury.menu", choice=normalized):
-                    action.runner()
+                    run_backup_sync_wizard()
                 log_menu_action(choice=normalized, title=action.title, result="continue")
                 return "continue"
         output.write(writes_disabled_redirect_message())

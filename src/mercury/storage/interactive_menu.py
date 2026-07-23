@@ -196,7 +196,16 @@ def _run_status_and_validation() -> None:
     render_submenu([("1", "Run validation again")], indent=2)
 
 
+def run_safe_disconnect_wizard() -> None:
+    """Public entry for Safe Disconnect (post Backup and Sync, storage menu)."""
+    _run_safe_disconnect_wizard_impl()
+
+
 def _run_safe_disconnect_wizard() -> None:
+    _run_safe_disconnect_wizard_impl()
+
+
+def _run_safe_disconnect_wizard_impl() -> None:
     from mercury.storage.detach_wizard import (
         DETACH_CONFIRMATION,
         format_wizard_report,

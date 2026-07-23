@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Final
 
 # Stable action ids used by completion hints and tests.
-ACTION_REFRESH = "refresh"
+ACTION_BACKUP_SYNC_SESSION = "backup_sync_session"
 ACTION_FULL_BACKUP = "full_backup"
 ACTION_PRODUCTION_BACKUP = "production_backup"
 ACTION_VERIFY = "verify_sources"
@@ -14,13 +14,21 @@ ACTION_BUNDLE = "write_bundle"
 ACTION_PREVIEW = "preview_plan"
 ACTION_HANDOFF = "open_handoff"
 ACTION_DEV_BACKUP = "development_backup"
+# Backward-compatible alias (Refresh removed from primary slots in Phase 2).
+ACTION_REFRESH = "refresh"
 
 # (key, label, action_id, help blurb shown in docs / extended summaries)
 BACKUP_MENU_OPTIONS: Final[list[tuple[str, str, str, str]]] = [
-    ("1", "Refresh", ACTION_REFRESH, "Reload backup status from operator storage."),
+    (
+        "1",
+        "Back up and sync this workstation",
+        ACTION_BACKUP_SYNC_SESSION,
+        "Guided session: storage transition, production backup+verify, optional "
+        "development backup, offline Git recovery, optional prod→dev sync.",
+    ),
     (
         "2",
-        "Run full backup now",
+        "Run full database backup",
         ACTION_FULL_BACKUP,
         "Back up all configured production databases, verify those newly written "
         "backups, then optionally back up and verify development databases.",
@@ -62,6 +70,7 @@ BACKUP_MENU_OPTIONS: Final[list[tuple[str, str, str, str]]] = [
 # Actions that write under the Mercury HDD (or mutate manifests / restore schemas).
 BACKUP_MENU_WRITE_ACTIONS: Final[frozenset[str]] = frozenset(
     {
+        ACTION_BACKUP_SYNC_SESSION,
         ACTION_FULL_BACKUP,
         ACTION_PRODUCTION_BACKUP,
         ACTION_VERIFY,  # stamps manifests when update_manifest=True
@@ -81,7 +90,12 @@ def backup_menu_render_options(
     """Options for ``render_submenu``."""
     options: list[tuple[str, str]] = []
     for key, label, action_id, _help in BACKUP_MENU_OPTIONS:
-        if not writes_allowed and action_id in BACKUP_MENU_WRITE_ACTIONS:
+        # Session remains selectable while writes are disabled so guided restore can run.
+        if (
+            not writes_allowed
+            and action_id in BACKUP_MENU_WRITE_ACTIONS
+            and action_id != ACTION_BACKUP_SYNC_SESSION
+        ):
             options.append((key, f"{label}  {DETACH_UNAVAILABLE_SUFFIX}"))
         else:
             options.append((key, label))

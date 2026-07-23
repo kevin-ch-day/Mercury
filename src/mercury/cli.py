@@ -1826,6 +1826,147 @@ def backup_dev_cmd(
         raise typer.Exit(1)
 
 
+@backup_app.command("session")
+def backup_session_cmd(
+    preview: bool = typer.Option(
+        False,
+        "--preview",
+        help="Preview the recommended session without executing lanes.",
+    ),
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Execute the session non-interactively (requires explicit lane flags).",
+    ),
+    production: bool = typer.Option(
+        False,
+        "--production/--no-production",
+        help="Include production database backup (required with --execute unless --git-only).",
+    ),
+    verify: bool = typer.Option(
+        True,
+        "--verify/--no-verify",
+        help="Verify exact newly written production backups (forced on when production is selected).",
+    ),
+    git: bool = typer.Option(
+        False,
+        "--git/--no-git",
+        help="Include offline Git recovery capture.",
+    ),
+    include_development: bool = typer.Option(
+        False,
+        "--include-development/--no-include-development",
+        help="Include optional development database backup.",
+    ),
+    sync_development: bool = typer.Option(
+        False,
+        "--sync-development/--no-sync-development",
+        help="Include optional production-to-development sync after verified production backup.",
+    ),
+    restore_check: bool = typer.Option(
+        False,
+        "--restore-check/--no-restore-check",
+        help="Restore-check exact backup IDs written by this session (optional; not required).",
+    ),
+    confirm_restore: str | None = typer.Option(
+        None,
+        "--confirm-restore",
+        help="Exact phrase RESTORE SOURCE WRITER when destination rehearsal requires strong confirmation.",
+    ),
+    accept_restore: bool = typer.Option(
+        False,
+        "--accept-restore",
+        help="Accept recoverable y/N writer restoration non-interactively.",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit one structured JSON document (no console decoration).",
+    ),
+) -> None:
+    """Guided Backup and Sync session (Phase 2).
+
+    Exit codes:
+      0  PASS
+      1  PARTIAL or FAIL
+      2  REFUSED or CANCELLED (or preview hard-block)
+      3  usage / parameter error (Typer BadParameter)
+    """
+    import json as json_lib
+    import sys
+
+    from mercury.backup.session_models import SessionPlan, SessionResult
+    from mercury.backup.session_runner import preview_session, run_backup_sync_session
+    from mercury.backup.session_receipt import render_session_summary_text
+
+    def _emit(session_obj) -> None:
+        if json_output:
+            sys.stdout.write(
+                json_lib.dumps(session_obj.model_dump(mode="json"), indent=2) + "\n"
+            )
+        else:
+            output.write(render_session_summary_text(session_obj))
+
+    def _exit_for(session_obj) -> None:
+        if session_obj.session_result == SessionResult.PASS:
+            raise typer.Exit(0)
+        if session_obj.session_result in {SessionResult.REFUSED, SessionResult.CANCELLED}:
+            raise typer.Exit(2)
+        raise typer.Exit(1)
+
+    if preview and execute:
+        raise typer.BadParameter("Use either --preview or --execute, not both.")
+    if not preview and not execute:
+        # Interactive path
+        from mercury.backup.session_wizard import run_backup_sync_wizard
+
+        session = run_backup_sync_wizard(interactive=True)
+        if session is None:
+            raise typer.Exit(0)
+        _emit(session)
+        _exit_for(session)
+
+    if preview:
+        plan = SessionPlan(
+            production_backup=True,
+            verify_production=True,
+            development_backup=include_development,
+            git_recovery=True,
+            git_recovery_required=True,
+            sync_development=sync_development,
+            restore_check=restore_check,
+        ).normalize()
+        session = preview_session(plan)
+        _emit(session)
+        raise typer.Exit(0 if session.session_result != SessionResult.REFUSED else 2)
+
+    # Non-interactive execute — require explicit lane selection.
+    if not production and not git and not include_development:
+        raise typer.BadParameter(
+            "Non-interactive --execute requires explicit --production and/or --git "
+            "and/or --include-development."
+        )
+    plan = SessionPlan(
+        production_backup=production,
+        verify_production=bool(production and verify),
+        development_backup=include_development,
+        git_recovery=git,
+        git_recovery_required=bool(git),
+        sync_development=sync_development,
+        restore_check=restore_check,
+        restore_check_required=False,
+    ).normalize()
+    session = run_backup_sync_session(
+        plan=plan,
+        execute=True,
+        interactive=False,
+        confirm_restore_phrase=confirm_restore,
+        accept_recoverable=True if accept_restore else None,
+    )
+    _emit(session)
+    _exit_for(session)
+
+
 @backup_app.command("full")
 def backup_full_cmd(
     execute: bool = typer.Option(

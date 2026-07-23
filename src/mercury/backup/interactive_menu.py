@@ -727,10 +727,10 @@ def run_backup_menu(*, interactive: bool = True) -> None:
             return
 
         if choice == "1":
+            from mercury.backup.session_wizard import run_backup_sync_wizard
+
+            run_backup_sync_wizard(interactive=True)
             plan = _load_plan()
-            display_screen.write_summary(
-                f"Plan refreshed — {len(plan.backup_sources)} production database(s)."
-            )
             show_title = pause_and_redraw()
             continue
 

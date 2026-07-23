@@ -433,10 +433,72 @@ def _source_delta_for_restore(previous: HostMaintenanceState) -> dict[str, Any]:
     started = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return {
         "source_writes_resumed_after_package": True,
+        "source_writes_resumed_at": started,
         "source_delta_started_at": started,
         "source_delta_relative_to_package_id": previous.package_id,
         "source_delta_reason": "operator_restored_source_writer",
+        "recovery_artifacts_created_after_package": False,
+        "first_post_package_artifact_at": "",
+        "first_post_package_artifact_type": "",
+        "first_post_package_artifact_id": "",
+        "source_data_changed_since_package": False,
+        "source_data_first_change_at": "",
+        "source_data_first_change_operation": "",
+        "development_state_changed_since_package": False,
+        "development_state_first_change_at": "",
+        "development_state_first_change_operation": "",
         "source_changed_since_package": False,
+        "source_delta_first_write_at": "",
+        "source_delta_first_write_operation": "",
+        "source_delta_first_artifact_id": "",
+    }
+
+
+def _package_delta_kwargs(state: HostMaintenanceState) -> dict[str, Any]:
+    """Preserve post-package delta fields across unrelated transitions."""
+    return {
+        "source_writes_resumed_after_package": state.source_writes_resumed_after_package,
+        "source_writes_resumed_at": getattr(state, "source_writes_resumed_at", "")
+        or state.source_delta_started_at,
+        "source_delta_started_at": state.source_delta_started_at,
+        "source_delta_relative_to_package_id": state.source_delta_relative_to_package_id,
+        "source_delta_reason": state.source_delta_reason,
+        "recovery_artifacts_created_after_package": getattr(
+            state, "recovery_artifacts_created_after_package", False
+        ),
+        "first_post_package_artifact_at": getattr(
+            state, "first_post_package_artifact_at", ""
+        ),
+        "first_post_package_artifact_type": getattr(
+            state, "first_post_package_artifact_type", ""
+        ),
+        "first_post_package_artifact_id": getattr(
+            state, "first_post_package_artifact_id", ""
+        ),
+        "source_data_changed_since_package": getattr(
+            state, "source_data_changed_since_package", False
+        ),
+        "source_data_first_change_at": getattr(state, "source_data_first_change_at", ""),
+        "source_data_first_change_operation": getattr(
+            state, "source_data_first_change_operation", ""
+        ),
+        "development_state_changed_since_package": getattr(
+            state, "development_state_changed_since_package", False
+        ),
+        "development_state_first_change_at": getattr(
+            state, "development_state_first_change_at", ""
+        ),
+        "development_state_first_change_operation": getattr(
+            state, "development_state_first_change_operation", ""
+        ),
+        "source_changed_since_package": state.source_changed_since_package,
+        "source_delta_first_write_at": getattr(state, "source_delta_first_write_at", ""),
+        "source_delta_first_write_operation": getattr(
+            state, "source_delta_first_write_operation", ""
+        ),
+        "source_delta_first_artifact_id": getattr(
+            state, "source_delta_first_artifact_id", ""
+        ),
     }
 
 
@@ -616,11 +678,15 @@ def restore_source_writer(
         source_writes_resumed_after_package=bool(
             delta.get("source_writes_resumed_after_package", False)
         ),
+        source_writes_resumed_at=str(delta.get("source_writes_resumed_at") or ""),
         source_delta_started_at=str(delta.get("source_delta_started_at") or ""),
         source_delta_relative_to_package_id=str(
             delta.get("source_delta_relative_to_package_id") or ""
         ),
         source_delta_reason=str(delta.get("source_delta_reason") or ""),
+        recovery_artifacts_created_after_package=False,
+        source_data_changed_since_package=False,
+        development_state_changed_since_package=False,
         source_changed_since_package=False,
     )
     try:
@@ -818,11 +884,7 @@ def disable_writes(
         package_id=previous.package_id,
         package_verification_status=previous.package_verification_status,
         notes=f"Operator disabled Mercury writes ({operator_intent}).",
-        source_writes_resumed_after_package=previous.source_writes_resumed_after_package,
-        source_delta_started_at=previous.source_delta_started_at,
-        source_delta_relative_to_package_id=previous.source_delta_relative_to_package_id,
-        source_delta_reason=previous.source_delta_reason,
-        source_changed_since_package=previous.source_changed_since_package,
+        **_package_delta_kwargs(previous),
     )
     save_host_maintenance(proposed, path=path)
     current = load_host_maintenance(path)
@@ -870,11 +932,7 @@ def prepare_disconnect(
         package_id=previous.package_id,
         package_verification_status=previous.package_verification_status,
         notes=f"Preparing for safe disconnect ({operator_intent}).",
-        source_writes_resumed_after_package=previous.source_writes_resumed_after_package,
-        source_delta_started_at=previous.source_delta_started_at,
-        source_delta_relative_to_package_id=previous.source_delta_relative_to_package_id,
-        source_delta_reason=previous.source_delta_reason,
-        source_changed_since_package=previous.source_changed_since_package,
+        **_package_delta_kwargs(previous),
     )
     save_host_maintenance(proposed, path=path)
     current = load_host_maintenance(path)
@@ -921,11 +979,7 @@ def enter_read_only_inspection(
         package_id=previous.package_id,
         package_verification_status=previous.package_verification_status,
         notes=f"Read-only inspection mode ({operator_intent}).",
-        source_writes_resumed_after_package=previous.source_writes_resumed_after_package,
-        source_delta_started_at=previous.source_delta_started_at,
-        source_delta_relative_to_package_id=previous.source_delta_relative_to_package_id,
-        source_delta_reason=previous.source_delta_reason,
-        source_changed_since_package=previous.source_changed_since_package,
+        **_package_delta_kwargs(previous),
     )
     save_host_maintenance(proposed, path=path)
     current = load_host_maintenance(path)
@@ -972,11 +1026,7 @@ def enter_destination_rehearsal(
         package_id=previous.package_id,
         package_verification_status=previous.package_verification_status,
         notes=f"Destination rehearsal ({operator_intent}); writes remain disabled.",
-        source_writes_resumed_after_package=previous.source_writes_resumed_after_package,
-        source_delta_started_at=previous.source_delta_started_at,
-        source_delta_relative_to_package_id=previous.source_delta_relative_to_package_id,
-        source_delta_reason=previous.source_delta_reason,
-        source_changed_since_package=previous.source_changed_since_package,
+        **_package_delta_kwargs(previous),
     )
     save_host_maintenance(proposed, path=path)
     current = load_host_maintenance(path)

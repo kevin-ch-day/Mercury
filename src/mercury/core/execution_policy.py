@@ -288,12 +288,40 @@ def resolve_backup_root(
     local_config: Path | None = None,
     env_root: str | None = None,
 ) -> Path:
-    """Resolve backup root directory (absolute path)."""
-    env_value = env_root if env_root is not None else os.environ.get(ENV_BACKUP_ROOT)
+    """Resolve backup root directory (absolute path).
+
+    Precedence:
+
+    1. Explicit ``env_root`` parameter when provided (including tests that inject a root)
+    2. When ``local_config`` is explicitly passed: that file's ``[mercury].backup_root``
+       if set (caller-supplied config must not be silently replaced by ambient env)
+    3. Ambient ``MERCURY_BACKUP_ROOT`` (hermetic test default / operator override)
+    4. Default resolved ``local.toml`` ``[mercury].backup_root``
+    5. ``<repo>/backups``
+
+    Explicit ``local_config`` without a ``backup_root`` key falls through to ambient
+    env, then the repo default. Callers that need a specific temporary root should
+    pass ``env_root=`` or set ``backup_root`` in the supplied config.
+    """
+    if env_root is not None:
+        if str(env_root).strip():
+            return Path(str(env_root).strip()).expanduser().resolve()
+        # Explicit empty string means "ignore env_root; continue resolution".
+
+    if local_config is not None:
+        section = _load_mercury_section(local_config)
+        configured = section.get("backup_root")
+        if configured and str(configured).strip():
+            root = Path(str(configured).strip())
+            if root.is_absolute():
+                return root.resolve()
+            return (REPO_ROOT / root).resolve()
+
+    env_value = os.environ.get(ENV_BACKUP_ROOT)
     if env_value and str(env_value).strip():
         return Path(str(env_value).strip()).expanduser().resolve()
 
-    config_path = local_config or resolve_local_config()
+    config_path = resolve_local_config()
     section = _load_mercury_section(config_path)
     configured = section.get("backup_root")
     if configured and str(configured).strip():

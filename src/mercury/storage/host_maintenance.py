@@ -34,6 +34,7 @@ def assert_not_live_mercury_path(path: Path | str, *, purpose: str = "write") ->
     }
     live_roots = {
         Path("/mnt/MERCURY_DATA_V2").resolve(),
+        Path("/mnt/MERCURY_DATA_USB").resolve(),
     }
     if resolved in live_files:
         raise RuntimeError(
@@ -45,7 +46,7 @@ def assert_not_live_mercury_path(path: Path | str, *, purpose: str = "write") ->
         except ValueError:
             continue
         raise RuntimeError(
-            f"TEST ISOLATION: refused {purpose} under live Mercury HDD path {root}"
+            f"TEST ISOLATION: refused {purpose} under live Mercury path {root}"
         )
 
 
@@ -64,12 +65,31 @@ class HostMaintenanceState:
     package_verification_status: str = ""
     updated_at_utc: str = ""
     notes: str = ""
-    # Post-package source delta (host-local; does not mutate sealed package evidence).
+    # Post-package delta (host-local; does not mutate sealed package evidence).
     source_writes_resumed_after_package: bool = False
-    source_delta_started_at: str = ""
+    source_writes_resumed_at: str = ""
+    source_delta_started_at: str = ""  # compat alias of source_writes_resumed_at
     source_delta_relative_to_package_id: str = ""
     source_delta_reason: str = ""
+    # Recovery artifacts (DB backups / Git captures) created after the package.
+    recovery_artifacts_created_after_package: bool = False
+    first_post_package_artifact_at: str = ""
+    first_post_package_artifact_type: str = ""  # database_backup | git_capture
+    first_post_package_artifact_id: str = ""
+    # Production/source data mutations (ingestion, queues, etc.) — not backups.
+    source_data_changed_since_package: bool = False
+    source_data_first_change_at: str = ""
+    source_data_first_change_operation: str = ""
+    # Development destinations changed (e.g. prod→dev sync).
+    development_state_changed_since_package: bool = False
+    development_state_first_change_at: str = ""
+    development_state_first_change_operation: str = ""
+    # Legacy compatibility: previously conflated recovery artifacts with "source changed".
+    # Prefer recovery_artifacts_created_after_package / source_data_changed_since_package.
     source_changed_since_package: bool = False
+    source_delta_first_write_at: str = ""
+    source_delta_first_write_operation: str = ""
+    source_delta_first_artifact_id: str = ""
 
 
 def _coerce_bool(value: object, default: bool = False) -> bool:
@@ -124,13 +144,73 @@ def load_host_maintenance(path: Path | None = None) -> HostMaintenanceState:
         source_writes_resumed_after_package=_coerce_bool(
             data.get("source_writes_resumed_after_package", False)
         ),
-        source_delta_started_at=str(data.get("source_delta_started_at") or ""),
+        source_writes_resumed_at=str(
+            data.get("source_writes_resumed_at")
+            or data.get("source_delta_started_at")
+            or ""
+        ),
+        source_delta_started_at=str(
+            data.get("source_delta_started_at")
+            or data.get("source_writes_resumed_at")
+            or ""
+        ),
         source_delta_relative_to_package_id=str(
             data.get("source_delta_relative_to_package_id") or ""
         ),
         source_delta_reason=str(data.get("source_delta_reason") or ""),
+        recovery_artifacts_created_after_package=_coerce_bool(
+            data.get("recovery_artifacts_created_after_package")
+            if data.get("recovery_artifacts_created_after_package") is not None
+            else data.get("source_changed_since_package", False)
+        ),
+        first_post_package_artifact_at=str(
+            data.get("first_post_package_artifact_at")
+            or data.get("source_delta_first_write_at")
+            or ""
+        ),
+        first_post_package_artifact_type=str(
+            data.get("first_post_package_artifact_type") or ""
+        ),
+        first_post_package_artifact_id=str(
+            data.get("first_post_package_artifact_id")
+            or data.get("source_delta_first_artifact_id")
+            or ""
+        ),
+        source_data_changed_since_package=_coerce_bool(
+            data.get("source_data_changed_since_package", False)
+        ),
+        source_data_first_change_at=str(data.get("source_data_first_change_at") or ""),
+        source_data_first_change_operation=str(
+            data.get("source_data_first_change_operation") or ""
+        ),
+        development_state_changed_since_package=_coerce_bool(
+            data.get("development_state_changed_since_package", False)
+        ),
+        development_state_first_change_at=str(
+            data.get("development_state_first_change_at") or ""
+        ),
+        development_state_first_change_operation=str(
+            data.get("development_state_first_change_operation") or ""
+        ),
         source_changed_since_package=_coerce_bool(
-            data.get("source_changed_since_package", False)
+            data.get("source_changed_since_package")
+            if data.get("source_changed_since_package") is not None
+            else data.get("recovery_artifacts_created_after_package", False)
+        ),
+        source_delta_first_write_at=str(
+            data.get("source_delta_first_write_at")
+            or data.get("first_post_package_artifact_at")
+            or ""
+        ),
+        source_delta_first_write_operation=str(
+            data.get("source_delta_first_write_operation")
+            or data.get("first_post_package_artifact_type")
+            or ""
+        ),
+        source_delta_first_artifact_id=str(
+            data.get("source_delta_first_artifact_id")
+            or data.get("first_post_package_artifact_id")
+            or ""
         ),
     )
 
@@ -248,10 +328,108 @@ def mark_detached(path: Path | None = None) -> HostMaintenanceState:
     return state
 
 
-def mark_source_changed_since_package(path: Path | None = None) -> HostMaintenanceState:
-    """Record that a governed write occurred after a verified package snapshot."""
+def mark_recovery_artifact_after_package(
+    path: Path | None = None,
+    *,
+    artifact_type: str,
+    artifact_id: str = "",
+    operation: str = "",
+) -> HostMaintenanceState:
+    """Record that a recovery artifact (backup/Git capture) was created after package.
+
+    Does **not** claim production source data changed. Package evidence is untouched.
+    """
     state = load_host_maintenance(path)
-    if state.source_writes_resumed_after_package and state.package_id:
-        state.source_changed_since_package = True
-        save_host_maintenance(state, path=path)
+    if not state.source_writes_resumed_after_package or not state.package_id:
+        return state
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    first = not state.recovery_artifacts_created_after_package
+    state.recovery_artifacts_created_after_package = True
+    # Legacy mirror for older readers/dashboard wording.
+    state.source_changed_since_package = True
+    if first:
+        state.first_post_package_artifact_at = now
+        state.first_post_package_artifact_type = artifact_type
+        state.first_post_package_artifact_id = artifact_id
+        state.source_delta_first_write_at = now
+        state.source_delta_first_write_operation = operation or artifact_type
+        state.source_delta_first_artifact_id = artifact_id
+        note = (
+            f"First recovery artifact after package: type={artifact_type} "
+            f"id={artifact_id or 'n/a'} at {now}."
+        )
+        if note not in (state.notes or ""):
+            state.notes = f"{state.notes} {note}".strip() if state.notes else note
+    save_host_maintenance(state, path=path)
     return state
+
+
+def mark_development_state_changed_since_package(
+    path: Path | None = None,
+    *,
+    operation: str = "prod_to_dev_sync",
+    event_id: str = "",
+) -> HostMaintenanceState:
+    """Record that development destinations changed after the package (e.g. sync)."""
+    state = load_host_maintenance(path)
+    if not state.source_writes_resumed_after_package or not state.package_id:
+        return state
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    first = not state.development_state_changed_since_package
+    state.development_state_changed_since_package = True
+    if first:
+        state.development_state_first_change_at = now
+        state.development_state_first_change_operation = operation
+        note = (
+            f"First development-state change after package: operation={operation} "
+            f"event={event_id or 'n/a'} at {now}."
+        )
+        if note not in (state.notes or ""):
+            state.notes = f"{state.notes} {note}".strip() if state.notes else note
+    save_host_maintenance(state, path=path)
+    return state
+
+
+def mark_source_data_changed_since_package(
+    path: Path | None = None,
+    *,
+    operation: str = "",
+) -> HostMaintenanceState:
+    """Record that production/source data mutated after the package (not backups)."""
+    state = load_host_maintenance(path)
+    if not state.source_writes_resumed_after_package or not state.package_id:
+        return state
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    first = not state.source_data_changed_since_package
+    state.source_data_changed_since_package = True
+    if first:
+        state.source_data_first_change_at = now
+        state.source_data_first_change_operation = operation
+    save_host_maintenance(state, path=path)
+    return state
+
+
+def mark_source_changed_since_package(
+    path: Path | None = None,
+    *,
+    operation: str = "",
+    artifact_id: str = "",
+) -> HostMaintenanceState:
+    """Backward-compatible marker for post-package recovery artifact creation.
+
+    Prefer ``mark_recovery_artifact_after_package`` or
+    ``mark_development_state_changed_since_package`` for new call sites.
+    Sync-like operations are routed to development-state markers.
+    """
+    op = (operation or "").strip()
+    if "sync" in op.lower():
+        return mark_development_state_changed_since_package(
+            path, operation=op or "prod_to_dev_sync", event_id=artifact_id
+        )
+    artifact_type = "git_capture" if "git" in op.lower() else "database_backup"
+    return mark_recovery_artifact_after_package(
+        path,
+        artifact_type=artifact_type,
+        artifact_id=artifact_id,
+        operation=op,
+    )

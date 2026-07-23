@@ -316,8 +316,10 @@ def _compact_package_line(*, snapshot=None) -> str:
     status = snapshot.package_status if snapshot is not None else host.package_verification_status
     package_id = snapshot.package_id if snapshot is not None else host.package_id
     if status == "DESTINATION_PACKAGE_VERIFIED":
-        if host.source_changed_since_package:
-            return "VERIFIED · source has changed since package"
+        if getattr(host, "source_data_changed_since_package", False):
+            return "VERIFIED · source data changed since package"
+        if getattr(host, "recovery_artifacts_created_after_package", False) or host.source_changed_since_package:
+            return "VERIFIED · recovery after package"
         if host.source_writes_resumed_after_package:
             return "VERIFIED · rehearsal snapshot"
         rehearsal = False
@@ -346,8 +348,10 @@ def _compact_source_delta_line() -> str | None:
     host = load_host_maintenance()
     if not host.source_writes_resumed_after_package:
         return None
-    if host.source_changed_since_package:
-        return "Source has changed since package"
+    if getattr(host, "source_data_changed_since_package", False):
+        return "Source data changed since package"
+    if getattr(host, "recovery_artifacts_created_after_package", False) or host.source_changed_since_package:
+        return "Recovery artifacts created after package"
     return "New writes possible after package"
 
 

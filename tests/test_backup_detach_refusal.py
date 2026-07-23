@@ -225,7 +225,7 @@ def test_menu_write_actions_available_after_restore(tmp_path: Path, monkeypatch)
     )
     options = dict(backup_menu_render_options(writes_allowed=True))
     assert DETACH_UNAVAILABLE_SUFFIX not in options["2"]
-    assert options["2"] == "Run full backup now"
+    assert options["2"] == "Run full database backup"
     assert assess_backup_write_preflight().allowed is True
 
 
@@ -279,7 +279,7 @@ def test_backup_screen_shows_write_disabled_state(
     assert "Backup actions:" in out
     assert "unavailable" in out
     assert DETACH_UNAVAILABLE_SUFFIX in out
-    assert "Refresh" in out
+    assert "Back up and sync this workstation" in out
     assert "Preview backup plan" in out
 
 

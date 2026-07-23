@@ -342,7 +342,9 @@ def ensure_backup_writes_available(
         write_fn(format_hard_block_message(availability))
         return availability
 
-    if not interactive:
+    # Non-interactive callers may inject ask_yes_no / ask_phrase (CLI --accept-restore /
+    # --confirm-restore). Without those callbacks, refuse rather than prompting.
+    if not interactive and ask_yes_no is None and ask_phrase is None:
         write_fn(format_hard_block_message(availability))
         return availability
 
@@ -351,6 +353,9 @@ def ensure_backup_writes_available(
         write_fn("")
         if ask_yes_no is not None:
             accepted = ask_yes_no("Restore the backup writer and continue?", False)
+        elif not interactive:
+            write_fn(format_hard_block_message(availability))
+            return availability
         else:
             accepted = menu_prompts.ask_yes_no(
                 "Restore the backup writer and continue?", default=False
@@ -411,6 +416,9 @@ def ensure_backup_writes_available(
         write_fn(format_strong_prompt(availability))
         if ask_phrase is not None:
             phrase = ask_phrase("").strip()
+        elif not interactive:
+            write_fn(format_hard_block_message(availability))
+            return availability
         else:
             phrase = menu_prompts.ask("").strip()
         if phrase != availability.confirmation_phrase:

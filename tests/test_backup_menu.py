@@ -82,8 +82,8 @@ def test_run_backup_menu_non_interactive(
     assert "excluded" not in out
     assert "Ignored databases:" not in out
     assert "Fresh full backup needed before workstation handoff" in out
-    assert "\n[1] Refresh" in out
-    assert "\n[2] Run full backup" in out
+    assert "\n[1] Back up and sync this workstation" in out
+    assert "\n[2] Run full database backup" in out
     assert "\n[3] Back up production databases" in out
     assert "\n[4] Verify source backups" in out
     assert "\n[5] Restore-check source backups" in out
@@ -215,7 +215,7 @@ def test_backup_menu_section_spacing_boundaries(
     assert follow_i == phase_i + 1
     assert lines[follow_i + 1] == ""
 
-    menu_i = index_of(lambda line: line.startswith("[1] Refresh"))
+    menu_i = index_of(lambda line: line.startswith("[1] Back up and sync this workstation"))
     assert menu_i == follow_i + 2
     back_i = index_of(lambda line: line.startswith("[0] Back"))
     assert back_i > menu_i

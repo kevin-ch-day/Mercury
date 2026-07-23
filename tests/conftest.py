@@ -331,7 +331,10 @@ def _forbid_live_mercury_path_access(monkeypatch: pytest.MonkeyPatch) -> Iterato
         (Path.home() / ".local" / "share" / "mercury" / "host_maintenance.json").resolve(),
         (Path.home() / ".local" / "share" / "mercury" / "transition_ledger.jsonl").resolve(),
     }
-    live_root = Path("/mnt/MERCURY_DATA_V2").resolve()
+    live_roots = (
+        Path("/mnt/MERCURY_DATA_V2").resolve(),
+        Path("/mnt/MERCURY_DATA_USB").resolve(),
+    )
     real_open = open
 
     def guarded_open(file, mode="r", *args, **kwargs):
@@ -346,13 +349,14 @@ def _forbid_live_mercury_path_access(monkeypatch: pytest.MonkeyPatch) -> Iterato
                     resolved = path
                 if resolved in live_files:
                     raise RuntimeError(f"TEST ISOLATION: open refused for {resolved}")
-                try:
-                    resolved.relative_to(live_root)
-                    raise RuntimeError(
-                        f"TEST ISOLATION: open refused under live HDD {live_root}"
-                    )
-                except ValueError:
-                    pass
+                for live_root in live_roots:
+                    try:
+                        resolved.relative_to(live_root)
+                        raise RuntimeError(
+                            f"TEST ISOLATION: open refused under live path {live_root}"
+                        )
+                    except ValueError:
+                        pass
         return real_open(file, mode, *args, **kwargs)
 
     monkeypatch.setattr("builtins.open", guarded_open)
