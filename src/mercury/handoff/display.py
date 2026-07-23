@@ -38,6 +38,10 @@ _WIZARD_RESULT_SYMBOLS: dict[str, str] = {
 def short_handoff_action(action: str | None) -> str:
     if not action:
         return "—"
+    if " → " in action:
+        return action.split(" → ", 1)[1]
+    if action.startswith("Handoff Tools ["):
+        return action
     if action.startswith("Handoff ["):
         return action.removeprefix("Handoff ")
     if action.startswith("Handoff menu ["):
@@ -126,19 +130,33 @@ def wizard_progress_summary(result) -> str:
 
 
 def suggested_menu_choice(checklist: HandoffChecklist) -> str | None:
-    """Best handoff submenu key for the current checklist state."""
+    """Best handoff submenu key for the current checklist state (registry-resolved)."""
+    from mercury.handoff.menu_options import (
+        ACTION_BUILD_PACKAGE,
+        ACTION_RECEIVER_GUIDE,
+        ACTION_TOOLS,
+        handoff_menu_option_by_action,
+    )
+
+    if checklist.handoff_status == "complete":
+        return handoff_menu_option_by_action(ACTION_RECEIVER_GUIDE)[0]
+
     primary = primary_handoff_action(checklist)
     if not primary:
         return None
-    if checklist.handoff_status == "complete":
-        return "11"
+
+    # Nested tools hints → open Handoff Tools.
+    if "Handoff Tools [" in primary or " → " in primary:
+        return handoff_menu_option_by_action(ACTION_TOOLS)[0]
+
+    if "Build Migration Package" in primary or "guided wizard" in primary.lower():
+        return handoff_menu_option_by_action(ACTION_BUILD_PACKAGE)[0]
+
     import re
 
     match = re.search(r"\[(\d+)\]", primary)
     if match:
         return match.group(1)
-    if "guided wizard" in primary.lower():
-        return "2"
     return None
 
 

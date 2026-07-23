@@ -137,7 +137,14 @@ def dashboard_hdd_status_line(snapshot: StorageLifecycleSnapshot) -> str:
 
 
 def dashboard_next_action_short(snapshot: StorageLifecycleSnapshot) -> str:
-    """Compact Next action row for the main dashboard."""
+    """Compact Next action / Recommended row for the main dashboard."""
+    from mercury.menu.recommendation import build_main_menu_recommendation
+
+    try:
+        rec = build_main_menu_recommendation(lifecycle=snapshot)
+        return rec.explanation
+    except Exception:
+        pass
     label, suffix = recommended_primary_label(snapshot)
     # Intent-aware: unfinished disconnect prep must not assume the operator
     # still wants to disconnect on the next session.
@@ -146,7 +153,7 @@ def dashboard_next_action_short(snapshot: StorageLifecycleSnapshot) -> str:
         StorageLifecycleState.PREPARING_TO_DISCONNECT,
         StorageLifecycleState.ATTACHED_WRITER_DISABLED,
     } and not snapshot.writes_allowed:
-        return "Back up, disconnect, or continue rehearsal"
+        return "Choose backup, disconnect, or rehearsal"
     if snapshot.writes_allowed and snapshot.state == StorageLifecycleState.ATTACHED_WRITER_ENABLED:
         return "Back up and sync this workstation"
     if "Safe disconnect" in label:

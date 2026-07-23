@@ -1036,7 +1036,7 @@ def test_main_menu_routes_backup_to_session_when_writes_disabled(
 ) -> None:
     from mercury.menu import loop as menu_loop
     from mercury.menu.actions import MenuAction
-    from mercury.menu.options import ACTION_BACKUP
+    from mercury.menu.options import MAIN_BACKUP_SYNC
 
     save_host_maintenance(
         HostMaintenanceState(
@@ -1051,40 +1051,16 @@ def test_main_menu_routes_backup_to_session_when_writes_disabled(
     called: list[str] = []
 
     monkeypatch.setattr(
-        "mercury.backup.session_wizard.run_backup_sync_wizard",
-        lambda **_k: called.append("session") or None,
-    )
-    monkeypatch.setattr(
-        "mercury.storage.block_device.resolve_mercury_block_device",
-        lambda **kwargs: SimpleNamespace(
-            identity=SimpleNamespace(
-                uuid="715f29a9-2671-477b-8c8d-515d190addb9",
-                label="MERCURY_DATA_V2",
-                fstype="ext4",
-                mountpoint="/mnt/MERCURY_DATA_V2",
-            ),
-            errors=[],
-        ),
-    )
-    monkeypatch.setattr(
-        "mercury.storage.detach_wizard.detect_desktop_automount",
-        lambda *_a, **_k: [],
-    )
-    monkeypatch.setattr(
-        "mercury.storage.transitions._probe_mount_mode",
-        lambda *_a, **_k: "read-write",
-    )
-    monkeypatch.setattr(
-        "mercury.menu.actions.menu_action_blocked_for_writes",
-        lambda _action: True,
+        "mercury.menu.task_menus.run_backup_sync_hub",
+        lambda: called.append("session"),
     )
     monkeypatch.setattr(
         "mercury.menu.actions.resolve_menu_action",
         lambda _c: MenuAction(
-            key="2",
-            title="Backup",
-            action_id=ACTION_BACKUP,
-            runner=lambda: called.append("expert_menu"),
+            key="1",
+            title="Back up and sync this workstation",
+            action_id=MAIN_BACKUP_SYNC,
+            runner=lambda: called.append("session"),
         ),
     )
     monkeypatch.setattr("mercury.logging.events.log_menu_action", lambda **_k: None)
@@ -1093,7 +1069,7 @@ def test_main_menu_routes_backup_to_session_when_writes_disabled(
         lambda *_a, **_k: __import__("contextlib").nullcontext(),
     )
 
-    result = menu_loop.handle_menu_choice("2")
+    result = menu_loop.handle_menu_choice("1")
     assert result == "continue"
     assert called == ["session"]
 

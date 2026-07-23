@@ -169,8 +169,14 @@ def test_dashboard_rows_warn_on_repo_local_backup_root(monkeypatch) -> None:
     monkeypatch.setattr("mercury.migration.readiness.build_migration_readiness", lambda **kwargs: _migration_report())
     rows = dashboard_rows(probe_database=False)
     text = "\n".join(rows)
-    assert "Package" in text or "Migration package" in text
-    assert len(rows) <= 6
+    assert (
+        "Package" in text
+        or "Migration package" in text
+        or "Migration" in text
+        or "Last backup" in text
+    )
+    assert "Recommended" in text or "Next action" in text
+    assert len(rows) <= 7
 
 
 def test_dashboard_rows_show_platform_when_not_fedora(

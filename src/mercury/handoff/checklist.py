@@ -17,6 +17,40 @@ from mercury.transfer.bundle import (
     handoff_status_for_bundle,
     repository_package_status_for_bundle,
 )
+from mercury.handoff.menu_options import (
+    ACTION_BUILD_PACKAGE,
+    ACTION_TOOLS_BACKUP,
+    ACTION_TOOLS_DB,
+    ACTION_TOOLS_REPO,
+    ACTION_TOOLS_TRANSFER,
+    ACTION_TOOLS_VERIFY,
+    handoff_menu_hint,
+    handoff_nested_hint,
+    handoff_tools_hint,
+)
+
+
+def _handoff_backup_then_verify_action() -> str:
+    return (
+        f"{handoff_nested_hint(ACTION_TOOLS_BACKUP)}, then "
+        f"{handoff_tools_hint(ACTION_TOOLS_VERIFY)}"
+    )
+
+
+def _handoff_tools_action(tools_action_id: str, *, detail: str = "") -> str:
+    hint = handoff_nested_hint(tools_action_id)
+    return f"{hint} {detail}".rstrip() if detail else hint
+
+
+def _backup_ops_restore_check_action() -> str:
+    from mercury.backup.menu_options import ACTION_RESTORE_CHECK, backup_menu_hint
+
+    return backup_menu_hint(ACTION_RESTORE_CHECK)
+
+
+def _handoff_build_package_action(*, detail: str = "") -> str:
+    hint = handoff_menu_hint(ACTION_BUILD_PACKAGE)
+    return f"{hint} {detail}".rstrip() if detail else hint
 
 
 class HandoffStep(BaseModel):
@@ -160,7 +194,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 label="Database backups verified",
                 status="fail",
                 detail=f"{bundle.verified_source_count} of {source_count or 0} verified",
-                action="Handoff [4] backup, then [5] verify",
+                action=_handoff_backup_then_verify_action(),
             )
         )
 
@@ -176,7 +210,9 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 label="Backup freshness",
                 status="warn",
                 detail=", ".join(parts),
-                action="Handoff [4] run backup for stale sources",
+                action=_handoff_tools_action(
+                    ACTION_TOOLS_BACKUP, detail="for stale sources"
+                ),
             )
         )
     elif source_count:
@@ -220,7 +256,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                     label="Restore-checks",
                     status="warn",
                     detail="No verified backup IDs available for restore-check",
-                    action="Handoff [4] backup, then [5] verify",
+                    action=_handoff_backup_then_verify_action(),
                 )
             )
         elif restore_failed or not_restore_checked:
@@ -241,7 +277,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                     label="Restore-checks",
                     status="warn",
                     detail="; ".join(parts),
-                    action="Backup Operations [5] restore-check",
+                    action=_backup_ops_restore_check_action(),
                 )
             )
         else:
@@ -281,7 +317,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 label="Repository bundles",
                 status="fail",
                 detail="Missing or unverified repo bundles on operator storage",
-                action="Handoff [6] write repository bundles",
+                action=_handoff_tools_action(ACTION_TOOLS_REPO),
             )
         )
 
@@ -292,7 +328,11 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 label="Database bundle index",
                 status="ok" if db_package != "partial" else "warn",
                 detail=str(db_index),
-                action=None if db_package == "complete" else "Handoff menu → write DB bundle",
+                action=(
+                    None
+                    if db_package == "complete"
+                    else _handoff_tools_action(ACTION_TOOLS_DB)
+                ),
             )
         )
     else:
@@ -302,7 +342,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 label="Database bundle index",
                 status="fail",
                 detail="No database_transfer_manifest on operator storage",
-                action="Handoff menu → write DB bundle and runbooks",
+                action=_handoff_tools_action(ACTION_TOOLS_DB),
             )
         )
 
@@ -318,7 +358,9 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 label="Manifest freshness",
                 status="warn",
                 detail=f"Older than latest backups: {', '.join(stale_manifests)}",
-                action="Handoff [2] guided wizard or rewrite manifests after backup",
+                action=_handoff_build_package_action(
+                    detail="or rewrite manifests after backup"
+                ),
             )
         )
     elif backup_mtime is not None and (db_index is not None or transfer_manifest is not None):
@@ -348,7 +390,9 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 label="Combined transfer package",
                 status="warn",
                 detail=f"On operator storage but snapshot is {handoff}",
-                action="Handoff [8] write transfer package when ready",
+                action=_handoff_tools_action(
+                    ACTION_TOOLS_TRANSFER, detail="when ready"
+                ),
             )
         )
     else:
@@ -358,7 +402,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 label="Combined transfer package",
                 status="fail",
                 detail="No transfer_manifest on operator storage",
-                action="Handoff [8] write transfer package",
+                action=_handoff_tools_action(ACTION_TOOLS_TRANSFER),
             )
         )
 

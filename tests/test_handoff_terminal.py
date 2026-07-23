@@ -28,6 +28,9 @@ def test_step_progress_summary_counts_statuses() -> None:
 
 
 def test_primary_handoff_action_prefers_first_failed_step() -> None:
+    from mercury.handoff.menu_options import ACTION_TOOLS_BACKUP, handoff_nested_hint
+
+    backup_action = handoff_nested_hint(ACTION_TOOLS_BACKUP)
     checklist = HandoffChecklist(
         handoff_status="partial",
         database_package="partial",
@@ -37,17 +40,17 @@ def test_primary_handoff_action_prefers_first_failed_step() -> None:
                 label="USB",
                 status="fail",
                 detail="missing",
-                action="Handoff [4] backup",
+                action=backup_action,
             ),
             HandoffStep(
                 label="Transfer",
                 status="warn",
                 detail="stale",
-                action="Handoff [8] transfer",
+                action="later",
             ),
         ],
     )
-    assert primary_handoff_action(checklist) == "Handoff [4] backup"
+    assert primary_handoff_action(checklist) == backup_action
 
 
 def test_print_handoff_checklist_shows_progress_and_receiver_block(

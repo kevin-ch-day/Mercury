@@ -18,7 +18,7 @@ def handle_menu_choice(choice: str) -> MenuResult:
     from mercury.logging.events import log_menu_action
     from mercury.logging import get_logger, log_operation
     from mercury.menu.actions import menu_action_blocked_for_writes
-    from mercury.menu.options import ACTION_HANDOFF, main_menu_hint
+    from mercury.menu.options import ACTION_HANDOFF, MAIN_MIGRATION, main_menu_hint
     from mercury.storage.lifecycle import writes_disabled_redirect_message
 
     normalized = menu_prompts.normalize_menu_choice(choice)
@@ -50,12 +50,12 @@ def handle_menu_choice(choice: str) -> MenuResult:
         log_menu_action(choice=normalized, title="Repair USB", result="continue")
         return "continue"
     if normalized in {"h", "handoff"}:
-        from mercury.handoff.interactive_menu import run_handoff_menu
+        from mercury.menu.task_menus import run_migration_hub
 
-        run_handoff_menu(interactive=True)
+        run_migration_hub()
         log_menu_action(
             choice=normalized,
-            title=main_menu_hint(ACTION_HANDOFF),
+            title=main_menu_hint(MAIN_MIGRATION),
             result="continue",
         )
         return "continue"
@@ -71,28 +71,6 @@ def handle_menu_choice(choice: str) -> MenuResult:
         return "invalid"
 
     if menu_action_blocked_for_writes(action):
-        from mercury.menu.options import ACTION_BACKUP
-        from mercury.storage.operation_availability import (
-            AvailabilityClassification,
-            assess_operation_availability,
-        )
-
-        # Phase 2: when writes are disabled, route Backup into the guided session
-        # (storage preflight + restore + recommended lanes). Expert submenu remains
-        # reachable from within Backup Operations after the writer is restored.
-        if action.action_id == ACTION_BACKUP:
-            availability = assess_operation_availability("database_backup")
-            if availability.classification in {
-                AvailabilityClassification.RECOVERABLE_CONFIRMATION,
-                AvailabilityClassification.STRONG_CONFIRMATION,
-                AvailabilityClassification.AVAILABLE,
-            }:
-                from mercury.backup.session_wizard import run_backup_sync_wizard
-
-                with log_operation(action.title, logger_name="mercury.menu", choice=normalized):
-                    run_backup_sync_wizard()
-                log_menu_action(choice=normalized, title=action.title, result="continue")
-                return "continue"
         output.write(writes_disabled_redirect_message())
         log_menu_action(choice=normalized, title=action.title, result="refused")
         return "continue"
@@ -121,6 +99,19 @@ def run_menu(interactive: bool = True, *, render_menu_text: Callable[[], str] | 
 
             display_screen.write_status("warn", hint)
             output.write("")
+
+        from mercury.menu.intent import (
+            dispatch_startup_intent,
+            run_startup_intent_chooser,
+            should_offer_startup_intent,
+        )
+
+        if should_offer_startup_intent():
+            intent = run_startup_intent_chooser()
+            outcome = dispatch_startup_intent(intent)
+            if outcome == "exit":
+                menu_display.write_summary("Exiting Mercury.")
+                return
     else:
         from mercury.storage.lifecycle import maybe_prompt_storage_first_run
 

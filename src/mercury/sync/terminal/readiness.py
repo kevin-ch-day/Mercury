@@ -90,22 +90,32 @@ def sync_menu_context_fields(report: SyncReadinessReport, *, live_allowed: bool)
 def sync_menu_next_step(report: SyncReadinessReport, *, live_allowed: bool) -> tuple[str, str]:
     """Return (status_tag, message) for the footer hint above submenu actions."""
     from mercury.menu.options import ACTION_BACKUP, main_menu_hint
+    from mercury.sync.menu_options import (
+        ACTION_RECHECK,
+        ACTION_SYNC_ALL_READY,
+        sync_submenu_hint,
+    )
 
     if report.ready_count and not report.blocked_count:
-        action = "Sync All Ready Databases" if live_allowed else "Preview All Ready Databases"
-        return ("ok", f"All approved pairs are ready — choose [2] {action}.")
+        action_hint = sync_submenu_hint(
+            ACTION_SYNC_ALL_READY, report, live_allowed=live_allowed
+        )
+        return ("ok", f"All approved pairs are ready — choose {action_hint}.")
     if report.ready_count and report.blocked_count:
-        action = "Sync All Ready Databases" if live_allowed else "Preview All Ready Databases"
+        action_hint = sync_submenu_hint(
+            ACTION_SYNC_ALL_READY, report, live_allowed=live_allowed
+        )
         return (
             "warn",
-            f"{report.ready_count} ready, {report.blocked_count} blocked — sync ready pairs with [2] {action}, "
-            "or prepare backups for blocked pairs first.",
+            f"{report.ready_count} ready, {report.blocked_count} blocked — sync ready pairs with "
+            f"{action_hint}, or prepare backups for blocked pairs first.",
         )
     if report.blocked_count:
         backup_hint = main_menu_hint(ACTION_BACKUP)
+        recheck = sync_submenu_hint(ACTION_RECHECK, report, live_allowed=live_allowed)
         return (
             "warn",
-            f"No pairs ready — run full backup from {backup_hint}, then [1] Recheck here "
+            f"No pairs ready — run full backup from {backup_hint}, then {recheck} "
             "or choose Prepare production backups.",
         )
     return ("info", "No approved sync pairs are configured.")

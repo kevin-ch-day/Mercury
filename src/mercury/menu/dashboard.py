@@ -225,19 +225,19 @@ def _migration_dashboard_rows(report, policy) -> list[str]:
         hdd_line = dashboard_hdd_status_line(snap)
         next_line = dashboard_next_action_short(snap)
         package_line = _compact_package_line(snapshot=snap)
-        phase_line = _compact_phase_line(report.operator_phase, unresolved)
         delta_line = _compact_source_delta_line()
+        last_backup, git_recovery = _compact_backup_and_git_lines()
+        migration_display = _compact_phase_line(report.operator_phase, unresolved)
 
         if snap.state == StorageLifecycleState.DETACHED:
             rows = [
                 dashboard_row("Mercury HDD", "Not connected"),
                 dashboard_row("Writer", "Disabled"),
-                dashboard_row("Next action", next_line),
+                dashboard_row("Recommended", next_line),
                 dashboard_row("Package", package_line if package_line != "Pending" else "Located on detached HDD"),
             ]
             if snap.host_role == MigrationHostRole.SOURCE_OPERATION:
                 rows.insert(3, dashboard_row("Host role", "Source reference system"))
-            rows.append(dashboard_row("Cleanup", _compact_cleanup_line()))
             return rows
 
         if snap.state == StorageLifecycleState.ATTACHED_READ_ONLY or (
@@ -252,24 +252,21 @@ def _migration_dashboard_rows(report, policy) -> list[str]:
             return [
                 dashboard_row("Mercury HDD", hdd_line),
                 dashboard_row("Host role", "Destination rehearsal"),
-                dashboard_row("Next action", next_line),
-                dashboard_row("Package", package_line),
-                dashboard_row("Cleanup", _compact_cleanup_line()),
+                dashboard_row("Last backup", last_backup),
+                dashboard_row("Git recovery", git_recovery),
+                dashboard_row("Migration", migration_display),
+                dashboard_row("Recommended", next_line),
             ]
 
         rows = [
             dashboard_row("Mercury HDD", hdd_line),
-            dashboard_row("Next action", next_line),
-            dashboard_row("Package", package_line),
+            dashboard_row("Last backup", last_backup),
+            dashboard_row("Git recovery", git_recovery),
+            dashboard_row("Migration", migration_display),
+            dashboard_row("Recommended", next_line),
         ]
         if delta_line:
             rows.append(dashboard_row("Source delta", delta_line))
-        rows.extend(
-            [
-                dashboard_row("Migration", phase_line),
-                dashboard_row("Cleanup", _compact_cleanup_line()),
-            ]
-        )
         return rows
     except OSError:
         by_id = {check.id: check for check in report.checks}
@@ -278,9 +275,41 @@ def _migration_dashboard_rows(report, policy) -> list[str]:
             dashboard_row("Writer", _compact_writer_line(by_id["active_writer"].summary, free)),
             dashboard_row("Mercury HDD", _compact_hdd_line()),
             dashboard_row("Package", _compact_package_line()),
-            dashboard_row("Phase", _compact_phase_line(report.operator_phase, unresolved)),
-            dashboard_row("Cleanup", _compact_cleanup_line()),
+            dashboard_row("Migration", _compact_phase_line(report.operator_phase, unresolved)),
+            dashboard_row("Recommended", "Open Mercury HDD and Storage"),
         ]
+
+
+def _compact_backup_and_git_lines() -> tuple[str, str]:
+    """Lightweight Last backup / Git recovery labels (no live writer or HDD mutation)."""
+    last_backup = "No recent verified backup"
+    git_recovery = "No recent Git capture"
+    try:
+        from mercury.state.summary import build_state_summary
+
+        state = build_state_summary()
+        for attr, fmt in (
+            ("latest_verified_backup_at", "Verified · {}"),
+            ("latest_backup_at", "{}"),
+        ):
+            value = getattr(state, attr, None)
+            if value:
+                last_backup = fmt.format(value)
+                break
+        verified = getattr(state, "verified_source_count", None)
+        if last_backup.startswith("No recent") and verified:
+            last_backup = f"{verified} verified source(s)"
+        for attr, fmt in (
+            ("latest_repo_bundle_at", "Bundle · {}"),
+            ("repo_bundle_rows", "{} repo bundle(s) on storage"),
+        ):
+            value = getattr(state, attr, None)
+            if value:
+                git_recovery = fmt.format(value)
+                break
+    except Exception:
+        pass
+    return last_backup, git_recovery
 
 
 def _compact_writer_line(fallback: str, free: str | None) -> str:

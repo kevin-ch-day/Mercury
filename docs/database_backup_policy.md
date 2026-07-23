@@ -50,8 +50,8 @@ CLI parity:
 | `scytaledroid_core_prod` | Production | Yes |
 | `obsidiandroid_core_prod` | Production (ObsidianDroid) | Yes (backup-only; no automatic sync) |
 | `android_permission_intel` | Shared authority | Yes |
-| `erebus_threat_intel_dev` | Development | **No by default** — optional recovery via Backup Operations [9] / full-backup optional prompt only |
-| `scytaledroid_core_dev` | Development | **No by default** — optional recovery via Backup Operations [9] / full-backup optional prompt only |
+| `erebus_threat_intel_dev` | Development | **No by default** — optional recovery via Backup Operations development-backup action / full-backup optional prompt only |
+| `scytaledroid_core_dev` | Development | **No by default** — optional recovery via Backup Operations development-backup action / full-backup optional prompt only |
 | `_restorecheck_*` | Restore-check temp | **No** |
 | Other `*_prod` / `*_dev` | Out of current milestone scope (e.g. `gecko_research_database_*`, Komodo/market-event DBs) | **No** (visible for review; excluded by default) |
 | Other | Unknown | **No** (manual review) |

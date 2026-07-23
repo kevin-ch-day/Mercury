@@ -98,13 +98,17 @@ def _seed_all_verified(policy: ExecutionPolicy) -> None:
 
 
 def test_deploy_lane_appears_in_menu() -> None:
-    from mercury.menu.options import ACTION_DEPLOY, main_menu_option_by_action
+    from mercury.menu.options import ACTION_DEPLOY, MAIN_MIGRATION, main_menu_option_by_action
+    from mercury.menu import main_display as menu_display
+    from mercury.menu.actions import menu_actions
 
+    menu_display.refresh_menu_sections()
     key, title = main_menu_option_by_action(ACTION_DEPLOY)
     keys = {item.key for _section, items in menu_display.MENU_SECTIONS for item in items}
     assert key in keys
-    assert menu_actions()[key].title == title
-    assert menu_actions()[key].action_id == ACTION_DEPLOY
+    assert key == "5"
+    assert menu_actions()[key].action_id == MAIN_MIGRATION
+    assert "migration" in title.lower() or "Migration" in menu_actions()[key].title
 
 
 def test_database_deploy_status_rows_describe_missing_databases(
@@ -716,7 +720,13 @@ def test_deploy_plan_blocks_stale_backup_on_live_execute(
 
 
 def test_handoff_lane_appears_in_menu() -> None:
+    from mercury.menu import main_display as menu_display
+    from mercury.menu.actions import menu_actions
+    from mercury.menu.options import MAIN_MIGRATION, MAIN_STORAGE, MAIN_BACKUP_SYNC
+
+    menu_display.refresh_menu_sections()
     keys = {item.key for _section, items in menu_display.MENU_SECTIONS for item in items}
-    assert "9" in keys
-    assert menu_actions()["11"].title == "Workstation handoff"
-    assert menu_actions()["1"].title == "Mercury HDD and Storage"
+    assert "5" in keys
+    assert menu_actions()["5"].action_id == MAIN_MIGRATION
+    assert menu_actions()["1"].action_id == MAIN_BACKUP_SYNC
+    assert menu_actions()["2"].action_id == MAIN_STORAGE

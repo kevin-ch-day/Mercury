@@ -51,41 +51,10 @@ def _ready_entries(report: SyncReadinessReport):
     return [entry for entry in report.entries if entry.ready_for_sync_planning]
 
 
-def _recommended_option_suffix(report: SyncReadinessReport, *, live_allowed: bool) -> str:
-    if report.ready_count and not report.blocked_count:
-        return " (recommended)"
-    if report.ready_count and report.blocked_count and live_allowed:
-        return " (ready pairs only)"
-    if report.blocked_count and not report.ready_count:
-        return " (recommended)"
-    return ""
-
-
 def _sync_submenu_options(report: SyncReadinessReport) -> list[tuple[str, str]]:
-    policy = load_execution_policy()
-    live_allowed = policy.live_execution_allowed()
-    options: list[tuple[str, str]] = [("1", "Recheck Database Sync Status")]
-    blocked = _blocked_prod_sources(report)
-    ready = _ready_entries(report)
-    if blocked:
-        label = "Prepare production backups"
-        if not live_allowed:
-            label = f"{label} (preview only)"
-        options.append(("2", f"{label}{_recommended_option_suffix(report, live_allowed=live_allowed)}"))
-    if ready:
-        sync_label = "Sync All Ready Databases" if live_allowed else "Preview All Ready Databases"
-        sync_key = "2" if not blocked else "3"
-        suffix = " (recommended)" if report.ready_count and not report.blocked_count else ""
-        if report.ready_count and report.blocked_count and live_allowed:
-            suffix = " (ready pairs only)"
-        options.append((sync_key, f"{sync_label}{suffix}"))
-        if report.ready_count > 1:
-            single_label = "Sync One Ready Pair" if live_allowed else "Preview One Ready Pair"
-            single_key = "3" if not blocked else "4"
-            options.append((single_key, single_label))
-    verify_key = "4" if not blocked else "5"
-    options.append((verify_key, "Verify Dev Targets Against Prod Backups"))
-    return options
+    from mercury.sync.menu_options import sync_submenu_options
+
+    return [(key, label) for key, label, _action in sync_submenu_options(report)]
 
 
 def _render_sync_screen(report: SyncReadinessReport, *, show_title: bool) -> None:

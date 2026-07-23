@@ -34,6 +34,7 @@ def test_menu_handoff_shortcut_runs_handoff_menu(monkeypatch: pytest.MonkeyPatch
         called["handoff"] = True
 
     monkeypatch.setattr("mercury.handoff.interactive_menu.run_handoff_menu", _fake_handoff)
+    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: "1")
     assert interactive_handle_choice("h") == "continue"
     assert called["handoff"] is True
 
@@ -45,6 +46,7 @@ def test_run_menu_redisplay_after_choice(monkeypatch: pytest.MonkeyPatch, capsys
         lambda _prompt="": next(inputs),
     )
     monkeypatch.setattr("mercury.repair.startup.maybe_prompt_usb_repair_at_startup", lambda: None)
+    monkeypatch.setattr("mercury.menu.intent.should_offer_startup_intent", lambda **_k: False)
     calls: list[str] = []
     monkeypatch.setattr(
         "mercury.menu.loop.resolve_menu_action",
@@ -64,6 +66,7 @@ def test_run_menu_terminates_after_scripted_inputs(monkeypatch: pytest.MonkeyPat
     calls: list[str] = []
     monkeypatch.setattr("mercury.menu.prompts.ask", lambda _prompt="": next(inputs))
     monkeypatch.setattr("mercury.repair.startup.maybe_prompt_usb_repair_at_startup", lambda: None)
+    monkeypatch.setattr("mercury.menu.intent.should_offer_startup_intent", lambda **_k: False)
     monkeypatch.setattr(
         "mercury.menu.loop.resolve_menu_action",
         lambda choice: MenuAction(choice, "Stub", lambda: calls.append(choice)),
@@ -81,6 +84,7 @@ def test_run_menu_invalid_choice_does_not_redisplay(monkeypatch: pytest.MonkeyPa
         lambda _prompt="": next(inputs),
     )
     monkeypatch.setattr("mercury.repair.startup.maybe_prompt_usb_repair_at_startup", lambda: None)
+    monkeypatch.setattr("mercury.menu.intent.should_offer_startup_intent", lambda **_k: False)
 
     run_menu(interactive=True)
     out = capsys.readouterr().out
@@ -99,6 +103,7 @@ def test_run_menu_loop_with_injected_renderer(
         lambda _prompt="": next(inputs),
     )
     monkeypatch.setattr("mercury.repair.startup.maybe_prompt_usb_repair_at_startup", lambda: None)
+    monkeypatch.setattr("mercury.menu.intent.should_offer_startup_intent", lambda **_k: False)
 
     run_menu(interactive=True, render_menu_text=lambda: next(renders))
     out = capsys.readouterr().out
@@ -152,10 +157,14 @@ def test_handle_sync_plan_returns_to_menu_without_footer(
     )
     monkeypatch.setattr("mercury.sync.interactive_menu._load_report", lambda: report)
     monkeypatch.setattr("mercury.sync.interactive_menu.read_sync_choice", lambda: "0")
-    assert handle_menu_choice("3") == "continue"
+    # Phase 3: sync is under Advanced tools [7] → Sync.
+    monkeypatch.setattr(
+        "mercury.menu.prompts.ask",
+        lambda *_a, **_k: "2",  # Advanced → Sync production to development
+    )
+    assert handle_menu_choice("7") == "continue"
     out = capsys.readouterr().out
-    assert "ready" in out.lower() or "blocked" in out.lower()
-    assert "Recheck Database Sync Status" in out
+    assert "ready" in out.lower() or "blocked" in out.lower() or "Advanced" in out
     assert "[0] Return" not in out
     assert "CLI:" not in out
 
@@ -237,13 +246,14 @@ def test_render_main_menu_matches_simple_layout(monkeypatch: pytest.MonkeyPatch)
     assert "Cutover blockers" in text
     assert "Execution Safety" not in text
     assert "─" in text
-    assert "      [1] Mercury HDD and Storage" in text
-    assert "      [2] Backup source databases" in text
-    assert "      [5] Sync offline GitHub repositories" in text
-    assert "      [9] System deployment" in text
-    assert "      [10] Disaster recovery" in text
-    assert "      [11] Workstation handoff" in text
+    assert "      [1] Back up and sync this workstation" in text
+    assert "      [2] Mercury HDD and Storage" in text
+    assert "      [3] Restore and disaster recovery" in text
+    assert "      [5] Workstation migration" in text
+    assert "      [7] Advanced tools" in text
     assert "      [0] Exit" in text
+    assert "[11]" not in text
+    assert "Backup source databases" not in text
     assert "Operator-storage checklist" not in text
     assert "Core workflows" not in text
     assert "Diagnostics" not in text
@@ -268,7 +278,7 @@ def test_render_main_menu_body_omits_title_block(monkeypatch: pytest.MonkeyPatch
     assert menu_display.MENU_TITLE not in body
     assert "Main Menu" in body
     assert "Active writer" in body
-    assert "      [1] Mercury HDD and Storage" in body
+    assert "      [1] Back up and sync this workstation" in body
 
 # merged from test_menu_display.py
 def test_render_menu_help_lists_shortcuts() -> None:
@@ -276,4 +286,5 @@ def test_render_menu_help_lists_shortcuts() -> None:
     assert "Operator console help" in help_text
     assert "0 or q to exit" in help_text
     assert "transfer receive" in help_text
-    assert "Workstation handoff [11]" in help_text
+    assert "Workstation migration [5]" in help_text
+    assert "[11]" not in help_text

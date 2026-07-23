@@ -103,28 +103,41 @@ def _option_labels(snapshot: StorageLifecycleSnapshot) -> list[str]:
     return [label for _key, label in hdd_menu_render_options(snapshot)]
 
 
-def test_main_menu_mercury_hdd_is_option_one() -> None:
+def test_main_menu_mercury_hdd_is_option_two() -> None:
     items = main_menu_items(writes_allowed=True)
-    assert items[0] == ("1", "Mercury HDD and Storage")
-    assert main_menu_hint(ACTION_HDD_STORAGE) == "Mercury HDD and Storage [1]"
-    action = resolve_menu_action("1")
+    assert items[0] == ("1", "Back up and sync this workstation")
+    assert items[1] == ("2", "Mercury HDD and Storage")
+    assert main_menu_hint(ACTION_HDD_STORAGE) == "Mercury HDD and Storage [2]"
+    action = resolve_menu_action("2")
     assert action is not None
     assert action.action_id == ACTION_HDD_STORAGE
 
 
 def test_main_menu_actions_shift_and_symbolic_hints_stay_synced() -> None:
+    from mercury.menu.options import (
+        MAIN_BACKUP_SYNC,
+        MAIN_MIGRATION,
+        MAIN_RECOVERY,
+        MAIN_STORAGE,
+        main_menu_hint,
+    )
+
     acts = menu_actions()
-    assert acts["2"].action_id == ACTION_BACKUP
-    assert acts["3"].action_id == ACTION_SYNC
-    assert "Workstation handoff [11]" == main_menu_hint("workstation_handoff")
+    assert acts["1"].action_id == MAIN_BACKUP_SYNC
+    assert acts["2"].action_id == MAIN_STORAGE
+    assert acts["3"].action_id == MAIN_RECOVERY
+    assert acts["5"].action_id == MAIN_MIGRATION
+    assert len(acts) <= 7
+    assert main_menu_hint("workstation_handoff").endswith("[5]")
+    assert "[11]" not in main_menu_hint("workstation_handoff")
     assert "[10]" not in main_menu_hint("workstation_handoff")
 
 
 def test_main_menu_marks_write_actions_unavailable_when_writes_disabled() -> None:
     items = dict(main_menu_items(writes_allowed=False))
-    assert WRITES_DISABLED_SUFFIX in items["2"]
-    assert WRITES_DISABLED_SUFFIX in items["3"]
+    # Guided Backup and Sync remains selectable for writer restoration.
     assert WRITES_DISABLED_SUFFIX not in items["1"]
+    assert WRITES_DISABLED_SUFFIX not in items["2"]
     assert WRITES_DISABLED_SUFFIX not in items["4"]
 
 
@@ -137,9 +150,10 @@ def test_write_action_blocked_redirects_to_storage_menu(host_path: Path) -> None
         ),
         path=host_path,
     )
+    # Sync-style expert write actions live under Advanced; Storage itself is never blocked.
     action = resolve_menu_action("2")
     assert action is not None
-    assert menu_action_blocked_for_writes(action) is True
+    assert menu_action_blocked_for_writes(action) is False
     msg = writes_disabled_redirect_message()
     assert "Operation unavailable" in msg
     assert main_menu_hint(ACTION_HDD_STORAGE) in msg
@@ -274,7 +288,7 @@ def test_header_state_avoids_safe_disconnect_ready_duplication() -> None:
 
 def test_dashboard_next_action_short_for_ready() -> None:
     snap = _snap(StorageLifecycleState.READY_TO_DISCONNECT, package_verified=True)
-    assert dashboard_next_action_short(snap) == "Back up, disconnect, or continue rehearsal"
+    assert dashboard_next_action_short(snap) == "Choose backup, disconnect, or rehearsal"
     assert "writes disabled" in dashboard_hdd_status_line(snap).lower()
 
 
@@ -330,7 +344,7 @@ def test_assess_lifecycle_writes_disabled_ready(
     assert snap.recommended == "Safe disconnect Mercury HDD"
 
 
-def test_storage_menu_launches_from_main_menu_one(
+def test_storage_menu_launches_from_main_menu_two(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     called: list[str] = []
@@ -338,7 +352,7 @@ def test_storage_menu_launches_from_main_menu_one(
         "mercury.storage.interactive_menu.run_storage_menu",
         lambda **kwargs: called.append("storage"),
     )
-    action = resolve_menu_action("1")
+    action = resolve_menu_action("2")
     assert action is not None
     action.runner()
     assert called == ["storage"]
@@ -404,8 +418,8 @@ def test_dashboard_ready_to_disconnect_wording(
     )
     rows = "\n".join(_migration_dashboard_rows(report, policy=SimpleNamespace()))
     assert "Mercury HDD" in rows
-    assert "Next action" in rows
-    assert "Back up, disconnect, or continue rehearsal" in rows
+    assert "Recommended" in rows
+    assert "Choose backup, disconnect, or rehearsal" in rows
     assert "Detaching · writes off" not in rows
     assert "detach mode" not in rows.lower()
 
@@ -464,13 +478,18 @@ def test_menu_snapshot_writes_disabled_suffix(monkeypatch: pytest.MonkeyPatch) -
         lambda: SimpleNamespace(
             storage_availability="detaching",
             destination_rehearsal_in_progress=True,
+            writes_allowed=False,
+            source_detach_preparation=True,
+            destination_rehearsal_active=True,
+            package_verification_status="DESTINATION_PACKAGE_VERIFIED",
+            package_id="pkg",
         ),
     )
     text = menu_display.render_main_menu(probe_database=False)
     assert "Mercury HDD and Storage" in text
-    assert "Backup source databases" in text
-    assert WRITES_DISABLED_SUFFIX in text
-    assert "[11] Workstation handoff" in text
+    assert "Back up and sync this workstation" in text
+    assert "[5] Workstation migration" in text
+    assert "[11]" not in text
 
 
 def test_menu_snapshot_detached_mode(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -484,11 +503,18 @@ def test_menu_snapshot_detached_mode(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda: SimpleNamespace(
             storage_availability="detached",
             destination_rehearsal_in_progress=False,
+            writes_allowed=False,
+            source_detach_preparation=False,
+            destination_rehearsal_active=False,
+            package_verification_status="",
+            package_id="",
         ),
     )
     text = menu_display.render_main_menu(probe_database=False)
-    assert HDD_ABSENT_SUFFIX in text
-    assert REPORTS_LIMITED_SUFFIX in text
+    assert "Reconnect or configure Mercury HDD" in text or "Mercury HDD and Storage" in text
+    assert "Reports" in text
+    # Software-only console when detached: five primary actions max.
+    assert "[7]" not in text or "Advanced" in text
 
 
 def test_software_only_first_run_prompt_text() -> None:

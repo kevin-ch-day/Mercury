@@ -41,49 +41,20 @@ def _after_handoff_write() -> None:
 
 
 def _render_handoff_options() -> None:
-    from mercury.backup.menu_options import DETACH_UNAVAILABLE_SUFFIX
+    from mercury.handoff.menu_options import handoff_menu_render_options
     from mercury.storage.host_maintenance import writes_allowed
 
     display_screen.write_blank()
-    write_ok = writes_allowed()
-    options = [
-        ("1", "Refresh status"),
-        (
-            "2",
-            "Build Migration Package"
-            if write_ok
-            else f"Build Migration Package  {DETACH_UNAVAILABLE_SUFFIX}",
-        ),
-        (
-            "3",
-            "Capture Web Worktrees"
-            if write_ok
-            else f"Capture Web Worktrees  {DETACH_UNAVAILABLE_SUFFIX}",
-        ),
-        ("4", "Receiver Guide"),
-        ("5", "Handoff Tools"),
-    ]
-    render_submenu(options, indent=0)
+    render_submenu(handoff_menu_render_options(writes_allowed=writes_allowed()), indent=0)
 
 
 def _render_handoff_tools() -> None:
-    from mercury.backup.menu_options import DETACH_UNAVAILABLE_SUFFIX
+    from mercury.handoff.menu_options import handoff_tools_render_options
     from mercury.storage.host_maintenance import writes_allowed
 
     display_screen.open_screen("Handoff Tools")
-    write_ok = writes_allowed()
-    suffix = f"  {DETACH_UNAVAILABLE_SUFFIX}" if not write_ok else ""
     render_submenu(
-        [
-            ("1", f"Resume Package Build{suffix}"),
-            ("2", f"Run Backup{suffix}"),
-            ("3", f"Verify Backups{suffix}"),
-            ("4", f"Create Repository Bundles{suffix}"),
-            ("5", f"Create Database Bundle{suffix}"),
-            ("6", f"Create Transfer Package{suffix}"),
-            ("7", "Review Checklist"),
-            ("8", "Handoff History"),
-        ],
+        handoff_tools_render_options(writes_allowed=writes_allowed()),
         indent=0,
     )
 

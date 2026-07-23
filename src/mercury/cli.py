@@ -1990,7 +1990,7 @@ def backup_full_cmd(
         help="Use demo/catalog inventory instead of live server.",
     ),
 ) -> None:
-    """Production write+verify full backup (CLI parity with Backup Operations [2])."""
+    """Production write+verify full backup (CLI parity with Backup Operations full-backup action)."""
     from datetime import datetime, timezone
 
     from mercury.backup.batch_runner import (

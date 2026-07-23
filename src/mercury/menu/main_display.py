@@ -99,22 +99,25 @@ MENU_SECTIONS: list[tuple[str, list[MenuItem]]] = [
 
 def refresh_menu_sections(*, writes_allowed: bool | None = None) -> None:
     """Rebuild ``MENU_SECTIONS`` titles (availability suffixes) for the current writer state."""
+    from mercury.menu.recommendation import build_main_menu_recommendation
     from mercury.storage.host_maintenance import load_host_maintenance
 
     host = load_host_maintenance()
     allowed = writes_allowed if writes_allowed is not None else hdd_writes_allowed(host)
     detached = host.storage_availability == "detached"
     rehearsal = bool(host.destination_rehearsal_in_progress)
+    software_only = bool(build_main_menu_recommendation(host=host).software_only)
     items = [
         MenuItem(key, title)
         for key, title in main_menu_items(
             writes_allowed=allowed,
             hdd_detached=detached,
             destination_rehearsal=rehearsal,
+            software_only=software_only,
         )
     ]
     MENU_SECTIONS.clear()
-    MENU_SECTIONS.append(("Core workflows", items))
+    MENU_SECTIONS.append(("Main Menu", items))
 
 
 def menu_items_by_key() -> dict[str, MenuItem]:

@@ -16,6 +16,10 @@ def test_short_handoff_action_strips_prefixes() -> None:
     assert short_handoff_action("Handoff [4] backup") == "[4] backup"
     assert short_handoff_action("Handoff menu [8] transfer") == "[8] transfer"
     assert short_handoff_action("./run.sh transfer handoff") == "transfer handoff"
+    assert (
+        short_handoff_action("Handoff Tools [5] → Run Backup [2]")
+        == "Run Backup [2]"
+    )
 
 
 def test_handoff_pipeline_line_aggregates_phase_statuses() -> None:
@@ -111,16 +115,27 @@ def test_wizard_result_progress_line_marks_completed_phases() -> None:
 
 
 def test_suggested_menu_choice_points_to_receiver_when_complete() -> None:
+    from mercury.handoff.menu_options import ACTION_RECEIVER_GUIDE, handoff_menu_option_by_action
+
     checklist = HandoffChecklist(
         handoff_status="complete",
         database_package="complete",
         repository_package="complete",
         steps=[],
     )
-    assert suggested_menu_choice(checklist) == "11"
+    assert suggested_menu_choice(checklist) == handoff_menu_option_by_action(
+        ACTION_RECEIVER_GUIDE
+    )[0]
 
 
 def test_suggested_menu_choice_reads_handoff_action_key() -> None:
+    from mercury.handoff.menu_options import (
+        ACTION_TOOLS,
+        ACTION_TOOLS_TRANSFER,
+        handoff_menu_option_by_action,
+        handoff_nested_hint,
+    )
+
     checklist = HandoffChecklist(
         handoff_status="partial",
         database_package="partial",
@@ -130,11 +145,11 @@ def test_suggested_menu_choice_reads_handoff_action_key() -> None:
                 label="Transfer",
                 status="fail",
                 detail="missing",
-                action="Handoff [8] write transfer package",
+                action=handoff_nested_hint(ACTION_TOOLS_TRANSFER),
             )
         ],
     )
-    assert suggested_menu_choice(checklist) == "8"
+    assert suggested_menu_choice(checklist) == handoff_menu_option_by_action(ACTION_TOOLS)[0]
 
 
 def test_receiver_handoff_steps_include_deploy_guidance() -> None:
