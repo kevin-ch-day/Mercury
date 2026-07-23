@@ -27,6 +27,8 @@ Cookbook for AI agents (Cursor, ChatGPT, Codex) implementing features in this re
 | `src/mercury/database/commands.py` | `mercury db *` / `mercury database *` commands |
 | `src/mercury/menu/runners.py` | Interactive menu action runners |
 | `src/mercury/menu/loop.py` | Menu read-eval loop and choice routing |
+| `src/mercury/menu/options_menu.py` | Startup Options / Appearance (host-local theme + color mode) |
+| `src/mercury/terminal/theme_settings.py` | Host-local `theme.json` preference (never on Mercury HDD) |
 | `src/mercury/core/storage_roots.py` | Primary/legacy config, migration state, write gates |
 | `src/mercury/core/storage_validate.py` | Mount/UUID/fstype/space validation |
 | `src/mercury/storage/` | Storage status, migrate-plan/run/verify/quarantine, cutover-readiness (no writer switch) |

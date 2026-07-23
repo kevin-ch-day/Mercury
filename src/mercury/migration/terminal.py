@@ -35,9 +35,19 @@ def _tag(check: MigrationCheck) -> str:
 
 
 def print_migration_blockers(report: MigrationReadinessReport) -> int:
+    from mercury.terminal.theme import colors_enabled, markup, styled_bracket_label
+    from mercury.terminal.design_system import active_styles
+
     display_screen.open_screen("Migration Blockers")
     for check in report.unresolved_checks:
-        output.write(f"  [{_tag(check)}] {check.label}: {check.summary}")
+        tag = _tag(check)
+        detail = f"{check.label}: {check.summary}"
+        if colors_enabled():
+            s = active_styles()
+            style = s.fail if tag == "BLOCKED" else (s.warn if tag in {"CHECK", "OPEN"} else s.info)
+            output.write(f"  {styled_bracket_label(tag, style)} {markup(detail, s.value)}")
+        else:
+            output.write(f"  [{tag}] {detail}")
     output.rule()
     cutover = report.check("writer_cutover_implementation")
     if cutover.state == MigrationCheckState.PASS:

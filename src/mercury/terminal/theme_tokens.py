@@ -79,12 +79,19 @@ class PaletteColor:
 
 
 # Mercury Redline true-color palette (authoritative product swatches).
+#
+# Design inspiration (Mercury-owned; not a franchise recreation):
+# - Digital geometry: angular light-lines on void, red as structure not decoration,
+#   circuit-edge rails, high contrast, secondary detail suppressed.
+# - Industrial minimalism: monochrome foundation, containerized marks ([PASS]),
+#   uniform weights, spare typography, crimson used sparingly for authority.
 REDLINE_SWATCHES: Mapping[str, PaletteColor] = {
     "void_black": PaletteColor("Void Black", "#050505", 232, "black"),
     "carbon": PaletteColor("Carbon", "#0C0C0D", 233, "black"),
     "graphite": PaletteColor("Graphite", "#151517", 234, "black"),
     "raised_graphite": PaletteColor("Raised Graphite", "#1D1D20", 235, "black"),
-    "steel_border": PaletteColor("Steel Border", "#343438", 238, "bright_black"),
+    # Cooler steel — metallic circuit-edge (less warm gray).
+    "steel_border": PaletteColor("Steel Border", "#3A3A42", 238, "bright_black"),
     "bone_white": PaletteColor("Bone White", "#E8E4DE", 253, "white"),
     "cold_white": PaletteColor("Cold White", "#F4F2EE", 255, "bright_white"),
     "ash": PaletteColor("Ash", "#A29E99", 247, "white"),
@@ -101,6 +108,16 @@ REDLINE_SWATCHES: Mapping[str, PaletteColor] = {
     "information": PaletteColor("Information", "#AFC7D8", 152, "cyan"),
     "read_only": PaletteColor("Read-only", "#B8A7D9", 183, "magenta"),
 }
+
+# Operator-facing design principles for theme preview / documentation receipts.
+REDLINE_DESIGN_PRINCIPLES: tuple[str, ...] = (
+    "Void foundation — black reads as structure, not empty space",
+    "Angular light-lines — red edges define panels; never flood backgrounds",
+    "Separator hierarchy — Signal / Oxide / Steel (bright red is rare)",
+    "Containerized marks — [PASS] [WARN] [FAIL] [INFO] stay legible without color",
+    "Industrial type — geometric titles; descriptive states stay title-case",
+    "Restraint — no animation, no glitch noise, no full-red screens",
+)
 
 
 # Classic liquid-silver swatches (preserve prior Mercury look).

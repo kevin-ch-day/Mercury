@@ -22,7 +22,7 @@ from mercury.terminal.theme import (
     tag_plain,
 )
 from mercury.terminal.theme_settings import validate_theme_id
-from mercury.terminal.theme_tokens import THEME_DISPLAY_NAMES
+from mercury.terminal.theme_tokens import THEME_DISPLAY_NAMES, REDLINE_DESIGN_PRINCIPLES
 from mercury.terminal.table import Table, TableStyle
 
 
@@ -127,25 +127,22 @@ def _print_theme_preview_body(*, theme_id: str, width: int) -> None:
     output.write(f"Synthetic only · width≈{width} · no HDD / package / host state access")
     output.write(rule_line(width=min(62, width), level="major"))
 
-    # Production header identity (redline_a). Alternatives only for Redline gallery.
+    if tid == THEME_REDLINE:
+        _write_block(
+            "0. DESIGN LANGUAGE",
+            [f"· {line}" for line in REDLINE_DESIGN_PRINCIPLES],
+            level="minor",
+        )
+
+    # Production header identity (single Redline identity — no alternate motifs).
     _write_block(
         "1. PRODUCT HEADER (production)",
         menu_header_lines("BACKUP · RECOVERY · MIGRATION"),
         level="major",
     )
-    if tid == THEME_REDLINE:
+    if tid != THEME_REDLINE:
         _write_block(
-            "HEADER ALTERNATIVES (preview only)",
-            [
-                *menu_header_lines("…", variant="redline_b"),
-                "",
-                *menu_header_lines("…", variant="redline_c"),
-            ],
-            level="normal",
-        )
-    else:
-        _write_block(
-            "HEADER ALTERNATIVE · classic",
+            "HEADER · classic",
             menu_header_lines(
                 "Database Backup, Sync, and Disaster Recovery Utility",
                 variant="classic",

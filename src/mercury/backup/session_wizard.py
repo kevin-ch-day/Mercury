@@ -20,7 +20,8 @@ from mercury.storage.operation_availability import (
 )
 from mercury.terminal import screen as display_screen
 from mercury.terminal.theme import dashboard_row, menu_item_line, rule_line, section_title
-from mercury.terminal.theme import colors_enabled
+from mercury.terminal.theme import colors_enabled, markup
+from mercury.terminal.design_system import active_styles
 
 
 def _package_verified(host) -> bool:
@@ -196,19 +197,30 @@ def _customize_plan(plan: SessionPlan) -> tuple[SessionPlan, str] | None:
         ]
         for label, enabled in flags:
             mark = "x" if enabled else " "
-            output.write(f"  [{mark}] {label}")
+            if colors_enabled():
+                from mercury.terminal.theme import styled_bracket_label
+
+                s = active_styles()
+                output.write(
+                    f"  {styled_bracket_label(mark, s.menu_key)} {markup(label, s.menu_option)}"
+                )
+            else:
+                output.write(f"  [{mark}] {label}")
         if current.production_backup:
             output.write("      · Verify newly written production backups (follows production)")
         output.write("")
-        output.write("  [1] Toggle production backup")
-        output.write("  [2] Toggle development backup")
-        output.write("  [3] Toggle Git recovery")
-        output.write("  [4] Toggle production-to-development sync")
-        output.write("  [5] Toggle restore-check")
-        output.write("  [6] Run selected session")
-        output.write("  [7] Databases only")
-        output.write("  [8] Git recovery only")
-        output.write("  [0] Cancel")
+        for key, label in (
+            ("1", "Toggle production backup"),
+            ("2", "Toggle development backup"),
+            ("3", "Toggle Git recovery"),
+            ("4", "Toggle production-to-development sync"),
+            ("5", "Toggle restore-check"),
+            ("6", "Run selected session"),
+            ("7", "Databases only"),
+            ("8", "Git recovery only"),
+        ):
+            output.write(menu_item_line(key, label, indent=2))
+        output.write(menu_item_line("0", "Cancel", indent=2))
         choice = (menu_prompts.ask("Choice") or "").strip()
         if choice == "0":
             return None
@@ -341,8 +353,8 @@ def offer_post_session_actions(session: BackupSyncSession) -> str | None:
     options.append(("review", "Review session details", "review"))
     options.append(("main_menu", "Return to main menu", "main_menu"))
     for index, (_key, label, _action) in enumerate(options, start=1):
-        output.write(f"  [{index}] {label}")
-    output.write("  [0] Exit Mercury")
+        output.write(menu_item_line(str(index), label, indent=2))
+    output.write(menu_item_line("0", "Exit Mercury", indent=2))
     choice = (menu_prompts.ask("Choice") or "").strip()
     if choice == "0":
         return "exit"

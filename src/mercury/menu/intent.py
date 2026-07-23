@@ -22,6 +22,7 @@ INTENT_BACKUP_SYNC = "backup_sync"
 INTENT_SAFE_DISCONNECT = "safe_disconnect"
 INTENT_DESTINATION_REHEARSAL = "destination_rehearsal"
 INTENT_BROWSE = "browse"
+INTENT_OPTIONS = "options"
 INTENT_EXIT = "exit"
 INTENT_RECONNECT = "reconnect"
 INTENT_VERIFY_PACKAGE = "verify_package"
@@ -139,6 +140,9 @@ def build_startup_intent_options(*, host=None) -> list[tuple[str, str, str]]:
             (INTENT_DESTINATION_REHEARSAL, destination_move_action_label(host=state)),
             (INTENT_BROWSE, "Browse all operations"),
         ]
+
+    # Options is always available (host-local appearance); never the recommendation.
+    ordered.append((INTENT_OPTIONS, "Options"))
 
     recommended = recommended_startup_action(host=state)
     options: list[tuple[str, str, str]] = []
@@ -282,5 +286,12 @@ def dispatch_startup_intent(intent: str) -> str | None:
             "to review the destination package."
         )
         run_storage_menu()
+        return OUTCOME_CONTINUE
+    if intent == INTENT_OPTIONS:
+        from mercury.menu.options_menu import run_options_menu
+
+        run_options_menu()
+        return OUTCOME_CANCELLED
+    if intent == INTENT_BROWSE:
         return OUTCOME_CONTINUE
     return OUTCOME_CONTINUE

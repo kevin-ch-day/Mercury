@@ -293,11 +293,21 @@ def test_redline_header_and_recommended_marker() -> None:
     set_color_enabled(False)
     clear_style_cache()
     header = menu_header_lines("ignored", variant="redline_a")
-    assert "MERCURY // REDLINE" in header[0]
-    assert "BACKUP" in header[1]
+    # Dual-rail frame: steel edge, title, subtitle, signal edge.
+    assert len(header) == 4
+    assert "MERCURY // REDLINE" in header[1]
+    assert "BACKUP" in header[2]
     item = menu_item_line("1", "Safely disconnect Mercury HDD", recommended=True)
-    assert "›" in item
+    assert "▸" in item
     assert "RECOMMENDED" in item
+
+
+def test_redline_design_principles_in_preview() -> None:
+    lines = render_theme_preview(THEME_REDLINE, width=80, force_color=False)
+    joined = "\n".join(lines)
+    assert "DESIGN LANGUAGE" in joined
+    assert "Angular light-lines" in joined
+    assert "Containerized marks" in joined
 
 
 def test_list_themes_includes_all() -> None:

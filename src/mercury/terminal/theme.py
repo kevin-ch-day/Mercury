@@ -30,45 +30,16 @@ from mercury.terminal.theme_tokens import ColorMode, SemanticToken
 
 StatusKind = Literal["ok", "warn", "fail", "info"]
 
-# ── Classic palette constants (backward-compatible imports) ─────────────────
-SILVER = "#C8D6E5"
-SILVER_BRIGHT = "#E8F1FA"
-MERCURY = "#5CE1E6"
-MERCURY_GLOW = "#00D4FF"
-MERCURY_DEEP = "#2A8B9C"
-VOID = "#141A22"
-RULE_DARK = "#243044"
-RULE_LIGHT = "#3D5570"
-VIOLET = "#8B9DC3"
-MUTED = "#6B7F99"
-
+# Minimal Classic fallbacks for Rich Console / MercuryTheme when styles are empty.
 OK = "bold #4EECAC"
 WARN = "bold #F0C674"
 FAIL = "bold #FF7B9C"
 INFO = "#7EC8E3"
-
-TITLE = f"bold {MERCURY_GLOW}"
-TITLE_ACCENT = f"bold {MERCURY}"
-SUBTITLE = f"italic {VIOLET}"
-ACCENT = MERCURY_GLOW
-RULE = f"dim {RULE_DARK}"
-RULE_GLOW = MERCURY_DEEP
-SECTION = f"bold {SILVER_BRIGHT}"
-LABEL = SILVER
-VALUE = SILVER_BRIGHT
-VALUE_MUTED = MUTED
-HINT = f"dim italic {MUTED}"
-MENU_KEY = f"bold {MERCURY_GLOW}"
-MENU_OPTION = SILVER_BRIGHT
-MENU_SECTION = f"bold {MERCURY}"
-MENU_RULE = RULE
-TABLE_HEADER = f"bold {MERCURY_GLOW}"
-TABLE_RULE = RULE
-PROMPT = f"bold {MERCURY_GLOW}"
-BANNER = TITLE
-ACTION = f"bold {MERCURY_GLOW}"
-GLYPH = MERCURY
-SEPARATOR = f"dim {RULE_LIGHT}"
+TITLE = "bold #00D4FF"
+SUBTITLE = "italic #8B9DC3"
+ACCENT = "#00D4FF"
+PROMPT = "bold #00D4FF"
+HINT = "dim italic #6B7F99"
 
 RULE_WIDTH = 62
 _READY_BLOCKED_RE = re.compile(r"^(\d+)\s+ready\s·\s+(\d+)\s+blocked$")
@@ -199,7 +170,20 @@ def rule_line(
     width = _clamp_rule_width(width)
     if char is None:
         if not colors_enabled():
-            char = "─" if unicode_box_supported() else "-"
+            # Preserve Redline rail hierarchy without color: steel / oxide / signal.
+            if s.theme_id == THEME_REDLINE and unicode_box_supported():
+                char = {
+                    "major": "━",
+                    "minor": "┄",
+                    "normal": "─",
+                }.get(level, "─")
+            else:
+                char = "─" if unicode_box_supported() else "-"
+        elif level == "minor":
+            char = s.rule_char_minor or s.rule_char
+        elif level == "normal" and s.theme_id == THEME_REDLINE and unicode_box_supported():
+            # Thin angular edge for normal panels (thick reserved for major light-line).
+            char = "─"
         else:
             char = s.rule_char
     line = char * width
@@ -224,7 +208,8 @@ def section_title(title: str) -> str:
         return title
     s = active_styles()
     if s.theme_id == THEME_REDLINE:
-        return markup("■ ", s.brand_marker) + markup(title, s.value)
+        # Angular marker (geometry), bone-white title — not soft ornaments.
+        return markup("▸ ", s.brand_marker) + markup(title, s.value)
     return markup(title, s.section)
 
 
@@ -235,7 +220,8 @@ def section_rule(title: str, *, max_width: int = 60) -> str:
 
         return ("─" if unicode_box_supported() else "-") * width
     s = active_styles()
-    return markup(s.rule_char * width, s.table_rule)
+    ch = s.rule_char_minor if s.theme_id == THEME_REDLINE else s.rule_char
+    return markup(ch * width, s.table_rule)
 
 
 def report_header(title: str, *, max_width: int = 60) -> list[str]:
@@ -274,44 +260,40 @@ def menu_title_line() -> str:
 
 
 def menu_header_lines(subtitle: str, *, variant: str | None = None) -> list[str]:
-    """Branded menu header block."""
+    """Branded menu header block.
+
+    Redline uses one production identity with a dual-rail frame (steel rail +
+    signal light-line). Classic keeps the legacy operator-console wording.
+    """
     s = active_styles()
     use = variant or s.header_variant
     width = s.rule_width
+    from mercury.terminal.color_capability import unicode_box_supported
 
-    if use == "redline_a":
+    if use.startswith("redline"):
         primary = "MERCURY // REDLINE"
-        secondary = "BACKUP · RECOVERY · MIGRATION"
-    elif use == "redline_b":
-        primary = "■ MERCURY OPERATOR CONSOLE"
-        secondary = "BACKUP / RECOVERY / MIGRATION"
-    elif use == "redline_c":
-        primary = "MERCURY OPERATOR CONSOLE"
         secondary = "BACKUP · RECOVERY · MIGRATION"
     else:
         primary = "MERCURY OPERATOR CONSOLE"
         secondary = subtitle
 
     if not colors_enabled():
-        from mercury.terminal.color_capability import unicode_box_supported
-
+        if use.startswith("redline"):
+            # Distinguish rails without color: staccato steel vs solid edge.
+            rail = "┄" if unicode_box_supported() else "-"
+            edge = "━" if unicode_box_supported() else "="
+            return [rail * width, primary, secondary, edge * width]
         ch = "─" if unicode_box_supported() else "-"
         return [primary, secondary, ch * width]
 
     if use.startswith("redline"):
-        if use == "redline_b":
-            primary_styled = markup("■ ", s.brand_marker) + markup(
-                "MERCURY OPERATOR CONSOLE", s.title
-            )
-        elif use == "redline_a":
-            primary_styled = (
-                markup("MERCURY ", s.title)
-                + markup("//", s.brand_marker)
-                + markup(" REDLINE", s.title)
-            )
-        else:
-            primary_styled = markup(primary, s.title)
+        primary_styled = (
+            markup("MERCURY ", s.title)
+            + markup("//", s.brand_marker)
+            + markup(" REDLINE", s.title)
+        )
         return [
+            rule_line(width=width, level="minor"),
             primary_styled,
             markup(secondary, s.subtitle),
             rule_line(width=width, level="major"),
@@ -322,32 +304,6 @@ def menu_header_lines(subtitle: str, *, variant: str | None = None) -> list[str]
         markup(secondary, s.subtitle),
         rule_line(width=width, level="normal"),
     ]
-
-
-def header_alternatives() -> dict[str, list[str]]:
-    """Plain-text header alternatives for theme preview (no disk / HDD I/O)."""
-    results: dict[str, list[str]] = {}
-    previous = active_theme_id()
-    try:
-        set_theme_override(THEME_CLASSIC)
-        clear_style_cache()
-        set_color_enabled(False)
-        results["classic"] = menu_header_lines(
-            "Database Backup, Sync, and Disaster Recovery Utility",
-            variant="classic",
-        )
-        set_theme_override(THEME_REDLINE)
-        clear_style_cache()
-        for key in ("redline_a", "redline_b", "redline_c"):
-            results[key] = menu_header_lines(
-                "Database Backup, Sync, and Disaster Recovery Utility",
-                variant=key,
-            )
-    finally:
-        set_theme_override(previous if previous in {THEME_CLASSIC, THEME_REDLINE, THEME_MONOCHROME} else None)
-        clear_style_cache()
-        set_color_enabled(None)
-    return results
 
 
 def menu_subtitle_line(text: str) -> str:
@@ -383,7 +339,7 @@ def menu_item_line(
     suffix = ""
     if is_recommended and s.theme_id == THEME_REDLINE:
         display_title = re.sub(r"\s+recommended\s*$", "", title, flags=re.IGNORECASE).rstrip()
-        marker = "› "
+        marker = "▸ "
         suffix_plain = "          RECOMMENDED"
     else:
         suffix_plain = ""

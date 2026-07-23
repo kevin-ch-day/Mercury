@@ -43,22 +43,30 @@ def colors_enabled(*, stream: TextIO | None = None) -> bool:
 
 
 def requested_color_mode() -> ColorMode:
-    raw = (os.environ.get("MERCURY_COLOR_MODE") or "auto").strip().lower()
-    aliases = {
-        "auto": ColorMode.AUTO,
-        "truecolor": ColorMode.TRUECOLOR,
-        "true": ColorMode.TRUECOLOR,
-        "24bit": ColorMode.TRUECOLOR,
-        "256": ColorMode.ANSI256,
-        "ansi256": ColorMode.ANSI256,
-        "16": ColorMode.ANSI16,
-        "ansi16": ColorMode.ANSI16,
-        "none": ColorMode.NONE,
-        "off": ColorMode.NONE,
-        "monochrome": ColorMode.NONE,
-        "mono": ColorMode.NONE,
-    }
-    return aliases.get(raw, ColorMode.AUTO)
+    """Resolve preferred color mode: env wins, then host-local preference, else auto."""
+    raw = (os.environ.get("MERCURY_COLOR_MODE") or "").strip().lower()
+    if raw:
+        aliases = {
+            "auto": ColorMode.AUTO,
+            "truecolor": ColorMode.TRUECOLOR,
+            "true": ColorMode.TRUECOLOR,
+            "24bit": ColorMode.TRUECOLOR,
+            "256": ColorMode.ANSI256,
+            "ansi256": ColorMode.ANSI256,
+            "16": ColorMode.ANSI16,
+            "ansi16": ColorMode.ANSI16,
+            "none": ColorMode.NONE,
+            "off": ColorMode.NONE,
+            "monochrome": ColorMode.NONE,
+            "mono": ColorMode.NONE,
+        }
+        return aliases.get(raw, ColorMode.AUTO)
+    try:
+        from mercury.terminal.theme_settings import preferred_color_mode_id, parse_color_mode
+
+        return parse_color_mode(preferred_color_mode_id())
+    except Exception:
+        return ColorMode.AUTO
 
 
 def detect_color_mode(*, stream: TextIO | None = None) -> ColorMode:

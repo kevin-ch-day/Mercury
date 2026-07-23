@@ -3083,26 +3083,40 @@ def theme_set_cmd(
     theme: str = typer.Argument(..., help="Theme id to store host-locally."),
 ) -> None:
     """Persist theme preference under ~/.local/share/mercury/ (not on the HDD)."""
-    from mercury.terminal.theme_settings import save_theme_selection, validate_theme_id
-    from mercury.terminal.design_system import clear_style_cache
+    from mercury.terminal.theme_settings import (
+        active_theme_id,
+        load_theme_selection,
+        preferred_color_mode_id,
+        reload_appearance,
+        save_theme_selection,
+        validate_theme_id,
+    )
 
     theme_id = validate_theme_id(theme)
     path = save_theme_selection(theme_id)
-    clear_style_cache()
+    reload_appearance()
+    selection = load_theme_selection()
+    active = active_theme_id()
     output.heading("Theme set")
-    output.field("theme", theme_id)
+    output.field("saved", theme_id)
+    output.field("active", active)
+    output.field("color_mode", preferred_color_mode_id())
+    output.field("preference_source", selection.source)
     output.field("path", str(path))
     output.write("Stored on this host only. Mercury HDD was not accessed.")
+    if active != theme_id:
+        output.write("MERCURY_THEME overrides the host-local preference.")
 
 
 @theme_app.command("reset")
 def theme_reset_cmd() -> None:
     """Remove host-local theme preference (reverts to mercury-classic unless MERCURY_THEME is set)."""
     from mercury.terminal.theme_settings import reset_theme_selection, active_theme_id
-    from mercury.terminal.design_system import clear_style_cache
 
     removed = reset_theme_selection()
-    clear_style_cache()
+    from mercury.terminal.theme_settings import reload_appearance
+
+    reload_appearance()
     output.heading("Theme reset")
     if removed is not None:
         output.field("removed", str(removed))

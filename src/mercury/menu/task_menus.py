@@ -175,85 +175,18 @@ def run_health_hub() -> None:
             run_storage_menu()
             continue
         if choice == "5":
+            from mercury.menu.options_menu import run_appearance_menu
+
             run_appearance_menu()
             continue
         output.write(menu_prompts.invalid_choice_message(choice))
 
 
 def run_appearance_menu() -> None:
-    """Host-local theme selection (no Mercury HDD required)."""
-    from mercury.terminal.design_system import clear_style_cache
-    from mercury.terminal.theme_preview import print_theme_preview
-    from mercury.terminal.theme_settings import (
-        THEME_CLASSIC,
-        THEME_MONOCHROME,
-        THEME_REDLINE,
-        active_theme_id,
-        list_themes,
-        load_theme_selection,
-        reset_theme_selection,
-        save_theme_selection,
-    )
+    """Compatibility wrapper — shared Options appearance workflow."""
+    from mercury.menu.options_menu import run_appearance_menu as _run
 
-    while True:
-        selection = load_theme_selection()
-        display_screen.open_screen("Appearance and theme")
-        display_screen.write_fields(
-            {
-                "Active theme": selection.theme_id,
-                "Source": selection.source,
-                "Settings path": str(selection.path) if selection.path else "(env/default)",
-            }
-        )
-        output.write("")
-        for theme_id, display_name, is_active in list_themes():
-            mark = "  active" if is_active else ""
-            output.write(f"  · {theme_id} — {display_name}{mark}")
-        output.write("")
-        choice = _submenu(
-            "Appearance actions",
-            [
-                ("1", "Preview Mercury Redline"),
-                ("2", "Preview Mercury Classic"),
-                ("3", "Preview Monochrome"),
-                ("4", f"Set active theme to {THEME_REDLINE}"),
-                ("5", f"Set active theme to {THEME_CLASSIC}"),
-                ("6", "Reset to default (classic)"),
-            ],
-        )
-        if choice is None:
-            return
-        if choice == "1":
-            print_theme_preview(theme_id=THEME_REDLINE)
-            menu_prompts.wait_for_continue()
-            continue
-        if choice == "2":
-            print_theme_preview(theme_id=THEME_CLASSIC)
-            menu_prompts.wait_for_continue()
-            continue
-        if choice == "3":
-            print_theme_preview(theme_id=THEME_MONOCHROME)
-            menu_prompts.wait_for_continue()
-            continue
-        if choice == "4":
-            path = save_theme_selection(THEME_REDLINE)
-            clear_style_cache()
-            display_screen.write_summary(f"Theme set to {THEME_REDLINE} at {path}")
-            menu_prompts.wait_for_continue()
-            continue
-        if choice == "5":
-            path = save_theme_selection(THEME_CLASSIC)
-            clear_style_cache()
-            display_screen.write_summary(f"Theme set to {THEME_CLASSIC} at {path}")
-            menu_prompts.wait_for_continue()
-            continue
-        if choice == "6":
-            reset_theme_selection()
-            clear_style_cache()
-            display_screen.write_summary(f"Theme reset. Active: {active_theme_id()}")
-            menu_prompts.wait_for_continue()
-            continue
-        output.write(menu_prompts.invalid_choice_message(choice))
+    _run()
 
 
 def run_destination_rehearsal_hub() -> None:

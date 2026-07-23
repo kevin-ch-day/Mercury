@@ -61,7 +61,8 @@ class StyleBundle:
     important_frame: str  # IMPORTANT advisory frame (Deep Oxide)
 
     status_badges: Mapping[str, str]
-    rule_char: str
+    rule_char: str  # major / normal weight
+    rule_char_minor: str = "-"  # rail / table / staccato edge
     rule_width: int = 62
     header_variant: str = "classic"  # classic | redline_a
 
@@ -110,7 +111,9 @@ def build_style_bundle(
     use_unicode = unicode_box_supported() and mode != ColorMode.NONE
 
     if tid == THEME_REDLINE:
+        # Angular light-lines: thick major, thin normal, staccato minor rail.
         rule_char = "━" if use_unicode else "="
+        rule_char_minor = "┄" if use_unicode else "-"
         badges = {
             "ok": "[PASS]",
             "warn": "[WARN]",
@@ -122,7 +125,8 @@ def build_style_bundle(
             color_mode=mode,
             title=_rich(c(SemanticToken.TEXT_PRIMARY), bold=True),
             title_accent=_rich(c(SemanticToken.ACCENT_PRIMARY), bold=True),
-            subtitle=_rich(c(SemanticToken.TEXT_SECONDARY), italic=True),
+            # Industrial type: geometric weight, not soft italic.
+            subtitle=_rich(c(SemanticToken.TEXT_SECONDARY)),
             accent=c(SemanticToken.ACCENT_PRIMARY),
             # Separator hierarchy: Signal Red / Deep Oxide / Steel (no dim red titles).
             rule=_rich(c(SemanticToken.ACCENT_DARK)),  # Deep Oxide — normal sections
@@ -132,7 +136,7 @@ def build_style_bundle(
             label=c(SemanticToken.TEXT_SECONDARY),
             value=c(SemanticToken.TEXT_PRIMARY),
             value_muted=c(SemanticToken.TEXT_MUTED),
-            hint=_rich(c(SemanticToken.TEXT_MUTED), italic=True, dim=True),
+            hint=_rich(c(SemanticToken.TEXT_MUTED), dim=True),
             menu_key=_rich(c(SemanticToken.ACCENT_PRIMARY), bold=True),
             menu_option=c(SemanticToken.TEXT_PRIMARY),
             menu_section=_rich(c(SemanticToken.ACCENT_PRIMARY), bold=True),
@@ -156,6 +160,7 @@ def build_style_bundle(
             important_frame=_rich(c(SemanticToken.ACCENT_DARK)),
             status_badges=badges,
             rule_char=rule_char,
+            rule_char_minor=rule_char_minor,
             header_variant="redline_a",
         )
 
@@ -200,6 +205,7 @@ def build_style_bundle(
         important_frame=_rich(c(SemanticToken.BORDER), dim=True),
         status_badges=badges,
         rule_char=rule_char,
+        rule_char_minor=rule_char,
         header_variant="classic",
     )
 
