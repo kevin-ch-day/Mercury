@@ -17,6 +17,9 @@ def handle_menu_choice(choice: str) -> MenuResult:
     """Handle one menu selection."""
     from mercury.logging.events import log_menu_action
     from mercury.logging import get_logger, log_operation
+    from mercury.menu.actions import menu_action_blocked_for_writes
+    from mercury.menu.options import ACTION_HANDOFF, main_menu_hint
+    from mercury.storage.lifecycle import writes_disabled_redirect_message
 
     normalized = menu_prompts.normalize_menu_choice(choice)
     get_logger("mercury.menu").info("menu choice raw=%r normalized=%r", choice, normalized)
@@ -50,7 +53,11 @@ def handle_menu_choice(choice: str) -> MenuResult:
         from mercury.handoff.interactive_menu import run_handoff_menu
 
         run_handoff_menu(interactive=True)
-        log_menu_action(choice=normalized, title="Workstation handoff", result="continue")
+        log_menu_action(
+            choice=normalized,
+            title=main_menu_hint(ACTION_HANDOFF),
+            result="continue",
+        )
         return "continue"
     if normalized == "0":
         menu_display.write_summary("Exiting Mercury.")
@@ -62,6 +69,11 @@ def handle_menu_choice(choice: str) -> MenuResult:
         menu_display.write_status("fail", menu_prompts.invalid_choice_message(choice))
         log_menu_action(choice=normalized, title="Invalid", result="invalid")
         return "invalid"
+
+    if menu_action_blocked_for_writes(action):
+        output.write(writes_disabled_redirect_message())
+        log_menu_action(choice=normalized, title=action.title, result="refused")
+        return "continue"
 
     with log_operation(action.title, logger_name="mercury.menu", choice=normalized):
         action.runner()
@@ -77,7 +89,9 @@ def run_menu(interactive: bool = True, *, render_menu_text: Callable[[], str] | 
             maybe_prompt_usb_repair_at_startup,
             primary_mount_hint,
         )
+        from mercury.storage.lifecycle import maybe_prompt_storage_first_run
 
+        maybe_prompt_storage_first_run(interactive=True)
         maybe_prompt_usb_repair_at_startup()
         hint = primary_mount_hint()
         if hint:
@@ -85,6 +99,10 @@ def run_menu(interactive: bool = True, *, render_menu_text: Callable[[], str] | 
 
             display_screen.write_status("warn", hint)
             output.write("")
+    else:
+        from mercury.storage.lifecycle import maybe_prompt_storage_first_run
+
+        maybe_prompt_storage_first_run(interactive=False)
 
     output.write(render())
 

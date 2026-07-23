@@ -49,8 +49,8 @@ def menu_option_range_label() -> str:
 
 
 def menu_option_prompt() -> str:
-    """Prompt text for menu selection."""
-    return input_prompt("\nEnter your choice: ")
+    """Prompt text for menu selection (aligned with submenu ``Choice:``)."""
+    return input_prompt("\nChoice: ")
 
 
 def submenu_option_prompt() -> str:

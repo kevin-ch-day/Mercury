@@ -21,8 +21,8 @@
 Prefer the operator menu (no manual `fuser`/`lsof`/`systemctl` assembly):
 
 ```text
-Doctor → Open storage migration menu
-  → [3] Safe disconnect Mercury HDD
+Main Menu → Mercury HDD and Storage → Safe disconnect Mercury HDD
+  (recommended primary action when ready; or Reconnect or change storage mode)
 ```
 
 Or CLI:

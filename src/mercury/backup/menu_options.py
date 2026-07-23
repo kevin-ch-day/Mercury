@@ -71,7 +71,7 @@ BACKUP_MENU_WRITE_ACTIONS: Final[frozenset[str]] = frozenset(
     }
 )
 
-DETACH_UNAVAILABLE_SUFFIX = "unavailable · detach mode"
+DETACH_UNAVAILABLE_SUFFIX = "unavailable · Mercury writes disabled"
 
 
 def backup_menu_render_options(

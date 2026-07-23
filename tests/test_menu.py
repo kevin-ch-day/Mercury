@@ -152,7 +152,7 @@ def test_handle_sync_plan_returns_to_menu_without_footer(
     )
     monkeypatch.setattr("mercury.sync.interactive_menu._load_report", lambda: report)
     monkeypatch.setattr("mercury.sync.interactive_menu.read_sync_choice", lambda: "0")
-    assert handle_menu_choice("2") == "continue"
+    assert handle_menu_choice("3") == "continue"
     out = capsys.readouterr().out
     assert "ready" in out.lower() or "blocked" in out.lower()
     assert "Recheck Database Sync Status" in out
@@ -237,11 +237,12 @@ def test_render_main_menu_matches_simple_layout(monkeypatch: pytest.MonkeyPatch)
     assert "Cutover blockers" in text
     assert "Execution Safety" not in text
     assert "─" in text
-    assert "      [1] Backup source databases" in text
-    assert "      [4] Sync Offline GitHub Repositories" in text
-    assert "      [8] System Deployment" in text
-    assert "      [9] Disaster Recovery" in text
-    assert "      [10] Workstation handoff" in text
+    assert "      [1] Mercury HDD and Storage" in text
+    assert "      [2] Backup source databases" in text
+    assert "      [5] Sync offline GitHub repositories" in text
+    assert "      [9] System deployment" in text
+    assert "      [10] Disaster recovery" in text
+    assert "      [11] Workstation handoff" in text
     assert "      [0] Exit" in text
     assert "Operator-storage checklist" not in text
     assert "Core workflows" not in text
@@ -267,7 +268,7 @@ def test_render_main_menu_body_omits_title_block(monkeypatch: pytest.MonkeyPatch
     assert menu_display.MENU_TITLE not in body
     assert "Main Menu" in body
     assert "Active writer" in body
-    assert "      [1] Backup source databases" in body
+    assert "      [1] Mercury HDD and Storage" in body
 
 # merged from test_menu_display.py
 def test_render_menu_help_lists_shortcuts() -> None:
@@ -275,4 +276,4 @@ def test_render_menu_help_lists_shortcuts() -> None:
     assert "Operator console help" in help_text
     assert "0 or q to exit" in help_text
     assert "transfer receive" in help_text
-    assert "handoff (menu 10)" in help_text
+    assert "Workstation handoff [11]" in help_text

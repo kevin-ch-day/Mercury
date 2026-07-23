@@ -407,10 +407,14 @@ def execute_backup(
         from mercury.storage.host_maintenance import writes_allowed
 
         if not writes_allowed():
+            from mercury.menu.options import ACTION_HDD_STORAGE, main_menu_hint
+            from mercury.storage.hdd_menu_options import STORAGE_CHANGE_MODE, hdd_menu_hint
+
             refusal = (
                 "Mercury writes are disabled for safe HDD detach "
                 "(host maintenance writes_allowed=false). "
-                "Use Storage Operations → Reconnect / Validate Mercury HDD to restore writes."
+                f"Use {main_menu_hint(ACTION_HDD_STORAGE)} → "
+                f"{hdd_menu_hint(STORAGE_CHANGE_MODE)} to restore writes."
             )
         else:
             refusal = None

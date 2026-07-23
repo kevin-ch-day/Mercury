@@ -201,8 +201,12 @@ def _render_recovery_screen(data: RecoveryScreenData, *, show_title: bool) -> No
         notes.append(f"Latest transfer runbook: {data.latest_transfer_runbook}")
     elif data.latest_database_runbook:
         notes.append(f"Latest database runbook: {data.latest_database_runbook}")
+    from mercury.menu.options import ACTION_DEPLOY, ACTION_HANDOFF, main_menu_hint
+
     notes.append(
-        "Next: Workstation handoff [10]/h, or restore-check [Backup→5] / System Deployment [8]."
+        f"Next: {main_menu_hint(ACTION_HANDOFF)} (or h); "
+        "restore-check from Backup → Restore-check; "
+        f"or {main_menu_hint(ACTION_DEPLOY)}."
     )
     if checklist.handoff_status == "complete":
         notes.append("Handoff complete — use [3] for the receiving-workstation guide on the target host.")

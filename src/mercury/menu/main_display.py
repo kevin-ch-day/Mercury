@@ -36,6 +36,8 @@ from mercury.terminal.screen import (
     write_summary,
     write_table,
 )
+from mercury.menu.options import MAIN_MENU_OPTIONS, main_menu_items
+from mercury.storage.host_maintenance import writes_allowed as hdd_writes_allowed
 from mercury.core.runtime import operator_status
 
 # Re-export shared helpers so existing imports keep working.
@@ -90,20 +92,29 @@ class MenuItem:
 MENU_SECTIONS: list[tuple[str, list[MenuItem]]] = [
     (
         "Core workflows",
-        [
-            MenuItem("1", "Backup source databases"),
-            MenuItem("2", "Sync production to development"),
-            MenuItem("3", "Reports and backup history"),
-            MenuItem("4", "Sync Offline GitHub Repositories"),
-            MenuItem("5", "Environment details"),
-            MenuItem("6", "Database inventory"),
-            MenuItem("7", "System doctor / repair guide"),
-            MenuItem("8", "System Deployment"),
-            MenuItem("9", "Disaster Recovery"),
-            MenuItem("10", "Workstation handoff"),
-        ],
+        [MenuItem(key, title) for key, title, _action, _needs in MAIN_MENU_OPTIONS],
     ),
 ]
+
+
+def refresh_menu_sections(*, writes_allowed: bool | None = None) -> None:
+    """Rebuild ``MENU_SECTIONS`` titles (availability suffixes) for the current writer state."""
+    from mercury.storage.host_maintenance import load_host_maintenance
+
+    host = load_host_maintenance()
+    allowed = writes_allowed if writes_allowed is not None else hdd_writes_allowed(host)
+    detached = host.storage_availability == "detached"
+    rehearsal = bool(host.destination_rehearsal_in_progress)
+    items = [
+        MenuItem(key, title)
+        for key, title in main_menu_items(
+            writes_allowed=allowed,
+            hdd_detached=detached,
+            destination_rehearsal=rehearsal,
+        )
+    ]
+    MENU_SECTIONS.clear()
+    MENU_SECTIONS.append(("Core workflows", items))
 
 
 def menu_items_by_key() -> dict[str, MenuItem]:
@@ -229,16 +240,26 @@ def _flat_menu_item_lines() -> list[str]:
 
 def render_menu_help() -> str:
     """Compact on-demand help for menu shortcuts."""
+    from mercury.menu.options import ACTION_DEPLOY, ACTION_HANDOFF, ACTION_RECOVERY, main_menu_hint
+
     rule = rule_line()
     keys = [item.key for item in iter_menu_items()]
     key_label = f"{keys[0]}-{keys[-1]}" if keys else "1-9"
+    handoff = main_menu_hint(ACTION_HANDOFF)
+    recovery = main_menu_hint(ACTION_RECOVERY)
+    deploy = main_menu_hint(ACTION_DEPLOY)
     lines = [
         rule,
         body_label("Operator console help"),
         help_line(f"Enter {key_label} for actions, 0 or q to exit."),
-        help_line("Shortcut: h opens workstation handoff (menu 10)."),
-        help_line("Handoff: menu 10 [2] guided wizard · [11] receiver guide · ./run.sh transfer receive"),
-        help_line("Recovery: menu 8 for DR status; complete handoff media uses transfer receive on receiver."),
+        help_line(f"Shortcut: h opens {handoff}."),
+        help_line(
+            f"Handoff: {handoff} · guided wizard / receiver guide · ./run.sh transfer receive"
+        ),
+        help_line(
+            f"Recovery: {recovery} for DR status; complete handoff media uses transfer receive "
+            f"on receiver ({deploy} for rebuild)."
+        ),
         "",
         help_line("For full detail, run the matching CLI command (e.g. ./run.sh db discover)."),
         rule,
@@ -247,6 +268,7 @@ def render_menu_help() -> str:
 
 
 def _main_menu_body_lines(*, probe_database: bool | None = None) -> list[str]:
+    refresh_menu_sections()
     rule = rule_line()
     lines = [
         "Main Menu",

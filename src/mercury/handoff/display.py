@@ -155,29 +155,32 @@ def handoff_dashboard_line(
     latest_transfer_at: str | None = None,
 ) -> str:
     """One-line handoff status for the main menu dashboard."""
+    from mercury.menu.options import ACTION_HANDOFF, main_menu_hint
+
+    handoff = main_menu_hint(ACTION_HANDOFF)
     effective_sources = max(0, source_count - max(0, absent_count))
     if missing_count or failed_count:
-        line = "[!!] partial — [10] checklist · [2] wizard"
+        line = f"[!!] partial — {handoff} checklist · guided wizard"
     elif stale_count:
-        line = "[--] stale backups — [4] refresh backup lane"
+        line = "[--] stale backups — refresh backup lane"
     elif unknown_count:
-        line = "[--] unknown freshness — [2] guided wizard"
+        line = "[--] unknown freshness — guided wizard"
     elif absent_count and effective_sources and verified_count >= effective_sources:
         if latest_handoff_status == "complete":
-            line = "[--] ready with absent sources — [10] checklist"
+            line = f"[--] ready with absent sources — {handoff} checklist"
         elif latest_handoff_status:
             line = f"[--] backups verified (absent sources) — handoff {latest_handoff_status}"
         else:
-            line = "[--] backups verified (absent sources) — [10] checklist"
+            line = f"[--] backups verified (absent sources) — {handoff} checklist"
     elif effective_sources and verified_count == effective_sources:
         if latest_handoff_status == "complete":
-            line = "[ok] ready — [10] handoff · [2] wizard"
+            line = f"[ok] ready — {handoff} · guided wizard"
         elif latest_handoff_status:
             line = f"[--] backups verified — handoff {latest_handoff_status}"
         else:
-            line = "[--] backups verified — [10] handoff · [2] wizard"
+            line = f"[--] backups verified — {handoff} · guided wizard"
     else:
-        line = "[--] incomplete — [10] checklist"
+        line = f"[--] incomplete — {handoff} checklist"
     if latest_transfer_at:
         line += f" · last transfer {latest_transfer_at}"
     if (

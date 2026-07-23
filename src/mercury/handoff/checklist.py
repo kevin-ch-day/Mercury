@@ -292,7 +292,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 label="Database bundle index",
                 status="ok" if db_package != "partial" else "warn",
                 detail=str(db_index),
-                action=None if db_package == "complete" else "Handoff [7] write DB bundle",
+                action=None if db_package == "complete" else "Handoff menu → write DB bundle",
             )
         )
     else:
@@ -302,7 +302,7 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
                 label="Database bundle index",
                 status="fail",
                 detail="No database_transfer_manifest on operator storage",
-                action="Handoff [7] write DB bundle and runbooks",
+                action="Handoff menu → write DB bundle and runbooks",
             )
         )
 

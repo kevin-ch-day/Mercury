@@ -219,7 +219,7 @@ mercury storage cutover-readiness        # read-only checklist (never switches w
 mercury menu
 ```
 
-Until storage cutover, routine writers still target the transitional USB (`active_write_role=legacy`). Prefer `MERCURY_LEGACY_MOUNT` / `MERCURY_PRIMARY_MOUNT` over deprecated `MERCURY_USB_MOUNT`. Storage migration menu: Doctor → Open storage migration menu.
+Until storage cutover, routine writers still target the transitional USB (`active_write_role=legacy`). Prefer `MERCURY_LEGACY_MOUNT` / `MERCURY_PRIMARY_MOUNT` over deprecated `MERCURY_USB_MOUNT`. Mercury HDD lifecycle: Main Menu → Mercury HDD and Storage.
 ## Code conventions
 
 - **Python 3.12+**, type hints, Pydantic models for structured data.

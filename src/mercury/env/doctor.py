@@ -437,7 +437,7 @@ def build_repair_plan(report: DoctorReport) -> list[tuple[str, list[str]]]:
                     "Combined plan: ./run.sh deploy system --dry-run",
                     "Database plan: ./run.sh deploy db --dry-run",
                     "Repository plan: ./run.sh deploy repos --dry-run",
-                    "Menu lane: ./run.sh menu → option 8",
+                    "Menu lane: ./run.sh menu → System deployment",
                 ],
             )
         )

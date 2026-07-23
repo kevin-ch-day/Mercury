@@ -157,7 +157,7 @@ def run_doctor_menu(*, interactive: bool = True) -> None:
         options: list[tuple[str, str]] = [
             ("1", "Show repair plan"),
             ("2", "Rescan"),
-            ("3", "Open storage migration menu"),
+            ("3", "Open Mercury HDD and Storage"),
         ]
         from mercury.repair.startup import usb_repair_needed
 

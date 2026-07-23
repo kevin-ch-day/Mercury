@@ -145,9 +145,13 @@ def print_backup_batch_result(
         elif batch.refused_count and batch.execute:
             display_screen.write_blank()
             if _batch_is_maintenance_refusal(batch):
+                from mercury.menu.options import ACTION_HDD_STORAGE, main_menu_hint
+                from mercury.storage.hdd_menu_options import STORAGE_CHANGE_MODE, hdd_menu_hint
+
                 display_screen.write_summary(
                     "No backups were attempted because Mercury writes are disabled for safe HDD detach. "
-                    "Use Storage Operations → Reconnect / Validate Mercury HDD to restore writes later."
+                    f"Use {main_menu_hint(ACTION_HDD_STORAGE)} → "
+                    f"{hdd_menu_hint(STORAGE_CHANGE_MODE)} to restore writes later."
                 )
             else:
                 display_screen.write_summary(

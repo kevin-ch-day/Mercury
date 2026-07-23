@@ -127,8 +127,8 @@ def test_dashboard_rows_include_extended_stats(
     )
     rows = dashboard_rows(probe_database=False)
     text = "\n".join(rows)
-    assert "Writer" in text or "Active writer" in text or "Package" in text
-    assert "Phase" in text or "Package" in text
+    assert "Writer" in text or "Active writer" in text or "Package" in text or "Mercury HDD" in text
+    assert "Phase" in text or "Package" in text or "Migration" in text or "Next action" in text
 
 
 def test_dashboard_rows_warn_on_repo_local_backup_root(monkeypatch) -> None:
@@ -221,7 +221,7 @@ def test_dashboard_rows_show_protection_incomplete_when_stale_and_missing(monkey
         lambda **kwargs: _migration_report(),
     )
     text = "\n".join(dashboard_rows(probe_database=True))
-    assert "Writer" in text or "Package" in text or "Phase" in text
+    assert "Writer" in text or "Package" in text or "Phase" in text or "Mercury HDD" in text or "Next action" in text
     assert "writer=legacy" not in text
     assert "[2]" not in text
 

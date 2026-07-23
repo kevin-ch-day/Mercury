@@ -12,9 +12,9 @@ def test_menu_action_keys_match_sections() -> None:
     assert menu_prompts.menu_action_keys() == expected
 
 
-def test_menu_option_prompt_uses_enter_your_choice() -> None:
+def test_menu_option_prompt_uses_choice() -> None:
     prompt = menu_prompts.menu_option_prompt()
-    assert prompt == "\nEnter your choice: "
+    assert prompt == "\nChoice: "
 
 
 def test_submenu_option_prompt_uses_choice_with_space() -> None:

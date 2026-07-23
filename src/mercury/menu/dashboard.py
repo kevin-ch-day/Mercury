@@ -141,11 +141,11 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             sync_line = "unavailable"
             handoff_line = "status error — see Protection"
         elif stale_names or missing_count or failed_count:
-            handoff_line = "partial — menu [10] or h for checklist"
+            handoff_line = "partial — handoff checklist (or h)"
         elif unknown_names or absent_count:
-            handoff_line = "warnings — menu [10] guided wizard"
+            handoff_line = "warnings — handoff guided wizard (or h)"
         elif verified_names and present_on_server and len(verified_names) == present_on_server:
-            handoff_line = "backup lane ok — menu [10] handoff wizard"
+            handoff_line = "backup lane ok — handoff wizard (or h)"
         else:
             handoff_line = "incomplete"
         latest_handoff_status: str | None = None
@@ -209,17 +209,70 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
 
 def _migration_dashboard_rows(report, policy) -> list[str]:
     """Compact handoff dashboard — few dense rows, no filler status."""
-    by_id = {check.id: check for check in report.checks}
     unresolved = report.unresolved_checks
-    free = backup_root_free_space_label(policy)
+    try:
+        from mercury.storage.hdd_menu_options import (
+            dashboard_hdd_status_line,
+            dashboard_next_action_short,
+        )
+        from mercury.storage.lifecycle import (
+            MigrationHostRole,
+            StorageLifecycleState,
+            assess_storage_lifecycle,
+        )
 
-    return [
-        dashboard_row("Writer", _compact_writer_line(by_id["active_writer"].summary, free)),
-        dashboard_row("Mercury HDD", _compact_hdd_line()),
-        dashboard_row("Package", _compact_package_line()),
-        dashboard_row("Phase", _compact_phase_line(report.operator_phase, unresolved)),
-        dashboard_row("Cleanup", _compact_cleanup_line()),
-    ]
+        snap = assess_storage_lifecycle(probe_disconnect=True)
+        hdd_line = dashboard_hdd_status_line(snap)
+        next_line = dashboard_next_action_short(snap)
+        package_line = _compact_package_line(snapshot=snap)
+        phase_line = _compact_phase_line(report.operator_phase, unresolved)
+
+        if snap.state == StorageLifecycleState.DETACHED:
+            rows = [
+                dashboard_row("Mercury HDD", "Not connected"),
+                dashboard_row("Writer", "Disabled"),
+                dashboard_row("Next action", next_line),
+                dashboard_row("Package", package_line if package_line != "Pending" else "Located on detached HDD"),
+            ]
+            if snap.host_role == MigrationHostRole.SOURCE_OPERATION:
+                rows.insert(3, dashboard_row("Host role", "Source reference system"))
+            rows.append(dashboard_row("Cleanup", _compact_cleanup_line()))
+            return rows
+
+        if snap.state == StorageLifecycleState.ATTACHED_READ_ONLY or (
+            snap.host_role == MigrationHostRole.DESTINATION_REHEARSAL
+            and snap.state
+            in {
+                StorageLifecycleState.ATTACHED_WRITER_DISABLED,
+                StorageLifecycleState.ATTACHED_READ_ONLY,
+                StorageLifecycleState.RECONNECT_VALIDATED,
+            }
+        ):
+            return [
+                dashboard_row("Mercury HDD", hdd_line),
+                dashboard_row("Host role", "Destination rehearsal"),
+                dashboard_row("Next action", next_line),
+                dashboard_row("Package", package_line),
+                dashboard_row("Cleanup", _compact_cleanup_line()),
+            ]
+
+        return [
+            dashboard_row("Mercury HDD", hdd_line),
+            dashboard_row("Next action", next_line),
+            dashboard_row("Package", package_line),
+            dashboard_row("Migration", phase_line),
+            dashboard_row("Cleanup", _compact_cleanup_line()),
+        ]
+    except OSError:
+        by_id = {check.id: check for check in report.checks}
+        free = backup_root_free_space_label(policy)
+        return [
+            dashboard_row("Writer", _compact_writer_line(by_id["active_writer"].summary, free)),
+            dashboard_row("Mercury HDD", _compact_hdd_line()),
+            dashboard_row("Package", _compact_package_line()),
+            dashboard_row("Phase", _compact_phase_line(report.operator_phase, unresolved)),
+            dashboard_row("Cleanup", _compact_cleanup_line()),
+        ]
 
 
 def _compact_writer_line(fallback: str, free: str | None) -> str:
@@ -228,9 +281,9 @@ def _compact_writer_line(fallback: str, free: str | None) -> str:
 
         host = load_host_maintenance()
         if host.storage_availability == "detached":
-            return "Detached · writes off"
+            return "Disabled"
         if host.storage_availability == "detaching" or not host.writes_allowed:
-            return "Detaching · writes off · rehearsal"
+            return "Disabled · preparation active"
     except OSError:
         pass
     text = fallback
@@ -240,40 +293,46 @@ def _compact_writer_line(fallback: str, free: str | None) -> str:
 
 
 def _compact_hdd_line() -> str:
-    from mercury.storage.host_maintenance import load_host_maintenance
-
-    host = load_host_maintenance()
-    if host.storage_availability == "detached":
-        return "Detached"
-    disconnect = _safe_disconnect_dashboard_line()
     try:
-        from mercury.storage.block_device import resolve_mercury_block_device
+        from mercury.storage.lifecycle import assess_storage_lifecycle
 
-        resolved = resolve_mercury_block_device(require_mounted=False)
-        if resolved.identity and resolved.identity.mountpoint:
-            return f"Mounted · disconnect {disconnect}"
-        if resolved.identity:
-            return f"Present · disconnect {disconnect}"
+        return assess_storage_lifecycle(probe_disconnect=True).label
     except OSError:
-        pass
-    return f"Unknown · disconnect {disconnect}"
+        return "Unknown"
 
 
-def _compact_package_line() -> str:
+def _compact_package_line(*, snapshot=None) -> str:
     from mercury.storage.host_maintenance import load_host_maintenance
 
-    host = load_host_maintenance()
-    if host.package_verification_status == "DESTINATION_PACKAGE_VERIFIED" and host.package_id:
-        pkg = host.package_id
-        if len(pkg) > 42:
-            pkg = "…" + pkg[-34:]
-        return f"VERIFIED · {pkg}"
+    host = load_host_maintenance() if snapshot is None else None
+    status = snapshot.package_status if snapshot is not None else host.package_verification_status
+    package_id = snapshot.package_id if snapshot is not None else host.package_id
+    rehearsal = False
+    if snapshot is not None:
+        rehearsal = snapshot.host_role.value == "DESTINATION_REHEARSAL"
+    elif host is not None:
+        rehearsal = bool(host.destination_rehearsal_in_progress)
+    if status == "DESTINATION_PACKAGE_VERIFIED":
+        if rehearsal:
+            return "VERIFIED · destination rehearsal"
+        if package_id:
+            pkg = package_id
+            if len(pkg) > 42:
+                pkg = "…" + pkg[-34:]
+            return f"VERIFIED · {pkg}"
+        return "VERIFIED"
+    if snapshot is not None and snapshot.state.value == "DETACHED" and package_id:
+        return "Verified on detached HDD"
     return "Pending"
 
 
 def _compact_phase_line(operator_phase: str, unresolved) -> str:
     phase = operator_phase.replace("_", " ").title()
-    phase = phase.replace("Destination Validation Pending", "Destination validation")
+    # Prefer "pending" so the row does not read as validation in progress/complete.
+    phase = phase.replace(
+        "Destination Validation Pending", "Destination validation pending"
+    )
+    phase = phase.replace("Destination Validation", "Destination validation pending")
     blockers = len(unresolved)
     if blockers == 0:
         return phase
@@ -281,10 +340,7 @@ def _compact_phase_line(operator_phase: str, unresolved) -> str:
 
 
 def _compact_cleanup_line() -> str:
-    from mercury.storage.retention import load_retention_policy
-
-    policy = load_retention_policy()
-    return f"Preview locked · ~{policy.safe_candidate_estimate_gib:.1f} GiB candidates"
+    return "Preview only · execution locked"
 
 
 def _mercury_hdd_dashboard_line() -> str:

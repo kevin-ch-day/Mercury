@@ -501,6 +501,9 @@ def build_full_backup_global_refusal_result(
     reason: str,
 ) -> FullBackupRunResult:
     """Classify a full backup that never began (global preflight refusal)."""
+    from mercury.menu.options import ACTION_HDD_STORAGE, main_menu_hint
+    from mercury.storage.hdd_menu_options import STORAGE_CHANGE_MODE, hdd_menu_hint
+
     return FullBackupRunResult(
         run_id=run_id,
         outcome=FullBackupOutcome.REFUSED,
@@ -517,7 +520,7 @@ def build_full_backup_global_refusal_result(
             "No backup state changed. Sealed Phase 3B rehearsal package remains authoritative."
         ),
         next_actions=[
-            "Storage Operations → Reconnect / Validate Mercury HDD",
+            f"{main_menu_hint(ACTION_HDD_STORAGE)} → {hdd_menu_hint(STORAGE_CHANGE_MODE)}",
             "Restore Mercury writes, then return to Backup Operations",
         ],
         overall_written=0,

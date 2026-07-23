@@ -27,7 +27,7 @@ cd /home/linuxadmin/GitHub/Mercury
 ./run.sh doctor
 ./run.sh doctor --repair-plan
 ./run.sh deploy db --dry-run
-./run.sh menu    # option [8] Deploy databases to this system
+./run.sh menu    # open Mercury HDD and Storage, then System deployment (symbolic menu hints)
 ```
 
 One-shot host repair (review first, requires sudo):

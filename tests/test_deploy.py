@@ -98,9 +98,13 @@ def _seed_all_verified(policy: ExecutionPolicy) -> None:
 
 
 def test_deploy_lane_appears_in_menu() -> None:
+    from mercury.menu.options import ACTION_DEPLOY, main_menu_option_by_action
+
+    key, title = main_menu_option_by_action(ACTION_DEPLOY)
     keys = {item.key for _section, items in menu_display.MENU_SECTIONS for item in items}
-    assert "8" in keys
-    assert menu_actions()["8"].title == "System Deployment"
+    assert key in keys
+    assert menu_actions()[key].title == title
+    assert menu_actions()[key].action_id == ACTION_DEPLOY
 
 
 def test_database_deploy_status_rows_describe_missing_databases(
@@ -660,7 +664,7 @@ def test_doctor_grant_repair_sql_for_fresh_rebuild(monkeypatch: pytest.MonkeyPat
     plan = build_repair_plan(report)
     text = "\n".join(cmd for _title, cmds in plan for cmd in cmds)
     assert "deploy system --dry-run" in text
-    assert "option 8" in text
+    assert "System deployment" in text
     assert "GRANT CREATE" in text
     assert deployment_grant_repair_sql("linuxadmin")[1].startswith("GRANT CREATE")
 
@@ -714,4 +718,5 @@ def test_deploy_plan_blocks_stale_backup_on_live_execute(
 def test_handoff_lane_appears_in_menu() -> None:
     keys = {item.key for _section, items in menu_display.MENU_SECTIONS for item in items}
     assert "9" in keys
-    assert menu_actions()["10"].title == "Workstation handoff"
+    assert menu_actions()["11"].title == "Workstation handoff"
+    assert menu_actions()["1"].title == "Mercury HDD and Storage"

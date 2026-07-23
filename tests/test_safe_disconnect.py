@@ -898,5 +898,5 @@ def test_dashboard_detached_compact(tmp_path: Path, host_state, monkeypatch) -> 
     from mercury.menu.dashboard import _compact_writer_line, _compact_hdd_line
 
     mark_detached(path=host_state)
-    assert "Detached" in _compact_writer_line("USB", None)
-    assert _compact_hdd_line() == "Detached"
+    assert "Disabled" in _compact_writer_line("USB", None)
+    assert "not connected" in _compact_hdd_line().lower()
