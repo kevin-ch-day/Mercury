@@ -226,6 +226,7 @@ def _migration_dashboard_rows(report, policy) -> list[str]:
         next_line = dashboard_next_action_short(snap)
         package_line = _compact_package_line(snapshot=snap)
         phase_line = _compact_phase_line(report.operator_phase, unresolved)
+        delta_line = _compact_source_delta_line()
 
         if snap.state == StorageLifecycleState.DETACHED:
             rows = [
@@ -256,13 +257,20 @@ def _migration_dashboard_rows(report, policy) -> list[str]:
                 dashboard_row("Cleanup", _compact_cleanup_line()),
             ]
 
-        return [
+        rows = [
             dashboard_row("Mercury HDD", hdd_line),
             dashboard_row("Next action", next_line),
             dashboard_row("Package", package_line),
-            dashboard_row("Migration", phase_line),
-            dashboard_row("Cleanup", _compact_cleanup_line()),
         ]
+        if delta_line:
+            rows.append(dashboard_row("Source delta", delta_line))
+        rows.extend(
+            [
+                dashboard_row("Migration", phase_line),
+                dashboard_row("Cleanup", _compact_cleanup_line()),
+            ]
+        )
+        return rows
     except OSError:
         by_id = {check.id: check for check in report.checks}
         free = backup_root_free_space_label(policy)
@@ -304,15 +312,21 @@ def _compact_hdd_line() -> str:
 def _compact_package_line(*, snapshot=None) -> str:
     from mercury.storage.host_maintenance import load_host_maintenance
 
-    host = load_host_maintenance() if snapshot is None else None
+    host = load_host_maintenance()
     status = snapshot.package_status if snapshot is not None else host.package_verification_status
     package_id = snapshot.package_id if snapshot is not None else host.package_id
-    rehearsal = False
-    if snapshot is not None:
-        rehearsal = snapshot.host_role.value == "DESTINATION_REHEARSAL"
-    elif host is not None:
-        rehearsal = bool(host.destination_rehearsal_in_progress)
     if status == "DESTINATION_PACKAGE_VERIFIED":
+        if host.source_changed_since_package:
+            return "VERIFIED · source has changed since package"
+        if host.source_writes_resumed_after_package:
+            return "VERIFIED · rehearsal snapshot"
+        rehearsal = False
+        if snapshot is not None:
+            rehearsal = snapshot.host_role.value == "DESTINATION_REHEARSAL"
+        else:
+            rehearsal = bool(
+                host.destination_rehearsal_active or host.destination_rehearsal_in_progress
+            )
         if rehearsal:
             return "VERIFIED · destination rehearsal"
         if package_id:
@@ -324,6 +338,17 @@ def _compact_package_line(*, snapshot=None) -> str:
     if snapshot is not None and snapshot.state.value == "DETACHED" and package_id:
         return "Verified on detached HDD"
     return "Pending"
+
+
+def _compact_source_delta_line() -> str | None:
+    from mercury.storage.host_maintenance import load_host_maintenance
+
+    host = load_host_maintenance()
+    if not host.source_writes_resumed_after_package:
+        return None
+    if host.source_changed_since_package:
+        return "Source has changed since package"
+    return "New writes possible after package"
 
 
 def _compact_phase_line(operator_phase: str, unresolved) -> str:

@@ -95,7 +95,11 @@ def test_operator_storage_guard_refuses_when_writes_disabled(tmp_path, monkeypat
         )
 
 
-def test_execution_policy_uses_primary_mount_after_coordinated_path_change(tmp_path) -> None:
+def test_execution_policy_uses_primary_mount_after_coordinated_path_change(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Config-based root resolution must not be shadowed by hermetic MERCURY_BACKUP_ROOT.
+    monkeypatch.delenv("MERCURY_BACKUP_ROOT", raising=False)
     primary = tmp_path / "primary"
     backup_root = primary / "mercury_backups"
     backup_root.mkdir(parents=True)

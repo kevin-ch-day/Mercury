@@ -106,8 +106,18 @@ def hdd_menu_header_state(snapshot: StorageLifecycleSnapshot) -> str:
     if snapshot.state in {
         StorageLifecycleState.READY_TO_DISCONNECT,
         StorageLifecycleState.PREPARING_TO_DISCONNECT,
+        StorageLifecycleState.ATTACHED_WRITER_DISABLED,
     }:
-        return LIFECYCLE_LABELS[StorageLifecycleState.ATTACHED_WRITER_DISABLED]
+        return "Connected · mounted · writes disabled"
+    if snapshot.state == StorageLifecycleState.ATTACHED_WRITER_ENABLED:
+        return "Connected · mounted · backups enabled"
+    if snapshot.state == StorageLifecycleState.ATTACHED_READ_ONLY:
+        return "Connected · mounted read-only"
+    if snapshot.state in {
+        StorageLifecycleState.DETACHED,
+        StorageLifecycleState.DEVICE_NOT_FOUND,
+    }:
+        return "Not connected"
     return snapshot.label
 
 
@@ -129,6 +139,16 @@ def dashboard_hdd_status_line(snapshot: StorageLifecycleSnapshot) -> str:
 def dashboard_next_action_short(snapshot: StorageLifecycleSnapshot) -> str:
     """Compact Next action row for the main dashboard."""
     label, suffix = recommended_primary_label(snapshot)
+    # Intent-aware: unfinished disconnect prep must not assume the operator
+    # still wants to disconnect on the next session.
+    if snapshot.state in {
+        StorageLifecycleState.READY_TO_DISCONNECT,
+        StorageLifecycleState.PREPARING_TO_DISCONNECT,
+        StorageLifecycleState.ATTACHED_WRITER_DISABLED,
+    } and not snapshot.writes_allowed:
+        return "Back up, disconnect, or continue rehearsal"
+    if snapshot.writes_allowed and snapshot.state == StorageLifecycleState.ATTACHED_WRITER_ENABLED:
+        return "Back up and sync this workstation"
     if "Safe disconnect" in label:
         return (
             "Safe disconnect ready"

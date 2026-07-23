@@ -44,7 +44,10 @@ def mark_attached_pending_confirm(*, path: Path | None = None) -> HostMaintenanc
     state.storage_availability = "attached"
     state.writes_allowed = False
     state.active_write_role = "none"
+    state.source_detach_preparation = False
+    state.destination_rehearsal_active = True
     state.destination_rehearsal_in_progress = True
+    state.destination_rehearsal_planned = True
     state.notes = (
         "Mercury HDD reconnected; writes remain disabled until explicit operator confirmation. "
         "Destination cutover is NOT complete."
@@ -58,16 +61,24 @@ def restore_writes_after_reconnect(
     confirm: str,
     path: Path | None = None,
 ) -> HostMaintenanceState | None:
-    if confirm != "RESTORE MERCURY WRITES":
+    from mercury.storage.transitions import (
+        RESTORE_MERCURY_WRITES_PHRASE,
+        RESTORE_SOURCE_WRITER_PHRASE,
+        restore_source_writer,
+    )
+
+    if confirm not in {RESTORE_MERCURY_WRITES_PHRASE, RESTORE_SOURCE_WRITER_PHRASE}:
         return None
-    state = load_host_maintenance(path)
-    state.storage_availability = "attached"
-    state.writes_allowed = True
-    state.active_write_role = "primary"
-    state.destination_rehearsal_in_progress = False
-    state.notes = "Operator restored Mercury writes after reconnect validation."
-    save_host_maintenance(state, path=path)
-    return state
+    result = restore_source_writer(
+        confirm=confirm,
+        operator_intent="reconnect_restore_writes",
+        path=path,
+        require_strong_phrase=True,
+        skip_device_checks=True,
+    )
+    if not result.ok:
+        return None
+    return load_host_maintenance(path)
 
 
 def run_reconnect_validate(

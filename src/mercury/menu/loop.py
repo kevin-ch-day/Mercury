@@ -71,6 +71,24 @@ def handle_menu_choice(choice: str) -> MenuResult:
         return "invalid"
 
     if menu_action_blocked_for_writes(action):
+        from mercury.menu.options import ACTION_BACKUP
+        from mercury.storage.operation_availability import (
+            AvailabilityClassification,
+            assess_operation_availability,
+        )
+
+        # Phase 1: allow entering Backup so recoverable/strong restore-and-continue can run.
+        if action.action_id == ACTION_BACKUP:
+            availability = assess_operation_availability("database_backup")
+            if availability.classification in {
+                AvailabilityClassification.RECOVERABLE_CONFIRMATION,
+                AvailabilityClassification.STRONG_CONFIRMATION,
+                AvailabilityClassification.AVAILABLE,
+            }:
+                with log_operation(action.title, logger_name="mercury.menu", choice=normalized):
+                    action.runner()
+                log_menu_action(choice=normalized, title=action.title, result="continue")
+                return "continue"
         output.write(writes_disabled_redirect_message())
         log_menu_action(choice=normalized, title=action.title, result="refused")
         return "continue"

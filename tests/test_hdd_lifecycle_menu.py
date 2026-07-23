@@ -48,6 +48,10 @@ from mercury.storage.lifecycle import (
 def host_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     path = tmp_path / "host_maintenance.json"
     monkeypatch.setenv("MERCURY_HOST_MAINTENANCE_PATH", str(path))
+    monkeypatch.setenv(
+        "MERCURY_TRANSITION_LEDGER_PATH",
+        str(tmp_path / "transition_ledger.jsonl"),
+    )
     return path
 
 
@@ -270,7 +274,7 @@ def test_header_state_avoids_safe_disconnect_ready_duplication() -> None:
 
 def test_dashboard_next_action_short_for_ready() -> None:
     snap = _snap(StorageLifecycleState.READY_TO_DISCONNECT, package_verified=True)
-    assert dashboard_next_action_short(snap) == "Safe disconnect ready"
+    assert dashboard_next_action_short(snap) == "Back up, disconnect, or continue rehearsal"
     assert "writes disabled" in dashboard_hdd_status_line(snap).lower()
 
 
@@ -347,8 +351,10 @@ def test_restore_writes_requires_exact_phrase(host_path: Path) -> None:
         HostMaintenanceState(writes_allowed=False, active_write_role="none"),
         path=host_path,
     )
-    assert restore_writes_after_reconnect(confirm="wrong") is None
-    restored = restore_writes_after_reconnect(confirm="RESTORE MERCURY WRITES")
+    assert restore_writes_after_reconnect(confirm="wrong", path=host_path) is None
+    restored = restore_writes_after_reconnect(
+        confirm="RESTORE MERCURY WRITES", path=host_path
+    )
     assert restored is not None
     assert restored.writes_allowed is True
     assert restored.active_write_role == "primary"
@@ -399,8 +405,7 @@ def test_dashboard_ready_to_disconnect_wording(
     rows = "\n".join(_migration_dashboard_rows(report, policy=SimpleNamespace()))
     assert "Mercury HDD" in rows
     assert "Next action" in rows
-    assert "Safe disconnect ready" in rows
-    assert "Mounted · writes disabled" in rows
+    assert "Back up, disconnect, or continue rehearsal" in rows
     assert "Detaching · writes off" not in rows
     assert "detach mode" not in rows.lower()
 

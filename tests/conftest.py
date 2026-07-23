@@ -294,13 +294,69 @@ def _isolate_operator_local_config(
 
 
 @pytest.fixture(autouse=True)
-def _isolate_host_maintenance(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep tests off the live host_maintenance.json (may be detaching/detached).
+def _isolate_mercury_operator_paths(
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[None]:
+    """Hermetic operator paths — never touch live host share or Mercury HDD."""
+    root = tmp_path_factory.mktemp("mercury_hermetic")
+    host = root / "host_maintenance.json"
+    ledger = root / "transition_ledger.jsonl"
+    operator = root / "operator_root"
+    backups = root / "backups"
+    logs = root / "logs"
+    locks = root / "locks"
+    for path in (operator, backups, logs, locks):
+        path.mkdir(parents=True, exist_ok=True)
 
-    Individual tests may override MERCURY_HOST_MAINTENANCE_PATH again.
-    """
-    path = tmp_path_factory.mktemp("host_maint") / "host_maintenance.json"
-    monkeypatch.setenv("MERCURY_HOST_MAINTENANCE_PATH", str(path))
+    monkeypatch.setenv("MERCURY_TEST_ISOLATION", "1")
+    monkeypatch.setenv("MERCURY_EVENT_ENVIRONMENT", "test")
+    monkeypatch.setenv("MERCURY_HOST_MAINTENANCE_PATH", str(host))
+    monkeypatch.setenv("MERCURY_TRANSITION_LEDGER_PATH", str(ledger))
+    monkeypatch.setenv("MERCURY_BACKUP_ROOT", str(backups))
+    monkeypatch.setenv("MERCURY_OPERATOR_ROOT", str(operator))
+    monkeypatch.setenv("MERCURY_LOG_ROOT", str(logs))
+    monkeypatch.setenv("MERCURY_LOG_DIR", str(logs))
+    monkeypatch.setenv("MERCURY_OPERATION_LOCK_DIR", str(locks))
+    monkeypatch.delenv("MERCURY_ACTIVE_OPERATION", raising=False)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _forbid_live_mercury_path_access(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Fail loudly if a test opens/writes known live Mercury paths."""
+    from mercury.storage.host_maintenance import assert_not_live_mercury_path
+
+    live_files = {
+        (Path.home() / ".local" / "share" / "mercury" / "host_maintenance.json").resolve(),
+        (Path.home() / ".local" / "share" / "mercury" / "transition_ledger.jsonl").resolve(),
+    }
+    live_root = Path("/mnt/MERCURY_DATA_V2").resolve()
+    real_open = open
+
+    def guarded_open(file, mode="r", *args, **kwargs):
+        path = Path(file).expanduser() if not hasattr(file, "read") else None
+        if path is not None:
+            write_mode = any(token in str(mode) for token in ("w", "a", "x", "+"))
+            if write_mode:
+                assert_not_live_mercury_path(path, purpose=f"open({mode})")
+                try:
+                    resolved = path.resolve()
+                except OSError:
+                    resolved = path
+                if resolved in live_files:
+                    raise RuntimeError(f"TEST ISOLATION: open refused for {resolved}")
+                try:
+                    resolved.relative_to(live_root)
+                    raise RuntimeError(
+                        f"TEST ISOLATION: open refused under live HDD {live_root}"
+                    )
+                except ValueError:
+                    pass
+        return real_open(file, mode, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", guarded_open)
+    yield
 
 
 @pytest.fixture

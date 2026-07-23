@@ -410,45 +410,58 @@ def _preview_backup_plan(plan: BackupPlanDryRun) -> None:
     )
 
 
+def _ensure_writes_then_continue():
+    """Return availability when backup writes are ready (after optional guided restore)."""
+    from mercury.storage.operation_availability import ensure_backup_writes_available
+
+    return ensure_backup_writes_available(interactive=True)
+
+
 def _run_backup(plan: BackupPlanDryRun) -> None:
     """Production-only backup workflow (menu [3])."""
-    preflight = assess_backup_write_preflight()
-    if not preflight.allowed:
-        print_global_backup_refusal(
-            reason="Mercury is in HDD detach maintenance mode",
-            detail_lines=preflight.detail_lines,
-            next_steps=preflight.next_steps,
-        )
+    from mercury.storage.host_maintenance import mark_source_changed_since_package
+    from mercury.storage.operation_availability import note_backup_after_transition
+
+    availability = _ensure_writes_then_continue()
+    if not availability:
         return
     policy = load_execution_policy()
-    batch = run_backup_batch(
-        BACKUP_KIND_FULL,
-        execute=True,
-        live=should_probe_database_status(),
-        policy=policy,
-        sources=list(plan.backup_sources),
-    )
-    print_backup_batch_result(
-        batch,
-        compact=True,
-        menu=True,
-        databases_label="Production databases selected",
-        suggest_verify=True,
-    )
-    print_batch_small_backup_warnings(batch)
+    backup_ran = False
+    backup_ok: bool | None = None
+    try:
+        batch = run_backup_batch(
+            BACKUP_KIND_FULL,
+            execute=True,
+            live=should_probe_database_status(),
+            policy=policy,
+            sources=list(plan.backup_sources),
+        )
+        backup_ran = True
+        backup_ok = bool(getattr(batch, "executed_count", 0))
+        if backup_ok:
+            mark_source_changed_since_package()
+        print_backup_batch_result(
+            batch,
+            compact=True,
+            menu=True,
+            databases_label="Production databases selected",
+            suggest_verify=True,
+        )
+        print_batch_small_backup_warnings(batch)
+    finally:
+        note_backup_after_transition(
+            availability, backup_ran=backup_ran, backup_succeeded=backup_ok
+        )
 
 
 def _run_development_backup(*, require_confirmation: bool = True):
     """Development-only optional recovery backup (menu [9])."""
     from mercury.backup.batch_runner import resolve_development_backup_sources
+    from mercury.storage.host_maintenance import mark_source_changed_since_package
+    from mercury.storage.operation_availability import note_backup_after_transition
 
-    preflight = assess_backup_write_preflight()
-    if not preflight.allowed:
-        print_global_backup_refusal(
-            reason="Mercury is in HDD detach maintenance mode",
-            detail_lines=preflight.detail_lines,
-            next_steps=preflight.next_steps,
-        )
+    availability = _ensure_writes_then_continue()
+    if not availability:
         return None
 
     sources = resolve_development_backup_sources(live=should_probe_database_status())
@@ -474,50 +487,59 @@ def _run_development_backup(*, require_confirmation: bool = True):
     ):
         display_screen.write_summary("Development backup cancelled.")
         return None
-    batch = run_backup_batch(
-        BACKUP_KIND_FULL,
-        execute=True,
-        live=should_probe_database_status(),
-        policy=load_execution_policy(),
-        sources=sources,
-        allow_development_backup=True,
-    )
-    print_backup_batch_result(
-        batch,
-        compact=True,
-        menu=True,
-        databases_label="Development databases selected",
-        suggest_verify=False,
-    )
-    verification = None
-    if batch.executed_count:
-        verification = verify_written_backup_batch(batch, allow_development_backup=True)
-        display_screen.write_summary(
-            "Development backups were created and verified for optional migration recovery. "
-            "They are not included in the default production handoff bundle unless explicitly selected."
-            if verification.failed == 0
-            else f"Development backup verification: {verification.verified} verified, {verification.failed} failed."
+    backup_ran = False
+    backup_ok: bool | None = None
+    try:
+        batch = run_backup_batch(
+            BACKUP_KIND_FULL,
+            execute=True,
+            live=should_probe_database_status(),
+            policy=load_execution_policy(),
+            sources=sources,
+            allow_development_backup=True,
         )
-        for issue in verification.issues:
-            display_screen.write_status("fail", issue)
-    return batch, verification
+        backup_ran = True
+        backup_ok = bool(getattr(batch, "executed_count", 0))
+        if backup_ok:
+            mark_source_changed_since_package()
+        print_backup_batch_result(
+            batch,
+            compact=True,
+            menu=True,
+            databases_label="Development databases selected",
+            suggest_verify=False,
+        )
+        verification = None
+        if batch.executed_count:
+            verification = verify_written_backup_batch(batch, allow_development_backup=True)
+            display_screen.write_summary(
+                "Development backups were created and verified for optional migration recovery. "
+                "They are not included in the default production handoff bundle unless explicitly selected."
+                if verification.failed == 0
+                else f"Development backup verification: {verification.verified} verified, {verification.failed} failed."
+            )
+            for issue in verification.issues:
+                display_screen.write_status("fail", issue)
+        return batch, verification
+    finally:
+        note_backup_after_transition(
+            availability, backup_ran=backup_ran, backup_succeeded=backup_ok
+        )
 
 
 def _run_full_backup(plan: BackupPlanDryRun):
     """Full backup: production write+verify, optional development write+verify."""
-    preflight = assess_backup_write_preflight()
-    if not preflight.allowed:
+    from mercury.storage.host_maintenance import mark_source_changed_since_package
+    from mercury.storage.operation_availability import note_backup_after_transition
+
+    availability = _ensure_writes_then_continue()
+    if not availability:
         started = datetime.now(timezone.utc)
         run_id = new_full_backup_run_id(now=started)
         result = build_full_backup_global_refusal_result(
             run_id=run_id,
             started_at_utc=started.isoformat(),
-            reason=preflight.reason,
-        )
-        print_global_backup_refusal(
-            reason="Mercury is in HDD detach maintenance mode",
-            detail_lines=preflight.detail_lines,
-            next_steps=preflight.next_steps,
+            reason="backup writer unavailable or restoration declined",
         )
         try:
             audit = write_host_local_refusal_record(result)
@@ -527,7 +549,7 @@ def _run_full_backup(plan: BackupPlanDryRun):
                 result, receipt_path=None, receipt_error="host-local refusal audit not written"
             )
         print_full_backup_run_result(result)
-        return result
+        return None
 
     include_dev = menu_prompts.ask_yes_no(
         "Also back up configured development databases for migration recovery?",
@@ -536,92 +558,105 @@ def _run_full_backup(plan: BackupPlanDryRun):
     started = datetime.now(timezone.utc)
     run_id = new_full_backup_run_id(now=started)
     policy = load_execution_policy()
+    backup_ran = False
+    backup_ok: bool | None = None
 
-    production_batch = run_backup_batch(
-        BACKUP_KIND_FULL,
-        execute=True,
-        live=should_probe_database_status(),
-        policy=policy,
-        sources=list(plan.backup_sources),
-    )
-    display_screen.write_summary("Production")
-    print_backup_batch_result(
-        production_batch,
-        compact=True,
-        menu=True,
-        databases_label="Production databases selected",
-        suggest_verify=False,
-    )
-
-    production_verification = None
-    if production_batch.executed_count:
-        production_verification = verify_written_backup_batch(production_batch)
-        display_screen.write_summary(
-            f"Production verification: {production_verification.verified} verified, "
-            f"{production_verification.failed} failed."
-        )
-        for issue in production_verification.issues:
-            display_screen.write_status("fail", issue)
-
-    development_batch = None
-    development_verification = None
-    if include_dev:
-        sources = None
-        from mercury.backup.batch_runner import resolve_development_backup_sources
-
-        sources = resolve_development_backup_sources(live=should_probe_database_status())
-        if not sources:
-            display_screen.write_summary(
-                "No configured development databases are present on this MariaDB server."
-            )
-        else:
-            display_screen.write_summary("Development recovery")
-            development_batch = run_backup_batch(
-                BACKUP_KIND_FULL,
-                execute=True,
-                live=should_probe_database_status(),
-                policy=policy,
-                sources=sources,
-                allow_development_backup=True,
-            )
-            print_backup_batch_result(
-                development_batch,
-                compact=True,
-                menu=True,
-                databases_label="Development databases selected",
-                suggest_verify=False,
-            )
-            if development_batch.executed_count:
-                development_verification = verify_written_backup_batch(
-                    development_batch, allow_development_backup=True
-                )
-                display_screen.write_summary(
-                    f"Development verification: {development_verification.verified} verified, "
-                    f"{development_verification.failed} failed."
-                )
-                for issue in development_verification.issues:
-                    display_screen.write_status("fail", issue)
-
-    result = build_full_backup_run_result(
-        run_id=run_id,
-        started_at_utc=started.isoformat(),
-        production_batch=production_batch,
-        production_verification=production_verification,
-        development_batch=development_batch,
-        development_verification=development_verification,
-        development_requested=include_dev,
-    )
     try:
-        receipt = write_full_backup_run_receipt(result)
-        result = apply_full_backup_run_evidence(result, receipt_path=receipt)
-    except Exception as exc:  # noqa: BLE001 — classify evidence failure; never silently PASS
-        display_screen.write_status("fail", f"Could not write full-backup run receipt: {exc}")
-        result = apply_full_backup_run_evidence(
-            result, receipt_path=None, receipt_error=str(exc)
+        production_batch = run_backup_batch(
+            BACKUP_KIND_FULL,
+            execute=True,
+            live=should_probe_database_status(),
+            policy=policy,
+            sources=list(plan.backup_sources),
+        )
+        backup_ran = True
+        backup_ok = bool(getattr(production_batch, "executed_count", 0))
+        if backup_ok:
+            mark_source_changed_since_package()
+        display_screen.write_summary("Production")
+        print_backup_batch_result(
+            production_batch,
+            compact=True,
+            menu=True,
+            databases_label="Production databases selected",
+            suggest_verify=False,
         )
 
-    print_full_backup_run_result(result)
-    return result
+        production_verification = None
+        if production_batch.executed_count:
+            production_verification = verify_written_backup_batch(production_batch)
+            display_screen.write_summary(
+                f"Production verification: {production_verification.verified} verified, "
+                f"{production_verification.failed} failed."
+            )
+            for issue in production_verification.issues:
+                display_screen.write_status("fail", issue)
+
+        development_batch = None
+        development_verification = None
+        if include_dev:
+            from mercury.backup.batch_runner import resolve_development_backup_sources
+
+            sources = resolve_development_backup_sources(live=should_probe_database_status())
+            if not sources:
+                display_screen.write_summary(
+                    "No configured development databases are present on this MariaDB server."
+                )
+            else:
+                display_screen.write_summary("Development recovery")
+                development_batch = run_backup_batch(
+                    BACKUP_KIND_FULL,
+                    execute=True,
+                    live=should_probe_database_status(),
+                    policy=policy,
+                    sources=sources,
+                    allow_development_backup=True,
+                )
+                print_backup_batch_result(
+                    development_batch,
+                    compact=True,
+                    menu=True,
+                    databases_label="Development databases selected",
+                    suggest_verify=False,
+                )
+                if development_batch.executed_count:
+                    development_verification = verify_written_backup_batch(
+                        development_batch, allow_development_backup=True
+                    )
+                    display_screen.write_summary(
+                        f"Development verification: {development_verification.verified} verified, "
+                        f"{development_verification.failed} failed."
+                    )
+                    for issue in development_verification.issues:
+                        display_screen.write_status("fail", issue)
+
+        result = build_full_backup_run_result(
+            run_id=run_id,
+            started_at_utc=started.isoformat(),
+            production_batch=production_batch,
+            production_verification=production_verification,
+            development_batch=development_batch,
+            development_verification=development_verification,
+            development_requested=include_dev,
+        )
+        try:
+            receipt = write_full_backup_run_receipt(result)
+            result = apply_full_backup_run_evidence(result, receipt_path=receipt)
+        except Exception as exc:  # noqa: BLE001 — classify evidence failure; never silently PASS
+            display_screen.write_status("fail", f"Could not write full-backup run receipt: {exc}")
+            result = apply_full_backup_run_evidence(
+                result, receipt_path=None, receipt_error=str(exc)
+            )
+
+        print_full_backup_run_result(result)
+        return result
+    except Exception:
+        backup_ok = False
+        raise
+    finally:
+        note_backup_after_transition(
+            availability, backup_ran=backup_ran, backup_succeeded=backup_ok
+        )
 
 
 def _run_verify_sources() -> None:

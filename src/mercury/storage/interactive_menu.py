@@ -303,7 +303,10 @@ def _print_reconnect_result(result) -> None:
 
 def _run_enable_writes() -> None:
     from mercury.storage.lifecycle import StorageLifecycleState, assess_storage_lifecycle
-    from mercury.storage.reconnect import restore_writes_after_reconnect
+    from mercury.storage.transitions import (
+        RESTORE_SOURCE_WRITER_PHRASE,
+        restore_source_writer,
+    )
 
     snap = assess_storage_lifecycle(probe_disconnect=False)
     if snap.state in {
@@ -313,7 +316,7 @@ def _run_enable_writes() -> None:
         display_screen.write_status(
             "fail",
             "Enable writes unavailable · detach preparation active. "
-            "Finish or cancel Safe disconnect first.",
+            "Finish or cancel Safe disconnect first, or restore via Backup.",
         )
         return
     if snap.writes_allowed:
@@ -325,26 +328,29 @@ def _run_enable_writes() -> None:
             "Attach the HDD physically, then choose Reconnect before enabling writes.",
         )
         return
-    phrase = menu_prompts.ask("Type RESTORE MERCURY WRITES to enable: ").strip()
-    restored = restore_writes_after_reconnect(confirm=phrase)
-    if restored is None:
-        display_screen.write_status("fail", "Writes not restored (phrase mismatch).")
+    phrase = menu_prompts.ask(
+        f"Type {RESTORE_SOURCE_WRITER_PHRASE} to enable: "
+    ).strip()
+    result = restore_source_writer(
+        confirm=phrase,
+        operator_intent="hdd_menu_enable_writes",
+        require_strong_phrase=True,
+    )
+    if not result.ok:
+        display_screen.write_status("fail", "Writes not restored (phrase mismatch or validation).")
+        for blocker in result.blockers:
+            display_screen.write_status("fail", blocker)
     else:
         display_screen.write_summary("Mercury writes enabled (active writer = primary).")
 
 
 def _run_disable_writes() -> None:
-    from mercury.storage.host_maintenance import load_host_maintenance, save_host_maintenance
+    from mercury.storage.transitions import disable_writes
 
-    host = load_host_maintenance()
-    if not host.writes_allowed:
-        display_screen.write_summary("Mercury writes are already disabled.")
-        return
-    host.writes_allowed = False
-    host.active_write_role = "none"
-    host.notes = "Operator disabled Mercury writes from HDD menu (observe-only policy change)."
-    save_host_maintenance(host)
-    display_screen.write_summary("Mercury writes disabled. Active writer = none.")
+    result = disable_writes(operator_intent="hdd_menu_disable_writes")
+    display_screen.write_summary(
+        result.messages[0] if result.messages else "Mercury writes disabled."
+    )
 
 
 def _run_inspect_readonly(*, execute_mount: bool = False) -> None:
@@ -383,18 +389,22 @@ def _run_restore_source_writer(*, ask_mount: bool = True) -> None:
 
 
 def _run_destination_rehearsal_prep() -> None:
-    from mercury.storage.host_maintenance import load_host_maintenance, save_host_maintenance
     from mercury.storage.reconnect import run_reconnect_validate
+    from mercury.storage.transitions import enter_destination_rehearsal
 
     result = run_reconnect_validate(mode="destination", execute_mount=True, read_only=True)
     _print_reconnect_result(result)
     if result.ok:
-        host = load_host_maintenance()
-        host.destination_rehearsal_in_progress = True
-        host.writes_allowed = False
-        host.active_write_role = "none"
-        host.notes = "Destination rehearsal: package inspection; writes remain disabled."
-        save_host_maintenance(host)
+        transition = enter_destination_rehearsal(
+            operator_intent="hdd_menu_destination_rehearsal"
+        )
+        if not transition.ok:
+            display_screen.write_status(
+                "fail",
+                "Destination rehearsal flag was not recorded: "
+                + ("; ".join(transition.blockers) or transition.status.value),
+            )
+            return
         display_screen.write_summary(
             "Destination rehearsal prepared. Writes stay disabled. "
             "Destination validation is NOT complete."

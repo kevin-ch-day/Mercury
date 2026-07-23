@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -64,19 +65,25 @@ def test_full_backup_global_refusal_before_dev_prompt(
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
+    """Declining strong restore must refuse before the development prompt."""
     from mercury.backup.interactive_menu import _run_full_backup
     from mercury.database.backup_planning import build_backup_plan
+    from mercury.storage.transitions import RESTORE_SOURCE_WRITER_PHRASE
 
     prompts: list[str] = []
 
-    def _unexpected_prompt(*_args, **_kwargs):
-        prompts.append("asked")
-        raise AssertionError("development prompt must not appear during global refusal")
+    def _answer_yes_no(prompt: str, default=False):
+        prompts.append(prompt)
+        if "development" in prompt.lower():
+            raise AssertionError("development prompt must not appear during global refusal")
+        return False
 
-    monkeypatch.setattr(
-        "mercury.backup.interactive_menu.menu_prompts.ask_yes_no",
-        _unexpected_prompt,
-    )
+    def _answer_phrase(*_args, **_kwargs):
+        prompts.append("phrase")
+        return ""  # decline strong confirmation
+
+    monkeypatch.setattr("mercury.menu.prompts.ask_yes_no", _answer_yes_no)
+    monkeypatch.setattr("mercury.menu.prompts.ask", _answer_phrase)
     batch_calls: list[object] = []
 
     def _no_batch(*_args, **_kwargs):
@@ -91,38 +98,56 @@ def test_full_backup_global_refusal_before_dev_prompt(
         "mercury.core.usb_mount.resolve_operator_mount",
         lambda **kwargs: hdd,
     )
+    monkeypatch.setattr(
+        "mercury.storage.block_device.resolve_mercury_block_device",
+        lambda **kwargs: SimpleNamespace(
+            identity=SimpleNamespace(
+                uuid="715f29a9-2671-477b-8c8d-515d190addb9",
+                label="MERCURY_DATA_V2",
+                fstype="ext4",
+                mountpoint="/mnt/MERCURY_DATA_V2",
+                parent_device="/dev/sdb",
+                partition_device="/dev/sdb1",
+            ),
+            errors=[],
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.storage.detach_wizard.detect_desktop_automount",
+        lambda *_a, **_k: [],
+    )
+    monkeypatch.setattr(
+        "mercury.storage.transitions._probe_mount_mode",
+        lambda *_a, **_k: "read-write",
+    )
 
     plan = build_backup_plan(["android_permission_intel"])
     result = _run_full_backup(plan)
     out = capsys.readouterr().out
 
-    assert prompts == []
+    assert "phrase" in prompts
+    assert not any("development" in p.lower() for p in prompts)
     assert batch_calls == []
-    assert result is not None
-    assert result.outcome == FullBackupOutcome.REFUSED
-    assert result.global_refusal is True
-    assert result.operation_result == "REFUSED"
-    assert result.backup_artifacts_result == LaneResult.NOT_ATTEMPTED
-    assert result.verification_result == LaneResult.NOT_APPLICABLE
-    assert result.run_evidence_result == LaneResult.NOT_WRITTEN
-    assert result.refusal_audit_result == "RECORDED_HOST_LOCAL"
+    assert result is None
+    assert "SOURCE WRITER RESTORE REQUIRES CONFIRMATION" in out
+    assert RESTORE_SOURCE_WRITER_PHRASE in out
+    assert "Backup cancelled. Mercury writes remain disabled." in out
     assert "Also back up configured development" not in out
     assert "Development recovery" not in out
-    assert "Mercury is in HDD detach maintenance mode" in out
-    assert "No production or development backup was attempted" in out
-    assert "No backup files or HDD evidence were written" in out
-    assert "evidence PASS" not in out
-    assert "artifacts FAIL" not in out
-    assert "RESULT" not in out  # no per-database result table
-    # No HDD receipt under operator mount
+    assert "REFUSED" in out
+    assert "No backup state changed" in out
     runs = control / "full_backup_runs"
     assert not runs.exists() or not any(runs.glob("*.json"))
-    # Host-local refusal only
     audits = list(refusal_dir.glob("*_refused.json"))
     assert len(audits) == 1
     payload = json.loads(audits[0].read_text(encoding="utf-8"))
     assert is_host_local_refusal_record(payload)
     assert is_governed_full_backup_receipt(payload) is False
+    from mercury.storage.host_maintenance import load_host_maintenance
+
+    host = load_host_maintenance(path=detach_host)
+    assert host.writes_allowed is False
+    assert host.storage_availability == "detaching"
 
 
 def test_write_full_backup_receipt_blocked_when_writes_disabled(
