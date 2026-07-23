@@ -147,6 +147,7 @@ def _run_guided_wizard(*, start_phase: str | None = None) -> None:
 
 
 def run_handoff_menu(*, interactive: bool = True) -> None:
+    """Destination checklist/status (package-first). Write tools live under Advanced."""
     show_title = True
     while True:
         snapshot = build_handoff_snapshot(
@@ -159,12 +160,62 @@ def run_handoff_menu(*, interactive: bool = True) -> None:
             print_handoff_checklist(snapshot.checklist)
         if not interactive:
             return
+        display_screen.write_blank()
+        render_submenu(
+            [
+                ("1", "Refresh destination package status"),
+                ("2", "Open receiver guide (pinned package)"),
+                ("3", "Advanced handoff tools"),
+                ("0", "Back"),
+            ],
+            indent=0,
+        )
+        show_title = False
+        choice = read_submenu_choice()
+        if choice is None or choice == "0":
+            return
+        if choice == "1":
+            clear_handoff_snapshot()
+            show_title = pause_and_redraw()
+            continue
+        if choice == "2":
+            print_receiver_handoff_guide(checklist=build_receiver_handoff_guide())
+            show_title = pause_and_redraw()
+            continue
+        if choice == "3":
+            run_advanced_handoff_tools()
+            show_title = pause_and_redraw()
+            continue
+        display_screen.write_summary(menu_prompts.invalid_choice_message(choice))
+        show_title = False
+
+
+def run_advanced_handoff_tools() -> None:
+    """Historical transfer / package-build / worktree tools (expert path)."""
+    from mercury.handoff.display import step_progress_summary
+
+    show_title = True
+    while True:
+        snapshot = build_handoff_snapshot(
+            live=should_probe_database_status(),
+            refresh=show_title,
+        )
+        display_screen.open_screen("Advanced handoff tools")
+        display_screen.write_summary(
+            "Historical transfer manifests, package building, and worktree capture."
+        )
+        display_screen.write_fields(
+            {
+                "Latest transfer": snapshot.checklist.latest_transfer_age or "none",
+                "Database package": snapshot.checklist.database_package,
+                "Repository package": snapshot.checklist.repository_package,
+                "Checklist": step_progress_summary(snapshot.checklist.steps),
+            }
+        )
         _render_handoff_options()
         show_title = False
         choice = read_submenu_choice()
-        if choice is None:
-            return
-        if choice == "0":
+        if choice is None or choice == "0":
             return
         if choice == "1":
             clear_handoff_snapshot()
@@ -201,7 +252,9 @@ def run_handoff_menu(*, interactive: bool = True) -> None:
             results = capture_web_worktrees(execute=False)
             for result in results:
                 display_screen.write_summary(f"Preview: {result.name} → {result.snapshot_dir}")
-            if menu_prompts.ask_yes_no("Write restricted web snapshots to active operator storage?", default=False):
+            if menu_prompts.ask_yes_no(
+                "Write restricted web snapshots to active operator storage?", default=False
+            ):
                 results = capture_web_worktrees(execute=True)
                 for result in results:
                     display_screen.write_summary(

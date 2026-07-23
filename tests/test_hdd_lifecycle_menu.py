@@ -199,7 +199,7 @@ def test_recommended_action_detached() -> None:
         (StorageLifecycleState.PREPARING_TO_DISCONNECT, False, True, "Recheck disconnect blockers", False),
         (StorageLifecycleState.PREPARING_TO_DISCONNECT, False, True, "Recheck disconnect blockers", True),
         (StorageLifecycleState.DETACHED, False, True, "Reconnect or inspect", False),
-        (StorageLifecycleState.ATTACHED_READ_ONLY, False, True, "destination inspection", False),
+        (StorageLifecycleState.ATTACHED_READ_ONLY, False, True, "destination validation", False),
         (StorageLifecycleState.DEVICE_IDENTITY_MISMATCH, False, False, "Diagnose", False),
         (StorageLifecycleState.ATTACHED_WRITER_DISABLED, False, False, "Verify destination package", False),
     ],
@@ -288,7 +288,7 @@ def test_header_state_avoids_safe_disconnect_ready_duplication() -> None:
 
 def test_dashboard_next_action_short_for_ready() -> None:
     snap = _snap(StorageLifecycleState.READY_TO_DISCONNECT, package_verified=True)
-    assert dashboard_next_action_short(snap) == "Choose backup, disconnect, or rehearsal"
+    assert dashboard_next_action_short(snap) == "Safely disconnect the Mercury HDD"
     assert "writes disabled" in dashboard_hdd_status_line(snap).lower()
 
 
@@ -419,9 +419,10 @@ def test_dashboard_ready_to_disconnect_wording(
     rows = "\n".join(_migration_dashboard_rows(report, policy=SimpleNamespace()))
     assert "Mercury HDD" in rows
     assert "Recommended" in rows
-    assert "Choose backup, disconnect, or rehearsal" in rows
+    assert "Safely disconnect the Mercury HDD" in rows
     assert "Detaching · writes off" not in rows
     assert "detach mode" not in rows.lower()
+    assert "Choose backup, disconnect, or rehearsal" not in rows
 
 
 @pytest.mark.parametrize(

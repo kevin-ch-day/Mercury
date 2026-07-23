@@ -105,13 +105,14 @@ def test_style_table_lines_preserve_body_alignment_when_colored() -> None:
 
 
 def test_style_inline_value_does_not_paint_partial_ready_sentences() -> None:
-    from mercury.terminal.theme import OK, VALUE, markup, style_inline_value
+    from mercury.terminal.design_system import active_styles
+    from mercury.terminal.theme import markup, set_color_enabled, style_inline_value
 
     set_color_enabled(True)
     try:
         partial = style_inline_value("2 of 4 server sources verified")
-        assert partial == markup("2 of 4 server sources verified", VALUE)
-        assert style_inline_value("ready") == markup("ready", OK)
+        assert partial == markup("2 of 4 server sources verified", active_styles().value)
+        assert style_inline_value("ready") == markup("ready", active_styles().ok)
     finally:
         set_color_enabled(None)
 

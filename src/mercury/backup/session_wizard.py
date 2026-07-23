@@ -17,95 +17,178 @@ from mercury.storage.operation_availability import (
     assess_operation_availability,
     ensure_backup_writes_available,
     format_hard_block_message,
-    format_recoverable_prompt,
-    format_strong_prompt,
 )
 from mercury.terminal import screen as display_screen
+from mercury.terminal.theme import dashboard_row, menu_item_line, rule_line, section_title
+from mercury.terminal.theme import colors_enabled
+
+
+def _package_verified(host) -> bool:
+    return host.package_verification_status == "DESTINATION_PACKAGE_VERIFIED"
+
+
+def _package_status_label(host) -> str:
+    if not _package_verified(host):
+        status = (host.package_verification_status or "").strip()
+        if not status or status.upper() in {"PENDING", "UNKNOWN"}:
+            return "Not verified"
+        # Never dump raw enum tokens into the operator console.
+        if status == "DESTINATION_PACKAGE_VERIFIED":
+            return "VERIFIED · destination rehearsal"
+        return "Not verified"
+    pkg = (host.package_id or "").lower()
+    if "phase3b" in pkg:
+        return "VERIFIED · Phase 3B rehearsal"
+    if "final_source" in pkg:
+        return "VERIFIED · final source rehearsal"
+    if host.source_writes_resumed_after_package:
+        return "VERIFIED · rehearsal snapshot"
+    return "VERIFIED · destination rehearsal"
+
+
+def _package_snapshot_label(host) -> str | None:
+    """Readable local package creation time from package_id, when present."""
+    from mercury.terminal.format import format_package_id_snapshot
+
+    return format_package_id_snapshot(host.package_id or "")
+
+
+def _operator_action_required(classification: str) -> str | None:
+    """Map internal availability enums to operator-facing language."""
+    mapping = {
+        "STRONG_CONFIRMATION": "Exact confirmation before enabling writes",
+        "RECOVERABLE_CONFIRMATION": "Confirm before enabling writes",
+        "HARD_BLOCK": "This action is blocked",
+        "AVAILABLE": None,
+    }
+    return mapping.get(classification)
+
+
+def _print_status_rows(host, *, availability_classification: str) -> None:
+    from mercury.storage.host_maintenance import writes_allowed as writes_are_allowed
+
+    writes_on = writes_are_allowed(host)
+    if host.storage_availability == "detached":
+        hdd = "Not connected"
+    elif writes_on:
+        hdd = "Connected · mounted · writes enabled"
+    else:
+        hdd = "Connected · mounted"
+    write_state = (
+        "Enabled · primary"
+        if writes_on and host.active_write_role == "primary"
+        else "Disabled · disconnect preparation"
+        if host.storage_availability == "detaching" or host.source_detach_preparation
+        else ("Enabled" if writes_on else "Disabled")
+    )
+
+    recovery = (
+        "Newer recovery artifacts exist"
+        if getattr(host, "recovery_artifacts_created_after_package", False)
+        or host.source_changed_since_package
+        else "No newer recovery artifacts"
+    )
+    source_data = (
+        "Known changes after package"
+        if getattr(host, "source_data_changed_since_package", False)
+        else "No known changes after package"
+    )
+    rows = [
+        dashboard_row("Mercury HDD", hdd, label_width=16),
+        dashboard_row("Backup writer", write_state, label_width=16),
+        dashboard_row("Package", _package_status_label(host), label_width=16),
+    ]
+    snapshot = _package_snapshot_label(host)
+    if snapshot:
+        rows.append(dashboard_row("Snapshot", snapshot, label_width=16))
+    rows.extend(
+        [
+            dashboard_row("Recovery", recovery, label_width=16),
+            dashboard_row("Source data", source_data, label_width=16),
+        ]
+    )
+    action_required = _operator_action_required(availability_classification)
+    if action_required:
+        rows.append(dashboard_row("Action required", action_required, label_width=16))
+    for line in rows:
+        output.write(line)
+
+
+def _print_important_warning() -> None:
+    from mercury.terminal.theme import important_banner
+
+    output.write("")
+    for line in important_banner("IMPORTANT"):
+        output.write(line)
+    output.write("A verified destination package already exists.")
+    output.write("")
+    output.write(
+        "Enabling writes will allow Mercury to create newer backups and Git captures."
+    )
+    output.write(
+        "Those new artifacts will not be included in the existing package."
+    )
+    output.write("")
+    output.write("The existing package will remain valid for rehearsal.")
+
+
+def _print_planned_session() -> None:
+    output.write("")
+    if colors_enabled():
+        output.write(section_title("PLANNED SESSION"))
+    else:
+        output.write("Planned session")
+    output.write(rule_line())
+    output.write(
+        dashboard_row("Production databases", "Back up and verify", label_width=26)
+    )
+    output.write(
+        dashboard_row("Development databases", "Ask before running", label_width=26)
+    )
+    output.write(
+        dashboard_row("Offline Git recovery", "Capture and verify", label_width=26)
+    )
+    output.write(
+        dashboard_row("Production → development", "Ask before running", label_width=26)
+    )
 
 
 def _print_overview(*, availability_classification: str) -> None:
     host = load_host_maintenance()
-    display_screen.open_screen("Back up and sync this workstation")
-    package = host.package_verification_status or "Pending"
-    if host.package_verification_status == "DESTINATION_PACKAGE_VERIFIED":
-        if host.source_writes_resumed_after_package:
-            package = "VERIFIED · rehearsal snapshot"
-        elif host.destination_rehearsal_active or host.destination_rehearsal_in_progress:
-            package = "VERIFIED · destination rehearsal"
-        else:
-            package = "VERIFIED · rehearsal snapshot"
-    write_state = (
-        "Enabled · primary"
-        if host.writes_allowed and host.active_write_role == "primary"
-        else "Disabled · disconnect preparation"
-        if host.storage_availability == "detaching" or host.source_detach_preparation
-        else "Disabled"
+    title = (
+        "BACK UP AND SYNC AGAIN"
+        if _package_verified(host)
+        else "BACK UP AND SYNC THIS WORKSTATION"
     )
-    display_screen.write_fields(
-        {
-            "Mercury HDD": "Connected · mounted",
-            "Write state": write_state,
-            "Package": package,
-            "Recovery": (
-                "New backup artifacts created after package"
-                if getattr(host, "recovery_artifacts_created_after_package", False)
-                or host.source_changed_since_package
-                else "No new recovery artifacts after package"
-            ),
-            "Source data": (
-                "Production source data changed after package"
-                if getattr(host, "source_data_changed_since_package", False)
-                else "No known production changes after package"
-            ),
-            "Availability": availability_classification,
-        }
-    )
-    display_screen.write_blank()
-    if host.destination_rehearsal_active or host.destination_rehearsal_in_progress:
-        display_screen.write_summary(
-            "A verified destination rehearsal package exists."
-        )
-        display_screen.write_summary(
-            "Restoring source writes allows Mercury to create new backups, Git captures, "
-            "and other recovery artifacts that are not included in the current package."
-        )
-        display_screen.write_summary(
-            "The existing package remains valid for destination rehearsal, but it will "
-            "not include anything created by this new session."
-        )
-        display_screen.write_blank()
-    display_screen.write_summary("Planned session:")
-    display_screen.write_fields(
-        {
-            "Production database backup": "Yes",
-            "Verify new production backups": "Yes",
-            "Development database backup": "Optional",
-            "Offline Git recovery capture": "Yes",
-            "Production-to-development sync": "Optional",
-        }
-    )
+    display_screen.open_screen(title)
+    _print_status_rows(host, availability_classification=availability_classification)
+    if _package_verified(host):
+        _print_important_warning()
+    _print_planned_session()
 
 
 def _choice_menu() -> str | None:
     output.write("")
-    output.write(
-        "  [1] Restore source writer and run recommended session   recommended"
-    )
-    output.write("  [2] Review or customize session")
-    output.write("  [3] Databases only")
-    output.write("  [4] Git recovery only")
-    output.write("  [0] Cancel")
+    output.write(menu_item_line("1", "Restore source writer and continue", indent=2))
+    output.write(menu_item_line("2", "Review or customize this session", indent=2))
+    output.write(menu_item_line("0", "Cancel", indent=2))
     output.write("")
     return (menu_prompts.ask("Choice") or "").strip() or None
 
 
-def _customize_plan(plan: SessionPlan) -> SessionPlan | None:
+def _customize_plan(plan: SessionPlan) -> tuple[SessionPlan, str] | None:
+    """Return ``(plan, exit_mode)`` or ``None`` on cancel.
+
+    ``exit_mode``:
+      - ``custom`` — Run selected session (honor plan exactly; no optional re-prompt)
+      - ``databases_only`` — Databases only preset (may ask optional lanes)
+      - ``git_only`` — Git recovery only preset
+    """
     current = plan.model_copy(deep=True)
     while True:
         display_screen.open_screen("Customize Backup and Sync")
         flags = [
             ("Back up production databases", current.production_backup),
-            ("Verify newly written production backups", current.verify_production),
             ("Back up development databases", current.development_backup),
             ("Capture offline Git recovery", current.git_recovery),
             ("Sync production databases to development", current.sync_development),
@@ -114,6 +197,8 @@ def _customize_plan(plan: SessionPlan) -> SessionPlan | None:
         for label, enabled in flags:
             mark = "x" if enabled else " "
             output.write(f"  [{mark}] {label}")
+        if current.production_backup:
+            output.write("      · Verify newly written production backups (follows production)")
         output.write("")
         output.write("  [1] Toggle production backup")
         output.write("  [2] Toggle development backup")
@@ -121,6 +206,8 @@ def _customize_plan(plan: SessionPlan) -> SessionPlan | None:
         output.write("  [4] Toggle production-to-development sync")
         output.write("  [5] Toggle restore-check")
         output.write("  [6] Run selected session")
+        output.write("  [7] Databases only")
+        output.write("  [8] Git recovery only")
         output.write("  [0] Cancel")
         choice = (menu_prompts.ask("Choice") or "").strip()
         if choice == "0":
@@ -156,7 +243,29 @@ def _customize_plan(plan: SessionPlan) -> SessionPlan | None:
                     "Select at least one of: production backup, development backup, or Git recovery.",
                 )
                 continue
-            return current.normalize()
+            return current.normalize(), "custom"
+        elif choice == "7":
+            return (
+                SessionPlan(
+                    production_backup=True,
+                    verify_production=True,
+                    development_backup=False,
+                    git_recovery=False,
+                    sync_development=False,
+                ).normalize(),
+                "databases_only",
+            )
+        elif choice == "8":
+            return (
+                SessionPlan(
+                    production_backup=False,
+                    verify_production=False,
+                    development_backup=False,
+                    git_recovery=True,
+                    sync_development=False,
+                ).normalize(),
+                "git_only",
+            )
         else:
             output.write(menu_prompts.invalid_choice_message(choice))
 
@@ -226,25 +335,29 @@ def offer_post_session_actions(session: BackupSyncSession) -> str | None:
         SessionResult.PASS,
         SessionResult.PARTIAL,
     }
+    options: list[tuple[str, str, str]] = []
     if allow_disconnect:
-        output.write("  [1] Safely disconnect Mercury HDD")
-    output.write("  [2] Review session details")
-    output.write("  [3] Return to main menu")
+        options.append(("safe_disconnect", "Safely disconnect Mercury HDD", "safe_disconnect"))
+    options.append(("review", "Review session details", "review"))
+    options.append(("main_menu", "Return to main menu", "main_menu"))
+    for index, (_key, label, _action) in enumerate(options, start=1):
+        output.write(f"  [{index}] {label}")
     output.write("  [0] Exit Mercury")
     choice = (menu_prompts.ask("Choice") or "").strip()
-    if choice == "1" and allow_disconnect:
-        return "safe_disconnect"
-    if choice == "2":
-        return "review"
-    if choice == "3":
-        return "main_menu"
     if choice == "0":
         return "exit"
+    for index, (_key, _label, action) in enumerate(options, start=1):
+        if choice == str(index):
+            return action
     return None
 
 
 def _ensure_writer_ready(*, hooks: SessionHooks | None) -> bool:
-    """Return True when backup writes are available after optional guided restore."""
+    """Return True when backup writes are available after optional guided restore.
+
+    Do not pre-print strong/recoverable prompts here — ``ensure_backup_writes_available``
+    (or an injected hook) owns that presentation so operators see it once.
+    """
     availability = assess_operation_availability("database_backup")
     if availability.is_hard_block:
         output.write("")
@@ -252,12 +365,6 @@ def _ensure_writer_ready(*, hooks: SessionHooks | None) -> bool:
         return False
     if availability.available:
         return True
-    if availability.is_strong:
-        output.write("")
-        output.write(format_strong_prompt(availability))
-    elif availability.is_recoverable:
-        output.write("")
-        output.write(format_recoverable_prompt(availability))
     ensure = (
         hooks.ensure_writes
         if hooks is not None and hooks.ensure_writes is not None
@@ -272,7 +379,10 @@ def run_backup_sync_wizard(
     interactive: bool = True,
     hooks: SessionHooks | None = None,
 ) -> BackupSyncSession | None:
-    """Interactive Backup and Sync entry point."""
+    """Interactive Backup and Sync entry point.
+
+    Returns ``None`` when the operator cancels (caller may re-show intent).
+    """
     if not interactive:
         return run_backup_sync_session(preview=True, execute=False, interactive=False)
 
@@ -292,40 +402,28 @@ def run_backup_sync_wizard(
         return None
 
     plan = recommended_session_plan()
+    customize_mode: str | None = None
     if choice == "2":
         customized = _customize_plan(plan)
         if customized is None:
             display_screen.write_summary("Backup and Sync cancelled.")
             return None
-        plan = customized
-    elif choice == "3":
-        plan = SessionPlan(
-            production_backup=True,
-            verify_production=True,
-            development_backup=False,
-            git_recovery=False,
-            sync_development=False,
-        ).normalize()
-    elif choice == "4":
-        plan = SessionPlan(
-            production_backup=False,
-            verify_production=False,
-            development_backup=False,
-            git_recovery=True,
-            sync_development=False,
-        ).normalize()
+        plan, customize_mode = customized
     elif choice != "1":
         output.write(menu_prompts.invalid_choice_message(choice))
         return None
 
     # Storage first — never ask optional lanes while writer is blocked.
     if not _ensure_writer_ready(hooks=hooks):
-        display_screen.write_summary("Backup and Sync cancelled. Mercury writes remain disabled.")
+        display_screen.write_summary("Backup and Sync cancelled.")
+        display_screen.write_summary("Mercury writes remain disabled.")
         return None
 
-    if choice in {"1", "3"}:
+    # Optional lanes only for the recommended continue path or Databases-only preset.
+    # A manually customized plan (Run selected session) must not be re-prompted.
+    if choice == "1" or customize_mode == "databases_only":
         plan = _ask_optional_lanes(plan)
-        if choice == "3":
+        if customize_mode == "databases_only":
             plan.git_recovery = False
 
     # Writer already restored; runner should see AVAILABLE and continue.

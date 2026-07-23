@@ -90,7 +90,8 @@ def test_recommended_action_writes_disabled_intent(host_path: Path) -> None:
     )
     rec = build_main_menu_recommendation()
     assert rec.intent_chooser_required is True
-    assert "Choose backup, disconnect, or rehearsal" in rec.explanation
+    assert rec.recommended_action == "safe_disconnect"
+    assert "Safely disconnect" in rec.explanation
 
 
 def test_software_only_when_detached(host_path: Path) -> None:
@@ -105,11 +106,84 @@ def test_software_only_when_detached(host_path: Path) -> None:
     assert items[0][1].startswith("Reconnect")
 
 
-def test_startup_intent_chooser_options(monkeypatch) -> None:
-    from mercury.menu.intent import INTENT_BACKUP_SYNC, run_startup_intent_chooser
+def test_startup_intent_recommends_safe_disconnect(host_path: Path, monkeypatch) -> None:
+    from mercury.menu.intent import (
+        INTENT_BACKUP_SYNC,
+        INTENT_SAFE_DISCONNECT,
+        build_startup_intent_options,
+        recommended_startup_action,
+        run_startup_intent_chooser,
+    )
 
+    save_host_maintenance(
+        HostMaintenanceState(
+            storage_availability="detaching",
+            writes_allowed=False,
+            source_detach_preparation=True,
+            destination_rehearsal_active=True,
+            package_verification_status="DESTINATION_PACKAGE_VERIFIED",
+            package_id="destination_rehearsal_final_source_20260723T161213Z",
+        ),
+        path=host_path,
+    )
+    assert recommended_startup_action() == INTENT_SAFE_DISCONNECT
+    options = build_startup_intent_options()
+    assert options[0][2] == INTENT_SAFE_DISCONNECT
+    assert "recommended" in options[0][1]
+    assert options[1][2] == INTENT_BACKUP_SYNC
+    assert "again" in options[1][1].lower()
+
+    printed: list[str] = []
+    monkeypatch.setattr(
+        "mercury.menu.intent.output.write", lambda msg="": printed.append(str(msg))
+    )
     monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: "1")
-    assert run_startup_intent_chooser() == INTENT_BACKUP_SYNC
+    assert run_startup_intent_chooser() == INTENT_SAFE_DISCONNECT
+    text = "\n".join(printed)
+    assert "CURRENT SESSION" in text
+    assert "Safely disconnect the Mercury HDD" in text
+    assert "Recommended" in text
+
+
+def test_startup_invalid_choice_reprompts(monkeypatch, host_path: Path) -> None:
+    from mercury.menu.intent import INTENT_SAFE_DISCONNECT, run_startup_intent_chooser
+
+    save_host_maintenance(
+        HostMaintenanceState(
+            storage_availability="detaching",
+            writes_allowed=False,
+            source_detach_preparation=True,
+            package_verification_status="DESTINATION_PACKAGE_VERIFIED",
+            package_id="pkg",
+        ),
+        path=host_path,
+    )
+    answers = iter(["9", "1"])
+    monkeypatch.setattr(
+        "mercury.menu.prompts.ask", lambda *_a, **_k: next(answers)
+    )
+    printed: list[str] = []
+    monkeypatch.setattr(
+        "mercury.menu.intent.output.write", lambda msg="": printed.append(str(msg))
+    )
+    assert run_startup_intent_chooser() == INTENT_SAFE_DISCONNECT
+    assert any("Invalid" in line or "invalid" in line.lower() for line in printed)
+
+    from mercury.menu.intent import INTENT_SAFE_DISCONNECT, run_startup_intent_chooser
+
+    save_host_maintenance(
+        HostMaintenanceState(
+            storage_availability="detaching",
+            writes_allowed=False,
+            source_detach_preparation=True,
+            destination_rehearsal_active=True,
+            package_verification_status="DESTINATION_PACKAGE_VERIFIED",
+            package_id="pkg",
+        ),
+        path=host_path,
+    )
+    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: "1")
+    assert run_startup_intent_chooser() == INTENT_SAFE_DISCONNECT
 
 
 def test_backup_sync_hub_launches_phase2_wizard(monkeypatch) -> None:
@@ -118,18 +192,67 @@ def test_backup_sync_hub_launches_phase2_wizard(monkeypatch) -> None:
         "mercury.backup.session_wizard.run_backup_sync_wizard",
         lambda **_k: called.append("wizard"),
     )
-    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: "1")
+    answers = iter(["1", "0"])
+    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
     from mercury.menu.task_menus import run_backup_sync_hub
 
     run_backup_sync_hub()
     assert called == ["wizard"]
 
 
+def test_backup_sync_hub_routes_production_and_development(monkeypatch) -> None:
+    called: list[str] = []
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.run_production_backup_flow",
+        lambda: called.append("prod"),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.run_development_backup_flow",
+        lambda: called.append("dev"),
+    )
+    from mercury.menu.task_menus import run_backup_sync_hub
+
+    answers = iter(["2", "0"])
+    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
+    run_backup_sync_hub()
+    answers = iter(["3", "0"])
+    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
+    run_backup_sync_hub()
+    assert called == ["prod", "dev"]
+
+
+def test_backup_sync_hub_title_again_when_package_verified(
+    monkeypatch, host_path: Path
+) -> None:
+    from mercury.menu import task_menus
+    from mercury.storage.host_maintenance import HostMaintenanceState, save_host_maintenance
+
+    save_host_maintenance(
+        HostMaintenanceState(
+            storage_availability="detaching",
+            writes_allowed=False,
+            source_detach_preparation=True,
+            package_verification_status="DESTINATION_PACKAGE_VERIFIED",
+            package_id="pkg",
+        ),
+        path=host_path,
+    )
+    titles: list[str] = []
+    monkeypatch.setattr(
+        task_menus.display_screen,
+        "open_screen",
+        lambda title: titles.append(title),
+    )
+    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: "0")
+    task_menus.run_backup_sync_hub()
+    assert titles and titles[0] == "Back up and sync again"
+
+
 def test_safe_disconnect_intent_launches_wizard(monkeypatch) -> None:
     called: list[str] = []
     monkeypatch.setattr(
         "mercury.storage.interactive_menu.run_safe_disconnect_wizard",
-        lambda: called.append("disconnect"),
+        lambda: called.append("disconnect") or True,
     )
     from mercury.menu.intent import INTENT_SAFE_DISCONNECT, dispatch_startup_intent
 
@@ -143,7 +266,8 @@ def test_migration_consolidates_handoff_and_deploy(monkeypatch) -> None:
         "mercury.handoff.interactive_menu.run_handoff_menu",
         lambda **_k: called.append("handoff"),
     )
-    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: "1")
+    answers = iter(["1", "0"])
+    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
     from mercury.menu.task_menus import run_migration_hub
 
     run_migration_hub()
@@ -156,7 +280,8 @@ def test_health_consolidates_environment_inventory_doctor(monkeypatch) -> None:
         "mercury.env.interactive_menu.run_env_menu",
         lambda: called.append("env"),
     )
-    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: "1")
+    answers = iter(["1", "0"])
+    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
     from mercury.menu.task_menus import run_health_hub
 
     run_health_hub()
@@ -169,7 +294,8 @@ def test_advanced_retains_expert_backup(monkeypatch) -> None:
         "mercury.backup.interactive_menu.run_backup_menu",
         lambda: called.append("backup"),
     )
-    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: "1")
+    answers = iter(["1", "0"])
+    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
     from mercury.menu.task_menus import run_advanced_hub
 
     run_advanced_hub()
@@ -290,29 +416,113 @@ def test_startup_intent_choices_dispatch(monkeypatch) -> None:
         INTENT_DESTINATION_REHEARSAL,
         INTENT_EXIT,
         INTENT_SAFE_DISCONNECT,
+        OUTCOME_CANCELLED,
+        OUTCOME_CONTINUE,
+        OUTCOME_EXIT,
         dispatch_startup_intent,
     )
 
     called: list[str] = []
     monkeypatch.setattr(
         "mercury.backup.session_wizard.run_backup_sync_wizard",
-        lambda **_k: called.append("backup"),
+        lambda **_k: called.append("backup") or object(),
     )
     monkeypatch.setattr(
         "mercury.storage.interactive_menu.run_safe_disconnect_wizard",
-        lambda: called.append("disconnect"),
+        lambda: called.append("disconnect") or True,
     )
     monkeypatch.setattr(
-        "mercury.menu.task_menus.run_migration_hub",
-        lambda: called.append("migration"),
+        "mercury.menu.task_menus.run_destination_rehearsal_hub",
+        lambda: called.append("rehearsal"),
     )
 
-    assert dispatch_startup_intent(INTENT_BACKUP_SYNC) is None
-    assert dispatch_startup_intent(INTENT_SAFE_DISCONNECT) is None
-    assert dispatch_startup_intent(INTENT_DESTINATION_REHEARSAL) is None
-    assert dispatch_startup_intent(INTENT_BROWSE) is None
-    assert dispatch_startup_intent(INTENT_EXIT) == "exit"
-    assert called == ["backup", "disconnect", "migration"]
+    assert dispatch_startup_intent(INTENT_BACKUP_SYNC) is OUTCOME_CONTINUE
+    assert dispatch_startup_intent(INTENT_SAFE_DISCONNECT) is OUTCOME_CONTINUE
+    assert dispatch_startup_intent(INTENT_DESTINATION_REHEARSAL) is OUTCOME_CONTINUE
+    assert dispatch_startup_intent(INTENT_BROWSE) is OUTCOME_CONTINUE
+    assert dispatch_startup_intent(INTENT_EXIT) == OUTCOME_EXIT
+    assert called == ["backup", "disconnect", "rehearsal"]
+
+
+def test_safe_disconnect_cancel_returns_to_intent(monkeypatch) -> None:
+    from mercury.menu.intent import (
+        INTENT_SAFE_DISCONNECT,
+        OUTCOME_CANCELLED,
+        dispatch_startup_intent,
+    )
+
+    monkeypatch.setattr(
+        "mercury.storage.interactive_menu.run_safe_disconnect_wizard",
+        lambda: False,
+    )
+    assert dispatch_startup_intent(INTENT_SAFE_DISCONNECT) == OUTCOME_CANCELLED
+
+    from mercury.menu.intent import (
+        INTENT_BACKUP_SYNC,
+        OUTCOME_CANCELLED,
+        dispatch_startup_intent,
+    )
+
+    monkeypatch.setattr(
+        "mercury.backup.session_wizard.run_backup_sync_wizard",
+        lambda **_k: None,
+    )
+    assert dispatch_startup_intent(INTENT_BACKUP_SYNC) == OUTCOME_CANCELLED
+
+
+def test_startup_option_order_by_state(host_path: Path) -> None:
+    from mercury.menu.intent import (
+        INTENT_BACKUP_SYNC,
+        INTENT_RECONNECT,
+        INTENT_SAFE_DISCONNECT,
+        INTENT_VERIFY_PACKAGE,
+        build_startup_intent_options,
+        recommended_startup_action,
+    )
+
+    save_host_maintenance(
+        HostMaintenanceState(
+            storage_availability="detaching",
+            writes_allowed=False,
+            source_detach_preparation=True,
+            package_verification_status="DESTINATION_PACKAGE_VERIFIED",
+            package_id="pkg",
+        ),
+        path=host_path,
+    )
+    opts = build_startup_intent_options()
+    assert [a for _k, _l, a in opts][0] == INTENT_SAFE_DISCONNECT
+    assert recommended_startup_action() == INTENT_SAFE_DISCONNECT
+
+    save_host_maintenance(
+        HostMaintenanceState(
+            storage_availability="mounted",
+            writes_allowed=True,
+            active_write_role="primary",
+        ),
+        path=host_path,
+    )
+    # Writes enabled: startup intent is not offered, but builder still prefers backup.
+    assert recommended_startup_action() == INTENT_BACKUP_SYNC
+
+    save_host_maintenance(
+        HostMaintenanceState(storage_availability="detached", writes_allowed=False),
+        path=host_path,
+    )
+    opts = build_startup_intent_options()
+    assert opts[0][2] == INTENT_RECONNECT
+
+    save_host_maintenance(
+        HostMaintenanceState(
+            storage_availability="detaching",
+            writes_allowed=False,
+            source_detach_preparation=True,
+            package_verification_status="Pending",
+        ),
+        path=host_path,
+    )
+    opts = build_startup_intent_options()
+    assert opts[0][2] == INTENT_VERIFY_PACKAGE
 
 
 def test_viewing_intent_chooser_does_not_mutate_host(
@@ -323,14 +533,17 @@ def test_viewing_intent_chooser_does_not_mutate_host(
             storage_availability="detaching",
             writes_allowed=False,
             source_detach_preparation=True,
+            package_verification_status="DESTINATION_PACKAGE_VERIFIED",
+            package_id="pkg",
         ),
         path=host_path,
     )
     before = host_path.read_bytes()
+    # [4] Browse when disconnect is recommended first.
     monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: "4")
-    from mercury.menu.intent import run_startup_intent_chooser
+    from mercury.menu.intent import INTENT_BROWSE, run_startup_intent_chooser
 
-    assert run_startup_intent_chooser() == "browse"
+    assert run_startup_intent_chooser() == INTENT_BROWSE
     assert host_path.read_bytes() == before
 
 
@@ -351,7 +564,17 @@ def test_viewing_intent_chooser_does_not_mutate_host(
                 "writes_allowed": False,
                 "source_detach_preparation": True,
             },
-            "intent_chooser",
+            "verify_package",
+        ),
+        (
+            {
+                "storage_availability": "detaching",
+                "writes_allowed": False,
+                "source_detach_preparation": True,
+                "package_verification_status": "DESTINATION_PACKAGE_VERIFIED",
+                "package_id": "pkg",
+            },
+            "safe_disconnect",
         ),
         (
             {"storage_availability": "detached", "writes_allowed": False},
@@ -386,7 +609,7 @@ def test_recommendation_destination_and_mismatch(host_path: Path) -> None:
         state=StorageLifecycleState.ATTACHED_READ_ONLY,
         host_role=MigrationHostRole.DESTINATION_REHEARSAL,
         label=LIFECYCLE_LABELS[StorageLifecycleState.ATTACHED_READ_ONLY],
-        recommended="Continue destination inspection",
+        recommended="Continue destination validation",
         writes_allowed=False,
         package_status="DESTINATION_PACKAGE_VERIFIED",
         package_id="pkg",
@@ -394,7 +617,7 @@ def test_recommendation_destination_and_mismatch(host_path: Path) -> None:
         mount="/mnt/fake",
     )
     rec = build_main_menu_recommendation(lifecycle=snap)
-    assert rec.recommended_action in {"destination_validation", "intent_chooser"}
+    assert rec.recommended_action == "destination_validation"
 
     bad = StorageLifecycleSnapshot(
         state=StorageLifecycleState.DEVICE_IDENTITY_MISMATCH,
@@ -434,19 +657,96 @@ def test_software_only_empty_mountpoint_untouched(
     assert {p.name for p in mount.iterdir()} == before
 
 
-def test_main_menu_presentation_has_seven_actions_and_titles() -> None:
-    items = main_menu_items(writes_allowed=True)
-    assert len(items) == 7
-    titles = [t for _k, t in items]
-    assert titles == [
-        "Back up and sync this workstation",
-        "Mercury HDD and Storage",
-        "Restore and disaster recovery",
-        "Reports and backup history",
-        "Workstation migration",
-        "System health and configuration",
-        "Advanced tools",
-    ]
+def test_main_menu_marks_storage_recommended_when_safe_disconnect(
+    host_path: Path,
+) -> None:
+    from mercury.menu.options import MAIN_STORAGE, main_menu_items
+    from mercury.menu.recommendation import (
+        build_main_menu_recommendation,
+        main_menu_action_for_recommendation,
+    )
+
+    save_host_maintenance(
+        HostMaintenanceState(
+            storage_availability="detaching",
+            writes_allowed=False,
+            source_detach_preparation=True,
+            destination_rehearsal_active=True,
+            package_verification_status="DESTINATION_PACKAGE_VERIFIED",
+            package_id="pkg",
+        ),
+        path=host_path,
+    )
+    rec = build_main_menu_recommendation()
+    assert rec.recommended_action == "safe_disconnect"
+    assert main_menu_action_for_recommendation(rec.recommended_action) == MAIN_STORAGE
+    items = dict(
+        main_menu_items(
+            writes_allowed=False,
+            recommended_action_id=MAIN_STORAGE,
+        )
+    )
+    assert "recommended" in items["2"]
+    assert "recommended" not in items["1"]
+
+
+def test_should_offer_startup_intent_follows_recommendation(host_path: Path) -> None:
+    from mercury.menu.intent import should_offer_startup_intent
+
+    save_host_maintenance(
+        HostMaintenanceState(
+            storage_availability="detaching",
+            writes_allowed=False,
+            source_detach_preparation=True,
+            package_verification_status="DESTINATION_PACKAGE_VERIFIED",
+            package_id="pkg",
+        ),
+        path=host_path,
+    )
+    assert should_offer_startup_intent() is True
+
+    save_host_maintenance(
+        HostMaintenanceState(
+            storage_availability="mounted",
+            writes_allowed=True,
+            active_write_role="primary",
+        ),
+        path=host_path,
+    )
+    assert should_offer_startup_intent() is False
+
+
+def test_destination_rehearsal_hub_offers_read_paths(monkeypatch, host_path: Path) -> None:
+    from mercury.menu import task_menus
+
+    save_host_maintenance(
+        HostMaintenanceState(
+            storage_availability="detaching",
+            writes_allowed=False,
+            source_detach_preparation=True,
+            destination_rehearsal_active=True,
+            package_verification_status="DESTINATION_PACKAGE_VERIFIED",
+            package_id="destination_rehearsal_final_source_20260723T161213Z",
+        ),
+        path=host_path,
+    )
+    called: list[str] = []
+    monkeypatch.setattr(
+        "mercury.storage.interactive_menu.run_storage_menu",
+        lambda: called.append("storage"),
+    )
+    monkeypatch.setattr(
+        "mercury.storage.interactive_menu.run_safe_disconnect_wizard",
+        lambda: called.append("disconnect"),
+    )
+    # [1]=safe disconnect, [2]=review package
+    answers = iter(["2", "0"])
+    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
+    monkeypatch.setattr(task_menus.display_screen, "write_summary", lambda *_a, **_k: None)
+    monkeypatch.setattr(task_menus.display_screen, "open_screen", lambda *_a, **_k: None)
+    monkeypatch.setattr(task_menus.output, "write", lambda *_a, **_k: None)
+    task_menus.run_destination_rehearsal_hub()
+    assert called == ["storage"]
 
 
 def test_handoff_checklist_actions_use_symbolic_registry() -> None:

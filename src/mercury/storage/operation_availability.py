@@ -289,10 +289,17 @@ def format_recoverable_prompt(availability: OperationAvailability) -> str:
 
 
 def format_strong_prompt(availability: OperationAvailability) -> str:
-    lines = [
-        "SOURCE WRITER RESTORE REQUIRES CONFIRMATION",
-        "─" * 62,
-    ]
+    """Operator-facing strong-confirmation banner (phrase is typed at Confirmation:)."""
+    from mercury.terminal.theme import THEME_REDLINE, active_theme_id, danger_banner
+
+    phrase = availability.confirmation_phrase or RESTORE_SOURCE_WRITER_PHRASE
+    if active_theme_id() == THEME_REDLINE:
+        lines = list(danger_banner("CONFIRM SOURCE WRITER RESTORE"))
+    else:
+        lines = [
+            "SOURCE WRITER RESTORE REQUIRES CONFIRMATION",
+            "─" * 62,
+        ]
     for detail in availability.detail_lines:
         lines.append(detail)
     lines.append("")
@@ -303,11 +310,9 @@ def format_strong_prompt(availability: OperationAvailability) -> str:
     lines.extend(
         [
             "",
-            "Type exactly:",
+            f"Type exactly {phrase} to continue.",
+            "Press Enter without typing anything to cancel.",
             "",
-            f"  {availability.confirmation_phrase or RESTORE_SOURCE_WRITER_PHRASE}",
-            "",
-            "or press Enter to cancel:",
         ]
     )
     return "\n".join(lines)
@@ -361,7 +366,7 @@ def ensure_backup_writes_available(
                 "Restore the backup writer and continue?", default=False
             )
         if accepted is not True:
-            write_fn("Backup cancelled. Mercury writes remain disabled.")
+            # Caller owns the final cancel message.
             return OperationAvailability(
                 operation=availability.operation,
                 classification=availability.classification,
@@ -414,15 +419,16 @@ def ensure_backup_writes_available(
 
     if availability.is_strong:
         write_fn(format_strong_prompt(availability))
+        # Banner ends before the prompt; ask renders "Confirmation: " for typing.
         if ask_phrase is not None:
-            phrase = ask_phrase("").strip()
+            phrase = ask_phrase("Confirmation").strip()
         elif not interactive:
             write_fn(format_hard_block_message(availability))
             return availability
         else:
-            phrase = menu_prompts.ask("").strip()
+            phrase = menu_prompts.ask("Confirmation").strip()
         if phrase != availability.confirmation_phrase:
-            write_fn("Backup cancelled. Mercury writes remain disabled.")
+            # Caller owns the final cancel message (Backup and Sync / full backup).
             return OperationAvailability(
                 operation=availability.operation,
                 classification=availability.classification,
@@ -430,6 +436,7 @@ def ensure_backup_writes_available(
                 blockers=("confirmation phrase mismatch",),
                 next_action=availability.next_action,
                 facts=availability.facts,
+                detail_lines=availability.detail_lines,
                 operation_status=OperationStatus.CANCELLED,
                 transition_status=TransitionStatus.CANCELLED,
             )

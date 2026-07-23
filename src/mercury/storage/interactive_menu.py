@@ -196,16 +196,20 @@ def _run_status_and_validation() -> None:
     render_submenu([("1", "Run validation again")], indent=2)
 
 
-def run_safe_disconnect_wizard() -> None:
-    """Public entry for Safe Disconnect (post Backup and Sync, storage menu)."""
-    _run_safe_disconnect_wizard_impl()
+def run_safe_disconnect_wizard() -> bool:
+    """Public entry for Safe Disconnect (post Backup and Sync, storage menu).
+
+    Returns ``False`` when the operator cancels before a terminal detach outcome,
+    so callers (startup intent) can re-offer the chooser.
+    """
+    return _run_safe_disconnect_wizard_impl()
 
 
-def _run_safe_disconnect_wizard() -> None:
-    _run_safe_disconnect_wizard_impl()
+def _run_safe_disconnect_wizard() -> bool:
+    return _run_safe_disconnect_wizard_impl()
 
 
-def _run_safe_disconnect_wizard_impl() -> None:
+def _run_safe_disconnect_wizard_impl() -> bool:
     from mercury.storage.detach_wizard import (
         DETACH_CONFIRMATION,
         format_wizard_report,
@@ -213,31 +217,19 @@ def _run_safe_disconnect_wizard_impl() -> None:
     )
     from mercury.storage.block_device import resolve_mercury_block_device
 
-    display_screen.write_report_header("SAFE DISCONNECT MERCURY HDD")
+    from mercury.storage.detach_presentation import print_safe_disconnect_intro
+
     resolved = resolve_mercury_block_device(require_mounted=False)
-    if resolved.identity:
-        ident = resolved.identity
-        output.field("Drive", ident.label)
-        output.field("UUID", ident.uuid)
-        output.field("Model", ident.model or "—")
-        output.field("Partition", ident.partition_device)
-        output.field("Parent", ident.parent_device)
-        output.field("Mount", ident.mountpoint or "(not mounted)")
-    else:
+    print_safe_disconnect_intro(identity=resolved.identity if resolved.identity else None)
+    if not resolved.identity:
         for err in resolved.errors:
             display_screen.write_status("fail", err)
 
-    output.write("This operation will:")
-    output.write("  1. Check for active users and operations")
-    output.write("  2. Flush pending filesystem writes")
-    output.write("  3. Unmount the Mercury filesystem")
-    output.write("  4. Confirm the filesystem is detached by UUID")
-    output.write("  5. Power off the correct external HDD when supported")
-    output.write("It will NOT detach MERCURY_DATA_USB, delete files, alter Phase 3B,")
-    output.write("resume Erebus, or begin destination validation.")
-    if menu_prompts.ask_yes_no("Continue with preflight?", default=False) is not True:
+    if menu_prompts.ask_yes_no(
+        "Continue with safe-disconnect checks?", default=False
+    ) is not True:
         display_screen.write_summary("Cancelled.")
-        return
+        return False
 
     preview = run_detach_wizard(execute=False, skip_log_redirect=False)
     while True:
@@ -251,10 +243,10 @@ def _run_safe_disconnect_wizard_impl() -> None:
         ).strip().lower()
         if choice in {"0", "b", "back", "q", "cancel"}:
             display_screen.write_summary("Detach cancelled.")
-            return
+            return False
         if choice not in {"r", "recheck"}:
             display_screen.write_summary("Detach cancelled.")
-            return
+            return False
         preview = run_detach_wizard(execute=False, skip_log_redirect=False)
 
     output.write("")
@@ -263,12 +255,12 @@ def _run_safe_disconnect_wizard_impl() -> None:
     output.write("The standard operating-system sudo prompt may appear.")
     if menu_prompts.ask_yes_no("Proceed to privileged detach?", default=False) is not True:
         display_screen.write_summary("Stopped before privileged steps.")
-        return
+        return False
 
     phrase = menu_prompts.ask("Type DETACH MERCURY HDD to execute: ").strip()
     if phrase != DETACH_CONFIRMATION:
         display_screen.write_status("fail", "Confirmation phrase mismatch — aborted.")
-        return
+        return False
 
     while True:
         result = run_detach_wizard(
@@ -285,16 +277,18 @@ def _run_safe_disconnect_wizard_impl() -> None:
             "DETACH_BLOCKED_SUDO",
             "HDD_ALREADY_DETACHED",
         }:
-            return
+            # Terminal outcomes (including blocked sudo / already detached) leave
+            # the wizard; treat as completed navigation rather than chooser cancel.
+            return True
         choice = menu_prompts.ask(
             "Blocked. [R] Recheck  [B] Back  [0] Cancel: "
         ).strip().lower()
         if choice in {"0", "b", "back", "q", "cancel"}:
             display_screen.write_summary("Detach cancelled.")
-            return
+            return False
         if choice not in {"r", "recheck", ""}:
             display_screen.write_summary("Detach cancelled.")
-            return
+            return False
 
 
 def _print_reconnect_result(result) -> None:

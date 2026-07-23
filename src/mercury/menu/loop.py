@@ -101,17 +101,22 @@ def run_menu(interactive: bool = True, *, render_menu_text: Callable[[], str] | 
             output.write("")
 
         from mercury.menu.intent import (
+            OUTCOME_CANCELLED,
+            OUTCOME_EXIT,
             dispatch_startup_intent,
             run_startup_intent_chooser,
             should_offer_startup_intent,
         )
 
-        if should_offer_startup_intent():
+        while should_offer_startup_intent():
             intent = run_startup_intent_chooser()
             outcome = dispatch_startup_intent(intent)
-            if outcome == "exit":
+            if outcome == OUTCOME_EXIT:
                 menu_display.write_summary("Exiting Mercury.")
                 return
+            if outcome == OUTCOME_CANCELLED:
+                continue
+            break
     else:
         from mercury.storage.lifecycle import maybe_prompt_storage_first_run
 

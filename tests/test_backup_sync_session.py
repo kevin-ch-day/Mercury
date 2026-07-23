@@ -939,7 +939,6 @@ def test_end_of_session_disconnect_offer() -> None:
     session = BackupSyncSession(
         session_id="x", session_result=SessionResult.PASS, recommended_next_action="safe_disconnect"
     )
-    # Capture printed options without prompting: inject ask.
     import mercury.backup.session_wizard as wiz
 
     printed: list[str] = []
@@ -964,7 +963,39 @@ def test_end_of_session_disconnect_offer() -> None:
     assert any("Safely disconnect Mercury HDD" in line for line in printed)
 
 
-def test_session_choice_menu_marks_recommended_and_uses_choice_prompt(
+def test_post_session_actions_contiguous_when_no_disconnect() -> None:
+    from mercury.backup.session_models import BackupSyncSession
+    from mercury.backup.session_wizard import offer_post_session_actions
+    import mercury.backup.session_wizard as wiz
+
+    session = BackupSyncSession(session_id="x", session_result=SessionResult.FAIL)
+    printed: list[str] = []
+    monkey_ask = {"n": 0}
+
+    def ask(_prompt: str) -> str:
+        monkey_ask["n"] += 1
+        return "1"  # first visible option → review
+
+    printed_write = printed.append
+    orig_write = wiz.output.write
+    wiz.output.write = lambda msg="": printed_write(str(msg))  # type: ignore[method-assign]
+    from mercury.menu import prompts as menu_prompts
+
+    orig_ask = menu_prompts.ask
+    menu_prompts.ask = ask  # type: ignore[assignment]
+    try:
+        assert offer_post_session_actions(session) == "review"
+    finally:
+        menu_prompts.ask = orig_ask  # type: ignore[assignment]
+        wiz.output.write = orig_write  # type: ignore[method-assign]
+    text = "\n".join(printed)
+    assert "[1] Review session details" in text
+    assert "[2] Return to main menu" in text
+    assert "Safely disconnect" not in text
+    assert "[3]" not in text
+
+
+def test_session_choice_menu_operator_presentation(
     monkeypatch: pytest.MonkeyPatch, host_path: Path
 ) -> None:
     from mercury.backup import session_wizard as wiz
@@ -985,42 +1016,252 @@ def test_session_choice_menu_marks_recommended_and_uses_choice_prompt(
     printed: list[str] = []
     prompts: list[str] = []
 
-    monkeypatch.setattr(
-        wiz.output, "write", lambda msg="": printed.append(str(msg))
-    )
+    monkeypatch.setattr(wiz.output, "write", lambda msg="": printed.append(str(msg)))
 
     from mercury.menu import prompts as menu_prompts
 
     def capturing_ask(prompt: str) -> str:
-        # Use the real ask path so Choice normalization is exercised.
         normalized = menu_prompts.ensure_choice_prompt(prompt)
         prompts.append(normalized)
         return "0"
 
     monkeypatch.setattr(menu_prompts, "ask", capturing_ask)
-    monkeypatch.setattr(menu_prompts, "ensure_choice_prompt", menu_prompts.ensure_choice_prompt)
-    summaries: list[str] = []
-    monkeypatch.setattr(
-        wiz.display_screen,
-        "write_summary",
-        lambda msg="": summaries.append(str(msg)),
-    )
-    monkeypatch.setattr(wiz.display_screen, "open_screen", lambda *_a, **_k: None)
-    monkeypatch.setattr(wiz.display_screen, "write_fields", lambda *_a, **_k: None)
+    monkeypatch.setattr(wiz.display_screen, "open_screen", lambda title: printed.append(title))
     monkeypatch.setattr(wiz.display_screen, "write_blank", lambda: None)
+    monkeypatch.setattr(wiz.display_screen, "write_summary", lambda msg="": printed.append(str(msg)))
 
     wiz._print_overview(availability_classification="STRONG_CONFIRMATION")
-    assert any("recovery artifacts that are not included" in line for line in summaries)
-    assert any("remains valid for destination rehearsal" in line for line in summaries)
-    assert not any("new source changes that are not included" in line for line in summaries)
+    text = "\n".join(printed)
+    assert "BACK UP AND SYNC AGAIN" in text
+    assert "STRONG_CONFIRMATION" not in text
+    assert "Exact confirmation before enabling writes" in text
+    assert "IMPORTANT" in text
+    assert "Those new artifacts will not be included" in text
+    assert "Back up and verify" in text
+    assert "Ask before running" in text
+    assert "Availability" not in text or "Action required" in text
 
     assert wiz._choice_menu() == "0"
-    assert any(
-        "Restore source writer and run recommended session   recommended" in line
-        for line in printed
-    )
+    choices = "\n".join(printed)
+    assert "Restore source writer and continue" in choices
+    assert "Review or customize this session" in choices
+    assert "Databases only" not in choices.split("Restore source writer")[0]  # not on first screen
+    # Databases only lives under customize, not the first choice menu:
+    first_menu = [line for line in printed if line.strip().startswith("[")]
+    assert not any("Databases only" in line for line in first_menu)
+    assert not any("Git recovery only" in line for line in first_menu)
+    assert not any("recommended" in line.lower() for line in first_menu)
     assert prompts and prompts[0].endswith(": ")
-    assert "Choice:" in prompts[0].replace("\n", "")
+    assert "Phase 3B rehearsal" in text
+    assert "Snapshot" in text
+
+
+def test_customize_retains_databases_and_git_only(
+    monkeypatch: pytest.MonkeyPatch, host_path: Path
+) -> None:
+    from mercury.backup import session_wizard as wiz
+    from mercury.backup.session_models import recommended_session_plan
+
+    answers = iter(["7"])
+    printed: list[str] = []
+    monkeypatch.setattr(wiz.output, "write", lambda msg="": printed.append(str(msg)))
+    monkeypatch.setattr(wiz.display_screen, "open_screen", lambda *_a, **_k: None)
+    monkeypatch.setattr(wiz.display_screen, "write_status", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        "mercury.menu.prompts.ask", lambda *_a, **_k: next(answers)
+    )
+    result = wiz._customize_plan(recommended_session_plan())
+    assert result is not None
+    plan, mode = result
+    assert mode == "databases_only"
+    assert plan.production_backup is True
+    assert plan.git_recovery is False
+    assert any("Databases only" in line for line in printed)
+    assert any("Git recovery only" in line for line in printed)
+
+
+def test_customize_run_selected_does_not_reprompt_optional_lanes(
+    monkeypatch: pytest.MonkeyPatch, host_path: Path
+) -> None:
+    """Production-only custom plan must not be misclassified as Databases only."""
+    from mercury.backup import session_wizard as wiz
+    from mercury.backup.session_models import SessionPlan, SessionResult
+    from mercury.storage.host_maintenance import HostMaintenanceState, save_host_maintenance
+    from mercury.storage.operation_availability import (
+        AvailabilityClassification,
+        OperationAvailability,
+        OperationStatus,
+    )
+
+    save_host_maintenance(
+        HostMaintenanceState(
+            storage_availability="mounted",
+            writes_allowed=True,
+            active_write_role="primary",
+        ),
+        path=host_path,
+    )
+    optional_calls: list[str] = []
+    executed_plans: list[SessionPlan] = []
+
+    # Choice 2 → customize; customize returns production-only via Run selected (6)
+    answers = iter(["2", "0"])  # wizard choice then post-session main menu
+    monkeypatch.setattr(
+        "mercury.menu.prompts.ask", lambda *_a, **_k: next(answers, "3")
+    )
+    monkeypatch.setattr(wiz.display_screen, "open_screen", lambda *_a, **_k: None)
+    monkeypatch.setattr(wiz.display_screen, "write_summary", lambda *_a, **_k: None)
+    monkeypatch.setattr(wiz.display_screen, "write_blank", lambda: None)
+    monkeypatch.setattr(wiz.output, "write", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        wiz,
+        "assess_operation_availability",
+        lambda *_a, **_k: OperationAvailability(
+            operation="database_backup",
+            classification=AvailabilityClassification.AVAILABLE,
+            available=True,
+            operation_status=OperationStatus.READY,
+        ),
+    )
+    monkeypatch.setattr(
+        wiz,
+        "_customize_plan",
+        lambda _plan: (
+            SessionPlan(
+                production_backup=True,
+                verify_production=True,
+                development_backup=False,
+                git_recovery=False,
+                sync_development=False,
+            ).normalize(),
+            "custom",
+        ),
+    )
+
+    def track_optional(plan):
+        optional_calls.append("asked")
+        return plan
+
+    monkeypatch.setattr(wiz, "_ask_optional_lanes", track_optional)
+
+    def fake_run(plan=None, **_k):
+        executed_plans.append(plan)
+        from mercury.backup.session_models import BackupSyncSession
+
+        return BackupSyncSession(
+            session_id="t",
+            session_result=SessionResult.PASS,
+        )
+
+    monkeypatch.setattr(wiz, "run_backup_sync_session", fake_run)
+    monkeypatch.setattr(wiz, "print_session_result", lambda *_a, **_k: None)
+    monkeypatch.setattr(wiz, "offer_post_session_actions", lambda *_a, **_k: "main_menu")
+
+    session = wiz.run_backup_sync_wizard()
+    assert session is not None
+    assert optional_calls == []
+    assert executed_plans and executed_plans[0].git_recovery is False
+    assert executed_plans[0].development_backup is False
+
+
+def test_databases_only_preset_still_asks_optional_lanes(
+    monkeypatch: pytest.MonkeyPatch, host_path: Path
+) -> None:
+    from mercury.backup import session_wizard as wiz
+    from mercury.backup.session_models import SessionPlan, SessionResult, BackupSyncSession
+    from mercury.storage.host_maintenance import HostMaintenanceState, save_host_maintenance
+    from mercury.storage.operation_availability import (
+        AvailabilityClassification,
+        OperationAvailability,
+        OperationStatus,
+    )
+
+    save_host_maintenance(
+        HostMaintenanceState(
+            storage_availability="mounted",
+            writes_allowed=True,
+            active_write_role="primary",
+        ),
+        path=host_path,
+    )
+    optional_calls: list[str] = []
+    answers = iter(["2"])
+    monkeypatch.setattr(
+        "mercury.menu.prompts.ask", lambda *_a, **_k: next(answers, "3")
+    )
+    monkeypatch.setattr(wiz.display_screen, "open_screen", lambda *_a, **_k: None)
+    monkeypatch.setattr(wiz.display_screen, "write_summary", lambda *_a, **_k: None)
+    monkeypatch.setattr(wiz.display_screen, "write_blank", lambda: None)
+    monkeypatch.setattr(wiz.output, "write", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        wiz,
+        "assess_operation_availability",
+        lambda *_a, **_k: OperationAvailability(
+            operation="database_backup",
+            classification=AvailabilityClassification.AVAILABLE,
+            available=True,
+            operation_status=OperationStatus.READY,
+        ),
+    )
+    monkeypatch.setattr(
+        wiz,
+        "_customize_plan",
+        lambda _plan: (
+            SessionPlan(
+                production_backup=True,
+                verify_production=True,
+                development_backup=False,
+                git_recovery=False,
+                sync_development=False,
+            ).normalize(),
+            "databases_only",
+        ),
+    )
+
+    def track_optional(plan):
+        optional_calls.append("asked")
+        return plan
+
+    monkeypatch.setattr(wiz, "_ask_optional_lanes", track_optional)
+    monkeypatch.setattr(
+        wiz,
+        "run_backup_sync_session",
+        lambda plan=None, **_k: BackupSyncSession(
+            session_id="t", session_result=SessionResult.PASS
+        ),
+    )
+    monkeypatch.setattr(wiz, "print_session_result", lambda *_a, **_k: None)
+    monkeypatch.setattr(wiz, "offer_post_session_actions", lambda *_a, **_k: "main_menu")
+
+    assert wiz.run_backup_sync_wizard() is not None
+    assert optional_calls == ["asked"]
+
+
+def test_strong_confirmation_phrase_prompt_is_typed_not_prefilled() -> None:
+    from mercury.storage.operation_availability import (
+        AvailabilityClassification,
+        OperationAvailability,
+        format_strong_prompt,
+    )
+    from mercury.storage.transitions import RESTORE_SOURCE_WRITER_PHRASE
+
+    text = format_strong_prompt(
+        OperationAvailability(
+            operation="database_backup",
+            classification=AvailabilityClassification.STRONG_CONFIRMATION,
+            available=False,
+            confirmation_phrase=RESTORE_SOURCE_WRITER_PHRASE,
+            detail_lines=("detail",),
+            warnings=(),
+        )
+    )
+    assert "Type exactly RESTORE SOURCE WRITER to continue." in text
+    assert "Press Enter without typing anything to cancel." in text
+    assert "Confirmation:" not in text  # rendered by ask("Confirmation")
+    assert RESTORE_SOURCE_WRITER_PHRASE in text
+    assert "STRONG_CONFIRMATION" not in text
+    # Do not present the phrase as a fake pre-filled answer line.
+    assert "\n  RESTORE SOURCE WRITER\n" not in text
 
 
 def test_expert_database_only_menu_path_remains() -> None:

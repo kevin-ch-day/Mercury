@@ -131,7 +131,10 @@ def test_full_backup_global_refusal_before_dev_prompt(
     assert result is None
     assert "SOURCE WRITER RESTORE REQUIRES CONFIRMATION" in out
     assert RESTORE_SOURCE_WRITER_PHRASE in out
-    assert "Backup cancelled. Mercury writes remain disabled." in out
+    assert "Backup cancelled." in out
+    assert "Mercury writes remain disabled." in out
+    assert out.count("Backup cancelled.") == 1
+    assert out.count("writes remain disabled") == 1
     assert "Also back up configured development" not in out
     assert "Development recovery" not in out
     assert "REFUSED" in out
@@ -274,9 +277,9 @@ def test_backup_screen_shows_write_disabled_state(
     plan = build_backup_plan(["android_permission_intel"])
     _render_backup_screen(plan, show_title=True)
     out = capsys.readouterr().out
-    assert "Write state:" in out
-    assert "disabled" in out
-    assert "Backup actions:" in out
+    assert "Backup writer" in out
+    assert "Disabled" in out or "disabled" in out
+    assert "Backup actions" in out
     assert "unavailable" in out
     assert DETACH_UNAVAILABLE_SUFFIX in out
     assert "Back up and sync this workstation" in out

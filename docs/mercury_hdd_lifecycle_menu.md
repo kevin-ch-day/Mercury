@@ -29,7 +29,7 @@ Invalid actions are hidden. Safe disconnect and reconnect are never buried under
 | Writes disabled, package verified / ready | Safe disconnect Mercury HDD |
 | Preparing or blocked | Recheck disconnect blockers |
 | Detached | Reconnect or inspect Mercury HDD |
-| Read-only | Continue destination inspection |
+| Read-only | Continue destination validation |
 | Package unverified | Verify destination package |
 | Identity mismatch | Diagnose attached storage |
 

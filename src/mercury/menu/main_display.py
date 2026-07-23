@@ -99,21 +99,25 @@ MENU_SECTIONS: list[tuple[str, list[MenuItem]]] = [
 
 def refresh_menu_sections(*, writes_allowed: bool | None = None) -> None:
     """Rebuild ``MENU_SECTIONS`` titles (availability suffixes) for the current writer state."""
-    from mercury.menu.recommendation import build_main_menu_recommendation
+    from mercury.menu.recommendation import (
+        build_main_menu_recommendation,
+        main_menu_action_for_recommendation,
+    )
     from mercury.storage.host_maintenance import load_host_maintenance
 
     host = load_host_maintenance()
     allowed = writes_allowed if writes_allowed is not None else hdd_writes_allowed(host)
     detached = host.storage_availability == "detached"
-    rehearsal = bool(host.destination_rehearsal_in_progress)
-    software_only = bool(build_main_menu_recommendation(host=host).software_only)
+    rec = build_main_menu_recommendation(host=host)
+    software_only = bool(rec.software_only)
+    recommended_action_id = main_menu_action_for_recommendation(rec.recommended_action)
     items = [
         MenuItem(key, title)
         for key, title in main_menu_items(
             writes_allowed=allowed,
             hdd_detached=detached,
-            destination_rehearsal=rehearsal,
             software_only=software_only,
+            recommended_action_id=recommended_action_id,
         )
     ]
     MENU_SECTIONS.clear()
@@ -300,8 +304,7 @@ def render_main_menu_body(*, probe_database: bool | None = None) -> str:
 def render_main_menu(*, probe_database: bool | None = None) -> str:
     probe = should_probe_database_status() if probe_database is None else probe_database
     lines = [
-        MENU_TITLE,
-        MENU_SUBTITLE,
+        *menu_header_lines(MENU_SUBTITLE),
         "",
     ]
     lines.extend(_main_menu_body_lines(probe_database=probe))

@@ -87,16 +87,49 @@ def print_handoff_checklist(checklist: HandoffChecklist) -> None:
 
 
 def print_handoff_status_panel(checklist: HandoffChecklist) -> None:
-    """Render the compact interactive-menu status panel without the full table."""
-    display_screen.open_screen(HANDOFF_SCREEN_TITLE)
+    """Render destination-move package status (not stale transfer dates)."""
+    from mercury.menu.destination_move import (
+        build_destination_move_status,
+        print_destination_move_status,
+    )
+    from mercury.storage.host_maintenance import load_host_maintenance
+
+    status = build_destination_move_status()
+    display_screen.open_screen("DESTINATION HANDOFF STATUS")
+    print_destination_move_status(status, with_title=False)
+    display_screen.write_blank()
     display_screen.write_fields(
         {
-            "Handoff readiness": checklist.handoff_status,
-            "Database package": checklist.database_package,
-            "Repository package": checklist.repository_package,
-            "Latest transfer": checklist.latest_transfer_age or "none",
-            "Checklist": step_progress_summary(checklist.steps),
+            "Package ID": status.package_id,
+            "Package verification": status.package_status,
+            "Destination validation": status.destination_state,
+            "Safe-disconnect readiness": status.recommended,
+            "Intake subset": status.intake_note,
+            "Unresolved inputs": status.unresolved_inputs,
         }
+    )
+    if status.phase3b_backup_ids:
+        display_screen.write_blank()
+        display_screen.write_section("Phase 3B backup IDs")
+        display_screen.write_list("", list(status.phase3b_backup_ids))
+    host = load_host_maintenance()
+    if status.snapshot_local:
+        from mercury.terminal.format import format_utc_audit_timestamp
+        from datetime import datetime, timezone
+        import re
+
+        matches = re.findall(r"(\d{8}T\d{6})Z?", host.package_id or "")
+        if matches:
+            instant = datetime.strptime(matches[-1], "%Y%m%dT%H%M%S").replace(
+                tzinfo=timezone.utc
+            )
+            display_screen.write_blank()
+            display_screen.write_summary(format_utc_audit_timestamp(instant))
+    # Keep checklist handoff_status available without promoting transfer dates.
+    display_screen.write_blank()
+    display_screen.write_summary(
+        f"Legacy transfer checklist readiness: {checklist.handoff_status} "
+        "(see Advanced handoff tools for historical transfer packages)."
     )
 
 
@@ -196,12 +229,19 @@ def print_handoff_history(report: HandoffHistoryReport) -> None:
 
 
 def print_receiver_handoff_guide(*, checklist: HandoffChecklist | None = None) -> None:
-    """Show the receiving-workstation checklist for imported handoff media."""
+    """Show the receiving-workstation checklist pinned to the current package."""
+    from mercury.menu.destination_move import print_package_receiver_guide
+    from mercury.storage.host_maintenance import load_host_maintenance
+
+    package_id = load_host_maintenance().package_id
+    if package_id:
+        print_package_receiver_guide(package_id=package_id)
+        display_screen.write_blank()
     display_screen.open_screen(RECEIVER_SCREEN_TITLE)
     if checklist is None:
         display_screen.write_status(
             "warn",
-            "Handoff snapshot unavailable — follow the generic receiver checklist below.",
+            "Handoff snapshot unavailable — follow the package receiver sequence above.",
         )
     else:
         readiness_kind = handoff_status_kind(checklist.handoff_status)
@@ -209,14 +249,8 @@ def print_receiver_handoff_guide(*, checklist: HandoffChecklist | None = None) -
             readiness_kind,
             f"Source handoff status: {checklist.handoff_status}",
         )
-        display_screen.write_blank()
-        display_screen.write_fields(
-            {
-                "Pipeline": handoff_pipeline_line(checklist),
-                "Latest transfer on storage": checklist.latest_transfer_age or "none",
-                "Latest DB bundle index": checklist.latest_database_bundle_age or "none",
-            }
-        )
+        if package_id:
+            display_screen.write_fields({"Pinned package ID": package_id})
     display_screen.write_blank()
     display_screen.write_section("Receiver checklist")
     rows = [

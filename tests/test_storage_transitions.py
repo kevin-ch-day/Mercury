@@ -661,7 +661,7 @@ def test_dashboard_intent_aware_next_action() -> None:
         writes_allowed=False,
         package_status="DESTINATION_PACKAGE_VERIFIED",
     )
-    assert dashboard_next_action_short(snap) == "Choose backup, disconnect, or rehearsal"
+    assert dashboard_next_action_short(snap) == "Safely disconnect the Mercury HDD"
 
 
 def test_prepare_and_restore_round_trip(host_path: Path, monkeypatch) -> None:

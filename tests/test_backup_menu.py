@@ -57,11 +57,11 @@ def test_run_backup_menu_non_interactive(
     out = capsys.readouterr().out
     assert "Backup Operations" in out
     assert "USB target" not in out
-    assert "USB Path:" in out
-    assert "Used:" in out
-    assert "Total:" in out
-    assert "Free:" in out
-    assert "Usage:" in out
+    assert "USB Path" in out
+    assert "Used" in out
+    assert "Total" in out
+    assert "Free" in out
+    assert "Usage" in out
     assert "Status:" not in out
     assert "Mode:" not in out
     assert "Backup mode:" not in out
@@ -195,7 +195,7 @@ def test_backup_menu_section_spacing_boundaries(
         raise AssertionError(f"line not found for {predicate!r}\n{out}")
 
     title_i = index_of(lambda line: line.strip() == "Backup Operations")
-    status_i = index_of(lambda line: line.lstrip().startswith("Status:"))
+    status_i = index_of(lambda line: "Status" in line and "ok" in line)
     header_i = index_of(lambda line: line.startswith("DATABASE"))
     assert status_i > title_i
     assert lines[status_i + 1] == ""
@@ -224,12 +224,12 @@ def test_backup_menu_section_spacing_boundaries(
         assert lines[index] != ""
 
     # Aligned field values: Status value starts at same column as Backup root value.
-    root_line = next(line for line in lines if "Backup root:" in line)
-    status_line = next(line for line in lines if line.lstrip().startswith("Status:"))
-    root_value_at = root_line.index(":") + 1
+    root_line = next(line for line in lines if "Backup root" in line)
+    status_line = next(line for line in lines if "Status" in line and "ok" in line)
+    root_value_at = root_line.index("Backup root") + len("Backup root")
     while root_value_at < len(root_line) and root_line[root_value_at] == " ":
         root_value_at += 1
-    status_value_at = status_line.index(":") + 1
+    status_value_at = status_line.index("Status") + len("Status")
     while status_value_at < len(status_line) and status_line[status_value_at] == " ":
         status_value_at += 1
     assert root_value_at == status_value_at

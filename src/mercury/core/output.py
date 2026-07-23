@@ -70,8 +70,9 @@ def _get_console():
 def _looks_like_markup(text: str) -> bool:
     if not colors_enabled(stream=_out()) or "[" not in text or "]" not in text:
         return False
-    # Avoid treating plain status lines like "[ok] verified" as markup when unstyled.
-    if text.lstrip().startswith(("[ok]", "[--]", "[!!]", "[i]")) and "[/" not in text:
+    # Avoid treating plain status lines as markup when unstyled.
+    prefixes = ("[ok]", "[--]", "[!!]", "[i]", "[PASS]", "[WARN]", "[FAIL]", "[INFO]")
+    if text.lstrip().startswith(prefixes) and "[/" not in text:
         return False
     return True
 
@@ -83,13 +84,14 @@ def write(text: str = "") -> None:
         print(text, file=_out())
 
 
-def rule(width: int = 60, char: str = "-") -> None:
-    line = char * width
-    if colors_enabled(stream=_out()):
-        from mercury.terminal.theme import markup as theme_markup
-        from mercury.terminal.theme import RULE
+def rule(width: int = 60, char: str | None = None) -> None:
+    from mercury.terminal.design_system import active_styles
+    from mercury.terminal.theme import markup as theme_markup
 
-        write(theme_markup(line, RULE))
+    styles = active_styles()
+    line = (char or ("-" if not colors_enabled(stream=_out()) else styles.rule_char)) * width
+    if colors_enabled(stream=_out()):
+        write(theme_markup(line, styles.rule))
     else:
         write(line)
 

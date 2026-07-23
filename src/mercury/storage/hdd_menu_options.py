@@ -77,7 +77,7 @@ def recommended_primary_label(snapshot: StorageLifecycleSnapshot) -> tuple[str, 
     }:
         return "Reconnect or inspect Mercury HDD", ""
     if state == StorageLifecycleState.ATTACHED_READ_ONLY:
-        return "Continue destination inspection", ""
+        return "Continue destination validation", ""
     if state == StorageLifecycleState.ATTACHED_WRITER_ENABLED:
         return "Prepare HDD for safe disconnect", ""
     if blocked or (
@@ -141,40 +141,11 @@ def dashboard_next_action_short(snapshot: StorageLifecycleSnapshot) -> str:
     from mercury.menu.recommendation import build_main_menu_recommendation
 
     try:
-        rec = build_main_menu_recommendation(lifecycle=snapshot)
-        return rec.explanation
+        return build_main_menu_recommendation(lifecycle=snapshot).explanation
     except Exception:
-        pass
-    label, suffix = recommended_primary_label(snapshot)
-    # Intent-aware: unfinished disconnect prep must not assume the operator
-    # still wants to disconnect on the next session.
-    if snapshot.state in {
-        StorageLifecycleState.READY_TO_DISCONNECT,
-        StorageLifecycleState.PREPARING_TO_DISCONNECT,
-        StorageLifecycleState.ATTACHED_WRITER_DISABLED,
-    } and not snapshot.writes_allowed:
-        return "Choose backup, disconnect, or rehearsal"
-    if snapshot.writes_allowed and snapshot.state == StorageLifecycleState.ATTACHED_WRITER_ENABLED:
-        return "Back up and sync this workstation"
-    if "Safe disconnect" in label:
-        return (
-            "Safe disconnect ready"
-            if suffix == "ready" or snapshot.state == StorageLifecycleState.READY_TO_DISCONNECT
-            else "Safe disconnect"
-        )
-    if label.startswith("Reconnect"):
-        return "Attach HDD and choose Reconnect"
-    if "destination inspection" in label.lower():
-        return "Continue destination inspection"
-    if "Prepare HDD" in label:
-        return "Prepare for safe disconnect"
-    if "Recheck" in label:
-        return "Recheck disconnect blockers"
-    if "Verify destination" in label:
-        return "Verify destination package"
-    if "Diagnose" in label:
-        return "Diagnose attached storage"
-    return label
+        # Fallback only if recommendation service cannot load (tests / broken env).
+        label, _suffix = recommended_primary_label(snapshot)
+        return label
 
 
 def hdd_menu_render_options(snapshot: StorageLifecycleSnapshot) -> list[tuple[str, str]]:

@@ -34,7 +34,8 @@ def test_menu_handoff_shortcut_runs_handoff_menu(monkeypatch: pytest.MonkeyPatch
         called["handoff"] = True
 
     monkeypatch.setattr("mercury.handoff.interactive_menu.run_handoff_menu", _fake_handoff)
-    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: "1")
+    answers = iter(["1", "0"])  # migration hub → handoff, then Back
+    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
     assert interactive_handle_choice("h") == "continue"
     assert called["handoff"] is True
 
@@ -157,10 +158,11 @@ def test_handle_sync_plan_returns_to_menu_without_footer(
     )
     monkeypatch.setattr("mercury.sync.interactive_menu._load_report", lambda: report)
     monkeypatch.setattr("mercury.sync.interactive_menu.read_sync_choice", lambda: "0")
-    # Phase 3: sync is under Advanced tools [7] → Sync.
+    # Phase 3: sync is under Advanced tools [7] → Sync, then Back from hub.
+    answers = iter(["2", "0"])
     monkeypatch.setattr(
         "mercury.menu.prompts.ask",
-        lambda *_a, **_k: "2",  # Advanced → Sync production to development
+        lambda *_a, **_k: next(answers),
     )
     assert handle_menu_choice("7") == "continue"
     out = capsys.readouterr().out
@@ -246,6 +248,11 @@ def test_render_main_menu_matches_simple_layout(monkeypatch: pytest.MonkeyPatch)
     assert "Cutover blockers" in text
     assert "Execution Safety" not in text
     assert "─" in text
+    # Branded header uses a full-width rule after the subtitle (not a short 16-dash glue).
+    lines = text.splitlines()
+    subtitle_idx = lines.index(menu_display.MENU_SUBTITLE)
+    assert lines[subtitle_idx + 1].startswith("─")
+    assert len(lines[subtitle_idx + 1].strip()) >= 40
     assert "      [1] Back up and sync this workstation" in text
     assert "      [2] Mercury HDD and Storage" in text
     assert "      [3] Restore and disaster recovery" in text
@@ -257,7 +264,11 @@ def test_render_main_menu_matches_simple_layout(monkeypatch: pytest.MonkeyPatch)
     assert "Operator-storage checklist" not in text
     assert "Core workflows" not in text
     assert "Diagnostics" not in text
-    assert f"{menu_display.MENU_SUBTITLE}\n────────────────" not in text
+    # Branded header uses a full-width rule after the subtitle.
+    lines = text.splitlines()
+    subtitle_idx = lines.index(menu_display.MENU_SUBTITLE)
+    assert lines[subtitle_idx + 1].startswith("─")
+    assert len(lines[subtitle_idx + 1].strip()) >= 40
 
 
 def test_main_menu_options_are_single_action_lines(monkeypatch: pytest.MonkeyPatch) -> None:

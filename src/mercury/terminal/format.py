@@ -46,6 +46,70 @@ def format_human_datetime(value: str | datetime | None) -> str:
     )
 
 
+def format_operator_datetime(value: str | datetime | None) -> str:
+    """Prose local timestamp for interactive menus: ``July 23, 2026 · 11:12 AM CDT``."""
+    if value is None:
+        return "-"
+    if isinstance(value, datetime):
+        instant = value
+    else:
+        try:
+            instant = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return str(value)
+
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=timezone.utc)
+    local_instant = instant.astimezone()
+    hour = local_instant.hour % 12 or 12
+    ampm = "AM" if local_instant.hour < 12 else "PM"
+    tz_label = local_instant.tzname() or "local"
+    return (
+        f"{local_instant.strftime('%B')} {local_instant.day}, {local_instant.year} · "
+        f"{hour}:{local_instant.minute:02d} {ampm} {tz_label}"
+    )
+
+
+def format_package_id_snapshot(package_id: str) -> str | None:
+    """Local snapshot time derived from the trailing ``YYYYMMDDTHHMMSS`` in a package id."""
+    import re
+
+    matches = re.findall(r"(\d{8}T\d{6})Z?", package_id or "")
+    if not matches:
+        return None
+    try:
+        instant = datetime.strptime(matches[-1], "%Y%m%dT%H%M%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    return format_operator_datetime(instant)
+
+
+def format_utc_audit_timestamp(value: str | datetime | None) -> str:
+    """UTC audit line: ``UTC: 2026-07-23T16:12:00Z``."""
+    if value is None:
+        return "UTC: —"
+    if isinstance(value, datetime):
+        instant = value
+    else:
+        try:
+            instant = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return f"UTC: {value}"
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=timezone.utc)
+    utc = instant.astimezone(timezone.utc)
+    return f"UTC: {utc.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+
+
+def short_commit(commit: str, *, length: int = 7) -> str:
+    text = (commit or "").strip()
+    if not text:
+        return "—"
+    if len(text) <= length:
+        return text
+    return text[:length] + "…"
+
+
 def format_compact_human_datetime(value: str | datetime | None) -> str:
     """Compact local timestamp for narrow operator tables like ``6/9 10:01 AM``."""
     if value is None:
@@ -75,6 +139,18 @@ def short_path(path: str, *, max_len: int = 52) -> str:
     if len(path) <= max_len:
         return path
     return f"…{path[-(max_len - 1):]}"
+
+
+def truncate_middle(text: str, *, max_len: int) -> str:
+    """Truncate from the middle, preserving head and tail identity."""
+    value = str(text)
+    if max_len <= 0 or len(value) <= max_len:
+        return value
+    if max_len <= 3:
+        return "…"
+    head = max(1, (max_len - 1) // 2)
+    tail = max_len - head - 1
+    return f"{value[:head]}…{value[-tail:]}"
 
 
 def format_backup_id_display(backup_id: str, *, max_len: int = 40) -> str:

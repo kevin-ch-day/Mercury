@@ -49,10 +49,8 @@ SOFTWARE_ONLY_MENU_OPTIONS: Final[list[tuple[str, str, str, bool]]] = [
 ]
 
 WRITES_DISABLED_SUFFIX = "unavailable · writes disabled"
-REHEARSAL_SUFFIX = "unavailable · rehearsal active"
 HDD_ABSENT_SUFFIX = "unavailable"
 REPORTS_LIMITED_SUFFIX = "limited · host-local only"
-HDD_REQUIRED_SUFFIX = "requires Mercury HDD"
 
 
 def _active_menu_options(*, software_only: bool = False) -> list[tuple[str, str, str, bool]]:
@@ -107,8 +105,8 @@ def main_menu_items(
     *,
     writes_allowed: bool = True,
     hdd_detached: bool = False,
-    destination_rehearsal: bool = False,
     software_only: bool = False,
+    recommended_action_id: str | None = None,
 ) -> list[tuple[str, str]]:
     """Return ``(key, title)`` pairs for rendering, with availability suffixes."""
     items: list[tuple[str, str]] = []
@@ -127,10 +125,12 @@ def main_menu_items(
                 suffix = WRITES_DISABLED_SUFFIX
         elif hdd_detached and action == MAIN_REPORTS:
             suffix = REPORTS_LIMITED_SUFFIX
+        display = title
         if suffix:
-            items.append((key, f"{title}  {suffix}"))
-        else:
-            items.append((key, title))
+            display = f"{title}  {suffix}"
+        if recommended_action_id and action == recommended_action_id:
+            display = f"{display}      recommended"
+        items.append((key, display))
     return items
 
 

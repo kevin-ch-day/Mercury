@@ -55,6 +55,8 @@ app.add_typer(storage_app, name="storage")
 app.add_typer(migration_app, name="migration")
 repair_app = typer.Typer(help="Host repair helpers.")
 app.add_typer(repair_app, name="repair")
+theme_app = typer.Typer(help="Terminal appearance themes (host-local; no HDD required).")
+app.add_typer(theme_app, name="theme")
 
 
 @app.callback()
@@ -3026,6 +3028,87 @@ def restore_check_cleanup_cmd(
     print_restorecheck_cleanup_batch(batch, compact=True)
     if execute and batch.databases and batch.dropped_count == 0:
         raise typer.Exit(1)
+
+
+@theme_app.command("list")
+def theme_list_cmd() -> None:
+    """List available terminal themes (host-local preference)."""
+    from mercury.terminal.theme_settings import list_themes, load_theme_selection
+
+    selection = load_theme_selection()
+    output.heading("Themes")
+    output.field("active", selection.theme_id)
+    output.field("source", selection.source)
+    if selection.path is not None:
+        output.field("path", str(selection.path))
+    for theme_id, display_name, is_active in list_themes():
+        marker = " *" if is_active else ""
+        output.write(f"  {theme_id}{marker}  —  {display_name}")
+
+
+@theme_app.command("preview")
+def theme_preview_cmd(
+    theme: Optional[str] = typer.Argument(
+        None,
+        help="Theme id (default: active theme). Examples: mercury-redline, mercury-classic.",
+    ),
+    width: int = typer.Option(100, "--width", help="Assumed terminal width for notes."),
+    no_color: bool = typer.Option(
+        False,
+        "--no-color",
+        help="Force monochrome preview (also honors NO_COLOR).",
+    ),
+) -> None:
+    """Synthetic theme gallery — does not touch HDD, packages, or host maintenance."""
+    from mercury.terminal.theme import set_color_enabled, set_theme_override
+    from mercury.terminal.theme_preview import print_theme_preview
+    from mercury.terminal.theme_settings import active_theme_id, validate_theme_id
+    from mercury.terminal.design_system import clear_style_cache
+
+    theme_id = validate_theme_id(theme) if theme else active_theme_id()
+    try:
+        if no_color:
+            set_color_enabled(False)
+        set_theme_override(theme_id)
+        clear_style_cache()
+        print_theme_preview(theme_id=theme_id, width=width)
+    finally:
+        set_theme_override(None)
+        clear_style_cache()
+        set_color_enabled(None)
+
+
+@theme_app.command("set")
+def theme_set_cmd(
+    theme: str = typer.Argument(..., help="Theme id to store host-locally."),
+) -> None:
+    """Persist theme preference under ~/.local/share/mercury/ (not on the HDD)."""
+    from mercury.terminal.theme_settings import save_theme_selection, validate_theme_id
+    from mercury.terminal.design_system import clear_style_cache
+
+    theme_id = validate_theme_id(theme)
+    path = save_theme_selection(theme_id)
+    clear_style_cache()
+    output.heading("Theme set")
+    output.field("theme", theme_id)
+    output.field("path", str(path))
+    output.write("Stored on this host only. Mercury HDD was not accessed.")
+
+
+@theme_app.command("reset")
+def theme_reset_cmd() -> None:
+    """Remove host-local theme preference (reverts to mercury-classic unless MERCURY_THEME is set)."""
+    from mercury.terminal.theme_settings import reset_theme_selection, active_theme_id
+    from mercury.terminal.design_system import clear_style_cache
+
+    removed = reset_theme_selection()
+    clear_style_cache()
+    output.heading("Theme reset")
+    if removed is not None:
+        output.field("removed", str(removed))
+    else:
+        output.write("No host-local theme file was present.")
+    output.field("active", active_theme_id())
 
 
 @config_app.command("validate")

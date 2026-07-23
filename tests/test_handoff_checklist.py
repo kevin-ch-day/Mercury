@@ -268,10 +268,25 @@ def test_print_handoff_checklist_shows_steps(capsys: pytest.CaptureFixture[str])
     assert "Operator backup root" in out
 
 
-def test_compact_handoff_status_panel_omits_checklist_table(capsys: pytest.CaptureFixture[str]) -> None:
+def test_compact_handoff_status_panel_omits_checklist_table(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from mercury.handoff.checklist import HandoffChecklist, HandoffStep
     from mercury.handoff.terminal import print_handoff_status_panel
+    from mercury.storage.host_maintenance import HostMaintenanceState, save_host_maintenance
 
+    host_path = tmp_path / "host_maintenance.json"
+    monkeypatch.setenv("MERCURY_HOST_MAINTENANCE_PATH", str(host_path))
+    save_host_maintenance(
+        HostMaintenanceState(
+            storage_availability="detaching",
+            writes_allowed=False,
+            source_detach_preparation=True,
+            package_verification_status="DESTINATION_PACKAGE_VERIFIED",
+            package_id="destination_rehearsal_final_source_20260723T161213Z",
+        ),
+        path=host_path,
+    )
     print_handoff_status_panel(
         HandoffChecklist(
             handoff_status="partial",
@@ -281,9 +296,13 @@ def test_compact_handoff_status_panel_omits_checklist_table(capsys: pytest.Captu
         )
     )
     out = capsys.readouterr().out
-    assert "Handoff readiness" in out
+    assert "DESTINATION HANDOFF STATUS" in out
+    assert "Package" in out
+    assert "destination_rehearsal_final_source_20260723T161213Z" in out
+    assert "Latest transfer" not in out
     assert "Readiness checklist" not in out
     assert "Operator backup root" not in out
+    assert "Advanced handoff tools" in out
 
 
 def test_handoff_action_menu_is_one_compact_block(capsys: pytest.CaptureFixture[str]) -> None:

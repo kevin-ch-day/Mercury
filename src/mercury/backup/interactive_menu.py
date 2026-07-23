@@ -87,13 +87,14 @@ def read_backup_choice() -> str | None:
 
 
 def _write_backup_fields(fields: dict[str, str]) -> None:
-    """Write aligned storage-summary fields (label column padded for readability)."""
+    """Write aligned storage-summary fields (colon-free operator rows)."""
     if not fields:
         return
-    label_width = max(len(name) for name in fields) + 1  # include colon
+    from mercury.terminal.theme import dashboard_row
+
+    label_width = max(len(name) for name in fields) + 2
     for name, value in fields.items():
-        label = f"{name}:"
-        output.write(f"  {label:<{label_width}}  {value}")
+        output.write(dashboard_row(name, value, label_width=label_width))
 
 
 def _write_phase3b_note(warning: str) -> None:
@@ -123,7 +124,7 @@ def _storage_usage_fields(policy) -> dict[str, str]:
         fields: dict[str, str] = {
             "Backup root": str(root),
             "Storage": storage_label,
-            "Write state": "disabled · HDD detach maintenance",
+            "Backup writer": "Disabled · disconnect preparation",
             "Active writer": host.active_write_role or "none",
             "Backup actions": "unavailable",
         }
@@ -140,7 +141,7 @@ def _storage_usage_fields(policy) -> dict[str, str]:
     fields = {
         "Backup root": str(root),
         "Environment": _backup_target_label(policy),
-        "Write state": "enabled",
+        "Backup writer": "Enabled",
         "Active writer": host.active_write_role or "primary",
         "Backup actions": "available",
     }
@@ -412,9 +413,19 @@ def _preview_backup_plan(plan: BackupPlanDryRun) -> None:
 
 def _ensure_writes_then_continue():
     """Return availability when backup writes are ready (after optional guided restore)."""
-    from mercury.storage.operation_availability import ensure_backup_writes_available
+    from mercury.storage.operation_availability import (
+        OperationStatus,
+        ensure_backup_writes_available,
+    )
 
-    return ensure_backup_writes_available(interactive=True)
+    availability = ensure_backup_writes_available(interactive=True)
+    if (
+        not availability.available
+        and availability.operation_status == OperationStatus.CANCELLED
+    ):
+        display_screen.write_summary("Backup cancelled.")
+        display_screen.write_summary("Mercury writes remain disabled.")
+    return availability
 
 
 def _run_backup(plan: BackupPlanDryRun) -> None:
@@ -709,6 +720,16 @@ def _write_backup_bundle() -> None:
         display_screen.write_status("fail", str(exc))
         return
     print_database_bundle_plan(plan, executed=True)
+
+
+def run_production_backup_flow() -> None:
+    """Production-only expert backup entry (hub / programmatic)."""
+    _run_backup(_load_plan())
+
+
+def run_development_backup_flow() -> None:
+    """Development-only expert backup entry (hub / programmatic)."""
+    _run_development_backup()
 
 
 def run_backup_menu(*, interactive: bool = True) -> None:

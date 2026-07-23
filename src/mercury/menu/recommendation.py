@@ -32,6 +32,10 @@ class MainMenuRecommendation:
 
     @property
     def recommended_label(self) -> str:
+        if self.recommended_action == "destination_validation":
+            from mercury.menu.destination_move import destination_move_action_label
+
+            return destination_move_action_label()
         labels = {
             MAIN_BACKUP_SYNC: "Back up and sync this workstation",
             MAIN_STORAGE: "Mercury HDD and Storage",
@@ -40,13 +44,38 @@ class MainMenuRecommendation:
             MAIN_MIGRATION: "Workstation migration",
             MAIN_HEALTH: "System health and configuration",
             MAIN_ADVANCED: "Advanced tools",
-            "intent_chooser": "Choose backup, disconnect, or rehearsal",
+            "safe_disconnect": "Safely disconnect the Mercury HDD",
             "reconnect": "Reconnect and validate Mercury HDD",
             "attach": "Attach HDD and choose Reconnect",
             "diagnose": "Diagnose attached storage",
-            "destination_validation": "Continue destination validation",
+            "verify_package": "Verify destination package",
         }
         return labels.get(self.recommended_action, self.explanation)
+
+
+def main_menu_action_for_recommendation(recommended_action: str) -> str | None:
+    """Map recommendation service actions onto Phase 3 main-menu action IDs."""
+    if recommended_action in {
+        MAIN_BACKUP_SYNC,
+        MAIN_STORAGE,
+        MAIN_RECOVERY,
+        MAIN_REPORTS,
+        MAIN_MIGRATION,
+        MAIN_HEALTH,
+        MAIN_ADVANCED,
+    }:
+        return recommended_action
+    if recommended_action in {
+        "safe_disconnect",
+        "verify_package",
+        "reconnect",
+        "diagnose",
+        "attach",
+    }:
+        return MAIN_STORAGE
+    if recommended_action == "destination_validation":
+        return MAIN_MIGRATION
+    return None
 
 
 def build_main_menu_recommendation(
@@ -71,11 +100,6 @@ def build_main_menu_recommendation(
     if lifecycle is not None and snap is not None and host is None:
         writes = bool(getattr(snap, "writes_allowed", False))
         storage_state = getattr(getattr(snap, "state", None), "value", "unknown")
-        availability = (
-            "detached"
-            if storage_state == "DETACHED"
-            else ("detaching" if not writes else "mounted")
-        )
         package = (
             "DESTINATION_PACKAGE_VERIFIED"
             if (
@@ -88,12 +112,22 @@ def build_main_menu_recommendation(
         rehearsal = bool(getattr(snap, "destination_rehearsal", False)) or (
             package == "DESTINATION_PACKAGE_VERIFIED" and not writes
         )
-        # Lifecycle snapshots used by the dashboard may omit mount flags; treat
-        # connected+mounted as true for non-detached states unless explicit.
+        # Map lifecycle states carefully: read-only destination is not "detaching".
         if storage_state == "DETACHED":
+            availability = "detached"
             connected = False
             mounted = False
+        elif storage_state in {
+            "READY_TO_DISCONNECT",
+            "PREPARING_TO_DISCONNECT",
+            "ATTACHED_WRITER_DISABLED",
+        }:
+            availability = "detaching"
+            connected = True
+            # These lifecycle states imply the volume is mounted.
+            mounted = True
         else:
+            availability = "mounted"
             connected = True
             mounted = bool(getattr(snap, "mounted", True)) or storage_state not in {
                 "DEVICE_NOT_FOUND",
@@ -217,14 +251,16 @@ def build_main_menu_recommendation(
                 "ATTACHED_WRITER_DISABLED",
             }
         ):
+            # Verified package + writes disabled → Safe Disconnect is the
+            # system-wide recommendation (intent chooser still offered).
             return MainMenuRecommendation(
                 host_role=host_role,
                 storage_state=storage_state,
                 migration_state=migration_state,
                 backup_state=backup_state,
                 package_state=package,
-                recommended_action="intent_chooser",
-                explanation="Choose backup, disconnect, or rehearsal",
+                recommended_action="safe_disconnect",
+                explanation="Safely disconnect the Mercury HDD",
                 allowed_actions=allowed,
                 intent_chooser_required=True,
                 facts={"package_id": package_id, "rehearsal": True},
@@ -238,6 +274,7 @@ def build_main_menu_recommendation(
             recommended_action="destination_validation",
             explanation="Continue destination validation",
             allowed_actions=allowed,
+            intent_chooser_required=True,
             facts={"package_id": package_id},
         )
 
@@ -255,14 +292,27 @@ def build_main_menu_recommendation(
         )
 
     # Connected, mounted, writes disabled (detach prep unfinished).
+    if package == "DESTINATION_PACKAGE_VERIFIED":
+        return MainMenuRecommendation(
+            host_role=host_role,
+            storage_state=storage_state,
+            migration_state=migration_state,
+            backup_state=backup_state,
+            package_state=package,
+            recommended_action="safe_disconnect",
+            explanation="Safely disconnect the Mercury HDD",
+            allowed_actions=allowed,
+            intent_chooser_required=True,
+            facts={"package_id": package_id, "writes_allowed": False},
+        )
     return MainMenuRecommendation(
         host_role=host_role,
         storage_state=storage_state,
         migration_state=migration_state,
         backup_state=backup_state,
         package_state=package,
-        recommended_action="intent_chooser",
-        explanation="Choose backup, disconnect, or rehearsal",
+        recommended_action="verify_package",
+        explanation="Verify destination package",
         allowed_actions=allowed,
         intent_chooser_required=True,
         facts={"package_id": package_id, "writes_allowed": False},
