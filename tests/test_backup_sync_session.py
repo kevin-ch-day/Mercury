@@ -964,6 +964,65 @@ def test_end_of_session_disconnect_offer() -> None:
     assert any("Safely disconnect Mercury HDD" in line for line in printed)
 
 
+def test_session_choice_menu_marks_recommended_and_uses_choice_prompt(
+    monkeypatch: pytest.MonkeyPatch, host_path: Path
+) -> None:
+    from mercury.backup import session_wizard as wiz
+    from mercury.storage.host_maintenance import HostMaintenanceState, save_host_maintenance
+
+    save_host_maintenance(
+        HostMaintenanceState(
+            storage_availability="detaching",
+            writes_allowed=False,
+            source_detach_preparation=True,
+            destination_rehearsal_active=True,
+            destination_rehearsal_in_progress=True,
+            package_verification_status="DESTINATION_PACKAGE_VERIFIED",
+            package_id="destination_rehearsal_20260722T055400Z_phase3b_20260722T193251Z",
+        ),
+        path=host_path,
+    )
+    printed: list[str] = []
+    prompts: list[str] = []
+
+    monkeypatch.setattr(
+        wiz.output, "write", lambda msg="": printed.append(str(msg))
+    )
+
+    from mercury.menu import prompts as menu_prompts
+
+    def capturing_ask(prompt: str) -> str:
+        # Use the real ask path so Choice normalization is exercised.
+        normalized = menu_prompts.ensure_choice_prompt(prompt)
+        prompts.append(normalized)
+        return "0"
+
+    monkeypatch.setattr(menu_prompts, "ask", capturing_ask)
+    monkeypatch.setattr(menu_prompts, "ensure_choice_prompt", menu_prompts.ensure_choice_prompt)
+    summaries: list[str] = []
+    monkeypatch.setattr(
+        wiz.display_screen,
+        "write_summary",
+        lambda msg="": summaries.append(str(msg)),
+    )
+    monkeypatch.setattr(wiz.display_screen, "open_screen", lambda *_a, **_k: None)
+    monkeypatch.setattr(wiz.display_screen, "write_fields", lambda *_a, **_k: None)
+    monkeypatch.setattr(wiz.display_screen, "write_blank", lambda: None)
+
+    wiz._print_overview(availability_classification="STRONG_CONFIRMATION")
+    assert any("recovery artifacts that are not included" in line for line in summaries)
+    assert any("remains valid for destination rehearsal" in line for line in summaries)
+    assert not any("new source changes that are not included" in line for line in summaries)
+
+    assert wiz._choice_menu() == "0"
+    assert any(
+        "Restore source writer and run recommended session   recommended" in line
+        for line in printed
+    )
+    assert prompts and prompts[0].endswith(": ")
+    assert "Choice:" in prompts[0].replace("\n", "")
+
+
 def test_expert_database_only_menu_path_remains() -> None:
     from mercury.backup.menu_options import (
         ACTION_FULL_BACKUP,

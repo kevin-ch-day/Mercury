@@ -66,9 +66,12 @@ def _print_overview(*, availability_classification: str) -> None:
             "A verified destination rehearsal package exists."
         )
         display_screen.write_summary(
-            "Restoring source writes will allow new source changes that are not included "
-            "in that package. The package remains valid for rehearsal, but it will no "
-            "longer represent the newest source state."
+            "Restoring source writes allows Mercury to create new backups, Git captures, "
+            "and other recovery artifacts that are not included in the current package."
+        )
+        display_screen.write_summary(
+            "The existing package remains valid for destination rehearsal, but it will "
+            "not include anything created by this new session."
         )
         display_screen.write_blank()
     display_screen.write_summary("Planned session:")
@@ -85,13 +88,15 @@ def _print_overview(*, availability_classification: str) -> None:
 
 def _choice_menu() -> str | None:
     output.write("")
-    output.write("  [1] Restore source writer and run recommended session")
+    output.write(
+        "  [1] Restore source writer and run recommended session   recommended"
+    )
     output.write("  [2] Review or customize session")
     output.write("  [3] Databases only")
     output.write("  [4] Git recovery only")
     output.write("  [0] Cancel")
     output.write("")
-    return menu_prompts.ask("Choice").strip() or None
+    return (menu_prompts.ask("Choice") or "").strip() or None
 
 
 def _customize_plan(plan: SessionPlan) -> SessionPlan | None:
@@ -117,7 +122,7 @@ def _customize_plan(plan: SessionPlan) -> SessionPlan | None:
         output.write("  [5] Toggle restore-check")
         output.write("  [6] Run selected session")
         output.write("  [0] Cancel")
-        choice = menu_prompts.ask("Choice").strip()
+        choice = (menu_prompts.ask("Choice") or "").strip()
         if choice == "0":
             return None
         if choice == "1":
@@ -226,7 +231,7 @@ def offer_post_session_actions(session: BackupSyncSession) -> str | None:
     output.write("  [2] Review session details")
     output.write("  [3] Return to main menu")
     output.write("  [0] Exit Mercury")
-    choice = menu_prompts.ask("Choice").strip()
+    choice = (menu_prompts.ask("Choice") or "").strip()
     if choice == "1" and allow_disconnect:
         return "safe_disconnect"
     if choice == "2":

@@ -640,10 +640,10 @@ def restore_source_writer(
                 confirmation_class=confirmation_class or "STRONG_CONFIRMATION",
                 checks=checks,
                 warnings=[
-                    "Restoring source writes may create changes that are not included in the "
-                    "current destination rehearsal package.",
-                    "The existing Phase 3B package will remain valid for rehearsal, but it will "
-                    "not represent the newest source state.",
+                    "Restoring source writes allows Mercury to create new backups, Git captures, "
+                    "and other recovery artifacts that are not included in the current package.",
+                    "The existing package remains valid for destination rehearsal, but it will "
+                    "not include anything created by this new session.",
                 ],
                 continued_operation_allowed=False,
                 transition_id=transition_id,

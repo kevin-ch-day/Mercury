@@ -13,7 +13,12 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from mercury import output
-from mercury.terminal.prompts import input_prompt, normalize_input_prompt
+from mercury.terminal.prompts import (
+    choice_prompt,
+    ensure_choice_prompt,
+    input_prompt,
+    normalize_input_prompt,
+)
 from mercury.terminal.theme import continue_prompt
 from mercury.menu.main_display import MENU_SECTIONS
 
@@ -49,13 +54,13 @@ def menu_option_range_label() -> str:
 
 
 def menu_option_prompt() -> str:
-    """Prompt text for menu selection (aligned with submenu ``Choice:``)."""
-    return input_prompt("\nChoice: ")
+    """Prompt text for menu selection (aligned with submenu ``Choice: ``)."""
+    return choice_prompt(leading_newline=True)
 
 
 def submenu_option_prompt() -> str:
     """Prompt text for action submenus (distinct from the main menu)."""
-    return input_prompt("\nChoice: ")
+    return choice_prompt(leading_newline=True)
 
 
 MENU_RETURN_PROMPT = menu_option_prompt()
@@ -75,7 +80,7 @@ def set_continue_reader(reader: ContinueReader | None) -> None:
 
 def ask(prompt: str) -> str:
     """Read one line of user input."""
-    normalized = normalize_input_prompt(prompt)
+    normalized = ensure_choice_prompt(prompt)
     if _reader is not None:
         return _reader(normalized)
     print(normalized, end="", flush=True)

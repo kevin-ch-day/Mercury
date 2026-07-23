@@ -202,10 +202,10 @@ def assess_operation_availability(
             confirmation_phrase=RESTORE_SOURCE_WRITER_PHRASE,
             warnings=tuple(strong_reasons)
             + (
-                "Restoring source writes will create new source changes that are not included "
-                "in the current package.",
-                "The existing Phase 3B package remains valid for rehearsal, but it will no "
-                "longer represent the newest source state.",
+                "Restoring source writes allows Mercury to create new backups, Git captures, "
+                "and other recovery artifacts that are not included in the current package.",
+                "The existing package remains valid for destination rehearsal, but it will "
+                "not include anything created by this new session.",
             ),
             next_action=_storage_next_action(),
             facts=observed,

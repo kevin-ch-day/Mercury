@@ -35,7 +35,49 @@ def test_ask_strips_markup_before_reader() -> None:
     finally:
         menu_prompts.set_prompt_reader(None)
 
-    assert seen == ["Enter your choice:"]
+    assert seen == ["Enter your choice: "]
+
+
+def test_ask_normalizes_bare_choice_to_colon_and_space() -> None:
+    seen: list[str] = []
+
+    def fake_reader(prompt: str) -> str:
+        seen.append(prompt)
+        return "0"
+
+    menu_prompts.set_prompt_reader(fake_reader)
+    try:
+        assert menu_prompts.ask("Choice") == "0"
+        assert menu_prompts.ask("Choice:") == "0"
+        assert menu_prompts.ask("\nChoice: ") == "0"
+    finally:
+        menu_prompts.set_prompt_reader(None)
+
+    assert seen == ["\nChoice: ", "\nChoice: ", "\nChoice: "]
+    for prompt in seen:
+        assert prompt.endswith(": ")
+        assert "Choice:" in prompt.replace("\n", "")
+
+
+def test_choice_prompt_has_colon_and_trailing_space() -> None:
+    from mercury.terminal.prompts import choice_prompt, ensure_choice_prompt
+
+    prompt = choice_prompt()
+    assert prompt == "\nChoice: "
+    assert prompt.endswith(": ")
+    assert ":" in prompt
+    assert ensure_choice_prompt("Choice").endswith(": ")
+    assert ensure_choice_prompt("Choice:").endswith(": ")
+
+
+def test_prompt_text_preserves_trailing_space_with_colors(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mercury.terminal import theme
+
+    monkeypatch.setattr(theme, "colors_enabled", lambda: True)
+    styled = theme.prompt_text("\nChoice: ")
+    # Markup wraps the body only; trailing space must survive for input echo.
+    assert styled.endswith(" ")
+    assert "Choice:" in theme.strip_markup(styled)
 
 
 def test_normalize_menu_choice_maps_quit_aliases() -> None:

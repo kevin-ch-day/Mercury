@@ -39,3 +39,21 @@ def normalize_input_prompt(prompt: str) -> str:
     for index, literal in enumerate(literals):
         plain = plain.replace(f"__MERCURY_LITERAL_CONTROL_{index}__", literal)
     return plain
+
+
+def choice_prompt(*, leading_newline: bool = True) -> str:
+    """Canonical ``Choice: `` prompt (colon + trailing space for input echo)."""
+    prefix = "\n" if leading_newline else ""
+    return input_prompt(f"{prefix}Choice: ")
+
+
+def ensure_choice_prompt(prompt: str) -> str:
+    """Normalize bare Choice labels to the canonical ``Choice: `` form."""
+    normalized = normalize_input_prompt(prompt)
+    stripped = normalized.strip()
+    if stripped in {"Choice", "Choice:"}:
+        return choice_prompt(leading_newline=True)
+    # Ensure trailing space after a trailing colon so typed input does not glue.
+    if stripped.endswith(":") and not normalized.endswith((" ", "\t")):
+        return normalized.rstrip() + " "
+    return normalized

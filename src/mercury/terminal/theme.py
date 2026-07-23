@@ -365,7 +365,16 @@ def open_screen_lines(title: str) -> list[str]:
 def prompt_text(text: str) -> str:
     if not colors_enabled():
         return text
-    return markup(text.strip(), PROMPT)
+    # Preserve leading/trailing whitespace (e.g. ``\nChoice: ``) so typed input
+    # does not glue to the label when colors are enabled.
+    leading_len = len(text) - len(text.lstrip(" \t\n\r"))
+    trailing_len = len(text) - len(text.rstrip(" \t\n\r"))
+    leading = text[:leading_len]
+    trailing = text[len(text) - trailing_len :] if trailing_len else ""
+    body = text[leading_len : len(text) - trailing_len if trailing_len else None]
+    if not body:
+        return text
+    return f"{leading}{markup(body, PROMPT)}{trailing}"
 
 
 def hint_text(text: str) -> str:
