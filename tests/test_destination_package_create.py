@@ -228,6 +228,7 @@ def _create(mount: Path, **kwargs):
         expected_backup_ids=BACKUP_IDS,
         verify_git_head=False,
         package_id="destination_rehearsal_fixture_pkg",
+        allow_synthetic_missing_capture_fixture=True,
     )
     defaults.update(kwargs)
     return create_destination_package(mount, **defaults)

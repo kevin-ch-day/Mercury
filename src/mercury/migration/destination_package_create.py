@@ -291,6 +291,7 @@ def create_destination_package(
     expected_backup_ids: frozenset[str] | set[str] | None = None,
     verify_git_head: bool = True,
     repo_root: Path | None = None,
+    allow_synthetic_missing_capture_fixture: bool = False,
 ) -> PackageCreateResult:
     """Create a destination package from an exact sealed preview. Never uses 'latest'."""
     errors: list[str] = []
@@ -402,6 +403,37 @@ def create_destination_package(
         errors.append("Erebus capture differs / missing from preview")
     if mercury_capture_id not in (preview.get("included_capture_ids") or []):
         errors.append("Mercury capture missing from preview")
+
+    from mercury.migration.erebus_capture.package_validation import (
+        assess_erebus_capture_for_package,
+    )
+
+    erebus_assessment = assess_erebus_capture_for_package(
+        mount_root / CONTROL_DIRNAME,
+        capture_id=erebus_capture_id,
+        expected_commit=erebus_commit or None,
+    )
+    if erebus_assessment.classification == "PACKAGE_AUTHORITY":
+        pass
+    elif (
+        erebus_assessment.classification == "MISSING"
+        and allow_synthetic_missing_capture_fixture
+    ):
+        warnings.append(
+            f"synthetic missing capture fixture allowed for tests: {erebus_capture_id}"
+        )
+    elif erebus_assessment.classification == "HISTORICAL_REFERENCE":
+        errors.append(
+            f"Erebus capture {erebus_capture_id} is historical and cannot authorize package creation"
+        )
+        errors.extend(erebus_assessment.warnings)
+    elif erebus_assessment.classification == "MISSING":
+        errors.extend(erebus_assessment.errors or (f"required capture missing: {erebus_capture_id}",))
+    else:
+        errors.extend(
+            f"Erebus capture {erebus_capture_id}: {error}"
+            for error in erebus_assessment.errors
+        )
 
     errors.extend(verify_fingerprints_unchanged(mount_root, preview))
 

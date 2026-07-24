@@ -117,6 +117,25 @@ commit/tree, manifest, reconstruction, recovery hash, and Phase 3B linkage.
 Tampered status, authority, identity, reconstruction, receipt, recovery, Phase
 3B linkage, supersession, members, or checksums are refused.
 
+## Phase C — package authority
+
+Destination package preview and create share
+`assess_erebus_capture_for_package()` and classify each capture as:
+
+- `PACKAGE_AUTHORITY` — `CAPTURE_VERIFIED`, active, validator passes
+- `HISTORICAL_REFERENCE` — preserved for display only; create refuses
+- `MISSING` — fail closed in production preview/create
+- `REFUSED` — claimed verified but failed validation or identity pins
+
+Production create never promotes historical references and never creates a
+package from a missing path. The only exception is an injected call argument
+`allow_synthetic_missing_capture_fixture=True` used by hermetic tests. That
+flag is not exposed by CLI, environment, preview receipts, or package requests.
+
+`read_erebus_capture_identity()` accepts canonical top-level `commit`/`tree` or
+legacy `repository.commit`/`repository.tree`. Canonical fields are
+authoritative when present; conflicting dual shapes refuse.
+
 ## Interactive route
 
 Open **Workstation migration → Source capture → Capture Erebus source**. Enter

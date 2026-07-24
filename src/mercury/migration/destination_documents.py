@@ -562,7 +562,11 @@ def build_document_bodies(
         )
 
     mercury_tree = str(mercury_identity.get("tree") or "")
-    erebus_tree = str((erebus_summary.get("repository") or {}).get("tree") or "")
+    erebus_tree = str(
+        erebus_summary.get("tree")
+        or (erebus_summary.get("repository") or {}).get("tree")
+        or ""
+    )
     mercury_short = mercury_commit[:7] if mercury_commit else "unknown"
     mercury_bundle_dir = mercury_cap / "bundle"
     mercury_bundle_name = UNRESOLVED

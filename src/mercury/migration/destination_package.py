@@ -269,12 +269,24 @@ def preview_destination_package(
             report.manifest_reference_count += 1
 
     # Erebus capture
+    control_root = mount_root / CONTROL_DIRNAME
+    from mercury.migration.erebus_capture.package_validation import (
+        assess_erebus_capture_for_package,
+    )
+
     for capture_id in policy.protected_capture_ids:
         capture_path = (
             mount_root / CONTROL_DIRNAME / "validation" / "erebus" / capture_id
         )
-        if not capture_path.exists():
+        assessment = assess_erebus_capture_for_package(control_root, capture_id=capture_id)
+        if assessment.classification == "MISSING":
             report.errors.append(f"required capture missing: {capture_id}")
+            report.unresolved.append(capture_id)
+            continue
+        if assessment.classification == "REFUSED":
+            report.errors.extend(
+                f"Erebus capture {capture_id}: {error}" for error in assessment.errors
+            )
             report.unresolved.append(capture_id)
             continue
         files, size = _count_files_and_size(capture_path)
@@ -290,6 +302,14 @@ def preview_destination_package(
         report.included_capture_ids.append(capture_id)
         report.file_count += files
         report.estimated_size_bytes += size
+        if assessment.classification == "HISTORICAL_REFERENCE":
+            report.included_git_commits.append(
+                f"erebus_historical_reference={capture_id}"
+            )
+        if assessment.classification == "PACKAGE_AUTHORITY" and assessment.commit:
+            report.included_git_commits.append(
+                f"erebus_package_authority_commit={assessment.commit}"
+            )
 
     # Historical Phase 3B Mercury commit (identity only — not destination candidate)
     if policy.historical_phase3b_mercury_commit:
