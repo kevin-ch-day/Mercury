@@ -1,4 +1,4 @@
-"""Interactive, preview-only route for the governed Erebus source capture."""
+"""Interactive route for the governed Erebus source capture."""
 
 from __future__ import annotations
 
@@ -13,9 +13,35 @@ from .models import ErebusCaptureRequest
 from .service import create_preview, execute_capture, load_preview
 from .storage_preflight import StorageFacts
 
+EXECUTE_AVAILABILITY = (
+    "production execute locked; READY receipt required for the menu action"
+)
+
 
 def _ask(label: str) -> str:
     return (menu_prompts.ask(label) or "").strip()
+
+
+def ready_preview_ids(control_root: Path) -> list[str]:
+    """Return exact preview IDs that currently load as READY."""
+    root = control_root / "validation" / "previews" / "erebus"
+    if not root.is_dir():
+        return []
+    ready: list[str] = []
+    for preview in sorted(
+        path for path in root.iterdir() if path.is_dir() and not path.name.startswith(".")
+    ):
+        if load_preview(control_root, preview.name).ok:
+            ready.append(preview.name)
+    return ready
+
+
+def menu_options(control_root: Path) -> list[tuple[str, str]]:
+    """Preview and review always; execute only when a READY receipt exists."""
+    options = [("1", "Preview capture"), ("2", "Review previews")]
+    if ready_preview_ids(control_root):
+        options.append(("3", "Create approved capture"))
+    return options
 
 
 def _preview_from_prompts() -> None:
@@ -42,13 +68,12 @@ def _preview_from_prompts() -> None:
     if result.ok:
         output.write(f"PREVIEW READY: {result.preview_id}")
         output.write(f"Final intended path: {control / 'validation' / 'erebus' / values['capture_id']}")
-        output.write("Execute availability: unavailable until Phase B review")
+        output.write(f"Execute availability: {EXECUTE_AVAILABILITY}")
     else:
         output.write("REFUSED: " + ", ".join(result.reason_codes or result.errors))
 
 
-def _review_previews() -> None:
-    control = Path(_ask("Control root"))
+def _review_previews(control: Path) -> None:
     root = control / "validation" / "previews" / "erebus"
     if not root.is_dir():
         output.write("No Erebus previews at that control root.")
@@ -58,15 +83,20 @@ def _review_previews() -> None:
         output.write(f"{preview.name}: {result.classification} {'OK' if result.ok else ', '.join(result.errors)}")
 
 
-def _execute_from_prompts() -> None:
-    """Revalidate one exact preview through the shared production lock."""
+def _execute_from_prompts(control: Path) -> None:
+    """Revalidate one exact READY preview through the shared production lock."""
     preview_id = _ask("Exact READY preview ID")
-    repo = Path(_ask("Repository")); recovery = Path(_ask("Recovery receipt"))
-    phase = Path(_ask("Phase 3B evidence root")); intake = Path(_ask("Intake contract"))
-    control = Path(_ask("Control root")); facts_path = Path(_ask("Reviewed storage facts JSON"))
+    repo = Path(_ask("Repository"))
+    recovery = Path(_ask("Recovery receipt"))
+    phase = Path(_ask("Phase 3B evidence root"))
+    intake = Path(_ask("Intake contract"))
+    facts_path = Path(_ask("Reviewed storage facts JSON"))
     try:
         facts = StorageFacts(**json.loads(facts_path.read_text(encoding="utf-8")))
-        result = execute_capture(CaptureContext(control, repo, recovery, phase, intake, lambda: facts), preview_id)
+        result = execute_capture(
+            CaptureContext(control, repo, recovery, phase, intake, lambda: facts),
+            preview_id,
+        )
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         output.write(f"CAPTURE EXECUTION REFUSED: {exc}")
         return
@@ -75,18 +105,20 @@ def _execute_from_prompts() -> None:
 
 
 def run_erebus_source_capture_menu() -> None:
-    """Show an inert menu until an operator explicitly chooses Preview capture."""
+    """Show Preview/Review always; expose execute only while READY receipts exist."""
     from mercury.menu.task_menus import _submenu
 
+    control = Path(_ask("Control root"))
     while True:
-        choice = _submenu("Erebus source capture", [("1", "Preview capture"), ("2", "Review previews"), ("3", "Create approved capture")])
+        options = menu_options(control)
+        choice = _submenu("Erebus source capture", options)
         if choice is None:
             return
         if choice == "1":
             _preview_from_prompts()
         elif choice == "2":
-            _review_previews()
-        elif choice == "3":
-            _execute_from_prompts()
+            _review_previews(control)
+        elif choice == "3" and any(key == "3" for key, _label in options):
+            _execute_from_prompts(control)
         else:
             output.write(menu_prompts.invalid_choice_message(choice))

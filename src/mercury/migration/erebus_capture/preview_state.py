@@ -41,7 +41,7 @@ def _transition(root: Path, expected: PreviewState, target: PreviewState) -> boo
     both observe READY and begin the same later capture.  A stale lock fails
     closed rather than guessing whether another operation is still active.
     """
-    lock = root / ".preview_state.lock"
+    lock = root.parent / f".{root.name}.preview_state.lock"
     try:
         descriptor = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     except FileExistsError:

@@ -57,19 +57,21 @@ def write_synthetic_capture(*, context, request, preview_id: str, preview_checks
         }
         for name, command in commands.items():
             result = context.validation_runner.run(name, cwd=context.source_repo, command=command)
+            validation[name] = result
+            if name.startswith("reconstruction_"):
+                continue
             if name == "full_suite":
                 if not result.started or not result.completed:
                     raise ValueError("VALIDATION_FAILED: full_suite")
             elif not result.accepted:
                 raise ValueError(f"VALIDATION_FAILED: {name}")
-            validation[name] = result
         git = temp / "git"; evidence = temp / "evidence"; reconstruction = temp / "reconstruction"
         collect_git_evidence(context.source_repo, git, context.git_runner or _git)
         bundle = create_complete_bundle(context.source_repo, temp / expected_bundle_name(request.expected_commit[:7]), request.expected_commit)
         (git / "bundle_heads.txt").write_text(bundle_heads(bundle), encoding="utf-8")
         (git / "bundle_verify.txt").write_text(bundle_verify(bundle), encoding="utf-8")
         result = reconstruct_and_verify(bundle, temp / ".reconstruct", expected_commit=request.expected_commit, expected_tree=request.expected_tree, maintenance_sha256=request.maintenance_sha256)
-        shutil.rmtree(temp / ".reconstruct")
+        shutil.rmtree(temp / ".reconstruct", ignore_errors=True)
         if not all(result[key] for key in ("head_match", "tree_match", "clean", "maintenance_match")):
             raise ValueError("RECONSTRUCTION_MISMATCH")
         result.update({"import_pass": validation["reconstruction_import"].accepted, "focused_tests_pass": validation["reconstruction_focused_tests"].accepted, "collection_pass": validation["reconstruction_collection"].accepted})

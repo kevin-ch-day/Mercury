@@ -1,9 +1,10 @@
-# Erebus source-capture preview
+# Erebus source-capture preview and synthetic execute
 
 This workflow prepares a governed, read-only receipt for a replacement Erebus
-source capture. It does not copy source files, write a capture, generate a
-package, start MariaDB, modify Phase 3B, or detach the Mercury HDD. Capture
-execution remains unavailable pending Phase B review.
+source capture. Preview does not copy source files, write a capture, generate a
+package, start MariaDB, modify Phase 3B, or detach the Mercury HDD. Production
+capture execution remains locked; only explicitly synthetic test contexts may
+write a capture.
 
 ## Request, context, and validator order
 
@@ -40,6 +41,19 @@ single publisher create a temporary receipt directory.
 not silently inspect or mutate the mounted HDD. A refusal exits nonzero and
 prints stable reason codes.
 
+Production execute is available as a refusal route only:
+
+```bash
+./run.sh migration capture-erebus-source execute \
+  --preview-id <exact-ready-id> --repo <repo> \
+  --recovery-receipt <receipt.json> --phase3b-root <evidence-root> \
+  --intake-contract <contract.json> --control-root <control-root> \
+  --storage-facts <reviewed-facts.json>
+```
+
+There is no CLI flag, environment variable, or preview field that enables
+synthetic capture from the operator CLI.
+
 ## Durable receipt
 
 The publisher writes a private temporary directory beneath
@@ -60,15 +74,15 @@ checksum map itself). Loading refuses missing,
 unexpected, non-regular, malformed, checksum-mismatched, or cross-file
 inconsistent content.
 
-## States and later execution gate
+## States and execution gate
 
 New receipts are `READY`. Only `READY` may become `EXECUTION_STARTED`; only
 that state may become `CONSUMED`. A drift check atomically marks a receipt
-`INVALIDATED`; explicit rejection can record `REFUSED`. State corruption,
-reuse, and concurrent begin attempts fail closed. Before any future writer,
-the complete source, storage, recovery, Phase 3B, intake, checksum, state, and
-final-path checks must be repeated. No capture temporary directory is created
-by preview or revalidation.
+`INVALIDATED`; explicit refusal after a writer error records `REFUSED`. State
+corruption, reuse, and concurrent begin attempts fail closed. Before any
+writer, the complete source, storage, recovery, Phase 3B, intake, checksum,
+state, and final-path checks must be repeated. No capture temporary directory
+is created by preview or revalidation.
 
 ## Synthetic Phase B execution
 
@@ -81,23 +95,42 @@ reconstruction, governed identity artifacts, member/prohibited-content checks,
 and a checksum manifest verify. Failure removes the exact temporary directory
 and never publishes a final capture; success consumes the preview.
 
+Stable writer/execute reason codes include:
+
+- `EXECUTION_NOT_AUTHORIZED`
+- `VALIDATION_RUNNER_REQUIRED`
+- `VALIDATION_FAILED:<step>`
+- `FULL_SUITE_*` policy refusals
+- `RECONSTRUCTION_MISMATCH`
+- `RECONSTRUCTION_VALIDATION_FAILED`
+- `PROHIBITED_CONTENT`
+- `MANIFEST_INVALID`
+- `FINAL_CAPTURE_EXISTS`
+- `PREVIEW_NOT_READY`
+
 The resulting capture includes Git and validation evidence, recovery/intake and
 Phase 3B linkage, reconstruction receipts, `checksums.sha256`, its verification
 receipt, `manifest_receipt.json`, `capture_summary.json`, `CAPTURE_REPORT.md`,
 and a supersession record for the historical incomplete capture. Package
 validation accepts only an explicit `CAPTURE_VERIFIED` capture with matching
 commit/tree, manifest, reconstruction, recovery hash, and Phase 3B linkage.
+Tampered status, authority, identity, reconstruction, receipt, recovery, Phase
+3B linkage, supersession, members, or checksums are refused.
 
 ## Interactive route
 
-Open **Workstation migration → Source capture → Capture Erebus source**. The
-screen has only **Preview capture** and **Review previews**. Entering it does
-not create a preview. Preview capture asks for every explicit CLI input,
-including the reviewed storage-facts receipt, and invokes the same
-`create_preview()` service as the CLI. Review lists exact named preview
-directories; it never selects a "latest" receipt.
+Open **Workstation migration → Source capture → Capture Erebus source**. Enter
+the control root first. The screen always offers **Preview capture** and
+**Review previews**. **Create approved capture** appears only while at least
+one exact preview loads as READY. Entering the menu does not create a preview.
+Preview capture asks for every explicit CLI input, including the reviewed
+storage-facts receipt, and invokes the same `create_preview()` service as the
+CLI. Review lists exact named preview directories; it never selects a "latest"
+receipt. The execute action still uses a production context and refuses with
+`EXECUTION_NOT_AUTHORIZED`.
 
 Troubleshoot the emitted stable refusal (for example
 `INVALID_PREVIEW_ID`, `FINAL_CAPTURE_EXISTS`, `EXTERNAL_IDENTITY_MISMATCH`,
-`PREVIEW_CHECKSUM_MISMATCH`, or `PREVIEW_COMPONENT_MISMATCH`) rather than
-altering a published preview in place.
+`PREVIEW_CHECKSUM_MISMATCH`, `PREVIEW_COMPONENT_MISMATCH`,
+`EXECUTION_NOT_AUTHORIZED`, or the writer codes above) rather than altering a
+published preview in place.

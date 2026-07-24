@@ -314,3 +314,9 @@ def test_menu_preview_action_uses_shared_service_with_synthetic_facts(tmp_path: 
     assert len(captured) == 1
     assert captured[0][1].preview_id == "preview-menu"
     assert captured[0][0].storage_resolver().mount_path == EXPECTED_MOUNT
+
+
+def test_menu_options_are_ready_gated(tmp_path: Path) -> None:
+    from mercury.migration.erebus_capture import menu as capture_menu
+
+    assert ("3", "Create approved capture") not in capture_menu.menu_options(tmp_path)

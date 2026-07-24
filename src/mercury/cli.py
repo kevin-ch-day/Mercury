@@ -37,7 +37,9 @@ cleanup_app = typer.Typer(
 )
 storage_app.add_typer(cleanup_app, name="cleanup")
 migration_app = typer.Typer(help="Read-only workstation migration readiness and blockers.")
-erebus_capture_app = typer.Typer(help="Preview the governed Erebus source capture; execution is unavailable.")
+erebus_capture_app = typer.Typer(
+    help="Governed Erebus source-capture preview; production execute remains locked."
+)
 
 app.add_typer(env_app, name="env")
 app.add_typer(db_app, name="db")
@@ -472,7 +474,7 @@ def erebus_capture_preview_cmd(
     output.field("Intake contract", "VERIFIED")
     output.field("Maintenance SHA-256", maintenance_sha256)
     output.field("Final intended path", control_root / "validation" / "erebus" / capture_id)
-    output.field("Execute availability", "unavailable until Phase B review")
+    output.field("Execute availability", "production locked; READY receipt required")
 
 
 @erebus_capture_app.command("execute")

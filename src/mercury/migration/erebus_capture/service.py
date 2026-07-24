@@ -1,7 +1,8 @@
 """Service boundary for governed Erebus captures.
 
-The execute implementation is intentionally unavailable until the complete
-evidence/atomic-writer contract is reviewed; preview is read-only.
+Preview is read-only. Capture execution is synthetic-only behind
+``CaptureContext.allow_synthetic_execution``; production CLI and menu
+contexts remain locked.
 """
 
 from __future__ import annotations
