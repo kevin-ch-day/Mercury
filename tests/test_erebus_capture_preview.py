@@ -291,6 +291,32 @@ def test_phase3b_validator_refuses_invalid_evidence(tmp_path: Path) -> None:
             validate_phase3b(root, RUN_ID)
 
 
+def test_phase3b_validator_accepts_nested_live_dump_metadata_shape(tmp_path: Path) -> None:
+    root = tmp_path / RUN_ID
+    (root / "dumps").mkdir(parents=True)
+    (root / "restore").mkdir()
+    (root / "PHASE3B_REPORT.md").write_text("report\n")
+    (root / "phase3b_summary.json").write_text(__import__("json").dumps({"run_id": RUN_ID}))
+    nested = {
+        "run_id": RUN_ID,
+        "dumps": {
+            "erebus_threat_intel_prod": {
+                "manifest": {"backup_id": "erebus_threat_intel_prod-full-20260722_055507_238"},
+            },
+            "android_permission_intel": {
+                "manifest": {"backup_id": "android_permission_intel-full-20260722_055648_287"},
+            },
+        },
+    }
+    (root / "dumps/dump_metadata.json").write_text(__import__("json").dumps(nested))
+    (root / "restore/source_vs_restore_comparison.json").write_text(
+        __import__("json").dumps({"zero_unexplained_differences": True})
+    )
+    identity = validate_phase3b(root, RUN_ID)
+    assert identity.run_id == RUN_ID
+    assert str(root) in identity.root
+
+
 def test_intake_validator_refuses_unsafe_contract(tmp_path: Path) -> None:
     for fault in ("checksum", "schema", "members", "bypass", "secret"):
         data = {
