@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 
@@ -48,6 +49,8 @@ def build_restore_check_plan(
     backup_id: str | None = None,
     require_backup_id: bool = False,
     allow_unverified: bool = False,
+    target_schema: str | None = None,
+    backup_directory_override: Path | None = None,
 ) -> RestoreCheckPlan:
     """
     Plan a non-destructive restore test into a temporary _restorecheck_* database.
@@ -60,19 +63,25 @@ def build_restore_check_plan(
     """
     classification = classify_database(prod_database)
     policy = load_execution_policy()
-    target = planned_restore_check_name(prod_database)
+    target = target_schema or planned_restore_check_name(prod_database)
     blockers: list[str] = []
     safety = [
         "Restore-check targets _restorecheck_* temp databases only.",
         "Never restore into *_prod or production/shared authority databases.",
         "Restore-check is bound to an exact backup_id; it does not inherit another backup's result.",
     ]
-    selection_mode = "explicit" if backup_id else "artifact_verified_default"
-    candidates = list_backup_candidates(policy.backup_root, prod_database)
+    selection_mode = "sealed_package_exact" if backup_directory_override else (
+        "explicit" if backup_id else "artifact_verified_default"
+    )
+    candidates = [] if backup_directory_override else list_backup_candidates(policy.backup_root, prod_database)
 
     if not classification.backup_source:
         blockers.append(f"'{prod_database}' is not an approved production backup source.")
-    if policy.backup_root_is_within_repo() and not policy.allow_unsafe_backup_root:
+    if (
+        backup_directory_override is None
+        and policy.backup_root_is_within_repo()
+        and not policy.allow_unsafe_backup_root
+    ):
         blockers.append(
             "Backup root is repo-local fallback; configure operator-storage backups before restore-check."
         )
@@ -88,7 +97,9 @@ def build_restore_check_plan(
     dump_file: str | None = None
     backup_created_at = None
 
-    if not blockers or backup_id:
+    if backup_directory_override is not None:
+        backup_dir = backup_directory_override.resolve()
+    elif not blockers or backup_id:
         try:
             if require_backup_id and not backup_id:
                 raise BackupSelectionError("backup_id required")
@@ -129,7 +140,7 @@ def build_restore_check_plan(
             data = json.loads(manifest_path.read_text(encoding="utf-8"))
             dump_file = data.get("dump_file")
             backup_created_at = data.get("created_at")
-        if backup_verified and should_probe_database_status():
+        if backup_verified and should_probe_database_status() and backup_directory_override is None:
             from mercury.backup.freshness import backup_stale_handoff_blocker, parse_backup_timestamp
 
             stale_detail = backup_stale_handoff_blocker(
@@ -142,15 +153,36 @@ def build_restore_check_plan(
             if stale_detail:
                 blockers.append(stale_detail)
 
+    if target_schema is not None and should_probe_database_status():
+        from mercury.database.mariadb.session import fetch_user_database_names, try_load_mariadb_config
+
+        cfg = try_load_mariadb_config()
+        if cfg is None:
+            blockers.append("Target schema cannot be checked: MariaDB configuration is unavailable.")
+        else:
+            try:
+                if target in set(fetch_user_database_names(cfg)):
+                    blockers.append(f"Target restore-check schema already exists: {target}")
+            except Exception as exc:
+                blockers.append(f"Target schema cannot be checked safely: {exc}")
+
     commands: list[str] = []
     if dump_file and backup_dir is not None:
         artifact = backup_dir / dump_file
         commands = [
             f"# Create temp restore-check database: {target}",
             f"# backup_id={resolved_id}",
-            f"mariadb -e 'CREATE DATABASE IF NOT EXISTS `{target}`;'",
+            (
+                f"mariadb -e 'CREATE DATABASE `{target}`;'"
+                if target_schema is not None
+                else f"mariadb -e 'CREATE DATABASE IF NOT EXISTS `{target}`;'"
+            ),
             f"gunzip -c {artifact} | mariadb {target}",
-            f"# Validate row counts / spot checks, then DROP DATABASE `{target}`;",
+            (
+                f"# Validate row counts / spot checks; retain `{target}` for destination comparison."
+                if target_schema is not None
+                else f"# Validate row counts / spot checks, then DROP DATABASE `{target}`;"
+            ),
         ]
 
     target_completeness: TargetCompletenessEntry | None = None

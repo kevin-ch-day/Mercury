@@ -3113,16 +3113,44 @@ def restore_check_plan_cmd(
         "--allow-unverified",
         help="Unsafe: allow restore-check of an artifact that failed integrity verification.",
     ),
+    target_schema: str | None = typer.Option(
+        None,
+        "--target-schema",
+        help="Exact retained destination rehearsal schema (requires --package-root).",
+    ),
+    package_root: Path | None = typer.Option(
+        None,
+        "--package-root",
+        help="Exact sealed destination package root for governed restore rehearsal.",
+    ),
 ) -> None:
     """Dry-run plan to restore an exact backup into _restorecheck_* (not executed)."""
     from mercury.restore.check_plan import build_restore_check_plan
     from mercury.restore.terminal.check import print_restore_check_plan
+
+    package_artifact = None
+    if target_schema is not None or package_root is not None:
+        if not target_schema or package_root is None:
+            raise typer.BadParameter("--target-schema and --package-root must be supplied together")
+        from mercury.restore.destination_rehearsal import resolve_package_restore_artifact
+
+        try:
+            package_artifact = resolve_package_restore_artifact(
+                package_root=package_root,
+                source_database=db,
+                backup_id=backup_id,
+                target_schema=target_schema,
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
 
     plan = build_restore_check_plan(
         db,
         backup_id=backup_id,
         require_backup_id=True,
         allow_unverified=allow_unverified,
+        target_schema=target_schema,
+        backup_directory_override=(package_artifact.backup_directory if package_artifact else None),
     )
     print_restore_check_plan(plan)
     from mercury.logging.events import log_restore_check
@@ -3150,6 +3178,26 @@ def restore_check_run_cmd(
         "--execute",
         help="Execute restore into _restorecheck_* (requires live actions).",
     ),
+    target_schema: str | None = typer.Option(
+        None,
+        "--target-schema",
+        help="Exact retained destination rehearsal schema (requires --package-root).",
+    ),
+    retain_after_success: bool = typer.Option(
+        False,
+        "--retain-after-success",
+        help="Keep a governed retained restore-check schema after a successful import.",
+    ),
+    receipt_root: Path = typer.Option(
+        Path.home() / ".local" / "share" / "mercury",
+        "--receipt-root",
+        help="Destination-local Mercury receipt directory for governed rehearsal.",
+    ),
+    package_root: Path | None = typer.Option(
+        None,
+        "--package-root",
+        help="Exact sealed destination package root for governed restore rehearsal.",
+    ),
 ) -> None:
     """Plan or execute restore-check into a temporary _restorecheck_* database."""
     from pathlib import Path
@@ -3160,11 +3208,36 @@ def restore_check_run_cmd(
     from mercury.restore.restore_runner import execute_restore_into_database
     from mercury.restore.terminal.runner import print_restore_execution_result
 
+    package_artifact = None
+    governed = target_schema is not None or package_root is not None
+    if governed:
+        if not target_schema or package_root is None:
+            raise typer.BadParameter("--target-schema and --package-root must be supplied together")
+        if not retain_after_success:
+            raise typer.BadParameter("Governed destination rehearsal requires --retain-after-success")
+        from mercury.restore.destination_rehearsal import (
+            assert_destination_receipt_root,
+            resolve_package_restore_artifact,
+        )
+
+        try:
+            receipt_root = assert_destination_receipt_root(receipt_root)
+            package_artifact = resolve_package_restore_artifact(
+                package_root=package_root,
+                source_database=db,
+                backup_id=backup_id,
+                target_schema=target_schema,
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+
     plan = build_restore_check_plan(
         db,
         backup_id=backup_id,
         require_backup_id=True,
         allow_unverified=allow_unverified,
+        target_schema=target_schema,
+        backup_directory_override=(package_artifact.backup_directory if package_artifact else None),
     )
     if not execute:
         print_restore_check_plan(plan)
@@ -3183,7 +3256,9 @@ def restore_check_run_cmd(
             dump_path=dump_path,
             source_database=plan.source_prod,
             execute=True,
-            cleanup_after_success=True,
+            recreate_target=not governed,
+            cleanup_after_success=not retain_after_success,
+            receipt_root=receipt_root if governed else None,
         )
     except BackupExecutionError as exc:
         typer.echo(str(exc))

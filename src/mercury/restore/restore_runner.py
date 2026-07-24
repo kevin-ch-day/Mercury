@@ -38,6 +38,7 @@ class RestoreExecutionResult(BaseModel):
     verification_detail: str | None = None
     verification_issues: list[str] = Field(default_factory=list)
     target_table_count: int | None = None
+    receipt_path: str | None = None
 
 
 def assert_safe_restore_target(database: str) -> None:
@@ -143,6 +144,7 @@ def execute_restore_into_database(
     policy: ExecutionPolicy | None = None,
     recreate_target: bool = True,
     cleanup_after_success: bool = False,
+    receipt_root: Path | None = None,
     config: MariaDbConnectionConfig | None = None,
     import_runner: ImportRunner | None = None,
     inspect_row_fn=None,
@@ -157,7 +159,7 @@ def execute_restore_into_database(
         commands.append(f"DROP DATABASE IF EXISTS `{target_database}`")
         commands.append(f"CREATE DATABASE `{target_database}`")
     else:
-        commands.append(f"CREATE DATABASE IF NOT EXISTS `{target_database}`")
+        commands.append(f"CREATE DATABASE `{target_database}`")
     commands.append(f"gunzip -c {dump_path} | mariadb {target_database}")
     cleanup_command = None
     if cleanup_after_success and classify_database(target_database).role == DatabaseRole.RESTORE_CHECK_TEMP:
@@ -204,7 +206,8 @@ def execute_restore_into_database(
         )
         from mercury.state.ledger import record_restore_check_result
 
-        record_restore_check_result(result)
+        receipt = record_restore_check_result(result, state_root=receipt_root)
+        result.receipt_path = str(receipt) if receipt else None
         return result
 
     cfg = config or try_load_mariadb_config()
@@ -235,7 +238,8 @@ def execute_restore_into_database(
         )
         from mercury.state.ledger import record_restore_check_result
 
-        record_restore_check_result(result)
+        receipt = record_restore_check_result(result, state_root=receipt_root)
+        result.receipt_path = str(receipt) if receipt else None
         return result
 
     cleanup_dropped = False
@@ -300,5 +304,6 @@ def execute_restore_into_database(
     )
     from mercury.state.ledger import record_restore_check_result
 
-    record_restore_check_result(result)
+    receipt = record_restore_check_result(result, state_root=receipt_root)
+    result.receipt_path = str(receipt) if receipt else None
     return result

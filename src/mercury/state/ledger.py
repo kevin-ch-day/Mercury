@@ -413,11 +413,11 @@ def record_restore_check_result(
     result: RestoreExecutionResult,
     *,
     state_root: Path | None = None,
-) -> None:
+) -> Path | None:
     if "_restorecheck_" not in result.target_database:
-        return
+        return None
     if result.dry_run and not result.executed and not result.refused:
-        return
+        return None
     backup_dir = Path(result.dump_path).resolve().parent
     manifest = _load_manifest_payload(backup_dir)
     status = (
@@ -442,7 +442,7 @@ def record_restore_check_result(
         state_root=state_root,
     )
     if root is None:
-        return
+        return None
     _append_csv(
         root / DATABASE_BACKUPS_CSV,
         DATABASE_BACKUP_FIELDS,
@@ -462,6 +462,7 @@ def record_restore_check_result(
             "warnings": result.message,
         },
     )
+    return root / OPERATIONS_JSONL
 
 
 def record_repo_bundle_execution(plan, *, state_root: Path | None = None) -> None:
