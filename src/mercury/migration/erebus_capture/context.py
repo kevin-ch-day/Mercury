@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .storage_preflight import StorageFacts
+from .validation_runner import ValidationRunner
 
 
 GitRunner = Callable[[Path, tuple[str, ...]], str]
@@ -24,3 +25,4 @@ class CaptureContext:
     git_runner: GitRunner | None = None
     minimum_free_bytes: int = 1
     allow_synthetic_execution: bool = False
+    validation_runner: ValidationRunner | None = None

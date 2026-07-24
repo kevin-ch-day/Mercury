@@ -14,7 +14,10 @@ from mercury.migration.erebus_capture.storage_preflight import (
     EXPECTED_LABEL, EXPECTED_MOUNT, EXPECTED_UUID, StorageFacts,
 )
 from mercury.migration.erebus_capture.full_suite_policy import ExpectedFailure, FullSuiteSummary, evaluate
+from mercury.migration.erebus_capture.validation_runner import DeterministicValidationRunner, ValidationResult
 from mercury.migration.erebus_capture.contract import REQUIRED, expected_bundle_name, validate_members
+from mercury.migration.erebus_capture.scanner import scan_capture
+import pytest
 
 
 def _facts() -> StorageFacts:
@@ -59,8 +62,65 @@ def test_full_suite_policy_requires_exact_failure_identity_and_classification() 
     assert evaluate(FullSuiteSummary("pytest -q", 1, 0, 0, (), 0, collection_errors=1)) == (False, "FULL_SUITE_STRUCTURAL_FAILURE")
 
 
+@pytest.mark.parametrize("summary", [
+    FullSuiteSummary("pytest -q", 1, 2, 1, (), 0),
+    FullSuiteSummary("pytest -q", 0, 2, 1, (ExpectedFailure("x", "wrong"),), 0),
+    FullSuiteSummary("pytest -q", 1, 2, 1, (), 0, interrupted=True),
+    FullSuiteSummary("pytest -q", 1, 2, 1, (), 0, focused_failures=1),
+    FullSuiteSummary("pytest -q", 1, 2, 1, (), 0, dependency_valid=False),
+])
+def test_full_suite_policy_refuses_inconsistent_or_incomplete_results(summary: FullSuiteSummary) -> None:
+    assert not evaluate(summary)[0]
+
+
+def test_full_suite_policy_refuses_missing_or_changed_approved_failure() -> None:
+    approved = (ExpectedFailure("tests/a.py::test_a", "host_output"),)
+    missing = FullSuiteSummary("pytest", 0, 1, 1, (), 0)
+    # A zero-failure run is valid independently; a nonzero run missing the exact approved identity is not.
+    assert evaluate(missing, approved)[0]
+    changed = FullSuiteSummary("pytest", 1, 1, 0, (ExpectedFailure("tests/a.py::test_a", "different"),), 0)
+    assert not evaluate(changed, approved)[0]
+
+
+def test_validation_runner_result_is_structured_and_refuses_incomplete_execution(tmp_path: Path) -> None:
+    result = ValidationResult(("pytest",), str(tmp_path), 1, stderr="failed", parsed={"failed": 1})
+    runner = DeterministicValidationRunner({"focused_tests": result})
+    recorded = runner.run("focused_tests", cwd=tmp_path, command=("ignored",))
+    assert not recorded.accepted
+    assert recorded.evidence()["parsed"] == {"failed": 1}
+
+
 def test_capture_contract_rejects_unexpected_and_historical_members() -> None:
     members = set(REQUIRED) | {expected_bundle_name("abcdef0")}
     assert validate_members(members, "abcdef0") == []
     assert "unexpected member: surprise.txt" in validate_members(members | {"surprise.txt"}, "abcdef0")
     assert "forbidden member: logs/run.txt" in validate_members(members | {"logs/run.txt"}, "abcdef0")
+
+
+@pytest.mark.parametrize("name,content", [
+    (".env", "API_KEY=abcdefghijklmnop"), ("private.pem", "-----BEGIN RSA PRIVATE KEY-----"),
+    ("private.txt", "-----BEGIN OPENSSH PRIVATE KEY-----"), ("private.txt", "-----BEGIN EC PRIVATE KEY-----"),
+    ("data.db", "binary"), ("logs/run.txt", "x"), ("output/report.txt", "x"),
+    ("ScytaleDroid/source.py", "x"), ("notes.txt", "token=abcdefghijklmnop"),
+])
+def test_scanner_rejects_governed_forbidden_content(tmp_path: Path, name: str, content: str) -> None:
+    path = tmp_path / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text(content)
+    assert scan_capture(tmp_path, short_sha="abcdef0")
+
+
+def test_scanner_accepts_benign_hashes_and_docs_when_members_are_valid(tmp_path: Path) -> None:
+    for member in set(REQUIRED) | {expected_bundle_name("abcdef0")}:
+        path = tmp_path / member; path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("documentation discusses tokens; sha256=" + "a" * 64 + "\n")
+    assert scan_capture(tmp_path, short_sha="abcdef0") == []
+
+
+def test_scanner_accepts_empty_env_template_and_refuses_symlink(tmp_path: Path) -> None:
+    for member in set(REQUIRED) | {expected_bundle_name("abcdef0")}:
+        path = tmp_path / member; path.parent.mkdir(parents=True, exist_ok=True); path.write_text("ok\n")
+    (tmp_path / ".env").write_text("")
+    assert "forbidden path: .env" not in scan_capture(tmp_path, short_sha="abcdef0")
+    # A symlink is rejected independently from its target content.
+    target = tmp_path / "target.txt"; target.write_text("ok")
+    link = tmp_path / "artifacts" / "intake_contract" / "link.txt"; link.parent.mkdir(parents=True); link.symlink_to(target)
+    assert any(item.startswith("nonregular member:") for item in scan_capture(tmp_path, short_sha="abcdef0"))

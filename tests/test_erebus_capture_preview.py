@@ -12,7 +12,7 @@ from mercury.migration.erebus_capture.service import (
     begin_preview_execution, execute_capture, load_preview, mark_preview_consumed, preview_capture,
 )
 from mercury.migration.erebus_capture.evidence import collect_git_evidence
-from mercury.migration.erebus_capture.git_capture import create_complete_bundle
+from mercury.migration.erebus_capture.git_capture import bundle_verify, create_complete_bundle
 from mercury.migration.erebus_capture.reconstruction import reconstruct_and_verify
 from mercury.migration.erebus_capture.manifest import verify_manifest, write_manifest
 from mercury.migration.erebus_capture.preview_state import PreviewState, begin_execution, invalidate, load_state, mark_consumed
@@ -23,6 +23,7 @@ from mercury.migration.erebus_capture.intake_validation import ALLOWED, EXCLUDED
 from mercury.migration.erebus_capture.contract import REQUIRED, expected_bundle_name, validate_members
 from mercury.migration.erebus_capture.package_validation import validate_erebus_capture_for_package
 from mercury.migration.erebus_capture.context import CaptureContext
+from mercury.migration.erebus_capture.validation_runner import DeterministicValidationRunner, ValidationResult
 from mercury.migration.erebus_capture.service import (
     build_preview_payload, create_preview, publish_preview, revalidate_preview_for_execute,
 )
@@ -132,6 +133,7 @@ def test_complete_bundle_reconstructs_pinned_identity(tmp_path: Path) -> None:
     result = reconstruct_and_verify(bundle, tmp_path / "reconstructed", expected_commit=request.expected_commit,
         expected_tree=request.expected_tree, maintenance_sha256=request.maintenance_sha256)
     assert result["head_match"] and result["tree_match"] and result["maintenance_match"] and result["clean"]
+    assert request.expected_commit in bundle_verify(bundle)
 
 
 def test_manifest_hashes_content_and_detects_drift(tmp_path: Path) -> None:
@@ -164,7 +166,7 @@ def test_preview_invalidation_is_durable(tmp_path: Path) -> None:
     assert not load_preview(request.control_root, preview.preview_id).ok
 
 
-def test_context_preview_revalidates_all_synthetic_identities(tmp_path: Path) -> None:
+def test_context_preview_revalidates_all_synthetic_identities(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     request = _request(tmp_path)
     receipt = tmp_path / "receipt.json"
     receipt.write_text(__import__("json").dumps({"source_relative_path": RECOVERY_PATH, "artifact_sha256": request.maintenance_sha256, "repair_commit": request.expected_commit, "repair_tree": request.expected_tree, "original_ignore_rule": "reports/", "repaired_ignore_rule": "/reports/", "tracked": True}))
@@ -178,7 +180,7 @@ def test_context_preview_revalidates_all_synthetic_identities(tmp_path: Path) ->
     intake.with_suffix(".json.sha256").write_text(f"{hashlib.sha256(intake.read_bytes()).hexdigest()}  intake.json\n")
     facts = StorageFacts("/dev/x1", "/dev/x", "ext4", EXPECTED_LABEL, EXPECTED_UUID, EXPECTED_MOUNT, "rw", 100, True, True)
     context = CaptureContext(Path(request.control_root), Path(request.repository), receipt, phase, intake, lambda: facts,
-                             allow_synthetic_execution=True)
+                             allow_synthetic_execution=True, validation_runner=DeterministicValidationRunner())
     request = ErebusCaptureRequest(**{**request.__dict__, "phase3b_run_id": RUN_ID})
     payload = build_preview_payload(context, request)
     assert not (Path(request.control_root) / "validation" / "previews" / "erebus" / request.preview_id).exists()
@@ -194,6 +196,22 @@ def test_context_preview_revalidates_all_synthetic_identities(tmp_path: Path) ->
     assert executed.ok, executed.errors
     assert validate_erebus_capture_for_package(Path(request.control_root), capture_id="capture-two",
                                                commit=request.expected_commit, tree=request.expected_tree) == []
+    capture = Path(request.control_root) / "validation" / "erebus" / "capture-two"
+    summary = __import__("json").loads((capture / "capture_summary.json").read_text())
+    manifest_receipt = __import__("json").loads((capture / "manifest_receipt.json").read_text())
+    assert summary["decisions"]["prohibited_content"] == "PASS"
+    assert manifest_receipt["prohibited_content"] == "PASS"
+    assert "CAPTURE_VERIFIED" in (capture / "CAPTURE_REPORT.md").read_text()
+    failed = create_preview(context, ErebusCaptureRequest(**{
+        **request.__dict__, "preview_id": "preview-failed", "capture_id": "capture-failed",
+    }))
+    assert failed.ok
+    from mercury.migration.erebus_capture import writer
+    monkeypatch.setattr(writer, "write_synthetic_capture", lambda **_kwargs: (_ for _ in ()).throw(ValueError("injected writer failure")))
+    refusal = execute_capture(context, "preview-failed")
+    assert not refusal.ok
+    assert load_state(Path(request.control_root) / "validation" / "previews" / "erebus" / "preview-failed") is PreviewState.REFUSED
+    assert not (Path(request.control_root) / "validation" / "erebus" / "capture-failed").exists()
     from typer.testing import CliRunner
     from mercury.cli import app
     facts_path = tmp_path / "storage-facts.json"
