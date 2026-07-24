@@ -3198,6 +3198,21 @@ def restore_check_run_cmd(
         "--package-root",
         help="Exact sealed destination package root for governed restore rehearsal.",
     ),
+    replace_failed_retained_target: bool = typer.Option(
+        False,
+        "--replace-failed-retained-target",
+        help="Replace only a receipt-proven failed retained Erebus rehearsal target.",
+    ),
+    android_backup_id: str | None = typer.Option(
+        None,
+        "--android-backup-id",
+        help="Exact successful Android dependency backup ID required for recovery.",
+    ),
+    android_target_schema: str | None = typer.Option(
+        None,
+        "--android-target-schema",
+        help="Exact successful retained Android dependency schema required for recovery.",
+    ),
 ) -> None:
     """Plan or execute restore-check into a temporary _restorecheck_* database."""
     from pathlib import Path
@@ -3209,6 +3224,7 @@ def restore_check_run_cmd(
     from mercury.restore.terminal.runner import print_restore_execution_result
 
     package_artifact = None
+    recovery = None
     governed = target_schema is not None or package_root is not None
     if governed:
         if not target_schema or package_root is None:
@@ -3231,6 +3247,38 @@ def restore_check_run_cmd(
         except ValueError as exc:
             raise typer.BadParameter(str(exc)) from exc
 
+    if replace_failed_retained_target:
+        if not governed or not android_backup_id or not android_target_schema:
+            raise typer.BadParameter(
+                "failed retained-target recovery requires governed package inputs, "
+                "--android-backup-id, and --android-target-schema"
+            )
+        from mercury.restore.failed_rehearsal_recovery import (
+            build_failed_rehearsal_recovery,
+            validate_failed_rehearsal_recovery,
+        )
+
+        try:
+            recovery = build_failed_rehearsal_recovery(
+                package_root=package_root,
+                erebus_backup_id=backup_id,
+                erebus_target=target_schema,
+                android_backup_id=android_backup_id,
+                android_target=android_target_schema,
+                receipt_root=receipt_root,
+            )
+            preflight_counts = validate_failed_rehearsal_recovery(recovery)
+            package_artifact = recovery.erebus
+            typer.echo("GOVERNED FAILED-TARGET RECOVERY PREFLIGHT")
+            typer.echo(f"  package_id: {recovery.package_id}")
+            typer.echo(f"  phase3b_run_id: {recovery.phase3b_run_id}")
+            for source, target in recovery.schema_map.items():
+                typer.echo(f"  schema_map: {source} -> {target}")
+            typer.echo(f"  failed_erebus_pre_drop_counts: {preflight_counts['failed_erebus']}")
+            typer.echo(f"  retained_android_counts: {preflight_counts['android']}")
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+
     plan = build_restore_check_plan(
         db,
         backup_id=backup_id,
@@ -3238,10 +3286,25 @@ def restore_check_run_cmd(
         allow_unverified=allow_unverified,
         target_schema=target_schema,
         backup_directory_override=(package_artifact.backup_directory if package_artifact else None),
+        allow_existing_target=replace_failed_retained_target,
     )
     if not execute:
         print_restore_check_plan(plan)
         if not plan.allowed:
+            raise typer.Exit(1)
+        return
+
+    if recovery is not None:
+        from mercury.restore.failed_rehearsal_recovery import execute_failed_rehearsal_recovery
+
+        try:
+            result, recovery_receipt = execute_failed_rehearsal_recovery(recovery)
+        except ValueError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(1) from exc
+        typer.echo(f"Recovery receipt: {recovery_receipt}")
+        typer.echo(f"Recovery decision: {result['final_decision']}")
+        if result["final_decision"] != "FAILED_RETAINED_TARGET_REPLACED_AND_VERIFIED":
             raise typer.Exit(1)
         return
 

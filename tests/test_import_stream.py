@@ -85,6 +85,40 @@ exit 0
     assert "TRIGGER erebus_threat_intel_dev.trg_sample" in written
 
 
+def test_import_stream_rewrites_package_bound_cross_schema_identifiers(tmp_path: Path) -> None:
+    dump_path = tmp_path / "cross_schema.sql.gz"
+    payload = "\n".join(
+        [
+            "CREATE VIEW `v_dependency` AS SELECT * FROM `android_permission_intel`.`android_permission_dict_unknown`;",
+            "CREATE PROCEDURE `p_dependency`() SELECT * FROM android_permission_intel.android_permission_dict_unknown;",
+            "CREATE TRIGGER `t_dependency` BEFORE INSERT ON `erebus_threat_intel_prod`.`queue` FOR EACH ROW SET @x = 1;",
+            "INSERT INTO note VALUES ('android_permission_intel.not_an_identifier');",
+            "",
+        ]
+    )
+    with gzip.open(dump_path, "wt", encoding="utf-8") as handle:
+        handle.write(payload)
+    capture = tmp_path / "captured.sql"
+    fake_client = tmp_path / "fake-mariadb.sh"
+    _write_executable(fake_client, f'#!/usr/bin/env bash\ncat > "{capture}"\n')
+
+    run_compressed_sql_import(
+        [str(fake_client)],
+        {},
+        dump_path,
+        rewrite_databases={
+            "erebus_threat_intel_prod": "_restorecheck_erebus",
+            "android_permission_intel": "_restorecheck_android",
+        },
+    )
+
+    written = capture.read_text(encoding="utf-8")
+    assert "`_restorecheck_android`.`android_permission_dict_unknown`" in written
+    assert "_restorecheck_android.android_permission_dict_unknown" in written
+    assert "`_restorecheck_erebus`.`queue`" in written
+    assert "'android_permission_intel.not_an_identifier'" in written
+
+
 def test_import_stream_strips_conditional_definer_comments_from_triggers(tmp_path: Path) -> None:
     dump_path = tmp_path / "trigger.sql.gz"
     payload = (
@@ -127,4 +161,3 @@ exit 0
     )
 
     run_compressed_sql_import([str(fake_client)], {}, dump_path)
-

@@ -6,6 +6,7 @@ import gzip
 import re
 import subprocess
 from pathlib import Path
+from typing import Mapping
 
 from mercury.backup.backup_runner import BackupExecutionError
 
@@ -22,8 +23,45 @@ _USE_DATABASE_RE = re.compile(r"^\s*USE\s+[`'\"]?[\w$-]+[`'\"]?\s*;", re.IGNOREC
 def _rewrite_database_name(text: str, source: str, target: str) -> str:
     if source == target:
         return text
-    text = text.replace(f"`{source}`", f"`{target}`")
-    return re.sub(rf"(?<![\w$]){re.escape(source)}(?=\.)", target, text)
+
+    def rewrite_code(segment: str) -> str:
+        # Only rewrite schema-qualified identifiers.  Do not replace arbitrary
+        # SQL string data that happens to contain a database name.
+        segment = re.sub(
+            rf"`{re.escape(source)}`(?=\s*\.)",
+            f"`{target}`",
+            segment,
+        )
+        return re.sub(rf"(?<![\w$]){re.escape(source)}(?=\.)", target, segment)
+
+    # mysqldump statements can contain data literals.  Rewrite code segments
+    # only; preserve single/double quoted literal bodies verbatim.
+    parts: list[str] = []
+    index = 0
+    code_start = 0
+    while index < len(text):
+        if text[index] not in {"'", '"'}:
+            index += 1
+            continue
+        parts.append(rewrite_code(text[code_start:index]))
+        quote = text[index]
+        literal_start = index
+        index += 1
+        while index < len(text):
+            if text[index] == "\\":
+                index += 2
+                continue
+            if text[index] == quote:
+                if index + 1 < len(text) and text[index + 1] == quote:
+                    index += 2
+                    continue
+                index += 1
+                break
+            index += 1
+        parts.append(text[literal_start:index])
+        code_start = index
+    parts.append(rewrite_code(text[code_start:]))
+    return "".join(parts)
 
 
 def _transform_sql_line(
@@ -32,6 +70,7 @@ def _transform_sql_line(
     strip_definer: bool,
     strip_database_directives: bool,
     rewrite_database: tuple[str, str] | None = None,
+    rewrite_databases: Mapping[str, str] | None = None,
 ) -> str:
     text = line
     if strip_database_directives and (
@@ -44,6 +83,9 @@ def _transform_sql_line(
         text = _SQL_SECURITY_DEFINER_RE.sub("SQL SECURITY INVOKER", text)
     if rewrite_database is not None:
         text = _rewrite_database_name(text, rewrite_database[0], rewrite_database[1])
+    if rewrite_databases:
+        for source, target in rewrite_databases.items():
+            text = _rewrite_database_name(text, source, target)
     return text
 
 
@@ -55,6 +97,7 @@ def run_compressed_sql_import(
     strip_definer: bool = True,
     strip_database_directives: bool = True,
     rewrite_database: tuple[str, str] | None = None,
+    rewrite_databases: Mapping[str, str] | None = None,
 ) -> None:
     """
     Stream a dump into ``mariadb target`` with safe SQL rewrites.
@@ -88,6 +131,7 @@ def run_compressed_sql_import(
                     strip_definer=strip_definer,
                     strip_database_directives=strip_database_directives,
                     rewrite_database=rewrite_database,
+                    rewrite_databases=rewrite_databases,
                 )
                 if not rewritten:
                     continue

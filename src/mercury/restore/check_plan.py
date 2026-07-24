@@ -51,6 +51,7 @@ def build_restore_check_plan(
     allow_unverified: bool = False,
     target_schema: str | None = None,
     backup_directory_override: Path | None = None,
+    allow_existing_target: bool = False,
 ) -> RestoreCheckPlan:
     """
     Plan a non-destructive restore test into a temporary _restorecheck_* database.
@@ -153,7 +154,7 @@ def build_restore_check_plan(
             if stale_detail:
                 blockers.append(stale_detail)
 
-    if target_schema is not None and should_probe_database_status():
+    if target_schema is not None and not allow_existing_target and should_probe_database_status():
         from mercury.database.mariadb.session import fetch_user_database_names, try_load_mariadb_config
 
         cfg = try_load_mariadb_config()

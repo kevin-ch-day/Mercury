@@ -6,6 +6,7 @@ import os
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
+from typing import Mapping
 
 from pydantic import BaseModel, Field
 
@@ -86,6 +87,7 @@ def _default_import_runner(
     target: str,
     *,
     source_database: str,
+    schema_rewrites: Mapping[str, str] | None = None,
 ) -> None:
     from mercury.database.mariadb.import_stream import run_compressed_sql_import
 
@@ -95,10 +97,16 @@ def _default_import_runner(
         dump_path,
         strip_definer=True,
         rewrite_database=(source_database, target),
+        rewrite_databases=schema_rewrites,
     )
 
 
-def _make_import_runner(source_database: str, target_database: str) -> ImportRunner:
+def _make_import_runner(
+    source_database: str,
+    target_database: str,
+    *,
+    schema_rewrites: Mapping[str, str] | None = None,
+) -> ImportRunner:
     def runner(
         argv: list[str],
         env: dict[str, str],
@@ -113,6 +121,7 @@ def _make_import_runner(source_database: str, target_database: str) -> ImportRun
             config,
             target,
             source_database=source_database,
+            schema_rewrites=schema_rewrites,
         )
 
     return runner
@@ -146,6 +155,7 @@ def execute_restore_into_database(
     cleanup_after_success: bool = False,
     receipt_root: Path | None = None,
     governed_destination_rehearsal: bool = False,
+    schema_rewrites: Mapping[str, str] | None = None,
     config: MariaDbConnectionConfig | None = None,
     import_runner: ImportRunner | None = None,
     inspect_row_fn=None,
@@ -226,7 +236,11 @@ def execute_restore_into_database(
         cfg = load_mariadb_config()
 
     import_argv = build_import_argv(cfg, target_database)
-    runner = import_runner or _make_import_runner(source_database, target_database)
+    runner = import_runner or _make_import_runner(
+        source_database,
+        target_database,
+        schema_rewrites=schema_rewrites,
+    )
 
     try:
         if recreate_target:
