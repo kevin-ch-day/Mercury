@@ -8,6 +8,7 @@ ID, and reads the immutable payload copied into that package.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ DESTINATION_RECEIPT_ROOT = Path.home() / ".local" / "share" / "mercury"
 PRODUCTION_REHEARSAL_SOURCES = frozenset(
     {"erebus_threat_intel_prod", "android_permission_intel"}
 )
+_MYSQL_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 
 @dataclass(frozen=True)
@@ -58,7 +60,13 @@ def _package_target_schema(package_root: Path, source_database: str) -> str:
     checklist = package_root / "destination_documents" / "destination_acceptance_checklist.json"
     values = _strings(_json_object(checklist))
     prefix = f"_restorecheck_{source_database}_"
-    targets = sorted({value for value in values if value.startswith(prefix)})
+    targets = sorted(
+        {
+            value
+            for value in values
+            if value.startswith(prefix) and _MYSQL_IDENTIFIER_RE.fullmatch(value)
+        }
+    )
     if len(targets) != 1:
         raise ValueError(
             "Package acceptance checklist must define exactly one retained "
@@ -107,7 +115,7 @@ def resolve_package_restore_artifact(
         raise ValueError(
             f"Target schema must exactly match the package-defined retained schema: {expected_target}"
         )
-    if not target_schema.startswith("_restorecheck_"):
+    if not target_schema.startswith("_restorecheck_") or not _MYSQL_IDENTIFIER_RE.fullmatch(target_schema):
         raise ValueError("Target schema must use the _restorecheck_ naming pattern.")
 
     from mercury.storage.detach_wizard import verify_package_manifest

@@ -37,7 +37,13 @@ def _package(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (docs / "destination_acceptance_checklist.json").write_text(
-        json.dumps({"retained_target": EREBUS_TARGET}), encoding="utf-8"
+        json.dumps(
+            {
+                "retained_target": EREBUS_TARGET,
+                "template_target": "_restorecheck_erebus_threat_intel_prod_<destination_rehearsal_id>",
+            }
+        ),
+        encoding="utf-8",
     )
     (payload / "manifest.json").write_text(
         json.dumps({"backup_id": EREBUS_ID, "database": "erebus_threat_intel_prod"}),
