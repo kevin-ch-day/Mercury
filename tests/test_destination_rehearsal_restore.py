@@ -164,6 +164,38 @@ def test_retain_flag_prevents_success_cleanup_and_writes_local_receipt(
     assert Path(result.receipt_path).is_file()
 
 
+def test_governed_rehearsal_does_not_require_hdd_write_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dump = tmp_path / "erebus.sql.gz"
+    dump.write_bytes(b"fixture")
+    (tmp_path / "manifest.json").write_text(json.dumps({"backup_id": EREBUS_ID}), encoding="utf-8")
+    policy = ExecutionPolicy(
+        dry_run=False,
+        live_actions_enabled=True,
+        backup_root=tmp_path / "missing-backup-root",
+        config_path=None,
+    )
+    monkeypatch.setattr("mercury.restore.restore_runner._execute_client_sql", lambda *_args: None)
+    monkeypatch.setattr(
+        "mercury.restore.restore_runner._verify_restore_target",
+        lambda *a, **k: SimpleNamespace(verified=True, detail="verified", issues=[], table_count=1),
+    )
+    result = execute_restore_into_database(
+        target_database=EREBUS_TARGET,
+        dump_path=dump,
+        source_database="erebus_threat_intel_prod",
+        execute=True,
+        policy=policy,
+        recreate_target=False,
+        receipt_root=tmp_path / "receipt",
+        governed_destination_rehearsal=True,
+        config=MariaDbConnectionConfig(host="localhost", user="root", use_client=True, unix_socket="/tmp/socket"),
+        import_runner=lambda *args: None,
+    )
+    assert result.executed is True
+
+
 def test_receipt_root_must_be_destination_local(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr("mercury.restore.destination_rehearsal.DESTINATION_RECEIPT_ROOT", tmp_path / "local")
     assert assert_destination_receipt_root(tmp_path / "local" / "mercury") == (tmp_path / "local" / "mercury")

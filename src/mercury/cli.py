@@ -3259,6 +3259,7 @@ def restore_check_run_cmd(
             recreate_target=not governed,
             cleanup_after_success=not retain_after_success,
             receipt_root=receipt_root if governed else None,
+            governed_destination_rehearsal=governed,
         )
     except BackupExecutionError as exc:
         typer.echo(str(exc))

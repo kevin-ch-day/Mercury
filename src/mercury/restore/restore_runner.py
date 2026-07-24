@@ -145,6 +145,7 @@ def execute_restore_into_database(
     recreate_target: bool = True,
     cleanup_after_success: bool = False,
     receipt_root: Path | None = None,
+    governed_destination_rehearsal: bool = False,
     config: MariaDbConnectionConfig | None = None,
     import_runner: ImportRunner | None = None,
     inspect_row_fn=None,
@@ -193,8 +194,17 @@ def execute_restore_into_database(
             cleanup_command=cleanup_command,
         )
 
-    if not resolved.live_execution_allowed():
-        reason = resolved.refusal_reason() or "Live restore is not permitted."
+    live_allowed = (
+        (not resolved.dry_run) and resolved.live_actions_enabled
+        if governed_destination_rehearsal
+        else resolved.live_execution_allowed()
+    )
+    if not live_allowed:
+        reason = (
+            "Live actions are disabled for the governed destination rehearsal."
+            if governed_destination_rehearsal
+            else resolved.refusal_reason() or "Live restore is not permitted."
+        )
         result = RestoreExecutionResult(
             source_database=source_database,
             target_database=target_database,
