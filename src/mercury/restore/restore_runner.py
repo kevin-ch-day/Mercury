@@ -177,22 +177,23 @@ def execute_restore_into_database(
             cleanup_command=cleanup_command,
         )
 
-    from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled
+    if not governed_destination_rehearsal:
+        from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled
 
-    try:
-        refuse_if_hdd_writes_disabled("restore-check evidence write")
-    except RuntimeError as exc:
-        return RestoreExecutionResult(
-            source_database=source_database,
-            target_database=target_database,
-            dump_path=str(dump_path),
-            dry_run=False,
-            executed=False,
-            refused=True,
-            message=str(exc),
-            commands=commands,
-            cleanup_command=cleanup_command,
-        )
+        try:
+            refuse_if_hdd_writes_disabled("restore-check evidence write")
+        except RuntimeError as exc:
+            return RestoreExecutionResult(
+                source_database=source_database,
+                target_database=target_database,
+                dump_path=str(dump_path),
+                dry_run=False,
+                executed=False,
+                refused=True,
+                message=str(exc),
+                commands=commands,
+                cleanup_command=cleanup_command,
+            )
 
     live_allowed = (
         (not resolved.dry_run) and resolved.live_actions_enabled

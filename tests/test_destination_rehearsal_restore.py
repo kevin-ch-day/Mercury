@@ -178,6 +178,10 @@ def test_governed_rehearsal_does_not_require_hdd_write_policy(
     )
     monkeypatch.setattr("mercury.restore.restore_runner._execute_client_sql", lambda *_args: None)
     monkeypatch.setattr(
+        "mercury.storage.host_maintenance.refuse_if_hdd_writes_disabled",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("HDD writes disabled")),
+    )
+    monkeypatch.setattr(
         "mercury.restore.restore_runner._verify_restore_target",
         lambda *a, **k: SimpleNamespace(verified=True, detail="verified", issues=[], table_count=1),
     )
