@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -22,7 +23,9 @@ from mercury.migration.erebus_capture.intake_validation import ALLOWED, EXCLUDED
 from mercury.migration.erebus_capture.contract import REQUIRED, expected_bundle_name, validate_members
 from mercury.migration.erebus_capture.package_validation import validate_erebus_capture_for_package
 from mercury.migration.erebus_capture.context import CaptureContext
-from mercury.migration.erebus_capture.service import create_preview, revalidate_preview_for_execute
+from mercury.migration.erebus_capture.service import (
+    build_preview_payload, create_preview, publish_preview, revalidate_preview_for_execute,
+)
 from mercury.migration.erebus_capture.preview_store import atomic_publish, preview_root
 
 
@@ -176,9 +179,31 @@ def test_context_preview_revalidates_all_synthetic_identities(tmp_path: Path) ->
     facts = StorageFacts("/dev/x1", "/dev/x", "ext4", EXPECTED_LABEL, EXPECTED_UUID, EXPECTED_MOUNT, "rw", 100, True, True)
     context = CaptureContext(Path(request.control_root), Path(request.repository), receipt, phase, intake, lambda: facts)
     request = ErebusCaptureRequest(**{**request.__dict__, "phase3b_run_id": RUN_ID})
-    preview = create_preview(context, request)
+    payload = build_preview_payload(context, request)
+    assert not (Path(request.control_root) / "validation" / "previews" / "erebus" / request.preview_id).exists()
+    assert not (Path(request.control_root) / "validation" / "erebus" / request.capture_id).exists()
+    preview = publish_preview(payload)
     assert preview.ok
     assert revalidate_preview_for_execute(context, request.preview_id).ok
+    created = create_preview(context, ErebusCaptureRequest(**{
+        **request.__dict__, "preview_id": "preview-two", "capture_id": "capture-two",
+    }))
+    assert created.ok
+    from typer.testing import CliRunner
+    from mercury.cli import app
+    facts_path = tmp_path / "storage-facts.json"
+    facts_path.write_text(__import__("json").dumps(facts.__dict__))
+    cli = CliRunner().invoke(app, [
+        "migration", "capture-erebus-source", "preview", "--preview-id", "preview-cli",
+        "--repo", str(request.repository), "--capture-id", "capture-cli",
+        "--expected-commit", request.expected_commit, "--expected-tree", request.expected_tree,
+        "--phase3b-run-id", RUN_ID, "--maintenance-sha256", request.maintenance_sha256,
+        "--recovery-receipt", str(receipt), "--phase3b-root", str(phase),
+        "--intake-contract", str(intake), "--control-root", str(request.control_root),
+        "--storage-facts", str(facts_path),
+    ])
+    assert cli.exit_code == 0, cli.output
+    assert "PREVIEW READY" in cli.output
 
 
 @pytest.mark.parametrize("change", ["uuid", "label", "mount", "space", "operation", "role"])
@@ -244,3 +269,25 @@ def test_preview_store_rejects_traversal_and_publishes_atomically(tmp_path: Path
     temp = final.parent / ".preview-good.tmp-test"; temp.mkdir(parents=True); (temp / "receipt.json").write_text("{}\n")
     atomic_publish(temp, final)
     assert (final / "receipt.json").is_file() and not temp.exists()
+
+
+def test_menu_preview_action_uses_shared_service_with_synthetic_facts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from mercury.migration.erebus_capture import menu as capture_menu
+
+    facts = StorageFacts("/dev/x1", "/dev/x", "ext4", EXPECTED_LABEL, EXPECTED_UUID,
+                         EXPECTED_MOUNT, "rw", 100, True, True)
+    facts_path = tmp_path / "facts.json"; facts_path.write_text(__import__("json").dumps(facts.__dict__))
+    values = iter([
+        "preview-menu", "/synthetic/repo", "capture-menu", "commit", "tree", RUN_ID,
+        "hash", str(tmp_path / "receipt.json"), str(tmp_path / "phase"),
+        str(tmp_path / "intake.json"), str(tmp_path / "control"), str(facts_path),
+    ])
+    captured: list[tuple[CaptureContext, ErebusCaptureRequest]] = []
+    monkeypatch.setattr(capture_menu, "_ask", lambda _label: next(values))
+    monkeypatch.setattr(capture_menu, "create_preview", lambda context, request: (
+        captured.append((context, request)) or SimpleNamespace(ok=True, preview_id=request.preview_id)
+    ))
+    capture_menu._preview_from_prompts()
+    assert len(captured) == 1
+    assert captured[0][1].preview_id == "preview-menu"
+    assert captured[0][0].storage_resolver().mount_path == EXPECTED_MOUNT

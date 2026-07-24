@@ -5,7 +5,7 @@ source capture. It does not copy source files, write a capture, generate a
 package, start MariaDB, modify Phase 3B, or detach the Mercury HDD. Capture
 execution remains unavailable pending Phase B review.
 
-## Preview requirements
+## Request, context, and validator order
 
 The operator supplies an exact preview ID, capture ID, repository, expected
 commit/tree, Phase 3B run ID, `maintenance.py` SHA-256, recovery receipt,
@@ -19,7 +19,10 @@ The service validates the repository is clean `main`, matches HEAD/tree and
 not ignored, and hash-pinned. It validates the Mercury label, UUID, canonical
 mount, filesystem, free space, source-host/writer state, and absence of active
 operations. Recovery receipt and sidecar, Phase 3B evidence and pinned backups,
-and intake schema/allowlist/sidecar are mandatory.
+and intake schema/allowlist/sidecar are mandatory. The service first builds an
+in-memory `PreviewPayload` in this order: source/maintenance identity, storage,
+recovery receipt, Phase 3B evidence, and intake contract. Only then does the
+single publisher create a temporary receipt directory.
 
 ## Command
 
@@ -52,7 +55,8 @@ The final directory contains exactly:
 - `intake_identity.json`, `intended_members.json`, `preflight_report.json`
 - `safety_decision.json`, `preview_state.json`
 
-The checksum map covers every JSON receipt file. Loading refuses missing,
+The checksum map deterministically covers every JSON receipt file (not the
+checksum map itself). Loading refuses missing,
 unexpected, non-regular, malformed, checksum-mismatched, or cross-file
 inconsistent content.
 
@@ -65,6 +69,15 @@ reuse, and concurrent begin attempts fail closed. Before any future writer,
 the complete source, storage, recovery, Phase 3B, intake, checksum, state, and
 final-path checks must be repeated. No capture temporary directory is created
 by preview or revalidation.
+
+## Interactive route
+
+Open **Workstation migration → Source capture → Capture Erebus source**. The
+screen has only **Preview capture** and **Review previews**. Entering it does
+not create a preview. Preview capture asks for every explicit CLI input,
+including the reviewed storage-facts receipt, and invokes the same
+`create_preview()` service as the CLI. Review lists exact named preview
+directories; it never selects a "latest" receipt.
 
 Troubleshoot the emitted stable refusal (for example
 `INVALID_PREVIEW_ID`, `FINAL_CAPTURE_EXISTS`, `EXTERNAL_IDENTITY_MISMATCH`,

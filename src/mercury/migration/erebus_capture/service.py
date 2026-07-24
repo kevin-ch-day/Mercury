@@ -9,9 +9,10 @@ from __future__ import annotations
 import subprocess
 import json
 import hashlib
+import shutil
 from datetime import datetime, timezone
+from dataclasses import dataclass
 from pathlib import Path
-from uuid import uuid4
 
 from .models import ErebusCapturePreview, ErebusCaptureRequest, ErebusCaptureResult
 from .preview_state import PreviewState, load_state, write_state
@@ -32,6 +33,16 @@ PREVIEW_REQUIRED_FILES = frozenset({
     "intake_identity.json", "intended_members.json", "preflight_report.json",
     "safety_decision.json", "preview_state.json",
 })
+
+
+@dataclass(frozen=True)
+class PreviewPayload:
+    """Fully validated preview content which has not been published yet."""
+
+    request: ErebusCaptureRequest
+    final_preview: Path
+    final_capture: Path
+    documents: dict[str, object]
 
 
 def preview_receipt_files() -> frozenset[str]:
@@ -62,6 +73,138 @@ def _receipt_sha256(path: Path) -> tuple[str, str] | None:
     if not fields or fields[0] != _sha256(path):
         return None
     return str(path), fields[0]
+
+
+def _source_identity(request: ErebusCaptureRequest) -> dict[str, object]:
+    """Validate and capture every pinned source fact without writing anything."""
+    repo = Path(request.repository)
+    if not repo.is_dir() or not (repo / ".git").exists():
+        raise ValueError("SOURCE_MISMATCH: repository is not a Git worktree")
+    try:
+        branch = _git(repo, "branch", "--show-current")
+        head = _git(repo, "rev-parse", "HEAD")
+        tree = _git(repo, "rev-parse", "HEAD^{tree}")
+        origin_main = _git(repo, "rev-parse", "origin/main")
+        status = _git(repo, "status", "--porcelain")
+        maintenance = repo / "src/database/db_query/virustotal_queries/reports/maintenance.py"
+        relative = str(maintenance.relative_to(repo))
+        tracked = _git(repo, "ls-files", "--error-unmatch", relative) == relative
+        ignored = subprocess.run(
+            ["git", "-C", str(repo), "check-ignore", "-q", relative],
+            capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS,
+        ).returncode == 0
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        raise ValueError(f"SOURCE_MISMATCH: git preflight failed: {exc}") from exc
+    errors = []
+    if branch != "main": errors.append("branch is not main")
+    if head != request.expected_commit: errors.append("HEAD differs from expected commit")
+    if tree != request.expected_tree: errors.append("tree differs from expected tree")
+    if origin_main != request.expected_commit: errors.append("origin/main differs from expected commit")
+    if status: errors.append("repository worktree is not clean")
+    if not maintenance.is_file(): errors.append("maintenance.py is missing")
+    elif not tracked: errors.append("maintenance.py is not tracked")
+    elif ignored: errors.append("maintenance.py is ignored")
+    elif _sha256(maintenance) != request.maintenance_sha256: errors.append("maintenance.py hash differs from expected value")
+    if errors:
+        raise ValueError("SOURCE_MISMATCH: " + "; ".join(errors))
+    return {
+        "repository": str(repo), "branch": branch, "head": head, "tree": tree,
+        "origin_main": origin_main, "clean": True,
+        "tracked_file_count": len([line for line in _git(repo, "ls-files").splitlines() if line]),
+        "submodules": _git(repo, "submodule", "status"),
+        "maintenance_sha256": request.maintenance_sha256,
+    }
+
+
+def build_preview_payload(context: CaptureContext, request: ErebusCaptureRequest) -> PreviewPayload:
+    """Validate all injected identities and build preview documents in memory.
+
+    This function intentionally creates neither a preview nor a capture
+    directory.  ``publish_preview`` is the sole final-directory writer.
+    """
+    validate_preview_id(request.preview_id)
+    if not request.capture_id or "/" in request.capture_id or "\\" in request.capture_id or ".." in request.capture_id:
+        raise ValueError("INVALID_CAPTURE_ID")
+    request = ErebusCaptureRequest(**{
+        **request.__dict__, "repository": str(context.source_repo),
+        "control_root": str(context.control_root),
+        "recovery_receipt": str(context.recovery_receipt),
+        "intake_contract": str(context.intake_contract),
+    })
+    final_preview = preview_root(context.control_root, request.preview_id)
+    final_capture = context.control_root / "validation" / "erebus" / request.capture_id
+    if final_preview.exists():
+        raise ValueError("PREVIEW_ID_EXISTS")
+    if final_capture.exists():
+        raise ValueError("FINAL_CAPTURE_EXISTS")
+    source = _source_identity(request)
+    storage = validate_storage(context.storage_resolver(), minimum_free_bytes=context.minimum_free_bytes)
+    recovery = validate_recovery_receipt(
+        context.recovery_receipt, artifact_sha256=request.maintenance_sha256,
+        repair_commit=request.expected_commit, repair_tree=request.expected_tree,
+    )
+    phase = validate_phase3b(context.phase3b_root, request.phase3b_run_id)
+    intake = validate_intake_contract(context.intake_contract)
+    members = sorted(CAPTURE_REQUIRED_MEMBERS | {expected_bundle_name(request.expected_commit[:7])})
+    identities = {
+        "source_identity.json": source,
+        "storage_identity.json": storage.__dict__,
+        "recovery_identity.json": recovery.__dict__,
+        "phase3b_identity.json": phase.__dict__,
+        "intake_identity.json": intake.__dict__,
+    }
+    preview = {
+        "schema": "mercury.erebus_capture_preview.v1", "preview_id": request.preview_id,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(), "capture_id": request.capture_id,
+        "final_path": str(final_capture), "request": request.__dict__, "identity": source,
+        "identities": identities, "intended_members": members,
+        "validation_exception": [
+            "tests/data_analysis/test_queue_expansion_ops.py",
+            "tests/scripts/test_scripts_maintenance_inventory.py", "tests/test_setup_script.py",
+        ],
+    }
+    documents: dict[str, object] = {
+        **identities, "capture_preview.json": preview, "intended_members.json": members,
+        "preflight_report.json": {"ok": True, "errors": [], "validator_order": [
+            "source", "storage", "recovery", "phase3b", "intake"],},
+        "safety_decision.json": {"classification": "PREVIEW_READY", "no_capture_created": True,
+                                 "execute_authorized": False},
+    }
+    return PreviewPayload(request, final_preview, final_capture, documents)
+
+
+def _write_preview_documents(root: Path, payload: PreviewPayload) -> None:
+    for name, value in payload.documents.items():
+        if name not in PREVIEW_REQUIRED_FILES:
+            raise ValueError("PREVIEW_DOCUMENT_INVALID")
+        (root / name).write_text(json.dumps(value, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    write_state(root, PreviewState.READY)
+    manifest = _preview_manifest(root)
+    (root / "capture_preview.sha256").write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def publish_preview(payload: PreviewPayload) -> ErebusCapturePreview:
+    """Atomically publish an already-built payload and reload it for proof."""
+    preview = ErebusCapturePreview(payload.request.preview_id, payload.request, True)
+    root: Path | None = None
+    try:
+        root = temporary_preview_root(Path(payload.request.control_root), payload.request.preview_id)
+        _write_preview_documents(root, payload)
+        atomic_publish(root, payload.final_preview)
+        root = None
+        verified = load_preview(payload.request.control_root, payload.request.preview_id)
+        if not verified.ok:
+            raise ValueError("PREVIEW_POST_PUBLISH_VERIFY_FAILED: " + "; ".join(verified.errors))
+        preview.path = str(payload.final_preview)
+        return preview
+    except (OSError, ValueError) as exc:
+        if root is not None:
+            shutil.rmtree(root, ignore_errors=True)
+        # An error after rename (for example parent fsync or reload failure)
+        # must not leave a receipt that callers could mistake for verified.
+        if payload.final_preview.exists():
+            shutil.rmtree(payload.final_preview, ignore_errors=True)
+        return ErebusCapturePreview(payload.request.preview_id, payload.request, False, [str(exc)], reason_codes=["PREVIEW_PERSISTENCE_FAILED"])
 
 
 def preview_capture(request: ErebusCaptureRequest, *, identity_payloads: dict[str, object] | None = None) -> ErebusCapturePreview:
@@ -203,25 +346,13 @@ def preview_capture(request: ErebusCaptureRequest, *, identity_payloads: dict[st
 
 
 def create_preview(context: CaptureContext, request: ErebusCaptureRequest) -> ErebusCapturePreview:
-    """Create a preview only after every injected external identity validates."""
+    """Build, atomically publish, then reload a complete governed preview."""
     try:
-        validate_preview_id(request.preview_id)
+        payload = build_preview_payload(context, request)
     except ValueError as exc:
-        return ErebusCapturePreview("", request, False, [str(exc)], reason_codes=["INVALID_REQUEST"])
-    request = ErebusCaptureRequest(**{**request.__dict__, "repository": str(context.source_repo), "control_root": str(context.control_root), "recovery_receipt": str(context.recovery_receipt), "intake_contract": str(context.intake_contract)})
-    try:
-        storage = validate_storage(context.storage_resolver(), minimum_free_bytes=context.minimum_free_bytes)
-        recovery = validate_recovery_receipt(context.recovery_receipt, artifact_sha256=request.maintenance_sha256, repair_commit=request.expected_commit, repair_tree=request.expected_tree)
-        phase = validate_phase3b(context.phase3b_root, request.phase3b_run_id)
-        intake = validate_intake_contract(context.intake_contract)
-    except ValueError as exc:
-        return ErebusCapturePreview("", request, False, [str(exc)], reason_codes=["EXTERNAL_IDENTITY_MISMATCH"])
-    return preview_capture(request, identity_payloads={
-        "storage_identity.json": storage.__dict__,
-        "recovery_identity.json": recovery.__dict__,
-        "phase3b_identity.json": phase.__dict__,
-        "intake_identity.json": intake.__dict__,
-    })
+        code = str(exc).split(":", 1)[0]
+        return ErebusCapturePreview("", request, False, [str(exc)], reason_codes=[code])
+    return publish_preview(payload)
 
 
 def execute_capture(_preview_id: str) -> ErebusCaptureResult:
@@ -241,10 +372,10 @@ def load_preview(control_root: str | Path, preview_id: str) -> ErebusCaptureResu
     except ValueError:
         return ErebusCaptureResult("REFUSED", False, ["PREVIEW_STATE_CORRUPT"])
     required = preview_receipt_files()
-    missing = sorted(name for name in required if not (root / name).is_file())
+    missing = sorted(name for name in required if not (root / name).is_file() or (root / name).is_symlink())
     if missing:
         return ErebusCaptureResult("REFUSED", False, [f"PREVIEW_FILES_MISSING: {', '.join(missing)}"])
-    unexpected = sorted(path.name for path in root.iterdir() if path.name not in required or not path.is_file())
+    unexpected = sorted(path.name for path in root.iterdir() if path.name not in required or not path.is_file() or path.is_symlink())
     if unexpected:
         return ErebusCaptureResult("REFUSED", False, [f"PREVIEW_FILES_UNEXPECTED: {', '.join(unexpected)}"])
     try:
@@ -275,21 +406,15 @@ def load_preview(control_root: str | Path, preview_id: str) -> ErebusCaptureResu
         return ErebusCaptureResult("REFUSED", False, ["PREVIEW_COMPONENT_MISMATCH"])
     repo = Path(str(request.get("repository") or ""))
     try:
-        if (_git(repo, "branch", "--show-current") != "main" or
-                _git(repo, "rev-parse", "HEAD") != request.get("expected_commit") or
-                _git(repo, "rev-parse", "HEAD^{tree}") != request.get("expected_tree") or
-                _git(repo, "rev-parse", "origin/main") != request.get("expected_commit") or
-                _git(repo, "status", "--porcelain")):
-            return ErebusCaptureResult("REFUSED", False, ["PREVIEW_SOURCE_DRIFT"])
-        maintenance = repo / "src/database/db_query/virustotal_queries/reports/maintenance.py"
-        if not maintenance.is_file() or _sha256(maintenance) != request.get("maintenance_sha256"):
-            return ErebusCaptureResult("REFUSED", False, ["PREVIEW_MAINTENANCE_DRIFT"])
+        _source_identity(ErebusCaptureRequest(**request))
         recovery = data.get("recovery_receipt")
         if recovery and _receipt_sha256(Path(recovery["path"])) != (recovery["path"], recovery["sha256"]):
             return ErebusCaptureResult("REFUSED", False, ["PREVIEW_RECOVERY_DRIFT"])
         intake = data.get("intake_contract")
         if intake and (not Path(intake["path"]).is_file() or _sha256(Path(intake["path"])) != intake["sha256"]):
             return ErebusCaptureResult("REFUSED", False, ["PREVIEW_INTAKE_DRIFT"])
+    except ValueError:
+        return ErebusCaptureResult("REFUSED", False, ["PREVIEW_SOURCE_DRIFT"])
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return ErebusCaptureResult("REFUSED", False, ["PREVIEW_SOURCE_UNAVAILABLE"])
     return ErebusCaptureResult("PREVIEW_READY", True)
@@ -299,6 +424,12 @@ def revalidate_preview_for_execute(context: CaptureContext, preview_id: str) -> 
     """Recheck every external dependency before any future writer may start."""
     loaded = load_preview(context.control_root, preview_id)
     if not loaded.ok:
+        root = Path(context.control_root) / "validation" / "previews" / "erebus" / preview_id
+        try:
+            if root.exists() and load_state(root) is PreviewState.READY:
+                invalidate(root)
+        except ValueError:
+            pass
         return loaded
     root = Path(context.control_root) / "validation" / "previews" / "erebus" / preview_id
     payload = json.loads((root / "capture_preview.json").read_text(encoding="utf-8"))

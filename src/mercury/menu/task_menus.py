@@ -118,6 +118,7 @@ def run_migration_hub() -> None:
                 ("1", "Workstation handoff"),
                 ("2", "System deployment"),
                 ("3", "Disaster recovery / receiver planning"),
+                ("4", "Source capture → Capture Erebus source"),
             ],
         )
         if choice is None:
@@ -136,6 +137,11 @@ def run_migration_hub() -> None:
             from mercury.recovery.interactive_menu import run_recovery_menu
 
             run_recovery_menu()
+            continue
+        if choice == "4":
+            from mercury.migration.erebus_capture.menu import run_erebus_source_capture_menu
+
+            run_erebus_source_capture_menu()
             continue
         output.write(menu_prompts.invalid_choice_message(choice))
 
