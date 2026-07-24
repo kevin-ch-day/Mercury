@@ -477,6 +477,31 @@ def erebus_capture_preview_cmd(
     output.field("Execute availability", "production locked; READY receipt required")
 
 
+@erebus_capture_app.command("review-preview")
+def erebus_capture_review_preview_cmd(
+    preview_id: str = typer.Option(..., "--preview-id", help="Exact preview ID; never 'latest'."),
+    control_root: Path = typer.Option(..., "--control-root"),
+) -> None:
+    """Read-only reload/verify of an exact published preview; creates no capture."""
+    from mercury.migration.erebus_capture.service import load_preview
+
+    result = load_preview(control_root, preview_id)
+    if not result.ok:
+        output.write("PREVIEW REVIEW REFUSED")
+        output.field("Code", result.classification)
+        for error in result.errors:
+            output.field("Detail", error)
+        raise typer.Exit(1)
+    output.heading("EREBUS SOURCE CAPTURE PREVIEW REVIEW")
+    output.write("PREVIEW READY")
+    output.field("Preview ID", preview_id)
+    output.field("Classification", result.classification)
+    output.field(
+        "Execute availability",
+        "locked unless execute is given a host-local --authorization-receipt",
+    )
+
+
 @erebus_capture_app.command("execute")
 def erebus_capture_execute_cmd(
     preview_id: str = typer.Option(..., "--preview-id", help="Exact READY preview ID; never 'latest'."),
@@ -486,21 +511,85 @@ def erebus_capture_execute_cmd(
     intake_contract: Path = typer.Option(..., "--intake-contract"),
     control_root: Path = typer.Option(..., "--control-root"),
     storage_facts: Path = typer.Option(..., "--storage-facts"),
+    authorization_receipt: Path | None = typer.Option(
+        None,
+        "--authorization-receipt",
+        help="Host-local one-shot authorization JSON. Absent => EXECUTION_NOT_AUTHORIZED.",
+    ),
 ) -> None:
-    """Revalidate an exact preview; production execution is intentionally locked."""
+    """Revalidate an exact preview; real execution requires an authorization receipt."""
     import json
+    import subprocess
+
+    from mercury.core.paths import REPO_ROOT
+    from mercury.migration.erebus_capture.authorization import load_execution_authorization
     from mercury.migration.erebus_capture.context import CaptureContext
-    from mercury.migration.erebus_capture.service import execute_capture
+    from mercury.migration.erebus_capture.service import execute_capture, load_preview
     from mercury.migration.erebus_capture.storage_preflight import StorageFacts
+    from mercury.migration.erebus_capture.validation_runner import SubprocessValidationRunner
+
     try:
         facts = StorageFacts(**json.loads(storage_facts.read_text(encoding="utf-8")))
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         output.write(f"CAPTURE EXECUTION REFUSED\nCode: INVALID_STORAGE_FACTS\nDetail: {exc}")
         raise typer.Exit(1)
-    # This is intentionally a production context.  There is no CLI option,
-    # environment variable, or preview field that can set this flag true.
-    context = CaptureContext(control_root, repo, recovery_receipt, phase3b_root, intake_contract, lambda: facts)
-    result = execute_capture(context, preview_id)
+
+    if authorization_receipt is None:
+        context = CaptureContext(
+            control_root, repo, recovery_receipt, phase3b_root, intake_contract, lambda: facts,
+        )
+        result = execute_capture(context, preview_id)
+    else:
+        preview = load_preview(control_root, preview_id)
+        if not preview.ok:
+            output.write("CAPTURE EXECUTION REFUSED")
+            output.field("Code", preview.classification)
+            for error in preview.errors:
+                output.field("Detail", error)
+            raise typer.Exit(1)
+        preview_json = (
+            control_root / "validation" / "previews" / "erebus" / preview_id / "capture_preview.json"
+        )
+        try:
+            request = json.loads(preview_json.read_text(encoding="utf-8")).get("request") or {}
+            capture_id = str(request.get("capture_id") or "")
+            erebus_commit = str(request.get("expected_commit") or "")
+        except (OSError, json.JSONDecodeError) as exc:
+            output.write(f"CAPTURE EXECUTION REFUSED\nCode: PREVIEW_COMPONENT_INVALID\nDetail: {exc}")
+            raise typer.Exit(1)
+        try:
+            mercury_commit = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=str(REPO_ROOT), text=True,
+            ).strip()
+        except (OSError, subprocess.CalledProcessError) as exc:
+            output.write(f"CAPTURE EXECUTION REFUSED\nCode: MERCURY_HEAD_UNAVAILABLE\nDetail: {exc}")
+            raise typer.Exit(1)
+        try:
+            auth = load_execution_authorization(
+                authorization_receipt,
+                preview_id=preview_id,
+                capture_id=capture_id,
+                mercury_commit=mercury_commit,
+                erebus_commit=erebus_commit,
+            )
+        except ValueError as exc:
+            output.write("CAPTURE EXECUTION REFUSED")
+            output.field("Code", str(exc))
+            raise typer.Exit(1)
+        context = CaptureContext(
+            control_root,
+            repo,
+            recovery_receipt,
+            phase3b_root,
+            intake_contract,
+            lambda: facts,
+            allow_real_execution=True,
+            authorized_preview_id=auth.preview_id,
+            approved_full_suite_failures=auth.approved_full_suite_failures,
+            validation_runner=SubprocessValidationRunner(),
+            authorization_receipt_sha256=auth.sha256,
+        )
+        result = execute_capture(context, preview_id)
     if not result.ok:
         output.write("CAPTURE EXECUTION REFUSED")
         output.field("Code", result.classification)

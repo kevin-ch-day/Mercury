@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from .full_suite_policy import ExpectedFailure
 from .storage_preflight import StorageFacts
 from .validation_runner import ValidationRunner
 
@@ -25,4 +26,8 @@ class CaptureContext:
     git_runner: GitRunner | None = None
     minimum_free_bytes: int = 1
     allow_synthetic_execution: bool = False
+    allow_real_execution: bool = False
+    authorized_preview_id: str | None = None
+    approved_full_suite_failures: tuple[ExpectedFailure, ...] = ()
     validation_runner: ValidationRunner | None = None
+    authorization_receipt_sha256: str = ""

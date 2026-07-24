@@ -14,7 +14,7 @@ from .service import create_preview, execute_capture, load_preview
 from .storage_preflight import StorageFacts
 
 EXECUTE_AVAILABILITY = (
-    "production execute locked; READY receipt required for the menu action"
+    "production execute locked unless a host-local authorization receipt is supplied"
 )
 
 

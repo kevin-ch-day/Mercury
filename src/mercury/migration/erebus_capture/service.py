@@ -1,8 +1,9 @@
 """Service boundary for governed Erebus captures.
 
-Preview is read-only. Capture execution is synthetic-only behind
-``CaptureContext.allow_synthetic_execution``; production CLI and menu
-contexts remain locked.
+Preview is read-only. Capture execution requires either synthetic test
+authorization (``allow_synthetic_execution``) or an exact host-local real
+authorization receipt bound to one preview ID. Default CLI/menu contexts remain
+locked.
 """
 
 from __future__ import annotations
@@ -357,9 +358,21 @@ def create_preview(context: CaptureContext, request: ErebusCaptureRequest) -> Er
 
 
 def execute_capture(context: CaptureContext, preview_id: str) -> ErebusCaptureResult:
-    """Execute only in explicitly synthetic contexts; real execution is locked."""
-    if not context.allow_synthetic_execution:
-        return ErebusCaptureResult("EXECUTION_NOT_AUTHORIZED", False, ["Phase B is implemented but real execution requires a separate authorization."])
+    """Execute only when synthetic-test or exact real-authorization gates are set."""
+    synthetic = bool(context.allow_synthetic_execution)
+    real = bool(
+        context.allow_real_execution
+        and context.authorized_preview_id
+        and context.authorized_preview_id == preview_id
+    )
+    if not synthetic and not real:
+        return ErebusCaptureResult(
+            "EXECUTION_NOT_AUTHORIZED",
+            False,
+            ["Real execution requires a host-local authorization receipt bound to this exact preview ID."],
+        )
+    if real and synthetic:
+        return ErebusCaptureResult("REFUSED", False, ["SYNTHETIC_AND_REAL_CONFLICT"])
     checked = revalidate_preview_for_execute(context, preview_id)
     if not checked.ok:
         return checked
@@ -369,13 +382,18 @@ def execute_capture(context: CaptureContext, preview_id: str) -> ErebusCaptureRe
     try:
         data = json.loads((root / "capture_preview.json").read_text(encoding="utf-8"))
         request = ErebusCaptureRequest(**data["request"])
-        from .writer import write_synthetic_capture
-        write_synthetic_capture(
+        if real and request.capture_id and context.authorized_preview_id:
+            # capture_id pin is enforced by the authorization receipt loader before context build
+            pass
+        from .writer import write_capture, write_synthetic_capture
+        writer = write_capture if real else write_synthetic_capture
+        writer(
             context=context, request=request, preview_id=preview_id,
             preview_checksum=_sha256(root / "capture_preview.sha256"),
             phase_identity=json.loads((root / "phase3b_identity.json").read_text()),
             intake_identity=json.loads((root / "intake_identity.json").read_text()),
             recovery_identity=json.loads((root / "recovery_identity.json").read_text()),
+            **({"real_execution": True} if real else {}),
         )
         if not mark_preview_consumed(context.control_root, preview_id).ok:
             return ErebusCaptureResult("REFUSED", False, ["PREVIEW_CONSUME_FAILED"])

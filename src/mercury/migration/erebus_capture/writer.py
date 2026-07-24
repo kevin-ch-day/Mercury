@@ -32,8 +32,18 @@ def _fsync_tree(root: Path) -> None:
     fd = os.open(root, os.O_RDONLY); os.fsync(fd); os.close(fd)
 
 
-def write_synthetic_capture(*, context, request, preview_id: str, preview_checksum: str, phase_identity: dict[str, object], intake_identity: dict[str, object], recovery_identity: dict[str, object]) -> Path:
-    """Create a verified capture only for an explicitly synthetic context."""
+def write_capture(
+    *,
+    context,
+    request,
+    preview_id: str,
+    preview_checksum: str,
+    phase_identity: dict[str, object],
+    intake_identity: dict[str, object],
+    recovery_identity: dict[str, object],
+    real_execution: bool = False,
+) -> Path:
+    """Atomically publish a verified capture. Real execution must be separately authorized."""
     final = context.control_root / "validation" / "erebus" / request.capture_id
     if final.exists():
         raise ValueError("FINAL_CAPTURE_EXISTS")
@@ -85,10 +95,19 @@ def write_synthetic_capture(*, context, request, preview_id: str, preview_checks
         suite_result = validation["full_suite"]
         parsed = suite_result.parsed or {}
         failures = tuple(ExpectedFailure(**item) for item in parsed.get("failures", []))
-        suite = FullSuiteSummary(" ".join(suite_result.command), suite_result.return_code, int(parsed.get("collected_count", 1)), int(parsed.get("passed_count", 1)), failures, int(parsed.get("skipped_count", 0)))
-        accepted, decision = evaluate(suite)
+        suite = FullSuiteSummary(
+            " ".join(suite_result.command),
+            suite_result.return_code,
+            int(parsed.get("collected_count", 1)),
+            int(parsed.get("passed_count", 1)),
+            failures,
+            int(parsed.get("skipped_count", 0)),
+            collection_errors=int(parsed.get("collection_errors", 0) or 0),
+        )
+        approved = tuple(context.approved_full_suite_failures or ())
+        accepted, decision = evaluate(suite, approved)
         if not accepted: raise ValueError(decision)
-        (evidence / "full_suite_summary.json").write_text(json.dumps({"command": suite.command, "return_code": suite.return_code, "collected_count": suite.collected_count, "passed_count": suite.passed_count, "failed_count": 0, "skipped_count": 0, "failing_node_ids": [], "classifications": [], "policy_decision": decision, "status": "accepted"}) + "\n")
+        (evidence / "full_suite_summary.json").write_text(json.dumps({"command": suite.command, "return_code": suite.return_code, "collected_count": suite.collected_count, "passed_count": suite.passed_count, "failed_count": len(failures), "skipped_count": suite.skipped_count, "failing_node_ids": [item.node_id for item in failures], "classifications": [item.classification for item in failures], "policy_decision": decision, "status": "accepted"}) + "\n")
         (evidence / "dependency_validation.json").write_text(json.dumps(validation["dependency_validation"].evidence(), sort_keys=True) + "\n")
         recovery = temp / "artifacts" / "source_recovery"; recovery.mkdir(parents=True)
         shutil.copy2(context.recovery_receipt, recovery / "maintenance_source_recovery.json")
@@ -96,20 +115,26 @@ def write_synthetic_capture(*, context, request, preview_id: str, preview_checks
         shutil.copy2(context.intake_contract, intake / "intake_contract.json")
         phase_linkage = {**phase_identity, "backup_ids": sorted(BACKUPS)}
         (temp / "phase3b_linkage.json").write_text(json.dumps(phase_linkage, sort_keys=True) + "\n")
-        (temp / "runtime_restrictions.json").write_text('{"real_execution":false,"database":false}\n')
-        (temp / "known_warnings.json").write_text('[]\n')
+        (temp / "runtime_restrictions.json").write_text(json.dumps({"real_execution": bool(real_execution), "database": False}) + "\n")
+        (temp / "known_warnings.json").write_text("[]\n")
         (temp / "supersession.json").write_text(json.dumps({"supersedes": request.supersedes_capture_id, "reason": "prior clean capture omitted required ignored maintenance.py source module", "old_capture_preserved": True, "old_capture_active_authority": False}) + "\n")
-        (temp / "ops").mkdir(); (temp / "ops" / "execution.json").write_text('{"synthetic":true}\n')
+        (temp / "ops").mkdir()
+        (temp / "ops" / "execution.json").write_text(
+            json.dumps({
+                "synthetic": not real_execution,
+                "real_execution": bool(real_execution),
+                "authorization_receipt_sha256": getattr(context, "authorization_receipt_sha256", "") or "",
+            }, sort_keys=True) + "\n"
+        )
         if scan_capture(temp, short_sha=request.expected_commit[:7], enforce_contract=False): raise ValueError("PROHIBITED_CONTENT")
-        decisions = {"prohibited_content":"PASS", "intended_member_contract":"PASS", "focused_tests":"synthetic PASS", "collection":"synthetic PASS", "compileall":"synthetic PASS", "git_diff_check":"synthetic PASS", "dependency_validation":"synthetic PASS", "full_suite_policy":decision, "reconstruction":"PASS"}
-        (temp / "capture_summary.json").write_text(json.dumps({"status":"CAPTURE_VERIFIED", "capture_id":request.capture_id, "commit":request.expected_commit, "tree":request.expected_tree, "preview_id":preview_id, "historical_only":False, "active_authority":True, "decisions":decisions}) + "\n")
-        (temp / "CAPTURE_REPORT.md").write_text("# Erebus source capture\n\nStatus: **CAPTURE_VERIFIED**\n\n" + f"- Capture: `{request.capture_id}`\n- Commit: `{request.expected_commit}`\n- Tree: `{request.expected_tree}`\n- Recovery, Phase 3B, intake, bundle, reconstruction, scanner, and validation: PASS\n- Supersedes the preserved incomplete capture because it omitted `maintenance.py`.\n")
-        # The final manifest excludes only its self-referential receipts.  All
-        # ordinary evidence and metadata are written before it is generated.
-        manifest = write_manifest(temp)
+        evidence_label = "PASS" if real_execution else "synthetic PASS"
+        decisions = {"prohibited_content":"PASS", "intended_member_contract":"PASS", "focused_tests":evidence_label, "collection":evidence_label, "compileall":evidence_label, "git_diff_check":evidence_label, "dependency_validation":evidence_label, "full_suite_policy":decision, "reconstruction":"PASS"}
+        (temp / "capture_summary.json").write_text(json.dumps({"status":"CAPTURE_VERIFIED", "capture_id":request.capture_id, "commit":request.expected_commit, "tree":request.expected_tree, "preview_id":preview_id, "historical_only":False, "active_authority":True, "real_execution": bool(real_execution), "decisions":decisions}) + "\n")
+        (temp / "CAPTURE_REPORT.md").write_text("# Erebus source capture\n\nStatus: **CAPTURE_VERIFIED**\n\n" + f"- Capture: `{request.capture_id}`\n- Commit: `{request.expected_commit}`\n- Tree: `{request.expected_tree}`\n- Real execution: `{bool(real_execution)}`\n- Recovery, Phase 3B, intake, bundle, reconstruction, scanner, and validation: PASS\n- Supersedes the preserved incomplete capture because it omitted `maintenance.py`.\n")
+        write_manifest(temp)
         (temp / "checksums.sha256.verify").write_text("PASS\n")
         file_paths = [path for path in temp.rglob("*") if path.is_file()]
-        (temp / "manifest_receipt.json").write_text(json.dumps({"preview_id":preview_id, "preview_checksum":preview_checksum, "capture_id":request.capture_id, "commit":request.expected_commit, "tree":request.expected_tree, "file_count":len(file_paths), "total_bytes":sum(path.stat().st_size for path in file_paths), "bundle_sha256":sha256_file(bundle), "maintenance_sha256":request.maintenance_sha256, "phase3b":phase_linkage, "intake":intake_identity, "intake_contract_sha256":intake_identity.get("sha256"), "recovery":recovery_identity, "recovery_receipt_sha256":recovery_identity.get("receipt_sha256"), "reconstruction":result, "focused_tests":"PASS", "collection":"PASS", "compileall":"PASS", "git_diff_check":"PASS", "dependency_validation":"PASS", "full_suite_policy":decision, "prohibited_content":"PASS", "intended_member_validation":"PASS", "checksum_verification":"PASS", "classification":"CAPTURE_VERIFIED"}, sort_keys=True) + "\n")
+        (temp / "manifest_receipt.json").write_text(json.dumps({"preview_id":preview_id, "preview_checksum":preview_checksum, "capture_id":request.capture_id, "commit":request.expected_commit, "tree":request.expected_tree, "file_count":len(file_paths), "total_bytes":sum(path.stat().st_size for path in file_paths), "bundle_sha256":sha256_file(bundle), "maintenance_sha256":request.maintenance_sha256, "phase3b":phase_linkage, "intake":intake_identity, "intake_contract_sha256":intake_identity.get("sha256"), "recovery":recovery_identity, "recovery_receipt_sha256":recovery_identity.get("receipt_sha256"), "reconstruction":result, "focused_tests":"PASS", "collection":"PASS", "compileall":"PASS", "git_diff_check":"PASS", "dependency_validation":"PASS", "full_suite_policy":decision, "prohibited_content":"PASS", "intended_member_validation":"PASS", "checksum_verification":"PASS", "classification":"CAPTURE_VERIFIED", "real_execution": bool(real_execution)}, sort_keys=True) + "\n")
         if scan_capture(temp, short_sha=request.expected_commit[:7]): raise ValueError("PROHIBITED_CONTENT")
         if not verify_manifest(temp): raise ValueError("MANIFEST_INVALID")
         _fsync_tree(temp); os.replace(temp, final); fd = os.open(parent, os.O_RDONLY); os.fsync(fd); os.close(fd)
@@ -117,3 +142,12 @@ def write_synthetic_capture(*, context, request, preview_id: str, preview_checks
     except Exception:
         shutil.rmtree(temp, ignore_errors=True)
         raise
+
+
+def write_synthetic_capture(*, context, request, preview_id: str, preview_checksum: str, phase_identity: dict[str, object], intake_identity: dict[str, object], recovery_identity: dict[str, object]) -> Path:
+    """Compatibility wrapper for Phase B synthetic tests."""
+    return write_capture(
+        context=context, request=request, preview_id=preview_id, preview_checksum=preview_checksum,
+        phase_identity=phase_identity, intake_identity=intake_identity, recovery_identity=recovery_identity,
+        real_execution=False,
+    )

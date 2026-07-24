@@ -86,18 +86,41 @@ is created by preview or revalidation.
 
 ## Synthetic Phase B execution
 
-The implementation has a synthetic-only capture writer for tests. It is locked
-behind `CaptureContext.allow_synthetic_execution`; ordinary CLI and menu
-contexts cannot enable real capture. A synthetic READY preview is revalidated,
-reserved, written under `validation/erebus/.<capture-id>.tmp-*`, and only then
-atomically renamed after Git evidence, an explicit-main bundle, independent
-reconstruction, governed identity artifacts, member/prohibited-content checks,
-and a checksum manifest verify. Failure removes the exact temporary directory
-and never publishes a final capture; success consumes the preview.
+The implementation has a capture writer used by synthetic tests and by
+authorized real execution. Synthetic tests set
+`CaptureContext.allow_synthetic_execution`. Real execution requires a host-local
+authorization receipt (`mercury.erebus_capture.execution_authorization.v1`) that
+pins an exact preview ID, capture ID, Mercury/Erebus commits, confirmation
+phrase `AUTHORIZE EREBUS CAPTURE EXECUTE`, optional expiry, and optional approved
+full-suite exceptions. Ordinary CLI/menu contexts without that receipt remain
+locked (`EXECUTION_NOT_AUTHORIZED`).
+
+```bash
+./run.sh migration capture-erebus-source review-preview \
+  --preview-id <exact-ready-id> --control-root <control-root>
+
+./run.sh migration capture-erebus-source execute \
+  --preview-id <exact-ready-id> --repo <repo> \
+  --recovery-receipt <receipt.json> --phase3b-root <evidence-root> \
+  --intake-contract <contract.json> --control-root <control-root> \
+  --storage-facts <reviewed-facts.json> \
+  --authorization-receipt <host-local-auth.json>
+```
+
+Without `--authorization-receipt`, execute refuses. There is no environment
+variable or preview field that enables capture.
+
+A synthetic READY preview is revalidated, reserved, written under
+`validation/erebus/.<capture-id>.tmp-*`, and only then atomically renamed after
+Git evidence, an explicit-main bundle, independent reconstruction, governed
+identity artifacts, member/prohibited-content checks, and a checksum manifest
+verify. Failure removes the exact temporary directory and never publishes a
+final capture; success consumes the preview.
 
 Stable writer/execute reason codes include:
 
 - `EXECUTION_NOT_AUTHORIZED`
+- `AUTHORIZATION_*` receipt refusals
 - `VALIDATION_RUNNER_REQUIRED`
 - `VALIDATION_FAILED:<step>`
 - `FULL_SUITE_*` policy refusals
