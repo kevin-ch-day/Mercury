@@ -12,7 +12,7 @@ from pathlib import Path
 from mercury.core.storage_roles import DEFAULT_PRIMARY_MOUNT, DEFAULT_PRIMARY_UUID
 from mercury.storage.block_device import resolve_mercury_block_device
 from mercury.storage.detach_wizard import (
-    latest_verified_package,
+    resolve_detach_package,
     run_detach_preflight,
 )
 from mercury.storage.host_maintenance import load_host_maintenance
@@ -87,9 +87,10 @@ def build_detach_status(
         "DESTINATION_PACKAGE_VERIFIED" if pre.package_id else ""
     )
     if not status.package_id:
-        pkg_id, pkg_status = latest_verified_package(mount)
+        pkg_id, pkg_status, pkg_errors = resolve_detach_package(mount)
         status.package_id = pkg_id
         status.package_verification_status = pkg_status
+        status.blockers.extend([e for e in pkg_errors if e not in status.blockers])
     status.package_verified = (
         status.package_verification_status == "DESTINATION_PACKAGE_VERIFIED"
     )

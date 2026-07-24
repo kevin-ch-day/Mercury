@@ -151,6 +151,12 @@ def _assert_no_password_in_argv(argv: list[str]) -> None:
 
 
 def latest_verified_package(mount: Path) -> tuple[str, str]:
+    """Fallback selector when host maintenance has no pinned package_id.
+
+    Walks destination package directories in reverse lexicographic name order and
+    returns the first with verification_status DESTINATION_PACKAGE_VERIFIED.
+    Prefer :func:`resolve_detach_package` for detach preview/execute.
+    """
     root = packages_root(mount)
     if not root.is_dir():
         return "", ""
@@ -171,6 +177,54 @@ def latest_verified_package(mount: Path) -> tuple[str, str]:
         if status == "DESTINATION_PACKAGE_VERIFIED":
             return path.name, status
     return "", ""
+
+
+def _receipt_verification_status(package_root: Path) -> str | None:
+    """Return package_receipt verification_status, or None when unreadable/incomplete."""
+    receipt = package_root / "package_receipt.json"
+    verify = package_root / "verification_report.json"
+    if not package_root.is_dir() or not receipt.is_file() or not verify.is_file():
+        return None
+    try:
+        data = json.loads(receipt.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return str(data.get("verification_status") or "")
+
+
+def resolve_detach_package(mount: Path) -> tuple[str, str, list[str]]:
+    """Resolve the destination package for safe detach.
+
+    When host maintenance pins a non-empty ``package_id``, that exact package
+    must exist and be ``DESTINATION_PACKAGE_VERIFIED``. Invalid pins fail closed
+    with no silent substitution. Lexicographic fallback runs only when no pin
+    is present.
+    """
+    host = load_host_maintenance()
+    pinned = str(getattr(host, "package_id", "") or "").strip()
+    if pinned:
+        if "latest" in pinned.lower():
+            return "", "", ["pinned package ID must not use unqualified latest"]
+        package_root = packages_root(mount) / pinned
+        if not package_root.is_dir():
+            return "", "", [f"pinned package missing: {pinned}"]
+        status = _receipt_verification_status(package_root)
+        if status is None:
+            return "", "", [f"pinned package incomplete or unreadable: {pinned}"]
+        if status != "DESTINATION_PACKAGE_VERIFIED":
+            return (
+                "",
+                "",
+                [
+                    "pinned package not DESTINATION_PACKAGE_VERIFIED: "
+                    f"{pinned} (status={status or 'missing'})"
+                ],
+            )
+        return pinned, status, []
+    pkg_id, status = latest_verified_package(mount)
+    return pkg_id, status, []
 
 
 def verify_package_manifest(package_root: Path) -> list[str]:
@@ -452,11 +506,16 @@ def run_detach_preflight(
     )
 
     # Phase A — package and state
-    pkg_id, pkg_status = latest_verified_package(mount)
+    pkg_id, pkg_status, pkg_errors = resolve_detach_package(mount)
     result.package_id = pkg_id
     phase_a_ok = True
     a_lines: list[str] = []
-    if not pkg_id or pkg_status != "DESTINATION_PACKAGE_VERIFIED":
+    if pkg_errors:
+        phase_a_ok = False
+        result.blockers.extend(pkg_errors)
+        a_lines.append("[FAIL] Destination package verified")
+        result.result_state = DETACH_BLOCKED_PACKAGE_NOT_VERIFIED
+    elif not pkg_id or pkg_status != "DESTINATION_PACKAGE_VERIFIED":
         phase_a_ok = False
         result.blockers.append("destination package not DESTINATION_PACKAGE_VERIFIED")
         a_lines.append("[FAIL] Destination package verified")
