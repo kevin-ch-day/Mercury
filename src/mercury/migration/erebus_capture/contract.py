@@ -30,4 +30,6 @@ def validate_members(members: set[str], short_sha: str) -> list[str]:
         path = PurePosixPath(member)
         if path.is_absolute() or ".." in path.parts or any(part in FORBIDDEN_PARTS for part in path.parts):
             errors.append(f"forbidden member: {member}")
+        elif member not in REQUIRED and member != expected_bundle_name(short_sha) and not member.startswith(PREFIXES):
+            errors.append(f"unexpected member: {member}")
     return errors

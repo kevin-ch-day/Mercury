@@ -355,12 +355,34 @@ def create_preview(context: CaptureContext, request: ErebusCaptureRequest) -> Er
     return publish_preview(payload)
 
 
-def execute_capture(_preview_id: str) -> ErebusCaptureResult:
-    """Refuse until a reviewed durable preview/atomic evidence writer exists."""
-    return ErebusCaptureResult(
-        classification="REFUSED", ok=False,
-        errors=["capture execution is unavailable until the durable evidence writer is implemented"],
-    )
+def execute_capture(context: CaptureContext, preview_id: str) -> ErebusCaptureResult:
+    """Execute only in explicitly synthetic contexts; real execution is locked."""
+    if not context.allow_synthetic_execution:
+        return ErebusCaptureResult("EXECUTION_NOT_AUTHORIZED", False, ["Phase B is implemented but real execution requires a separate authorization."])
+    checked = revalidate_preview_for_execute(context, preview_id)
+    if not checked.ok:
+        return checked
+    root = preview_root(context.control_root, preview_id)
+    if not begin_preview_execution(context.control_root, preview_id).ok:
+        return ErebusCaptureResult("REFUSED", False, ["PREVIEW_NOT_READY"])
+    try:
+        data = json.loads((root / "capture_preview.json").read_text(encoding="utf-8"))
+        request = ErebusCaptureRequest(**data["request"])
+        from .writer import write_synthetic_capture
+        write_synthetic_capture(
+            context=context, request=request, preview_id=preview_id,
+            preview_checksum=_sha256(root / "capture_preview.sha256"),
+            phase_identity=json.loads((root / "phase3b_identity.json").read_text()),
+            intake_identity=json.loads((root / "intake_identity.json").read_text()),
+            recovery_identity=json.loads((root / "recovery_identity.json").read_text()),
+        )
+        if not mark_preview_consumed(context.control_root, preview_id).ok:
+            return ErebusCaptureResult("REFUSED", False, ["PREVIEW_CONSUME_FAILED"])
+        return ErebusCaptureResult("CAPTURE_VERIFIED", True)
+    except (OSError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        from .preview_state import mark_refused
+        mark_refused(root)
+        return ErebusCaptureResult("REFUSED", False, [str(exc)])
 
 
 def load_preview(control_root: str | Path, preview_id: str) -> ErebusCaptureResult:

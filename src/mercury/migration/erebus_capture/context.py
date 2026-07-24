@@ -23,3 +23,4 @@ class CaptureContext:
     storage_resolver: StorageResolver
     git_runner: GitRunner | None = None
     minimum_free_bytes: int = 1
+    allow_synthetic_execution: bool = False

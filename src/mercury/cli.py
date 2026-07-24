@@ -475,6 +475,39 @@ def erebus_capture_preview_cmd(
     output.field("Execute availability", "unavailable until Phase B review")
 
 
+@erebus_capture_app.command("execute")
+def erebus_capture_execute_cmd(
+    preview_id: str = typer.Option(..., "--preview-id", help="Exact READY preview ID; never 'latest'."),
+    repo: Path = typer.Option(..., "--repo", exists=True, file_okay=False),
+    recovery_receipt: Path = typer.Option(..., "--recovery-receipt"),
+    phase3b_root: Path = typer.Option(..., "--phase3b-root"),
+    intake_contract: Path = typer.Option(..., "--intake-contract"),
+    control_root: Path = typer.Option(..., "--control-root"),
+    storage_facts: Path = typer.Option(..., "--storage-facts"),
+) -> None:
+    """Revalidate an exact preview; production execution is intentionally locked."""
+    import json
+    from mercury.migration.erebus_capture.context import CaptureContext
+    from mercury.migration.erebus_capture.service import execute_capture
+    from mercury.migration.erebus_capture.storage_preflight import StorageFacts
+    try:
+        facts = StorageFacts(**json.loads(storage_facts.read_text(encoding="utf-8")))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        output.write(f"CAPTURE EXECUTION REFUSED\nCode: INVALID_STORAGE_FACTS\nDetail: {exc}")
+        raise typer.Exit(1)
+    # This is intentionally a production context.  There is no CLI option,
+    # environment variable, or preview field that can set this flag true.
+    context = CaptureContext(control_root, repo, recovery_receipt, phase3b_root, intake_contract, lambda: facts)
+    result = execute_capture(context, preview_id)
+    if not result.ok:
+        output.write("CAPTURE EXECUTION REFUSED")
+        output.field("Code", result.classification)
+        for error in result.errors:
+            output.field("Detail", error)
+        raise typer.Exit(1)
+    output.write("CAPTURE VERIFIED")
+
+
 @migration_app.command("package-status")
 def migration_package_status_cmd() -> None:
     """Show historical cutover evidence and the authoritative active package."""

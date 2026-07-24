@@ -9,7 +9,7 @@ import pytest
 
 from mercury.migration.erebus_capture.models import ErebusCaptureRequest
 from mercury.migration.erebus_capture.service import (
-    begin_preview_execution, load_preview, mark_preview_consumed, preview_capture,
+    begin_preview_execution, execute_capture, load_preview, mark_preview_consumed, preview_capture,
 )
 from mercury.migration.erebus_capture.evidence import collect_git_evidence
 from mercury.migration.erebus_capture.git_capture import create_complete_bundle
@@ -177,7 +177,8 @@ def test_context_preview_revalidates_all_synthetic_identities(tmp_path: Path) ->
     intake = tmp_path / "intake.json"; intake.write_text(__import__("json").dumps({"schema_version": 1, "intake_root_name": "erebus-intake", "included_members": sorted(ALLOWED), "excluded_members": sorted(EXCLUDED), "bypass_allowed": False, "mount_guard_required": True}))
     intake.with_suffix(".json.sha256").write_text(f"{hashlib.sha256(intake.read_bytes()).hexdigest()}  intake.json\n")
     facts = StorageFacts("/dev/x1", "/dev/x", "ext4", EXPECTED_LABEL, EXPECTED_UUID, EXPECTED_MOUNT, "rw", 100, True, True)
-    context = CaptureContext(Path(request.control_root), Path(request.repository), receipt, phase, intake, lambda: facts)
+    context = CaptureContext(Path(request.control_root), Path(request.repository), receipt, phase, intake, lambda: facts,
+                             allow_synthetic_execution=True)
     request = ErebusCaptureRequest(**{**request.__dict__, "phase3b_run_id": RUN_ID})
     payload = build_preview_payload(context, request)
     assert not (Path(request.control_root) / "validation" / "previews" / "erebus" / request.preview_id).exists()
@@ -189,6 +190,10 @@ def test_context_preview_revalidates_all_synthetic_identities(tmp_path: Path) ->
         **request.__dict__, "preview_id": "preview-two", "capture_id": "capture-two",
     }))
     assert created.ok
+    executed = execute_capture(context, "preview-two")
+    assert executed.ok, executed.errors
+    assert validate_erebus_capture_for_package(Path(request.control_root), capture_id="capture-two",
+                                               commit=request.expected_commit, tree=request.expected_tree) == []
     from typer.testing import CliRunner
     from mercury.cli import app
     facts_path = tmp_path / "storage-facts.json"

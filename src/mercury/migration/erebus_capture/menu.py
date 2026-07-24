@@ -10,7 +10,7 @@ from mercury.menu import prompts as menu_prompts
 
 from .context import CaptureContext
 from .models import ErebusCaptureRequest
-from .service import create_preview, load_preview
+from .service import create_preview, execute_capture, load_preview
 from .storage_preflight import StorageFacts
 
 
@@ -58,17 +58,35 @@ def _review_previews() -> None:
         output.write(f"{preview.name}: {result.classification} {'OK' if result.ok else ', '.join(result.errors)}")
 
 
+def _execute_from_prompts() -> None:
+    """Revalidate one exact preview through the shared production lock."""
+    preview_id = _ask("Exact READY preview ID")
+    repo = Path(_ask("Repository")); recovery = Path(_ask("Recovery receipt"))
+    phase = Path(_ask("Phase 3B evidence root")); intake = Path(_ask("Intake contract"))
+    control = Path(_ask("Control root")); facts_path = Path(_ask("Reviewed storage facts JSON"))
+    try:
+        facts = StorageFacts(**json.loads(facts_path.read_text(encoding="utf-8")))
+        result = execute_capture(CaptureContext(control, repo, recovery, phase, intake, lambda: facts), preview_id)
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        output.write(f"CAPTURE EXECUTION REFUSED: {exc}")
+        return
+    output.write("CAPTURE VERIFIED" if result.ok else "CAPTURE EXECUTION REFUSED")
+    output.write(result.classification if not result.ok else preview_id)
+
+
 def run_erebus_source_capture_menu() -> None:
     """Show an inert menu until an operator explicitly chooses Preview capture."""
     from mercury.menu.task_menus import _submenu
 
     while True:
-        choice = _submenu("Erebus source capture", [("1", "Preview capture"), ("2", "Review previews")])
+        choice = _submenu("Erebus source capture", [("1", "Preview capture"), ("2", "Review previews"), ("3", "Create approved capture")])
         if choice is None:
             return
         if choice == "1":
             _preview_from_prompts()
         elif choice == "2":
             _review_previews()
+        elif choice == "3":
+            _execute_from_prompts()
         else:
             output.write(menu_prompts.invalid_choice_message(choice))

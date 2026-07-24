@@ -70,6 +70,24 @@ the complete source, storage, recovery, Phase 3B, intake, checksum, state, and
 final-path checks must be repeated. No capture temporary directory is created
 by preview or revalidation.
 
+## Synthetic Phase B execution
+
+The implementation has a synthetic-only capture writer for tests. It is locked
+behind `CaptureContext.allow_synthetic_execution`; ordinary CLI and menu
+contexts cannot enable real capture. A synthetic READY preview is revalidated,
+reserved, written under `validation/erebus/.<capture-id>.tmp-*`, and only then
+atomically renamed after Git evidence, an explicit-main bundle, independent
+reconstruction, governed identity artifacts, member/prohibited-content checks,
+and a checksum manifest verify. Failure removes the exact temporary directory
+and never publishes a final capture; success consumes the preview.
+
+The resulting capture includes Git and validation evidence, recovery/intake and
+Phase 3B linkage, reconstruction receipts, `checksums.sha256`, its verification
+receipt, `manifest_receipt.json`, `capture_summary.json`, `CAPTURE_REPORT.md`,
+and a supersession record for the historical incomplete capture. Package
+validation accepts only an explicit `CAPTURE_VERIFIED` capture with matching
+commit/tree, manifest, reconstruction, recovery hash, and Phase 3B linkage.
+
 ## Interactive route
 
 Open **Workstation migration → Source capture → Capture Erebus source**. The
