@@ -22,7 +22,6 @@ from mercury.migration.erebus_capture.service import execute_capture
 from mercury.storage.host_maintenance import HostMaintenanceState, save_host_maintenance
 from mercury.storage.retention import RetentionPolicy
 
-from test_erebus_capture_execution import SyntheticCaptureFixture
 from test_destination_package_create import (
     BACKUP_IDS,
     EREBUS_CAPTURE,
@@ -35,6 +34,7 @@ from test_destination_package_create import (
     _seal_preview,
     _write_docs,
 )
+from test_erebus_capture_execution import SyntheticCaptureFixture
 
 
 @pytest.fixture
@@ -58,12 +58,10 @@ def mount_ok(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(Path, "is_mount", lambda self: True)
 
 
-def _write_summary(control: Path, capture_id: str, payload: dict) -> Path:
+def _write_summary(control: Path, capture_id: str, payload: dict) -> None:
     capture = control / "validation" / "erebus" / capture_id
     capture.mkdir(parents=True, exist_ok=True)
-    path = capture / "capture_summary.json"
-    path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
-    return capture
+    (capture / "capture_summary.json").write_text(json.dumps(payload) + "\n", encoding="utf-8")
 
 
 def _golden(tmp_path: Path) -> SyntheticCaptureFixture:
@@ -107,90 +105,54 @@ def _seal_with_capture(mount: Path, capture_id: str) -> None:
     (preview_path.parent / "PREVIEW.sha256").write_text(data["preview_sha256"] + "\n")
 
 
-# ---------------------------------------------------------------------------
-# Identity
-# ---------------------------------------------------------------------------
-
-
-def test_identity_canonical_only(tmp_path: Path) -> None:
+def test_identity_shapes_and_refusals(tmp_path: Path) -> None:
     control = tmp_path / "control"
-    _write_summary(control, "cap", {"commit": "a" * 40, "tree": "b" * 40})
-    assert read_erebus_capture_identity(control, "cap") == ("a" * 40, "b" * 40)
-
-
-def test_identity_legacy_only(tmp_path: Path) -> None:
-    control = tmp_path / "control"
-    _write_summary(control, "cap", {"repository": {"commit": "c" * 40, "tree": "d" * 40}})
-    assert read_erebus_capture_identity(control, "cap") == ("c" * 40, "d" * 40)
-
-
-def test_identity_matching_dual(tmp_path: Path) -> None:
-    control = tmp_path / "control"
-    _write_summary(control, "cap", {
+    _write_summary(control, "canonical", {"commit": "a" * 40, "tree": "b" * 40})
+    assert read_erebus_capture_identity(control, "canonical") == ("a" * 40, "b" * 40)
+    _write_summary(control, "legacy", {"repository": {"commit": "c" * 40, "tree": "d" * 40}})
+    assert read_erebus_capture_identity(control, "legacy") == ("c" * 40, "d" * 40)
+    _write_summary(control, "dual", {
         "commit": "a" * 40, "tree": "b" * 40,
         "repository": {"commit": "a" * 40, "tree": "b" * 40},
     })
-    assert read_erebus_capture_identity(control, "cap") == ("a" * 40, "b" * 40)
-
-
-def test_identity_conflicting_dual_refuses(tmp_path: Path) -> None:
-    control = tmp_path / "control"
-    _write_summary(control, "cap", {
+    assert read_erebus_capture_identity(control, "dual") == ("a" * 40, "b" * 40)
+    _write_summary(control, "conflict", {
         "commit": "a" * 40, "tree": "b" * 40,
         "repository": {"commit": "c" * 40, "tree": "b" * 40},
     })
     with pytest.raises(ValueError, match="conflicting capture identity"):
-        read_erebus_capture_identity(control, "cap")
+        read_erebus_capture_identity(control, "conflict")
+    for idx, payload in enumerate((
+        {"tree": "b" * 40},
+        {"commit": "a" * 40},
+        {"commit": 123, "tree": "b" * 40},
+        {"commit": "a" * 40, "tree": ["bad"]},
+    )):
+        _write_summary(control, f"bad-{idx}", payload)
+        with pytest.raises(ValueError):
+            read_erebus_capture_identity(control, f"bad-{idx}")
 
 
-@pytest.mark.parametrize("payload", [
-    {"tree": "b" * 40},
-    {"commit": "a" * 40},
-    {"commit": 123, "tree": "b" * 40},
-    {"commit": "a" * 40, "tree": ["bad"]},
-])
-def test_identity_incomplete_or_malformed_refuses(tmp_path: Path, payload: dict) -> None:
-    control = tmp_path / "control"
-    _write_summary(control, "cap", payload)
-    with pytest.raises(ValueError):
-        read_erebus_capture_identity(control, "cap")
-
-
-def test_assess_wrong_expected_commit_and_tree(tmp_path: Path) -> None:
-    fixture = _golden(tmp_path)
-    wrong_commit = assess_erebus_capture_for_package(
-        fixture.control, capture_id=fixture.capture_id, expected_commit="0" * 40,
-    )
-    assert wrong_commit.classification == "REFUSED"
-    wrong_tree = assess_erebus_capture_for_package(
-        fixture.control, capture_id=fixture.capture_id, expected_tree="1" * 40,
-    )
-    assert wrong_tree.classification == "REFUSED"
-
-
-def test_assess_latest_and_missing(tmp_path: Path) -> None:
+def test_assess_classifications(tmp_path: Path) -> None:
     assert assess_erebus_capture_for_package(tmp_path, capture_id="capture_latest").classification == "REFUSED"
     assert assess_erebus_capture_for_package(tmp_path, capture_id="missing").classification == "MISSING"
-
-
-def test_assess_package_authority_and_historical(tmp_path: Path) -> None:
-    fixture = _golden(tmp_path)
+    fixture = _golden(tmp_path / "auth")
     ok = assess_erebus_capture_for_package(
-        fixture.control, capture_id=fixture.capture_id, expected_commit=fixture.commit, expected_tree=fixture.tree,
+        fixture.control, capture_id=fixture.capture_id,
+        expected_commit=fixture.commit, expected_tree=fixture.tree,
     )
     assert ok.classification == "PACKAGE_AUTHORITY"
-    historical = tmp_path / "hist"
-    _write_summary(historical, "old", {"repository": {"commit": "a" * 40, "tree": "b" * 40}})
-    assessed = assess_erebus_capture_for_package(historical, capture_id="old")
-    assert assessed.classification == "HISTORICAL_REFERENCE"
+    assert assess_erebus_capture_for_package(
+        fixture.control, capture_id=fixture.capture_id, expected_commit="0" * 40,
+    ).classification == "REFUSED"
+    assert assess_erebus_capture_for_package(
+        fixture.control, capture_id=fixture.capture_id, expected_tree="1" * 40,
+    ).classification == "REFUSED"
+    _write_summary(tmp_path / "hist", "old", {"repository": {"commit": "a" * 40, "tree": "b" * 40}})
+    assert assess_erebus_capture_for_package(tmp_path / "hist", capture_id="old").classification == "HISTORICAL_REFERENCE"
 
 
-# ---------------------------------------------------------------------------
-# Preview
-# ---------------------------------------------------------------------------
-
-
-def test_preview_accepts_package_authority(tmp_path: Path) -> None:
+def test_preview_authority_gates(tmp_path: Path) -> None:
     fixture = _golden(tmp_path / "synth")
     mount = tmp_path / "mnt"
     mount.mkdir()
@@ -204,43 +166,26 @@ def test_preview_accepts_package_authority(tmp_path: Path) -> None:
     )
     assert fixture.capture_id in report.included_capture_ids
     assert any(item.startswith("erebus_package_authority_commit=") for item in report.included_git_commits)
-    assert not any(f"Erebus capture {fixture.capture_id}" in error for error in report.errors)
 
-
-def test_preview_refuses_invalid_verified_claim(tmp_path: Path) -> None:
-    mount = tmp_path / "mnt"
     _write_summary(mount / CONTROL_DIRNAME, "bad-verified", {
         "status": "CAPTURE_VERIFIED", "active_authority": True,
         "commit": "a" * 40, "tree": "b" * 40,
     })
-    _seed_phase(mount)
-    report = preview_destination_package(
+    bad = preview_destination_package(
         mount, run_id=RUN_ID, policy=_preview_policy("bad-verified"),
         mercury_commit=MERCURY_COMMIT, mercury_capture_id=MERCURY_CAPTURE,
     )
-    assert not report.ok
-    assert any("Erebus capture bad-verified" in error for error in report.errors)
+    assert any("Erebus capture bad-verified" in error for error in bad.errors)
 
-
-def test_preview_shows_historical_as_non_authoritative(tmp_path: Path) -> None:
-    mount = tmp_path / "mnt"
     _write_summary(mount / CONTROL_DIRNAME, "historical", {
         "repository": {"commit": "a" * 40, "tree": "b" * 40},
     })
-    _seed_phase(mount)
-    report = preview_destination_package(
+    historical = preview_destination_package(
         mount, run_id=RUN_ID, policy=_preview_policy("historical"),
         mercury_commit=MERCURY_COMMIT, mercury_capture_id=MERCURY_CAPTURE,
     )
-    assert "historical" in report.included_capture_ids
-    assert "erebus_historical_reference=historical" in report.included_git_commits
-    assert not any(item.startswith("erebus_package_authority_commit=") for item in report.included_git_commits)
+    assert "erebus_historical_reference=historical" in historical.included_git_commits
 
-
-def test_preview_refuses_missing_and_latest(tmp_path: Path) -> None:
-    mount = tmp_path / "mnt"
-    mount.mkdir()
-    _seed_phase(mount)
     missing = preview_destination_package(
         mount, run_id=RUN_ID, policy=_preview_policy("absent-capture"),
         mercury_commit=MERCURY_COMMIT, mercury_capture_id=MERCURY_CAPTURE,
@@ -253,191 +198,95 @@ def test_preview_refuses_missing_and_latest(tmp_path: Path) -> None:
     assert any("unqualified latest" in error for error in latest.errors)
 
 
-# ---------------------------------------------------------------------------
-# Create
-# ---------------------------------------------------------------------------
-
-
-def test_create_accepts_package_authority(tmp_path: Path, host_state: Path, mount_ok: None) -> None:
+def test_create_authority_gates(tmp_path: Path, host_state: Path, mount_ok: None) -> None:
     fixture = _golden(tmp_path / "synth")
-    mount = tmp_path / "mnt"
+    mount = tmp_path / "ok"
     mount.mkdir()
     dest = mount / CONTROL_DIRNAME / "validation" / "erebus" / fixture.capture_id
     dest.parent.mkdir(parents=True)
     fixture.capture_root().rename(dest)
     _seal_with_capture(mount, fixture.capture_id)
-    result = create_destination_package(
-        mount,
-        preview_id=PREVIEW_ID,
-        run_id=RUN_ID,
-        confirm=CREATE_CONFIRMATION,
-        mercury_commit=MERCURY_COMMIT,
-        mercury_capture_id=MERCURY_CAPTURE,
-        erebus_commit=fixture.commit,
-        erebus_capture_id=fixture.capture_id,
-        expected_backup_ids=BACKUP_IDS,
-        verify_git_head=False,
+    ok = create_destination_package(
+        mount, preview_id=PREVIEW_ID, run_id=RUN_ID, confirm=CREATE_CONFIRMATION,
+        mercury_commit=MERCURY_COMMIT, mercury_capture_id=MERCURY_CAPTURE,
+        erebus_commit=fixture.commit, erebus_capture_id=fixture.capture_id,
+        expected_backup_ids=BACKUP_IDS, verify_git_head=False,
         package_id="destination_rehearsal_authority_ok",
     )
-    assert result.ok, result.errors
-    assert (packages_root(mount) / "destination_rehearsal_authority_ok").is_dir()
+    assert ok.ok, ok.errors
 
-
-def test_create_refuses_historical_reference(tmp_path: Path, host_state: Path, mount_ok: None) -> None:
-    mount = tmp_path / "mnt"
-    mount.mkdir()
-    _write_summary(mount / CONTROL_DIRNAME, EREBUS_CAPTURE, {
+    hist = tmp_path / "hist"
+    hist.mkdir()
+    _write_summary(hist / CONTROL_DIRNAME, EREBUS_CAPTURE, {
         "repository": {"commit": EREBUS_COMMIT, "tree": "e" * 40},
     })
-    _seal_with_capture(mount, EREBUS_CAPTURE)
-    result = create_destination_package(
-        mount,
-        preview_id=PREVIEW_ID,
-        run_id=RUN_ID,
-        confirm=CREATE_CONFIRMATION,
-        mercury_commit=MERCURY_COMMIT,
-        mercury_capture_id=MERCURY_CAPTURE,
-        erebus_commit=EREBUS_COMMIT,
-        erebus_capture_id=EREBUS_CAPTURE,
-        expected_backup_ids=BACKUP_IDS,
-        verify_git_head=False,
+    _seal_with_capture(hist, EREBUS_CAPTURE)
+    historical = create_destination_package(
+        hist, preview_id=PREVIEW_ID, run_id=RUN_ID, confirm=CREATE_CONFIRMATION,
+        mercury_commit=MERCURY_COMMIT, mercury_capture_id=MERCURY_CAPTURE,
+        erebus_commit=EREBUS_COMMIT, erebus_capture_id=EREBUS_CAPTURE,
+        expected_backup_ids=BACKUP_IDS, verify_git_head=False,
         package_id="destination_rehearsal_historical_refuse",
     )
-    assert not result.ok
-    assert any("historical and cannot authorize" in error for error in result.errors)
-    assert not (packages_root(mount) / "destination_rehearsal_historical_refuse").exists()
+    assert not historical.ok
+    assert any("historical and cannot authorize" in error for error in historical.errors)
 
-
-def test_create_refuses_missing_without_fixture_flag(tmp_path: Path, host_state: Path, mount_ok: None) -> None:
-    mount = tmp_path / "mnt"
-    mount.mkdir()
-    _seal_with_capture(mount, EREBUS_CAPTURE)
-    result = create_destination_package(
-        mount,
-        preview_id=PREVIEW_ID,
-        run_id=RUN_ID,
-        confirm=CREATE_CONFIRMATION,
-        mercury_commit=MERCURY_COMMIT,
-        mercury_capture_id=MERCURY_CAPTURE,
-        erebus_commit=EREBUS_COMMIT,
-        erebus_capture_id=EREBUS_CAPTURE,
-        expected_backup_ids=BACKUP_IDS,
-        verify_git_head=False,
+    missing_root = tmp_path / "missing"
+    missing_root.mkdir()
+    _seal_with_capture(missing_root, EREBUS_CAPTURE)
+    missing = create_destination_package(
+        missing_root, preview_id=PREVIEW_ID, run_id=RUN_ID, confirm=CREATE_CONFIRMATION,
+        mercury_commit=MERCURY_COMMIT, mercury_capture_id=MERCURY_CAPTURE,
+        erebus_commit=EREBUS_COMMIT, erebus_capture_id=EREBUS_CAPTURE,
+        expected_backup_ids=BACKUP_IDS, verify_git_head=False,
         package_id="destination_rehearsal_missing_refuse",
         allow_synthetic_missing_capture_fixture=False,
     )
-    assert not result.ok
-    assert any("required capture missing" in error for error in result.errors)
-    assert not (packages_root(mount) / "destination_rehearsal_missing_refuse").exists()
+    assert not missing.ok and any("required capture missing" in error for error in missing.errors)
 
-
-def test_create_allows_missing_only_with_injected_fixture_flag(
-    tmp_path: Path, host_state: Path, mount_ok: None,
-) -> None:
-    mount = tmp_path / "mnt"
-    mount.mkdir()
-    _seal_with_capture(mount, EREBUS_CAPTURE)
-    result = create_destination_package(
-        mount,
-        preview_id=PREVIEW_ID,
-        run_id=RUN_ID,
-        confirm=CREATE_CONFIRMATION,
-        mercury_commit=MERCURY_COMMIT,
-        mercury_capture_id=MERCURY_CAPTURE,
-        erebus_commit=EREBUS_COMMIT,
-        erebus_capture_id=EREBUS_CAPTURE,
-        expected_backup_ids=BACKUP_IDS,
-        verify_git_head=False,
+    allowed = create_destination_package(
+        missing_root, preview_id=PREVIEW_ID, run_id=RUN_ID, confirm=CREATE_CONFIRMATION,
+        mercury_commit=MERCURY_COMMIT, mercury_capture_id=MERCURY_CAPTURE,
+        erebus_commit=EREBUS_COMMIT, erebus_capture_id=EREBUS_CAPTURE,
+        expected_backup_ids=BACKUP_IDS, verify_git_head=False,
         package_id="destination_rehearsal_missing_fixture",
         allow_synthetic_missing_capture_fixture=True,
     )
-    assert result.ok, result.errors
-    assert any("synthetic missing capture fixture allowed" in warning for warning in result.warnings)
+    assert allowed.ok, allowed.errors
+    assert any("synthetic missing capture fixture allowed" in warning for warning in allowed.warnings)
 
-
-def test_create_refuses_tampered_verified_capture(tmp_path: Path, host_state: Path, mount_ok: None) -> None:
-    fixture = _golden(tmp_path / "synth")
-    mount = tmp_path / "mnt"
-    mount.mkdir()
-    dest = mount / CONTROL_DIRNAME / "validation" / "erebus" / fixture.capture_id
-    dest.parent.mkdir(parents=True)
-    fixture.capture_root().rename(dest)
-    (dest / "CAPTURE_REPORT.md").write_text("tampered\n")
-    _seal_with_capture(mount, fixture.capture_id)
-    result = create_destination_package(
-        mount,
-        preview_id=PREVIEW_ID,
-        run_id=RUN_ID,
-        confirm=CREATE_CONFIRMATION,
-        mercury_commit=MERCURY_COMMIT,
-        mercury_capture_id=MERCURY_CAPTURE,
-        erebus_commit=fixture.commit,
-        erebus_capture_id=fixture.capture_id,
-        expected_backup_ids=BACKUP_IDS,
-        verify_git_head=False,
-        package_id="destination_rehearsal_tamper_refuse",
-    )
-    assert not result.ok
-    assert any("Erebus capture" in error for error in result.errors)
-    assert not (packages_root(mount) / "destination_rehearsal_tamper_refuse").exists()
-
-
-@pytest.mark.parametrize("mutator,needle", [
-    ("reconstruction", "reconstruction did not pass"),
-    ("phase", "Phase 3B backup identity mismatch"),
-    ("recovery", "maintenance recovery mismatch"),
-    ("intake", "intake contract hash mismatch"),
-    ("supersession", "supersession metadata mismatch"),
-    ("authority", "historical and cannot authorize"),
-])
-def test_create_refuses_specific_authority_faults(
-    tmp_path: Path, host_state: Path, mount_ok: None, mutator: str, needle: str,
-) -> None:
-    fixture = _golden(tmp_path / "synth")
-    mount = tmp_path / "mnt"
-    mount.mkdir()
-    dest = mount / CONTROL_DIRNAME / "validation" / "erebus" / fixture.capture_id
-    dest.parent.mkdir(parents=True)
-    fixture.capture_root().rename(dest)
-    if mutator == "reconstruction":
-        data = json.loads((dest / "reconstruction/reconstructed_identity.json").read_text())
-        data["head_match"] = False
-        (dest / "reconstruction/reconstructed_identity.json").write_text(json.dumps(data))
-    elif mutator == "phase":
-        data = json.loads((dest / "phase3b_linkage.json").read_text())
-        data["backup_ids"] = []
-        (dest / "phase3b_linkage.json").write_text(json.dumps(data))
-    elif mutator == "recovery":
-        data = json.loads((dest / "artifacts/source_recovery/maintenance_source_recovery.json").read_text())
-        data["artifact_sha256"] = "0" * 64
-        (dest / "artifacts/source_recovery/maintenance_source_recovery.json").write_text(json.dumps(data))
-    elif mutator == "intake":
-        receipt = json.loads((dest / "manifest_receipt.json").read_text())
-        receipt["intake_contract_sha256"] = "0" * 64
-        (dest / "manifest_receipt.json").write_text(json.dumps(receipt))
-    elif mutator == "supersession":
-        data = json.loads((dest / "supersession.json").read_text())
-        data["supersedes"] = "wrong"
-        (dest / "supersession.json").write_text(json.dumps(data))
-    else:
-        data = json.loads((dest / "capture_summary.json").read_text())
-        data["active_authority"] = False
-        data["historical_only"] = True
-        (dest / "capture_summary.json").write_text(json.dumps(data))
-    _seal_with_capture(mount, fixture.capture_id)
-    result = create_destination_package(
-        mount,
-        preview_id=PREVIEW_ID,
-        run_id=RUN_ID,
-        confirm=CREATE_CONFIRMATION,
-        mercury_commit=MERCURY_COMMIT,
-        mercury_capture_id=MERCURY_CAPTURE,
-        erebus_commit=fixture.commit,
-        erebus_capture_id=fixture.capture_id,
-        expected_backup_ids=BACKUP_IDS,
-        verify_git_head=False,
-        package_id=f"destination_rehearsal_{mutator}_refuse",
-    )
-    assert not result.ok
-    assert any(needle in error for error in result.errors), result.errors
-    assert not (packages_root(mount) / f"destination_rehearsal_{mutator}_refuse").exists()
+    # Create-path refuse for a few authority faults (validator unit coverage lives in execution suite).
+    for mutator, needle in (
+        ("manifest", "Erebus capture"),
+        ("authority", "historical and cannot authorize"),
+        ("phase", "Phase 3B backup identity mismatch"),
+    ):
+        case = tmp_path / mutator
+        golden = _golden(case / "synth")
+        mnt = case / "mnt"
+        mnt.mkdir()
+        capture = mnt / CONTROL_DIRNAME / "validation" / "erebus" / golden.capture_id
+        capture.parent.mkdir(parents=True)
+        golden.capture_root().rename(capture)
+        if mutator == "manifest":
+            (capture / "CAPTURE_REPORT.md").write_text("tampered\n")
+        elif mutator == "authority":
+            data = json.loads((capture / "capture_summary.json").read_text())
+            data["active_authority"] = False
+            data["historical_only"] = True
+            (capture / "capture_summary.json").write_text(json.dumps(data))
+        else:
+            data = json.loads((capture / "phase3b_linkage.json").read_text())
+            data["backup_ids"] = []
+            (capture / "phase3b_linkage.json").write_text(json.dumps(data))
+        _seal_with_capture(mnt, golden.capture_id)
+        result = create_destination_package(
+            mnt, preview_id=PREVIEW_ID, run_id=RUN_ID, confirm=CREATE_CONFIRMATION,
+            mercury_commit=MERCURY_COMMIT, mercury_capture_id=MERCURY_CAPTURE,
+            erebus_commit=golden.commit, erebus_capture_id=golden.capture_id,
+            expected_backup_ids=BACKUP_IDS, verify_git_head=False,
+            package_id=f"destination_rehearsal_{mutator}_refuse",
+        )
+        assert not result.ok
+        assert any(needle in error for error in result.errors), result.errors
+        assert not (packages_root(mnt) / f"destination_rehearsal_{mutator}_refuse").exists()

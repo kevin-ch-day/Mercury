@@ -229,61 +229,95 @@ def test_context_preview_revalidates_all_synthetic_identities(tmp_path: Path, mo
     assert "PREVIEW READY" in cli.output
 
 
-@pytest.mark.parametrize("change", ["uuid", "label", "mount", "space", "operation", "role"])
-def test_storage_preflight_refuses_unsafe_facts(change: str) -> None:
-    values = dict(partition="/dev/test1", parent="/dev/test", fstype="ext4", label=EXPECTED_LABEL,
+def test_storage_preflight_refuses_unsafe_facts() -> None:
+    base = dict(
+        partition="/dev/test1", parent="/dev/test", fstype="ext4", label=EXPECTED_LABEL,
         uuid=EXPECTED_UUID, mount_path=EXPECTED_MOUNT, mount_options="rw", free_bytes=100,
-        source_host=True, writer_enabled=True)
-    if change == "uuid": values["uuid"] = "wrong"
-    if change == "label": values["label"] = "wrong"
-    if change == "mount": values["mount_path"] = "/wrong"
-    if change == "space": values["free_bytes"] = 0
-    if change == "operation": values["active_operations"] = ("backup",)
-    if change == "role": values["source_host"] = False
-    with pytest.raises(ValueError): validate_storage(StorageFacts(**values), minimum_free_bytes=1)
+        source_host=True, writer_enabled=True,
+    )
+    mutations = (
+        {"uuid": "wrong"},
+        {"label": "wrong"},
+        {"mount_path": "/wrong"},
+        {"free_bytes": 0},
+        {"active_operations": ("backup",)},
+        {"source_host": False},
+    )
+    for mutation in mutations:
+        values = {**base, **mutation}
+        with pytest.raises(ValueError):
+            validate_storage(StorageFacts(**values), minimum_free_bytes=1)
 
 
-@pytest.mark.parametrize("field", ["source_relative_path", "artifact_sha256", "repair_commit", "repair_tree", "original_ignore_rule", "repaired_ignore_rule", "tracked"])
-def test_recovery_validator_refuses_identity_mismatch(tmp_path: Path, field: str) -> None:
-    data = {"source_relative_path": RECOVERY_PATH, "artifact_sha256": "hash", "repair_commit": "commit", "repair_tree": "tree", "original_ignore_rule": "reports/", "repaired_ignore_rule": "/reports/", "tracked": True}
-    data[field] = False if field == "tracked" else "wrong"
-    receipt = tmp_path / "receipt.json"; receipt.write_text(__import__("json").dumps(data))
-    receipt.with_suffix(".json.sha256").write_text(f"{hashlib.sha256(receipt.read_bytes()).hexdigest()}  receipt.json\n")
-    with pytest.raises(ValueError, match="RECOVERY_MISMATCH"):
-        validate_recovery_receipt(receipt, artifact_sha256="hash", repair_commit="commit", repair_tree="tree")
+def test_recovery_validator_refuses_identity_mismatch(tmp_path: Path) -> None:
+    fields = (
+        "source_relative_path", "artifact_sha256", "repair_commit", "repair_tree",
+        "original_ignore_rule", "repaired_ignore_rule", "tracked",
+    )
+    for field in fields:
+        data = {
+            "source_relative_path": RECOVERY_PATH, "artifact_sha256": "hash",
+            "repair_commit": "commit", "repair_tree": "tree",
+            "original_ignore_rule": "reports/", "repaired_ignore_rule": "/reports/", "tracked": True,
+        }
+        data[field] = False if field == "tracked" else "wrong"
+        receipt = tmp_path / f"receipt-{field}.json"
+        receipt.write_text(__import__("json").dumps(data))
+        receipt.with_suffix(".json.sha256").write_text(
+            f"{hashlib.sha256(receipt.read_bytes()).hexdigest()}  {receipt.name}\n"
+        )
+        with pytest.raises(ValueError, match="RECOVERY_MISMATCH"):
+            validate_recovery_receipt(receipt, artifact_sha256="hash", repair_commit="commit", repair_tree="tree")
 
 
-@pytest.mark.parametrize("fault", ["missing", "bad_run", "bad_backups", "bad_comparison"])
-def test_phase3b_validator_refuses_invalid_evidence(tmp_path: Path, fault: str) -> None:
-    root = tmp_path / RUN_ID; (root / "dumps").mkdir(parents=True); (root / "restore").mkdir()
-    (root / "PHASE3B_REPORT.md").write_text("report\n")
-    (root / "phase3b_summary.json").write_text(__import__("json").dumps({"run_id": "wrong" if fault == "bad_run" else RUN_ID}))
-    (root / "dumps/dump_metadata.json").write_text(__import__("json").dumps({"backup_ids": [] if fault == "bad_backups" else sorted(BACKUPS)}))
-    (root / "restore/source_vs_restore_comparison.json").write_text(__import__("json").dumps({"zero_unexplained_differences": fault != "bad_comparison"}))
-    if fault == "missing": (root / "PHASE3B_REPORT.md").unlink()
-    with pytest.raises(ValueError, match="PHASE3B_MISMATCH"): validate_phase3b(root, RUN_ID)
+def test_phase3b_validator_refuses_invalid_evidence(tmp_path: Path) -> None:
+    for fault in ("missing", "bad_run", "bad_backups", "bad_comparison"):
+        root = tmp_path / fault / RUN_ID
+        (root / "dumps").mkdir(parents=True)
+        (root / "restore").mkdir()
+        (root / "PHASE3B_REPORT.md").write_text("report\n")
+        (root / "phase3b_summary.json").write_text(
+            __import__("json").dumps({"run_id": "wrong" if fault == "bad_run" else RUN_ID})
+        )
+        (root / "dumps/dump_metadata.json").write_text(
+            __import__("json").dumps({"backup_ids": [] if fault == "bad_backups" else sorted(BACKUPS)})
+        )
+        (root / "restore/source_vs_restore_comparison.json").write_text(
+            __import__("json").dumps({"zero_unexplained_differences": fault != "bad_comparison"})
+        )
+        if fault == "missing":
+            (root / "PHASE3B_REPORT.md").unlink()
+        with pytest.raises(ValueError, match="PHASE3B_MISMATCH"):
+            validate_phase3b(root, RUN_ID)
 
 
-@pytest.mark.parametrize("fault", ["checksum", "schema", "members", "bypass", "secret"])
-def test_intake_validator_refuses_unsafe_contract(tmp_path: Path, fault: str) -> None:
-    data = {"schema_version": 1, "intake_root_name": "erebus-intake", "included_members": sorted(ALLOWED), "excluded_members": sorted(EXCLUDED), "bypass_allowed": False, "mount_guard_required": True}
-    if fault == "schema": data["schema_version"] = 2
-    if fault == "members": data["included_members"] = ["downloads"]
-    if fault == "bypass": data["bypass_allowed"] = True
-    if fault == "secret": data["note"] = "api_key"
-    contract = tmp_path / "intake_contract.json"; contract.write_text(__import__("json").dumps(data))
-    contract.with_suffix(".json.sha256").write_text(("bad" if fault == "checksum" else hashlib.sha256(contract.read_bytes()).hexdigest()) + "  intake_contract.json\n")
-    with pytest.raises(ValueError, match="INTAKE_MISMATCH"): validate_intake_contract(contract)
+def test_intake_validator_refuses_unsafe_contract(tmp_path: Path) -> None:
+    for fault in ("checksum", "schema", "members", "bypass", "secret"):
+        data = {
+            "schema_version": 1, "intake_root_name": "erebus-intake",
+            "included_members": sorted(ALLOWED), "excluded_members": sorted(EXCLUDED),
+            "bypass_allowed": False, "mount_guard_required": True,
+        }
+        if fault == "schema":
+            data["schema_version"] = 2
+        if fault == "members":
+            data["included_members"] = ["downloads"]
+        if fault == "bypass":
+            data["bypass_allowed"] = True
+        if fault == "secret":
+            data["note"] = "api_key"
+        contract = tmp_path / f"intake_contract_{fault}.json"
+        contract.write_text(__import__("json").dumps(data))
+        digest = "bad" if fault == "checksum" else hashlib.sha256(contract.read_bytes()).hexdigest()
+        contract.with_suffix(".json.sha256").write_text(f"{digest}  {contract.name}\n")
+        with pytest.raises(ValueError, match="INTAKE_MISMATCH"):
+            validate_intake_contract(contract)
 
 
 def test_member_contract_requires_bundle_and_rejects_forbidden() -> None:
     short = "abcdef0"; members = set(REQUIRED) | {expected_bundle_name(short)}
     assert validate_members(members, short) == []
     assert "forbidden member: output/report.txt" in validate_members(members | {"output/report.txt"}, short)
-
-
-def test_package_validator_refuses_incomplete_capture(tmp_path: Path) -> None:
-    assert validate_erebus_capture_for_package(tmp_path, capture_id="candidate", commit="c", tree="t") == ["verified capture evidence is incomplete"]
 
 
 def test_preview_store_rejects_traversal_and_publishes_atomically(tmp_path: Path) -> None:

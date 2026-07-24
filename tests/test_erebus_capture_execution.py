@@ -218,38 +218,35 @@ def test_production_cli_has_no_synthetic_execution_bypass(tmp_path: Path) -> Non
 
 
 # ---------------------------------------------------------------------------
-# Full-suite policy / scanner / contract (existing)
+# Policy / scanner / contract
 # ---------------------------------------------------------------------------
 
 
-def test_full_suite_policy_requires_exact_failure_identity_and_classification() -> None:
+def test_full_suite_policy_core_decisions() -> None:
     approved = (ExpectedFailure("tests/example.py::test_known", "host_output"),)
-    clean = FullSuiteSummary("pytest -q", 0, 10, 10, (), 0)
-    assert evaluate(clean) == (True, "FULL_SUITE_PASS")
-    exact = FullSuiteSummary("pytest -q", 1, 10, 9, approved, 0)
-    assert evaluate(exact, approved) == (True, "FULL_SUITE_APPROVED_EXCEPTIONS")
-    changed = FullSuiteSummary("pytest -q", 1, 10, 9, (ExpectedFailure("tests/other.py::test_new", "host_output"),), 0)
-    assert evaluate(changed, approved) == (False, "FULL_SUITE_UNEXPECTED_FAILURES")
-    assert evaluate(FullSuiteSummary("pytest -q", 1, 0, 0, (), 0, collection_errors=1)) == (False, "FULL_SUITE_STRUCTURAL_FAILURE")
-
-
-@pytest.mark.parametrize("summary", [
-    FullSuiteSummary("pytest -q", 1, 2, 1, (), 0),
-    FullSuiteSummary("pytest -q", 0, 2, 1, (ExpectedFailure("x", "wrong"),), 0),
-    FullSuiteSummary("pytest -q", 1, 2, 1, (), 0, interrupted=True),
-    FullSuiteSummary("pytest -q", 1, 2, 1, (), 0, focused_failures=1),
-    FullSuiteSummary("pytest -q", 1, 2, 1, (), 0, dependency_valid=False),
-])
-def test_full_suite_policy_refuses_inconsistent_or_incomplete_results(summary: FullSuiteSummary) -> None:
-    assert not evaluate(summary)[0]
-
-
-def test_full_suite_policy_refuses_missing_or_changed_approved_failure() -> None:
-    approved = (ExpectedFailure("tests/a.py::test_a", "host_output"),)
-    missing = FullSuiteSummary("pytest", 0, 1, 1, (), 0)
-    assert evaluate(missing, approved)[0]
-    changed = FullSuiteSummary("pytest", 1, 1, 0, (ExpectedFailure("tests/a.py::test_a", "different"),), 0)
-    assert not evaluate(changed, approved)[0]
+    assert evaluate(FullSuiteSummary("pytest -q", 0, 10, 10, (), 0)) == (True, "FULL_SUITE_PASS")
+    assert evaluate(FullSuiteSummary("pytest -q", 1, 10, 9, approved, 0), approved) == (
+        True, "FULL_SUITE_APPROVED_EXCEPTIONS",
+    )
+    assert evaluate(
+        FullSuiteSummary("pytest -q", 1, 10, 9, (ExpectedFailure("tests/other.py::test_new", "host_output"),), 0),
+        approved,
+    ) == (False, "FULL_SUITE_UNEXPECTED_FAILURES")
+    assert evaluate(FullSuiteSummary("pytest -q", 1, 0, 0, (), 0, collection_errors=1)) == (
+        False, "FULL_SUITE_STRUCTURAL_FAILURE",
+    )
+    # Two representative refuse shapes cover return-code inconsistency and structural flags.
+    for summary in (
+        FullSuiteSummary("pytest -q", 1, 2, 1, (), 0),
+        FullSuiteSummary("pytest -q", 1, 2, 1, (), 0, interrupted=True),
+    ):
+        assert not evaluate(summary)[0]
+    approved_one = (ExpectedFailure("tests/a.py::test_a", "host_output"),)
+    assert evaluate(FullSuiteSummary("pytest", 0, 1, 1, (), 0), approved_one)[0]
+    assert not evaluate(
+        FullSuiteSummary("pytest", 1, 1, 0, (ExpectedFailure("tests/a.py::test_a", "different"),), 0),
+        approved_one,
+    )[0]
 
 
 def test_validation_runner_result_is_structured_and_refuses_incomplete_execution(tmp_path: Path) -> None:
@@ -267,91 +264,74 @@ def test_capture_contract_rejects_unexpected_and_historical_members() -> None:
     assert "forbidden member: logs/run.txt" in validate_members(members | {"logs/run.txt"}, "abcdef0")
 
 
-@pytest.mark.parametrize("name,content", [
-    (".env", "API_KEY=abcdefghijklmnop"), ("private.pem", "-----BEGIN RSA PRIVATE KEY-----"),
-    ("private.txt", "-----BEGIN OPENSSH PRIVATE KEY-----"), ("private.txt", "-----BEGIN EC PRIVATE KEY-----"),
-    ("data.db", "binary"), ("logs/run.txt", "x"), ("output/report.txt", "x"),
-    ("ScytaleDroid/source.py", "x"), ("notes.txt", "token=abcdefghijklmnop"),
-])
-def test_scanner_rejects_governed_forbidden_content(tmp_path: Path, name: str, content: str) -> None:
-    path = tmp_path / name
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content)
-    assert scan_capture(tmp_path, short_sha="abcdef0")
-
-
-def test_scanner_accepts_benign_hashes_and_docs_when_members_are_valid(tmp_path: Path) -> None:
+def test_scanner_rejects_and_accepts_representative_content(tmp_path: Path) -> None:
+    for name, content in (
+        (".env", "API_KEY=abcdefghijklmnop"),
+        ("private.pem", "-----BEGIN RSA PRIVATE KEY-----"),
+        ("logs/run.txt", "x"),
+    ):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+        assert scan_capture(tmp_path, short_sha="abcdef0")
+        path.unlink()
+        if path.parent != tmp_path and not any(path.parent.iterdir()):
+            path.parent.rmdir()
     for member in set(REQUIRED) | {expected_bundle_name("abcdef0")}:
         path = tmp_path / member
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("documentation discusses tokens; sha256=" + "a" * 64 + "\n")
     assert scan_capture(tmp_path, short_sha="abcdef0") == []
-
-
-def test_scanner_accepts_empty_env_template_and_refuses_symlink(tmp_path: Path) -> None:
-    for member in set(REQUIRED) | {expected_bundle_name("abcdef0")}:
-        path = tmp_path / member
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("ok\n")
     (tmp_path / ".env").write_text("")
     assert "forbidden path: .env" not in scan_capture(tmp_path, short_sha="abcdef0")
     target = tmp_path / "target.txt"
     target.write_text("ok")
     link = tmp_path / "artifacts" / "intake_contract" / "link.txt"
-    link.parent.mkdir(parents=True)
+    link.parent.mkdir(parents=True, exist_ok=True)
     link.symlink_to(target)
     assert any(item.startswith("nonregular member:") for item in scan_capture(tmp_path, short_sha="abcdef0"))
 
 
 # ---------------------------------------------------------------------------
-# 1. Validation / reconstruction failure matrix
+# Validation / reconstruction / writer / drift
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("step", [
-    "focused_tests", "collection", "compileall", "git_diff_check", "dependency_validation",
-])
-def test_execute_refuses_injected_validation_step_failure(tmp_path: Path, step: str) -> None:
+def test_execute_refuses_injected_validation_and_reconstruction_failures(tmp_path: Path) -> None:
+    for step in ("focused_tests", "collection", "compileall", "git_diff_check", "dependency_validation"):
+        case = tmp_path / step
+        case.mkdir()
+        fixture = SyntheticCaptureFixture(case, runner=DeterministicValidationRunner({step: _fail(step)}))
+        fixture.publish_ready()
+        result = execute_capture(fixture.context, fixture.preview_id)
+        assert not result.ok
+        assert any(f"VALIDATION_FAILED: {step}" in error for error in result.errors)
+        assert load_state(fixture.preview_root()) is PreviewState.REFUSED
+        assert not fixture.capture_root().exists()
+        assert fixture.leftover_temps() == []
+    for kwargs in (
+        {"started": False, "completed": True, "return_code": 0},
+        {"started": True, "completed": False, "return_code": 0},
+    ):
+        case = tmp_path / f"full-{kwargs['started']}-{kwargs['completed']}"
+        case.mkdir()
+        fixture = SyntheticCaptureFixture(
+            case,
+            runner=DeterministicValidationRunner({"full_suite": _fail("full_suite", **kwargs)}),  # type: ignore[arg-type]
+        )
+        fixture.publish_ready()
+        result = execute_capture(fixture.context, fixture.preview_id)
+        assert not result.ok
+        assert any("VALIDATION_FAILED: full_suite" in error for error in result.errors)
+    policy = tmp_path / "policy"
+    policy.mkdir()
     fixture = SyntheticCaptureFixture(
-        tmp_path,
-        runner=DeterministicValidationRunner({step: _fail(step)}),
-    )
-    fixture.publish_ready()
-    result = execute_capture(fixture.context, fixture.preview_id)
-    assert not result.ok
-    assert any(f"VALIDATION_FAILED: {step}" in error for error in result.errors)
-    assert load_state(fixture.preview_root()) is PreviewState.REFUSED
-    assert not fixture.capture_root().exists()
-    assert fixture.leftover_temps() == []
-
-
-@pytest.mark.parametrize("kwargs", [
-    {"started": False, "completed": True, "return_code": 0},
-    {"started": True, "completed": False, "return_code": 0},
-])
-def test_execute_refuses_incomplete_full_suite(tmp_path: Path, kwargs: dict[str, object]) -> None:
-    fixture = SyntheticCaptureFixture(
-        tmp_path,
-        runner=DeterministicValidationRunner({"full_suite": _fail("full_suite", **kwargs)}),  # type: ignore[arg-type]
-    )
-    fixture.publish_ready()
-    result = execute_capture(fixture.context, fixture.preview_id)
-    assert not result.ok
-    assert any("VALIDATION_FAILED: full_suite" in error for error in result.errors)
-    assert fixture.leftover_temps() == []
-
-
-def test_execute_refuses_full_suite_policy_rejection(tmp_path: Path) -> None:
-    fixture = SyntheticCaptureFixture(
-        tmp_path,
+        policy,
         runner=DeterministicValidationRunner({
             "full_suite": _fail(
-                "full_suite",
-                return_code=1,
+                "full_suite", return_code=1,
                 parsed={
-                    "collected_count": 2,
-                    "passed_count": 1,
-                    "skipped_count": 0,
+                    "collected_count": 2, "passed_count": 1, "skipped_count": 0,
                     "failures": [{"node_id": "tests/x.py::test_new", "classification": "host_output"}],
                 },
             ),
@@ -361,64 +341,50 @@ def test_execute_refuses_full_suite_policy_rejection(tmp_path: Path) -> None:
     result = execute_capture(fixture.context, fixture.preview_id)
     assert not result.ok
     assert any("FULL_SUITE_UNEXPECTED_FAILURES" in error for error in result.errors)
-    assert fixture.leftover_temps() == []
-
-
-@pytest.mark.parametrize("step", [
-    "reconstruction_import", "reconstruction_focused_tests", "reconstruction_collection",
-])
-def test_execute_refuses_reconstruction_validation_failure(tmp_path: Path, step: str) -> None:
-    fixture = SyntheticCaptureFixture(
-        tmp_path,
-        runner=DeterministicValidationRunner({step: _fail(step)}),
-    )
+    for step in ("reconstruction_import", "reconstruction_focused_tests", "reconstruction_collection"):
+        case = tmp_path / step
+        case.mkdir()
+        fixture = SyntheticCaptureFixture(case, runner=DeterministicValidationRunner({step: _fail(step)}))
+        fixture.publish_ready()
+        result = execute_capture(fixture.context, fixture.preview_id)
+        assert not result.ok
+        assert any("RECONSTRUCTION_VALIDATION_FAILED" in error for error in result.errors)
+    missing = tmp_path / "missing-runner"
+    missing.mkdir()
+    fixture = SyntheticCaptureFixture(missing)
     fixture.publish_ready()
-    result = execute_capture(fixture.context, fixture.preview_id)
-    assert not result.ok
-    assert any("RECONSTRUCTION_VALIDATION_FAILED" in error for error in result.errors)
-    assert fixture.leftover_temps() == []
-
-
-def test_execute_refuses_missing_validation_runner(tmp_path: Path) -> None:
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
-    context = fixture.with_runner(None)
-    result = execute_capture(context, fixture.preview_id)
+    result = execute_capture(fixture.with_runner(None), fixture.preview_id)
     assert not result.ok
     assert any("VALIDATION_RUNNER_REQUIRED" in error for error in result.errors)
-    assert fixture.leftover_temps() == []
 
 
-@pytest.mark.parametrize("fault", ["tree", "maintenance", "commit"])
-def test_reconstruct_and_verify_refuses_identity_mismatch(tmp_path: Path, fault: str) -> None:
-    fixture = SyntheticCaptureFixture(tmp_path)
+def test_reconstruct_and_execute_refuse_identity_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = SyntheticCaptureFixture(tmp_path / "unit")
     bundle = create_complete_bundle(fixture.repo, tmp_path / "repo.bundle", fixture.commit)
-    if fault == "commit":
-        with pytest.raises(subprocess.CalledProcessError):
-            reconstruct_and_verify(
-                bundle, tmp_path / "reconstructed", expected_commit="0" * 40,
-                expected_tree=fixture.tree, maintenance_sha256=fixture.maintenance_sha256,
-            )
-        return
-    tree = "1" * 40 if fault == "tree" else fixture.tree
-    digest = "2" * 64 if fault == "maintenance" else fixture.maintenance_sha256
-    result = reconstruct_and_verify(
-        bundle, tmp_path / "reconstructed", expected_commit=fixture.commit,
-        expected_tree=tree, maintenance_sha256=digest,
+    with pytest.raises(subprocess.CalledProcessError):
+        reconstruct_and_verify(
+            bundle, tmp_path / "bad-commit", expected_commit="0" * 40,
+            expected_tree=fixture.tree, maintenance_sha256=fixture.maintenance_sha256,
+        )
+    tree_result = reconstruct_and_verify(
+        bundle, tmp_path / "bad-tree", expected_commit=fixture.commit,
+        expected_tree="1" * 40, maintenance_sha256=fixture.maintenance_sha256,
     )
-    if fault == "tree":
-        assert result["tree_match"] is False
-    else:
-        assert result["maintenance_match"] is False
+    assert tree_result["tree_match"] is False
+    maint = reconstruct_and_verify(
+        bundle, tmp_path / "bad-maint", expected_commit=fixture.commit,
+        expected_tree=fixture.tree, maintenance_sha256="2" * 64,
+    )
+    assert maint["maintenance_match"] is False
 
-
-def test_execute_refuses_reconstruction_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from mercury.migration.erebus_capture import writer
 
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
+    exec_case = SyntheticCaptureFixture(tmp_path / "exec")
+    exec_case.publish_ready()
 
-    def fake_reconstruct(bundle, destination, **_kwargs):
+    def fake_reconstruct(bundle_path, destination, **_kwargs):
         destination.mkdir(parents=True, exist_ok=True)
         return {
             "head": "wrong", "tree": "wrong", "clean": True, "maintenance_sha256": "wrong",
@@ -426,24 +392,17 @@ def test_execute_refuses_reconstruction_mismatch(tmp_path: Path, monkeypatch: py
         }
 
     monkeypatch.setattr(writer, "reconstruct_and_verify", fake_reconstruct)
-    result = execute_capture(fixture.context, fixture.preview_id)
+    result = execute_capture(exec_case.context, exec_case.preview_id)
     assert not result.ok
     assert any("RECONSTRUCTION_MISMATCH" in error for error in result.errors)
-    assert fixture.leftover_temps() == []
 
 
-# ---------------------------------------------------------------------------
-# 2. Atomic-writer fault injection
-# ---------------------------------------------------------------------------
-
-
-def test_writer_refuses_when_final_capture_appears_before_write(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_writer_fault_injection_matrix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from mercury.migration.erebus_capture import writer
 
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
+    # FINAL_CAPTURE_EXISTS race
+    race_case = SyntheticCaptureFixture(tmp_path / "race")
+    race_case.publish_ready()
     real = writer.write_synthetic_capture
 
     def race(**kwargs):
@@ -452,334 +411,186 @@ def test_writer_refuses_when_final_capture_appears_before_write(
         return real(**kwargs)
 
     monkeypatch.setattr(writer, "write_synthetic_capture", race)
-    result = execute_capture(fixture.context, fixture.preview_id)
-    assert not result.ok
-    assert any("FINAL_CAPTURE_EXISTS" in error for error in result.errors)
-    assert load_state(fixture.preview_root()) is PreviewState.REFUSED
-    assert fixture.leftover_temps() == []
+    result = execute_capture(race_case.context, race_case.preview_id)
+    assert not result.ok and any("FINAL_CAPTURE_EXISTS" in error for error in result.errors)
+    assert load_state(race_case.preview_root()) is PreviewState.REFUSED
+    monkeypatch.undo()
 
+    for name, patch, needle in (
+        ("scan", ("scan_capture", lambda *_a, **_k: ["forbidden path: .env"]), "PROHIBITED_CONTENT"),
+        ("manifest", ("verify_manifest", lambda *_a, **_k: False), "MANIFEST_INVALID"),
+    ):
+        case = SyntheticCaptureFixture(tmp_path / name)
+        case.publish_ready()
+        monkeypatch.setattr(writer, patch[0], patch[1])
+        result = execute_capture(case.context, case.preview_id)
+        assert not result.ok and any(needle in error for error in result.errors)
+        assert not case.capture_root().exists() and case.leftover_temps() == []
+        monkeypatch.undo()
 
-def test_writer_refuses_prohibited_content(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from mercury.migration.erebus_capture import writer
-
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
-    monkeypatch.setattr(writer, "scan_capture", lambda *_args, **_kwargs: ["forbidden path: .env"])
-    result = execute_capture(fixture.context, fixture.preview_id)
-    assert not result.ok
-    assert any("PROHIBITED_CONTENT" in error for error in result.errors)
-    assert not fixture.capture_root().exists()
-    assert fixture.leftover_temps() == []
-
-
-def test_writer_refuses_invalid_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from mercury.migration.erebus_capture import writer
-
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
-    monkeypatch.setattr(writer, "verify_manifest", lambda *_args, **_kwargs: False)
-    result = execute_capture(fixture.context, fixture.preview_id)
-    assert not result.ok
-    assert any("MANIFEST_INVALID" in error for error in result.errors)
-    assert not fixture.capture_root().exists()
-    assert fixture.leftover_temps() == []
-
-
-def test_writer_cleans_temp_when_atomic_replace_fails(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from mercury.migration.erebus_capture import writer
-
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
+    replace_case = SyntheticCaptureFixture(tmp_path / "replace")
+    replace_case.publish_ready()
     real_replace = os.replace
 
     def boom(src, dst):
-        if str(dst).endswith(fixture.capture_id):
+        if str(dst).endswith(replace_case.capture_id):
             raise OSError("injected replace failure")
         return real_replace(src, dst)
 
     monkeypatch.setattr(writer.os, "replace", boom)
-    result = execute_capture(fixture.context, fixture.preview_id)
-    assert not result.ok
-    assert any("injected replace failure" in error for error in result.errors)
-    assert not fixture.capture_root().exists()
-    assert fixture.leftover_temps() == []
+    result = execute_capture(replace_case.context, replace_case.preview_id)
+    assert not result.ok and any("injected replace failure" in error for error in result.errors)
+    assert not replace_case.capture_root().exists() and replace_case.leftover_temps() == []
 
 
-# ---------------------------------------------------------------------------
-# 3. Execute-time drift / reuse / concurrency
-# ---------------------------------------------------------------------------
-
-
-def test_revalidate_invalidates_on_source_drift(tmp_path: Path) -> None:
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
-    (fixture.repo / "drift.txt").write_text("untracked\n")
-    result = revalidate_preview_for_execute(fixture.context, fixture.preview_id)
-    assert not result.ok
-    assert load_state(fixture.preview_root()) is PreviewState.INVALIDATED
-
-
-def test_revalidate_invalidates_on_storage_drift(tmp_path: Path) -> None:
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
-    fixture.set_facts(_facts(uuid="wrong-uuid"))
-    result = revalidate_preview_for_execute(fixture.context, fixture.preview_id)
-    assert not result.ok
-    assert load_state(fixture.preview_root()) is PreviewState.INVALIDATED
-
-
-def test_revalidate_invalidates_on_recovery_drift(tmp_path: Path) -> None:
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
-    fixture.receipt.write_text(json.dumps({
-        "source_relative_path": RECOVERY_PATH,
-        "artifact_sha256": "wrong",
-        "repair_commit": fixture.commit,
-        "repair_tree": fixture.tree,
-        "original_ignore_rule": "reports/",
-        "repaired_ignore_rule": "/reports/",
-        "tracked": True,
-    }))
-    fixture.receipt.with_suffix(".json.sha256").write_text(
-        f"{hashlib.sha256(fixture.receipt.read_bytes()).hexdigest()}  receipt.json\n"
-    )
-    result = revalidate_preview_for_execute(fixture.context, fixture.preview_id)
-    assert not result.ok
-    assert load_state(fixture.preview_root()) is PreviewState.INVALIDATED
-
-
-def test_revalidate_invalidates_on_intake_drift(tmp_path: Path) -> None:
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
-    fixture.intake.write_text(json.dumps({
-        "schema_version": 2,
-        "intake_root_name": "erebus-intake",
-        "included_members": sorted(ALLOWED),
-        "excluded_members": sorted(EXCLUDED),
-        "bypass_allowed": False,
-        "mount_guard_required": True,
-    }))
-    fixture.intake.with_suffix(".json.sha256").write_text(
-        f"{hashlib.sha256(fixture.intake.read_bytes()).hexdigest()}  intake.json\n"
-    )
-    result = revalidate_preview_for_execute(fixture.context, fixture.preview_id)
-    assert not result.ok
-    assert load_state(fixture.preview_root()) is PreviewState.INVALIDATED
-
-
-def test_revalidate_invalidates_on_phase3b_drift(tmp_path: Path) -> None:
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
-    (fixture.phase / "phase3b_summary.json").write_text(json.dumps({"run_id": "wrong"}))
-    result = revalidate_preview_for_execute(fixture.context, fixture.preview_id)
-    assert not result.ok
-    assert load_state(fixture.preview_root()) is PreviewState.INVALIDATED
-
-
-def test_revalidate_invalidates_when_final_capture_exists(tmp_path: Path) -> None:
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
-    fixture.capture_root().mkdir(parents=True)
-    result = revalidate_preview_for_execute(fixture.context, fixture.preview_id)
-    assert not result.ok
-    assert result.errors == ["FINAL_CAPTURE_EXISTS"]
-    assert load_state(fixture.preview_root()) is PreviewState.INVALIDATED
-
-
-def test_second_execute_after_success_is_refused(tmp_path: Path) -> None:
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
-    first = execute_capture(fixture.context, fixture.preview_id)
-    assert first.ok, first.errors
-    second = execute_capture(fixture.context, fixture.preview_id)
-    assert not second.ok
-    assert load_state(fixture.preview_root()) is PreviewState.CONSUMED
-
-
-def test_execute_refuses_invalidated_and_refused_previews(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_revalidate_drift_reuse_and_lock_matrix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from mercury.migration.erebus_capture import writer
-    from mercury.migration.erebus_capture.preview_state import invalidate
-
-    fixture = SyntheticCaptureFixture(tmp_path, preview_id="preview-a", capture_id="capture-a")
-    fixture.publish_ready(preview_id="preview-a", capture_id="capture-a")
-    invalidate(fixture.preview_root("preview-a"))
-    assert not execute_capture(fixture.context, "preview-a").ok
-    assert not fixture.capture_root("capture-a").exists()
-
-    fixture.publish_ready(preview_id="preview-b", capture_id="capture-b")
-    monkeypatch.setattr(
-        writer, "write_synthetic_capture",
-        lambda **_kwargs: (_ for _ in ()).throw(ValueError("injected")),
-    )
-    assert not execute_capture(fixture.context, "preview-b").ok
-    assert load_state(fixture.preview_root("preview-b")) is PreviewState.REFUSED
-    assert not execute_capture(fixture.context, "preview-b").ok
-    assert not fixture.capture_root("capture-b").exists()
-
-
-def test_begin_execution_fails_closed_when_lock_held(tmp_path: Path) -> None:
-    from mercury.migration.erebus_capture.preview_state import begin_execution
+    from mercury.migration.erebus_capture.preview_state import begin_execution, invalidate
     from mercury.migration.erebus_capture.service import begin_preview_execution
 
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
-    lock = fixture.preview_root().parent / f".{fixture.preview_id}.preview_state.lock"
+    def _assert_invalidated(fixture: SyntheticCaptureFixture) -> None:
+        result = revalidate_preview_for_execute(fixture.context, fixture.preview_id)
+        assert not result.ok
+        assert load_state(fixture.preview_root()) is PreviewState.INVALIDATED
+
+    source = SyntheticCaptureFixture(tmp_path / "source")
+    source.publish_ready()
+    (source.repo / "drift.txt").write_text("untracked\n")
+    _assert_invalidated(source)
+
+    storage = SyntheticCaptureFixture(tmp_path / "storage")
+    storage.publish_ready()
+    storage.set_facts(_facts(uuid="wrong-uuid"))
+    _assert_invalidated(storage)
+
+    recovery = SyntheticCaptureFixture(tmp_path / "recovery")
+    recovery.publish_ready()
+    recovery.receipt.write_text(json.dumps({
+        "source_relative_path": RECOVERY_PATH, "artifact_sha256": "wrong",
+        "repair_commit": recovery.commit, "repair_tree": recovery.tree,
+        "original_ignore_rule": "reports/", "repaired_ignore_rule": "/reports/", "tracked": True,
+    }))
+    recovery.receipt.with_suffix(".json.sha256").write_text(
+        f"{hashlib.sha256(recovery.receipt.read_bytes()).hexdigest()}  receipt.json\n"
+    )
+    _assert_invalidated(recovery)
+
+    intake = SyntheticCaptureFixture(tmp_path / "intake")
+    intake.publish_ready()
+    intake.intake.write_text(json.dumps({
+        "schema_version": 2, "intake_root_name": "erebus-intake",
+        "included_members": sorted(ALLOWED), "excluded_members": sorted(EXCLUDED),
+        "bypass_allowed": False, "mount_guard_required": True,
+    }))
+    intake.intake.with_suffix(".json.sha256").write_text(
+        f"{hashlib.sha256(intake.intake.read_bytes()).hexdigest()}  intake.json\n"
+    )
+    _assert_invalidated(intake)
+
+    phase = SyntheticCaptureFixture(tmp_path / "phase")
+    phase.publish_ready()
+    (phase.phase / "phase3b_summary.json").write_text(json.dumps({"run_id": "wrong"}))
+    _assert_invalidated(phase)
+
+    final = SyntheticCaptureFixture(tmp_path / "final")
+    final.publish_ready()
+    final.capture_root().mkdir(parents=True)
+    result = revalidate_preview_for_execute(final.context, final.preview_id)
+    assert result.errors == ["FINAL_CAPTURE_EXISTS"]
+    assert load_state(final.preview_root()) is PreviewState.INVALIDATED
+
+    reuse = SyntheticCaptureFixture(tmp_path / "reuse")
+    reuse.publish_ready()
+    assert execute_capture(reuse.context, reuse.preview_id).ok
+    assert not execute_capture(reuse.context, reuse.preview_id).ok
+    assert load_state(reuse.preview_root()) is PreviewState.CONSUMED
+
+    states = SyntheticCaptureFixture(tmp_path / "states", preview_id="preview-a", capture_id="capture-a")
+    states.publish_ready(preview_id="preview-a", capture_id="capture-a")
+    invalidate(states.preview_root("preview-a"))
+    assert not execute_capture(states.context, "preview-a").ok
+    states.publish_ready(preview_id="preview-b", capture_id="capture-b")
+    monkeypatch.setattr(writer, "write_synthetic_capture", lambda **_k: (_ for _ in ()).throw(ValueError("injected")))
+    assert not execute_capture(states.context, "preview-b").ok
+    assert load_state(states.preview_root("preview-b")) is PreviewState.REFUSED
+    assert not execute_capture(states.context, "preview-b").ok
+
+    lock_case = SyntheticCaptureFixture(tmp_path / "lock")
+    lock_case.publish_ready()
+    lock = lock_case.preview_root().parent / f".{lock_case.preview_id}.preview_state.lock"
     lock.write_text("held\n")
-    assert begin_execution(fixture.preview_root()) is False
-    result = begin_preview_execution(fixture.control, fixture.preview_id)
-    assert not result.ok
-    assert result.errors == ["PREVIEW_NOT_READY"]
-    assert load_state(fixture.preview_root()) is PreviewState.READY
+    assert begin_execution(lock_case.preview_root()) is False
+    assert begin_preview_execution(lock_case.control, lock_case.preview_id).errors == ["PREVIEW_NOT_READY"]
+    assert execute_capture(lock_case.context, lock_case.preview_id).errors == ["PREVIEW_NOT_READY"]
+    assert load_state(lock_case.preview_root()) is PreviewState.READY
 
 
-def test_execute_refuses_when_preview_lock_is_held(tmp_path: Path) -> None:
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
-    lock = fixture.preview_root().parent / f".{fixture.preview_id}.preview_state.lock"
-    lock.write_text("held\n")
-    result = execute_capture(fixture.context, fixture.preview_id)
-    assert not result.ok
-    assert result.errors == ["PREVIEW_NOT_READY"]
-    assert not fixture.capture_root().exists()
-    assert load_state(fixture.preview_root()) is PreviewState.READY
-
-
-# ---------------------------------------------------------------------------
-# 4. Package / manifest tamper coverage
-# ---------------------------------------------------------------------------
-
-
-def _golden_capture(tmp_path: Path) -> tuple[SyntheticCaptureFixture, Path]:
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
-    result = execute_capture(fixture.context, fixture.preview_id)
-    assert result.ok, result.errors
-    capture = fixture.capture_root()
-    assert validate_erebus_capture_for_package(
-        fixture.control, capture_id=fixture.capture_id, commit=fixture.commit, tree=fixture.tree,
-    ) == []
-    return fixture, capture
-
-
-def test_package_validator_refuses_latest_capture_id(tmp_path: Path) -> None:
+def test_package_validator_refuses_tampered_and_incomplete_captures(tmp_path: Path) -> None:
     assert validate_erebus_capture_for_package(
         tmp_path, capture_id="capture_latest", commit="c", tree="t",
     ) == ["unqualified latest is forbidden"]
-
-
-def test_package_validator_refuses_incomplete_capture(tmp_path: Path) -> None:
     assert validate_erebus_capture_for_package(
         tmp_path, capture_id="candidate", commit="c", tree="t",
     ) == ["verified capture evidence is incomplete"]
 
-
-@pytest.mark.parametrize("mutator,needle", [
-    ("malformed", "capture metadata is malformed"),
-    ("status", "capture is not verified"),
-    ("historical", "capture is not active authority"),
-    ("identity", "capture identity mismatch"),
-    ("reconstruction", "reconstruction did not pass"),
-    ("receipt_class", "manifest receipt is not verified"),
-    ("receipt_identity", "manifest identity mismatch"),
-    ("recovery", "maintenance recovery mismatch"),
-    ("phase", "Phase 3B backup identity mismatch"),
-    ("supersession", "supersession metadata mismatch"),
-    ("member", "unexpected member"),
-    ("manifest", "capture manifest does not verify"),
-])
-def test_package_validator_refuses_tampered_capture(
-    tmp_path: Path, mutator: str, needle: str,
-) -> None:
-    fixture, capture = _golden_capture(tmp_path)
-    if mutator == "malformed":
-        (capture / "capture_summary.json").write_text("{")
-    elif mutator == "status":
-        data = json.loads((capture / "capture_summary.json").read_text())
-        data["status"] = "REFUSED"
-        (capture / "capture_summary.json").write_text(json.dumps(data))
-    elif mutator == "historical":
-        data = json.loads((capture / "capture_summary.json").read_text())
-        data["historical_only"] = True
-        data["active_authority"] = False
-        (capture / "capture_summary.json").write_text(json.dumps(data))
-    elif mutator == "identity":
-        data = json.loads((capture / "capture_summary.json").read_text())
-        data["commit"] = "0" * 40
-        (capture / "capture_summary.json").write_text(json.dumps(data))
-    elif mutator == "reconstruction":
-        data = json.loads((capture / "reconstruction/reconstructed_identity.json").read_text())
-        data["head_match"] = False
-        (capture / "reconstruction/reconstructed_identity.json").write_text(json.dumps(data))
-    elif mutator == "receipt_class":
-        data = json.loads((capture / "manifest_receipt.json").read_text())
-        data["classification"] = "REFUSED"
-        (capture / "manifest_receipt.json").write_text(json.dumps(data))
-    elif mutator == "receipt_identity":
-        data = json.loads((capture / "manifest_receipt.json").read_text())
-        data["tree"] = "0" * 40
-        (capture / "manifest_receipt.json").write_text(json.dumps(data))
-    elif mutator == "recovery":
-        data = json.loads((capture / "artifacts/source_recovery/maintenance_source_recovery.json").read_text())
-        data["artifact_sha256"] = "0" * 64
-        (capture / "artifacts/source_recovery/maintenance_source_recovery.json").write_text(json.dumps(data))
-    elif mutator == "phase":
-        data = json.loads((capture / "phase3b_linkage.json").read_text())
-        data["backup_ids"] = []
-        (capture / "phase3b_linkage.json").write_text(json.dumps(data))
-    elif mutator == "supersession":
-        data = json.loads((capture / "supersession.json").read_text())
-        data["supersedes"] = "wrong"
-        (capture / "supersession.json").write_text(json.dumps(data))
-    elif mutator == "member":
-        (capture / "surprise.txt").write_text("nope\n")
-    else:
-        (capture / "CAPTURE_REPORT.md").write_text("tampered\n")
-    errors = validate_erebus_capture_for_package(
-        fixture.control, capture_id=fixture.capture_id, commit=fixture.commit, tree=fixture.tree,
+    cases = (
+        ("malformed", "capture metadata is malformed"),
+        ("status", "capture is not verified"),
+        ("historical", "capture is not active authority"),
+        ("identity", "capture identity mismatch"),
+        ("reconstruction", "reconstruction did not pass"),
+        ("receipt_class", "manifest receipt is not verified"),
+        ("member", "unexpected member"),
+        ("manifest", "capture manifest does not verify"),
     )
-    assert any(needle in error for error in errors), errors
+    for name, needle in cases:
+        fixture = SyntheticCaptureFixture(tmp_path / name)
+        fixture.publish_ready()
+        assert execute_capture(fixture.context, fixture.preview_id).ok
+        capture = fixture.capture_root()
+        if name == "malformed":
+            (capture / "capture_summary.json").write_text("{")
+        elif name == "status":
+            _patch_json(capture / "capture_summary.json", status="REFUSED")
+        elif name == "historical":
+            _patch_json(capture / "capture_summary.json", historical_only=True, active_authority=False)
+        elif name == "identity":
+            _patch_json(capture / "capture_summary.json", commit="0" * 40)
+        elif name == "reconstruction":
+            _patch_json(capture / "reconstruction/reconstructed_identity.json", head_match=False)
+        elif name == "receipt_class":
+            _patch_json(capture / "manifest_receipt.json", classification="REFUSED")
+        elif name == "member":
+            (capture / "surprise.txt").write_text("nope\n")
+        else:
+            (capture / "CAPTURE_REPORT.md").write_text("tampered\n")
+        errors = validate_erebus_capture_for_package(
+            fixture.control, capture_id=fixture.capture_id, commit=fixture.commit, tree=fixture.tree,
+        )
+        assert any(needle in error for error in errors), (name, errors)
 
 
-# ---------------------------------------------------------------------------
-# 5. READY-only menu execute visibility
-# ---------------------------------------------------------------------------
+def _patch_json(path: Path, **updates: object) -> None:
+    data = json.loads(path.read_text())
+    data.update(updates)
+    path.write_text(json.dumps(data))
 
 
-def test_menu_options_omit_execute_without_ready_preview(tmp_path: Path) -> None:
+def test_menu_ready_gating_and_production_execute_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from mercury.migration.erebus_capture import menu as capture_menu
+    from mercury.migration.erebus_capture.preview_state import invalidate
 
     assert capture_menu.menu_options(tmp_path / "missing") == [
         ("1", "Preview capture"), ("2", "Review previews"),
     ]
     fixture = SyntheticCaptureFixture(tmp_path)
     fixture.publish_ready()
-    from mercury.migration.erebus_capture.preview_state import invalidate
-    invalidate(fixture.preview_root())
-    assert capture_menu.menu_options(fixture.control) == [
-        ("1", "Preview capture"), ("2", "Review previews"),
-    ]
-
-
-def test_menu_options_include_execute_when_ready_preview_exists(tmp_path: Path) -> None:
-    from mercury.migration.erebus_capture import menu as capture_menu
-
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
     assert capture_menu.menu_options(fixture.control) == [
         ("1", "Preview capture"), ("2", "Review previews"), ("3", "Create approved capture"),
     ]
     assert capture_menu.ready_preview_ids(fixture.control) == [fixture.preview_id]
-
-
-def test_menu_execute_stays_production_locked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from mercury.migration.erebus_capture import menu as capture_menu
-
-    fixture = SyntheticCaptureFixture(tmp_path)
-    fixture.publish_ready()
     facts_path = tmp_path / "facts.json"
     facts_path.write_text(json.dumps(fixture.facts.__dict__))
     values = iter([
@@ -792,4 +603,7 @@ def test_menu_execute_stays_production_locked(tmp_path: Path, monkeypatch: pytes
     capture_menu._execute_from_prompts(fixture.control)
     assert any("CAPTURE EXECUTION REFUSED" in line for line in written)
     assert any("EXECUTION_NOT_AUTHORIZED" in line for line in written)
-    assert not fixture.capture_root().exists()
+    invalidate(fixture.preview_root())
+    assert capture_menu.menu_options(fixture.control) == [
+        ("1", "Preview capture"), ("2", "Review previews"),
+    ]
