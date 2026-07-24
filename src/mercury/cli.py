@@ -37,6 +37,7 @@ cleanup_app = typer.Typer(
 )
 storage_app.add_typer(cleanup_app, name="cleanup")
 migration_app = typer.Typer(help="Read-only workstation migration readiness and blockers.")
+erebus_capture_app = typer.Typer(help="Preview the governed Erebus source capture; execution is unavailable.")
 
 app.add_typer(env_app, name="env")
 app.add_typer(db_app, name="db")
@@ -53,6 +54,7 @@ app.add_typer(logs_app, name="logs")
 app.add_typer(state_app, name="state")
 app.add_typer(storage_app, name="storage")
 app.add_typer(migration_app, name="migration")
+migration_app.add_typer(erebus_capture_app, name="capture-erebus-source")
 repair_app = typer.Typer(help="Host repair helpers.")
 app.add_typer(repair_app, name="repair")
 theme_app = typer.Typer(help="Terminal appearance themes (host-local; no HDD required).")
@@ -413,6 +415,64 @@ def migration_next_cmd() -> None:
     code = print_migration_next(build_migration_readiness())
     if code:
         raise typer.Exit(code)
+
+
+@erebus_capture_app.command("preview")
+def erebus_capture_preview_cmd(
+    preview_id: str = typer.Option(..., "--preview-id", help="Explicit immutable preview identity; never 'latest'."),
+    repo: Path = typer.Option(..., "--repo", exists=True, file_okay=False),
+    capture_id: str = typer.Option(..., "--capture-id"),
+    expected_commit: str = typer.Option(..., "--expected-commit"),
+    expected_tree: str = typer.Option(..., "--expected-tree"),
+    phase3b_run_id: str = typer.Option(..., "--phase3b-run-id"),
+    maintenance_sha256: str = typer.Option(..., "--maintenance-sha256"),
+    recovery_receipt: Path = typer.Option(..., "--recovery-receipt"),
+    phase3b_root: Path = typer.Option(..., "--phase3b-root"),
+    intake_contract: Path = typer.Option(..., "--intake-contract"),
+    control_root: Path = typer.Option(..., "--control-root", help="Control root; use a temporary path in tests."),
+    storage_facts: Path = typer.Option(..., "--storage-facts", help="Reviewed JSON StorageFacts receipt; no disk probing occurs in this command."),
+) -> None:
+    """Create a governed, read-only preview; no capture writer is available."""
+    import json
+    from mercury.migration.erebus_capture.context import CaptureContext
+    from mercury.migration.erebus_capture.models import ErebusCaptureRequest
+    from mercury.migration.erebus_capture.service import create_preview
+    from mercury.migration.erebus_capture.storage_preflight import StorageFacts
+
+    try:
+        facts = StorageFacts(**json.loads(storage_facts.read_text(encoding="utf-8")))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        output.write(f"REFUSED\nReason: INVALID_STORAGE_FACTS: {exc}")
+        raise typer.Exit(1)
+    request = ErebusCaptureRequest(
+        preview_id, str(repo), capture_id, expected_commit, expected_tree,
+        phase3b_run_id, maintenance_sha256,
+    )
+    context = CaptureContext(
+        control_root, repo, recovery_receipt, phase3b_root, intake_contract,
+        lambda: facts,
+    )
+    result = create_preview(context, request)
+    if not result.ok:
+        output.write("REFUSED")
+        output.field("Reason codes", ", ".join(result.reason_codes) or "EXTERNAL_IDENTITY_MISMATCH")
+        for error in result.errors:
+            output.field("Detail", error)
+        raise typer.Exit(1)
+    output.heading("EREBUS SOURCE CAPTURE PREVIEW")
+    output.write("PREVIEW READY")
+    output.field("Preview ID", result.preview_id)
+    output.field("Capture ID", capture_id)
+    output.field("Repository", repo)
+    output.field("Commit", expected_commit)
+    output.field("Tree", expected_tree)
+    output.field("Storage", f"{facts.uuid} mounted at {facts.mount_path}")
+    output.field("Recovery receipt", "VERIFIED")
+    output.field("Phase 3B", phase3b_run_id)
+    output.field("Intake contract", "VERIFIED")
+    output.field("Maintenance SHA-256", maintenance_sha256)
+    output.field("Final intended path", control_root / "validation" / "erebus" / capture_id)
+    output.field("Execute availability", "unavailable until Phase B review")
 
 
 @migration_app.command("package-status")
