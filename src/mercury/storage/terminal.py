@@ -28,7 +28,9 @@ def print_storage_status(report: StorageStatusReport) -> None:
     for root in (report.primary, report.legacy):
         kind = "ok" if root.validation.ok else "warn" if root.status_tag == "[--]" else "fail"
         active = " · ACTIVE WRITER" if root.is_active_writer else ""
-        if root.validation.ok:
+        if root.is_offline_archive:
+            detail = "offline recovery archive (allowed after cutover)"
+        elif root.validation.ok:
             if root.physical_mount_mode == "read-only":
                 detail = "mounted read-only (physical mount)"
             else:

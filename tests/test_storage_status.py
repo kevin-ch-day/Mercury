@@ -157,6 +157,35 @@ def test_post_cutover_offline_legacy_archive_is_neutral_status() -> None:
     assert "offline recovery archive" in legacy.one_line()
 
 
+def test_terminal_prints_offline_archive_as_allowed(capsys) -> None:
+    from mercury.storage.terminal import print_storage_status
+
+    cfg = default_storage_config()
+    config = replace(
+        cfg,
+        legacy=replace(cfg.legacy, role=StorageRootRole.LEGACY_ARCHIVE, writable=False),
+        active_write_role=StorageWriteRole.PRIMARY,
+        migration_state=MigrationState.CUTOVER_COMPLETE,
+    )
+    validation = MountValidationResult(
+        code=MountValidationCode.NOT_A_MOUNT,
+        mount_path=config.legacy.mount_path,
+        expected_uuid=config.legacy.filesystem_uuid,
+        expected_fstype="ext4",
+        identity=MountIdentity(mount_path=config.legacy.mount_path, path_exists=True, is_mount=False),
+        blocker="directory present but not mounted",
+    )
+    legacy = StorageRootStatus(
+        key="legacy", role="legacy_archive", label="USB", mount_path="/mnt/USB",
+        filesystem_uuid="uuid", writable_policy=False, validation=validation,
+        is_active_writer=False, offline_archive_allowed=True,
+    )
+    primary = replace(legacy, key="primary", role="canonical", label="HDD", is_active_writer=True, offline_archive_allowed=False,
+                      validation=replace(validation, code=MountValidationCode.OK))
+    print_storage_status(StorageStatusReport(config=config, primary=primary, legacy=legacy))
+    assert "offline recovery archive (allowed after cutover)" in capsys.readouterr().out
+
+
 def test_print_storage_status_smoke(capsys, tmp_path: Path) -> None:
     from mercury.storage.terminal import print_storage_status
 
