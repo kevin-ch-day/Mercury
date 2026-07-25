@@ -3184,6 +3184,73 @@ def restore_check_plan_cmd(
         raise typer.Exit(1)
 
 
+@restore_app.command("destination")
+def restore_destination_cmd(
+    source_schema: str = typer.Option(..., "--source-schema", help="Exact approved source schema."),
+    target_schema: str = typer.Option(..., "--target-schema", help="Exact absent destination schema."),
+    backup_id: str = typer.Option(..., "--backup-id", help="Exact package backup ID; never latest."),
+    package_root: Path = typer.Option(..., "--package-root", help="Exact verified package root."),
+    package_id: str = typer.Option(..., "--package-id", help="Exact verified package ID; never latest."),
+    execute: bool = typer.Option(False, "--execute", help="Create and restore after a successful preview."),
+    confirm: str | None = typer.Option(None, "--confirm", help="Required with --execute."),
+    receipt_root: Path = typer.Option(
+        Path.home() / ".local" / "share" / "mercury" / "destination_recovery",
+        "--receipt-root",
+        help="Destination-local receipt directory.",
+    ),
+) -> None:
+    """Restore one exact absent destination schema from a verified package."""
+    from mercury.database.mariadb.session import try_load_mariadb_config
+    from mercury.restore.destination_recovery import (
+        CONFIRMATION,
+        build_destination_recovery_plan,
+        execute_destination_recovery,
+    )
+
+    config = try_load_mariadb_config()
+    try:
+        plan = build_destination_recovery_plan(
+            package_root=package_root,
+            package_id=package_id,
+            source_schema=source_schema,
+            target_schema=target_schema,
+            backup_id=backup_id,
+            config=config,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo("DESTINATION PACKAGE RESTORE")
+    typer.echo(f"  package_id: {plan.package_id}")
+    typer.echo(f"  backup_id: {plan.backup_id}")
+    typer.echo(f"  source_schema: {plan.source_schema}")
+    typer.echo(f"  target_schema: {plan.target_schema}")
+    typer.echo(f"  package_payload: {plan.backup_directory}")
+    typer.echo(f"  data_dump: {plan.dump_path}")
+    typer.echo("  collision_policy: refuse existing target; never overwrite")
+    for blocker in plan.blockers:
+        typer.echo(f"  BLOCKER: {blocker}")
+    if not plan.allowed:
+        raise typer.Exit(1)
+    if not execute:
+        typer.echo("  preview: PASS")
+        return
+    if confirm != CONFIRMATION:
+        raise typer.BadParameter(f"--execute requires --confirm '{CONFIRMATION}'")
+    if config is None:
+        raise typer.BadParameter("MariaDB configuration is unavailable.")
+    try:
+        result, inspect = execute_destination_recovery(
+            plan, config=config, receipt_root=receipt_root
+        )
+    except ValueError as exc:
+        typer.echo(f"  result: BLOCKED — {exc}")
+        raise typer.Exit(1) from exc
+    typer.echo(f"  result: VERIFIED")
+    typer.echo(f"  tables: {inspect.table_count}")
+    typer.echo(f"  views: {inspect.view_count}")
+    typer.echo(f"  receipt: {result.receipt_path or 'missing'}")
+
+
 @restore_app.command("run")
 def restore_check_run_cmd(
     db: str = typer.Option(..., "--db", help="Production database to restore-check."),

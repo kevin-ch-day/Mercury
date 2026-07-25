@@ -67,6 +67,21 @@ def assert_governed_production_cutover_target(database: str) -> None:
         )
 
 
+def assert_governed_destination_recovery_target(database: str) -> None:
+    """Allow only the five explicitly approved missing destination schemas."""
+    allowed = {
+        "android_permission_intel_dev",
+        "erebus_threat_intel_dev",
+        "scytaledroid_core_prod",
+        "scytaledroid_core_dev",
+        "obsidiandroid_core_prod",
+    }
+    if database not in allowed:
+        raise BackupExecutionError(
+            f"Refusing governed destination recovery into unexpected target '{database}'."
+        )
+
+
 def build_import_argv(config: MariaDbConnectionConfig, database: str) -> list[str]:
     tool = select_client_tool()
     argv = [tool, "-u", config.user, database]
@@ -170,6 +185,8 @@ def execute_restore_into_database(
     receipt_root: Path | None = None,
     governed_destination_rehearsal: bool = False,
     governed_production_cutover: bool = False,
+    governed_destination_recovery: bool = False,
+    rollback_new_target_on_failure: bool = False,
     schema_rewrites: Mapping[str, str] | None = None,
     config: MariaDbConnectionConfig | None = None,
     import_runner: ImportRunner | None = None,
@@ -179,6 +196,8 @@ def execute_restore_into_database(
     """Plan or run ``gunzip -c dump | mariadb target`` for verified backups."""
     if governed_production_cutover:
         assert_governed_production_cutover_target(target_database)
+    elif governed_destination_recovery:
+        assert_governed_destination_recovery_target(target_database)
     else:
         assert_safe_restore_target(target_database)
     resolved = policy or load_execution_policy()
@@ -226,7 +245,7 @@ def execute_restore_into_database(
 
     live_allowed = (
         (not resolved.dry_run) and resolved.live_actions_enabled
-        if governed_destination_rehearsal or governed_production_cutover
+        if governed_destination_rehearsal or governed_production_cutover or governed_destination_recovery
         else resolved.live_execution_allowed()
     )
     if not live_allowed:
@@ -261,10 +280,12 @@ def execute_restore_into_database(
         schema_rewrites=schema_rewrites,
     )
 
+    target_created = False
     try:
         if recreate_target:
             _execute_client_sql(cfg, f"DROP DATABASE IF EXISTS `{target_database}`")
         _execute_client_sql(cfg, f"CREATE DATABASE `{target_database}`")
+        target_created = True
         # The production-cutover lane uses this callback to record rollback
         # ownership before the first dump statement is streamed.  A dump can
         # fail on its opening DROP TABLE after CREATE DATABASE succeeds.
@@ -272,6 +293,15 @@ def execute_restore_into_database(
             on_target_created(target_database)
         runner(import_argv, _client_env(cfg), dump_path, cfg, target_database)
     except BackupExecutionError as exc:
+        rollback_note = ""
+        cleanup_dropped = False
+        if rollback_new_target_on_failure and target_created:
+            try:
+                _execute_client_sql(cfg, f"DROP DATABASE `{target_database}`")
+                cleanup_dropped = True
+                rollback_note = " Newly created target was rolled back."
+            except BackupExecutionError as rollback_exc:
+                rollback_note = f" Rollback of newly created target failed: {rollback_exc}"
         result = RestoreExecutionResult(
             source_database=source_database,
             target_database=target_database,
@@ -280,10 +310,11 @@ def execute_restore_into_database(
             message=(
                 f"{exc}. Temporary restore-check database preserved for debugging."
                 if cleanup_command
-                else str(exc)
+                else str(exc) + rollback_note
             ),
             commands=commands,
             cleanup_command=cleanup_command,
+            cleanup_dropped=cleanup_dropped,
         )
         from mercury.state.ledger import record_restore_check_result
 
