@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import patch
+from types import SimpleNamespace
 
 import pytest
 
@@ -434,6 +435,30 @@ def test_cutover_readiness_passes_after_verified_copy(tmp_path: Path) -> None:
 
     assert report.ready is True
     assert all(c.ok for c in report.checks)
+
+
+def test_completed_cutover_allows_offline_legacy_archive(tmp_path: Path) -> None:
+    from dataclasses import replace as dc_replace
+    from mercury.storage.cutover_readiness import build_cutover_readiness
+
+    mounts = make_storage_mount_tree(tmp_path)
+    legacy, primary = mounts["legacy"], mounts["primary"]
+    cfg = dc_replace(
+        _config(primary, legacy),
+        active_write_role=StorageWriteRole.PRIMARY,
+        migration_state=MigrationState.CUTOVER_COMPLETE,
+    )
+
+    def fake_validate(**kwargs):
+        path = Path(kwargs["mount_path"])
+        return _ok_validation(path) if path == primary else SimpleNamespace(ok=False, blocker="directory present but not mounted")
+
+    with patch("mercury.storage.migrate_plan.validate_storage_mount", side_effect=fake_validate):
+        report = build_cutover_readiness(config=cfg)
+
+    checks = {check.key: check for check in report.checks}
+    assert checks["legacy_mount"].ok is True
+    assert "offline" in checks["legacy_mount"].detail
 
 
 def test_patch_migration_state_planned(tmp_path: Path) -> None:

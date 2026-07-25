@@ -1352,6 +1352,24 @@ def storage_cutover_approve_cmd(
     output.write(f"HDD is now the active writer. Rollback config: {backup}")
 
 
+@storage_app.command("cutover-reconcile")
+def storage_cutover_reconcile_cmd(
+    package_root: Path = typer.Option(..., "--package-root", help="Exact verified package root."),
+    package_id: str = typer.Option(..., "--package-id", help="Exact verified package ID; never latest."),
+    confirm: str = typer.Option("", "--confirm", help="Required phrase: RECONCILE HDD CUTOVER."),
+) -> None:
+    """Reconcile stale host-maintenance only after an already-complete HDD cutover."""
+    from mercury.storage.cutover_reconcile import reconcile_completed_hdd_cutover
+
+    try:
+        receipt = reconcile_completed_hdd_cutover(
+            confirmation=confirm, package_root=package_root, package_id=package_id,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    output.write(f"HDD cutover host-maintenance reconciled. Receipt: {receipt}")
+
+
 @storage_app.command("cutover-plan")
 def storage_cutover_plan_cmd() -> None:
     """Preview every future USB→HDD writer-path change; never applies it."""

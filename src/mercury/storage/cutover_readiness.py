@@ -50,11 +50,18 @@ def build_cutover_readiness(
     warnings: list[str] = []
 
     post_cutover = cfg.cutover_complete
+    legacy_ok = plan.source_validation_ok
+    legacy_detail = plan.source_blocker or "legacy mounted"
+    if post_cutover and not legacy_ok:
+        # The USB is archive-only after cutover and may be safely offline.
+        legacy_ok = True
+        legacy_detail = "legacy archive offline after completed cutover (allowed)"
+        warnings.append("Legacy USB is offline after cutover; archive comparison is historical only.")
     checks.append(
         CutoverCheck(
             "legacy_mount",
-            plan.source_validation_ok,
-            plan.source_blocker or "legacy mounted",
+            legacy_ok,
+            legacy_detail,
         )
     )
     checks.append(
