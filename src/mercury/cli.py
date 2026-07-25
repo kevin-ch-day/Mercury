@@ -25,6 +25,9 @@ transfer_app = typer.Typer(help="Combined database + repository transfer manifes
 config_app = typer.Typer(help="Configuration commands.")
 sync_app = typer.Typer(help="Production sync-pair planning and execution.")
 restore_app = typer.Typer(help="Restore-check and DR execution.")
+production_cutover_app = typer.Typer(
+    help="Sealed-package production activation (preview first; execute requires approval)."
+)
 deploy_app = typer.Typer(help="Deploy verified operator-storage backups onto this MariaDB host.")
 report_app = typer.Typer(help="Backup report previews (dry-run).")
 logs_app = typer.Typer(help="Mercury log files under logs/.")
@@ -50,6 +53,7 @@ app.add_typer(transfer_app, name="transfer")
 app.add_typer(config_app, name="config")
 app.add_typer(sync_app, name="sync")
 app.add_typer(restore_app, name="restore-check")
+app.add_typer(production_cutover_app, name="production-cutover")
 app.add_typer(deploy_app, name="deploy")
 app.add_typer(report_app, name="report")
 app.add_typer(logs_app, name="logs")
@@ -3330,6 +3334,110 @@ def restore_check_run_cmd(
 
     print_restore_execution_result(result)
     if not result.executed or result.verification_passed is False:
+        raise typer.Exit(1)
+
+
+def _production_cutover_context_or_error(
+    *,
+    package_root: Path,
+    package_id: str,
+    android_backup_id: str,
+    erebus_backup_id: str,
+    android_source_schema: str,
+    erebus_source_schema: str,
+    android_target_schema: str,
+    erebus_target_schema: str,
+    receipt_root: Path,
+):
+    from mercury.restore.production_cutover import build_production_cutover_context
+
+    try:
+        return build_production_cutover_context(
+            package_root=package_root,
+            package_id=package_id,
+            android_backup_id=android_backup_id,
+            erebus_backup_id=erebus_backup_id,
+            android_source_schema=android_source_schema,
+            erebus_source_schema=erebus_source_schema,
+            android_target_schema=android_target_schema,
+            erebus_target_schema=erebus_target_schema,
+            receipt_root=receipt_root,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+@production_cutover_app.command("preview")
+def production_cutover_preview_cmd(
+    package_root: Path = typer.Option(..., "--package-root", help="Exact sealed destination package root."),
+    package_id: str = typer.Option(..., "--package-id", help="Exact verified package ID; never latest."),
+    android_backup_id: str = typer.Option(..., "--android-backup-id", help="Exact pinned Android backup ID."),
+    erebus_backup_id: str = typer.Option(..., "--erebus-backup-id", help="Exact pinned Erebus backup ID."),
+    android_source_schema: str = typer.Option(..., "--android-source-schema", help="Exact retained Android rehearsal schema."),
+    erebus_source_schema: str = typer.Option(..., "--erebus-source-schema", help="Exact retained Erebus rehearsal schema."),
+    android_target_schema: str = typer.Option(..., "--android-target-schema", help="Must be android_permission_intel."),
+    erebus_target_schema: str = typer.Option(..., "--erebus-target-schema", help="Must be erebus_threat_intel_prod."),
+    receipt_root: Path = typer.Option(..., "--receipt-root", help="Destination-local Mercury receipt root."),
+) -> None:
+    """Read-only package/rehearsal gate and one-time production cutover preview."""
+    from mercury.restore.production_cutover import create_production_cutover_preview
+
+    context = _production_cutover_context_or_error(
+        package_root=package_root, package_id=package_id, android_backup_id=android_backup_id,
+        erebus_backup_id=erebus_backup_id, android_source_schema=android_source_schema,
+        erebus_source_schema=erebus_source_schema, android_target_schema=android_target_schema,
+        erebus_target_schema=erebus_target_schema, receipt_root=receipt_root,
+    )
+    try:
+        preview, path = create_production_cutover_preview(context)
+    except ValueError as exc:
+        typer.echo(f"PRODUCTION_CUTOVER_PREVIEW_REFUSED: {exc}")
+        raise typer.Exit(1) from exc
+    typer.echo("PRODUCTION_CUTOVER_PREVIEW_APPROVED")
+    typer.echo(f"  package_id: {preview['package_id']}")
+    typer.echo(f"  capture: {preview['capture_id']} ({preview['capture_authority']})")
+    typer.echo(f"  android: {context.android.backup_id} -> android_permission_intel")
+    typer.echo(f"  erebus: {context.erebus.backup_id} -> erebus_threat_intel_prod")
+    typer.echo("  restore_order: android_permission_intel, erebus_threat_intel_prod")
+    for source, target in preview["schema_map"].items():
+        typer.echo(f"  schema_map: {source} -> {target}")
+    typer.echo(f"  receipt: {path}")
+    typer.echo("  execute_confirmation: PROMOTE SEALED DESTINATION PACKAGE")
+
+
+@production_cutover_app.command("execute")
+def production_cutover_execute_cmd(
+    package_root: Path = typer.Option(..., "--package-root", help="Exact sealed destination package root."),
+    package_id: str = typer.Option(..., "--package-id", help="Exact verified package ID; never latest."),
+    android_backup_id: str = typer.Option(..., "--android-backup-id", help="Exact pinned Android backup ID."),
+    erebus_backup_id: str = typer.Option(..., "--erebus-backup-id", help="Exact pinned Erebus backup ID."),
+    android_source_schema: str = typer.Option(..., "--android-source-schema", help="Exact retained Android rehearsal schema."),
+    erebus_source_schema: str = typer.Option(..., "--erebus-source-schema", help="Exact retained Erebus rehearsal schema."),
+    android_target_schema: str = typer.Option(..., "--android-target-schema", help="Must be android_permission_intel."),
+    erebus_target_schema: str = typer.Option(..., "--erebus-target-schema", help="Must be erebus_threat_intel_prod."),
+    receipt_root: Path = typer.Option(..., "--receipt-root", help="Destination-local Mercury receipt root."),
+    preview_receipt: Path = typer.Option(..., "--preview-receipt", help="Exact approved local preview receipt."),
+    confirm: str = typer.Option(..., "--confirm", help="Required phrase: PROMOTE SEALED DESTINATION PACKAGE."),
+) -> None:
+    """Execute an approved one-time sealed-package production cutover."""
+    from mercury.restore.production_cutover import execute_production_cutover
+
+    context = _production_cutover_context_or_error(
+        package_root=package_root, package_id=package_id, android_backup_id=android_backup_id,
+        erebus_backup_id=erebus_backup_id, android_source_schema=android_source_schema,
+        erebus_source_schema=erebus_source_schema, android_target_schema=android_target_schema,
+        erebus_target_schema=erebus_target_schema, receipt_root=receipt_root,
+    )
+    try:
+        result, path = execute_production_cutover(
+            context, preview_receipt=preview_receipt, confirmation=confirm,
+        )
+    except ValueError as exc:
+        typer.echo(f"PRODUCTION_CUTOVER_REFUSED: {exc}")
+        raise typer.Exit(1) from exc
+    typer.echo(result["final_decision"])
+    typer.echo(f"  receipt: {path}")
+    if result["final_decision"] != "PRODUCTION_CUTOVER_EXECUTED_AND_VALIDATED":
         raise typer.Exit(1)
 
 

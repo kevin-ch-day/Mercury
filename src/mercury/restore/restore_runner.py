@@ -53,6 +53,20 @@ def assert_safe_restore_target(database: str) -> None:
     )
 
 
+def assert_governed_production_cutover_target(database: str) -> None:
+    """Allow only the two fixed catalog names in the sealed cutover lane.
+
+    This intentionally is not a general production-restore escape hatch.  The
+    production-cutover service additionally binds these names to a verified
+    package, rehearsal evidence, a one-time preview receipt, and a rollback
+    contract before it can call this executor.
+    """
+    if database not in {"android_permission_intel", "erebus_threat_intel_prod"}:
+        raise BackupExecutionError(
+            f"Refusing governed production restore into unexpected target '{database}'."
+        )
+
+
 def build_import_argv(config: MariaDbConnectionConfig, database: str) -> list[str]:
     tool = select_client_tool()
     argv = [tool, "-u", config.user, database]
@@ -155,13 +169,17 @@ def execute_restore_into_database(
     cleanup_after_success: bool = False,
     receipt_root: Path | None = None,
     governed_destination_rehearsal: bool = False,
+    governed_production_cutover: bool = False,
     schema_rewrites: Mapping[str, str] | None = None,
     config: MariaDbConnectionConfig | None = None,
     import_runner: ImportRunner | None = None,
     inspect_row_fn=None,
 ) -> RestoreExecutionResult:
     """Plan or run ``gunzip -c dump | mariadb target`` for verified backups."""
-    assert_safe_restore_target(target_database)
+    if governed_production_cutover:
+        assert_governed_production_cutover_target(target_database)
+    else:
+        assert_safe_restore_target(target_database)
     resolved = policy or load_execution_policy()
     dump_path = dump_path.resolve()
     commands: list[str] = []
@@ -187,7 +205,7 @@ def execute_restore_into_database(
             cleanup_command=cleanup_command,
         )
 
-    if not governed_destination_rehearsal:
+    if not (governed_destination_rehearsal or governed_production_cutover):
         from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled
 
         try:
@@ -207,13 +225,13 @@ def execute_restore_into_database(
 
     live_allowed = (
         (not resolved.dry_run) and resolved.live_actions_enabled
-        if governed_destination_rehearsal
+        if governed_destination_rehearsal or governed_production_cutover
         else resolved.live_execution_allowed()
     )
     if not live_allowed:
         reason = (
-            "Live actions are disabled for the governed destination rehearsal."
-            if governed_destination_rehearsal
+            "Live actions are disabled for the governed destination operation."
+            if governed_destination_rehearsal or governed_production_cutover
             else resolved.refusal_reason() or "Live restore is not permitted."
         )
         result = RestoreExecutionResult(
