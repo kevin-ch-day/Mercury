@@ -138,6 +138,25 @@ def test_post_cutover_warns_when_legacy_archive_is_physically_read_write() -> No
     assert any("physically mounted read-write" in warning for warning in report.warning_lines())
 
 
+def test_post_cutover_offline_legacy_archive_is_neutral_status() -> None:
+    cfg = default_storage_config()
+    validation = MountValidationResult(
+        code=MountValidationCode.NOT_A_MOUNT,
+        mount_path=cfg.legacy.mount_path,
+        expected_uuid=cfg.legacy.filesystem_uuid,
+        expected_fstype="ext4",
+        identity=MountIdentity(mount_path=cfg.legacy.mount_path, path_exists=True, is_mount=False),
+        blocker="directory present but not mounted",
+    )
+    legacy = StorageRootStatus(
+        key="legacy", role="legacy_archive", label="USB", mount_path="/mnt/USB",
+        filesystem_uuid="uuid", writable_policy=False, validation=validation,
+        is_active_writer=False, offline_archive_allowed=True,
+    )
+    assert legacy.status_tag == "[--]"
+    assert "offline recovery archive" in legacy.one_line()
+
+
 def test_print_storage_status_smoke(capsys, tmp_path: Path) -> None:
     from mercury.storage.terminal import print_storage_status
 

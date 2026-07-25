@@ -19,9 +19,21 @@ class StorageRootStatus:
     writable_policy: bool
     validation: MountValidationResult
     is_active_writer: bool
+    offline_archive_allowed: bool = False
+
+    @property
+    def is_offline_archive(self) -> bool:
+        """The post-cutover USB is intentionally absent, not unhealthy."""
+        return (
+            self.offline_archive_allowed
+            and not self.validation.ok
+            and self.validation.code.value in {"not_a_mount", "mount_path_missing"}
+        )
 
     @property
     def status_tag(self) -> str:
+        if self.is_offline_archive:
+            return "[--]"
         if self.validation.ok:
             return "[ok]"
         code = self.validation.code.value
@@ -32,7 +44,9 @@ class StorageRootStatus:
         return "[--]"
 
     def one_line(self) -> str:
-        if self.validation.ok:
+        if self.is_offline_archive:
+            detail = "offline recovery archive (allowed after cutover)"
+        elif self.validation.ok:
             # An inactive root is intentionally validated without requiring
             # writes, so configured policy alone cannot describe its mount.
             if self.physical_mount_mode == "read-only":
@@ -187,6 +201,11 @@ def _root_status(config: StorageConfig, *, key: str) -> StorageRootStatus:
         writable_policy=root.writable,
         validation=validation,
         is_active_writer=(key == config.active_write_role.value),
+        offline_archive_allowed=(
+            config.cutover_complete
+            and root.role == StorageRootRole.LEGACY_ARCHIVE
+            and key == "legacy"
+        ),
     )
 
 
