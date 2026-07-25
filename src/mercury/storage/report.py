@@ -33,9 +33,14 @@ class StorageRootStatus:
 
     def one_line(self) -> str:
         if self.validation.ok:
-            detail = "mounted" + (
-                " and writable" if self.writable_policy else " (read-only policy)"
-            )
+            # An inactive root is intentionally validated without requiring
+            # writes, so configured policy alone cannot describe its mount.
+            if self.physical_mount_mode == "read-only":
+                detail = "mounted read-only (physical mount)"
+            else:
+                detail = "mounted" + (
+                    " and writable" if self.writable_policy else " (read-only policy)"
+                )
         else:
             detail = self.validation.blocker or self.validation.code.value
         active = " · ACTIVE WRITER" if self.is_active_writer else ""

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -84,8 +85,15 @@ def _write_receipt(root: Path, name: str, payload: dict[str, Any]) -> Path:
     directory = root / "production_cutover_receipts"
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / name
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _write_json_atomically(path, payload)
     return path
+
+
+def _write_json_atomically(path: Path, payload: dict[str, Any]) -> None:
+    """Replace a local evidence file atomically; never leave partial JSON."""
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
 
 
 def _dump_path(artifact: PackageRestoreArtifact) -> Path:
@@ -419,8 +427,14 @@ def validate_production_cutover_preflight(
     git_probe = git_probe or _git_identity
     privilege_probe = privilege_probe or inspect_production_privileges
     options = mount_options(Path("/mnt/MERCURY_DATA_V2"))
-    if "ro" not in {part.strip() for part in options.split(",")}:
-        raise ValueError("Mercury HDD must remain read-only for production cutover.")
+    required_mount_options = {"ro", "nosuid", "nodev"}
+    actual_mount_options = {part.strip() for part in options.split(",")}
+    missing_mount_options = sorted(required_mount_options - actual_mount_options)
+    if missing_mount_options:
+        raise ValueError(
+            "Mercury HDD must remain mounted ro,nosuid,nodev for production cutover; "
+            f"missing: {', '.join(missing_mount_options)}."
+        )
     writers = writer_probe()
     if writers:
         raise ValueError(f"Active Mercury/Erebus writers refuse cutover: {writers}")
@@ -534,15 +548,33 @@ def execute_production_cutover(
     operation_id = f"production_cutover_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     result.update({"operation_id": operation_id, "action": "execute", "started_at_utc": _now(), "preview_receipt": str(preview_path)})
     created: list[str] = []
+    # This journal exists before the first CREATE DATABASE.  It is updated as
+    # each target becomes rollback-owned, so an interrupted process leaves
+    # destination-local evidence of exactly which schemas need inspection.
+    journal = _base_receipt(context, preflight)
+    journal.update({
+        "operation_id": operation_id,
+        "action": "execute",
+        "journal_state": "in_progress",
+        "started_at_utc": result["started_at_utc"],
+        "preview_receipt": str(preview_path),
+        "created_targets": [],
+        "rollback_ownership": [],
+    })
+    journal_path = _write_receipt(context.receipt_root, f"{operation_id}_in_progress.json", journal)
+    result["rollback_journal"] = str(journal_path)
 
     def record_created(schema: str) -> None:
-        """Record rollback ownership immediately after CREATE DATABASE succeeds."""
+        """Durably record rollback ownership immediately after CREATE DATABASE succeeds."""
         if schema not in {ANDROID_TARGET, EREBUS_TARGET}:
             raise ValueError(f"Unexpected production schema creation callback: {schema}")
         if schema in created:
             raise ValueError(f"Duplicate production schema creation callback: {schema}")
         created.append(schema)
         result.setdefault("created_targets", []).append(schema)
+        journal["created_targets"].append(schema)
+        journal["rollback_ownership"].append({"schema": schema, "acquired_at_utc": _now()})
+        _write_receipt(context.receipt_root, journal_path.name, journal)
 
     try:
         android = restore_executor(
@@ -587,11 +619,20 @@ def execute_production_cutover(
             rollback_events.append(event)
         result["rollback_events"] = rollback_events
         result["rollback_dropped"] = [event["schema"] for event in rollback_events if event["completed"]]
+        journal["rollback_events"] = rollback_events
     finally:
         result["completed_at_utc"] = _now()
         preview["preview_consumed"] = True
         preview["preview_decision"] = PREVIEW_CONSUMED
         preview["consumed_at_utc"] = _now()
-        preview_path.write_text(json.dumps(preview, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        _write_json_atomically(preview_path, preview)
     result_path = _write_receipt(context.receipt_root, f"{operation_id}_result.json", result)
+    journal.update({
+        "journal_state": "completed",
+        "completed_at_utc": result["completed_at_utc"],
+        "final_decision": result["final_decision"],
+        "result_receipt": str(result_path),
+        "rollback_dropped": result.get("rollback_dropped", []),
+    })
+    _write_receipt(context.receipt_root, journal_path.name, journal)
     return result, result_path

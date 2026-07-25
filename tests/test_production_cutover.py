@@ -140,6 +140,20 @@ def test_preflight_refuses_collision_remote_writer_and_drift(tmp_path: Path, mon
         cutover.validate_production_cutover_preflight(context, config=_config(), writer_probe=lambda: ["erebus worker"])
 
 
+@pytest.mark.parametrize("mount_options", ["ro", "ro,nosuid", "ro,nodev", "rw,nosuid,nodev"])
+def test_preflight_requires_sealed_read_only_mount_options(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mount_options: str,
+) -> None:
+    context = _context(tmp_path, monkeypatch)
+    _preflight_patches(monkeypatch)
+    import mercury.restore.production_cutover as cutover
+
+    with pytest.raises(ValueError, match="ro,nosuid,nodev"):
+        cutover.validate_production_cutover_preflight(
+            context, config=_config(), mount_options=lambda _path: mount_options,
+        )
+
+
 def test_preview_is_read_only_and_writes_only_local_receipt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     context = _context(tmp_path, monkeypatch)
     _preflight_patches(monkeypatch)
@@ -193,6 +207,11 @@ def test_execute_requires_confirmation_orders_mapping_and_consumes_preview(tmp_p
     monkeypatch.setattr(cutover, "schema_object_counts", lambda _cfg, schema: counts.get(schema, A_COUNTS if schema == ANDROID_REHEARSAL else E_COUNTS))
     def fake_restore(**kwargs):
         calls.append(kwargs)
+        if kwargs["target_database"] == "erebus_threat_intel_prod":
+            journal_path = next((context.receipt_root / "production_cutover_receipts").glob("*_in_progress.json"))
+            in_progress = json.loads(journal_path.read_text(encoding="utf-8"))
+            assert in_progress["journal_state"] == "in_progress"
+            assert in_progress["created_targets"] == ["android_permission_intel"]
         kwargs["on_target_created"](kwargs["target_database"])
         return RestoreExecutionResult(source_database=kwargs["source_database"], target_database=kwargs["target_database"], dump_path="x", dry_run=False, executed=True, verification_passed=True)
     result, _path = cutover.execute_production_cutover(
@@ -201,6 +220,10 @@ def test_execute_requires_confirmation_orders_mapping_and_consumes_preview(tmp_p
     assert result["final_decision"] == "PRODUCTION_CUTOVER_EXECUTED_AND_VALIDATED"
     assert [call["target_database"] for call in calls] == ["android_permission_intel", "erebus_threat_intel_prod"]
     assert all(call["schema_rewrites"] == context.schema_map for call in calls)
+    journal = json.loads(Path(result["rollback_journal"]).read_text(encoding="utf-8"))
+    assert journal["journal_state"] == "completed"
+    assert journal["created_targets"] == ["android_permission_intel", "erebus_threat_intel_prod"]
+    assert journal["final_decision"] == "PRODUCTION_CUTOVER_EXECUTED_AND_VALIDATED"
     with pytest.raises(ValueError, match="unconsumed"):
         cutover.execute_production_cutover(context, preview_receipt=preview_path, confirmation=cutover.EXECUTE_CONFIRMATION, config=_config(), restore_executor=fake_restore)
 

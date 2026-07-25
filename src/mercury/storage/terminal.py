@@ -29,9 +29,12 @@ def print_storage_status(report: StorageStatusReport) -> None:
         kind = "ok" if root.validation.ok else "warn" if root.status_tag == "[--]" else "fail"
         active = " · ACTIVE WRITER" if root.is_active_writer else ""
         if root.validation.ok:
-            detail = "mounted" + (
-                " and writable" if root.writable_policy else " (read-only policy)"
-            )
+            if root.physical_mount_mode == "read-only":
+                detail = "mounted read-only (physical mount)"
+            else:
+                detail = "mounted" + (
+                    " and writable" if root.writable_policy else " (read-only policy)"
+                )
         else:
             detail = root.validation.blocker or root.validation.code.value
         display_screen.write_status(
@@ -90,7 +93,12 @@ def print_storage_validate(report: StorageStatusReport) -> int:
     active = report.primary if report.active_write_role.value == "primary" else report.legacy
     if active.validation.ok:
         display_screen.write_summary("Active write root passed mount validation.")
-    return 0
+        return 0
+    display_screen.write_status(
+        "fail",
+        f"Active write root failed validation: {active.validation.blocker}",
+    )
+    return 1
 
 
 def print_storage_audit(report: StorageAuditReport) -> int:

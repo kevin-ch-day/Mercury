@@ -185,6 +185,50 @@ def test_physical_mount_mode_handles_none_options() -> None:
     assert "ACTIVE WRITER" in line
 
 
+def test_read_only_physical_mount_is_not_reported_as_writable() -> None:
+    identity = MountIdentity(
+        mount_path=Path("/mnt/MERCURY_DATA_V2"), path_exists=True, is_mount=True,
+        mounted_uuid="715f29a9-2671-477b-8c8d-515d190addb9", mounted_fstype="ext4",
+        mount_options="ro,nosuid,nodev", writable=False,
+    )
+    validation = MountValidationResult(
+        code=MountValidationCode.OK, mount_path=identity.mount_path,
+        expected_uuid=identity.mounted_uuid, expected_fstype="ext4", identity=identity,
+    )
+    root = StorageRootStatus(
+        key="primary", role="canonical", label="MERCURY_DATA_V2",
+        mount_path=str(identity.mount_path), filesystem_uuid=identity.mounted_uuid,
+        writable_policy=True, validation=validation, is_active_writer=False,
+    )
+    assert "mounted read-only (physical mount)" in root.one_line()
+    assert "mounted and writable" not in root.one_line()
+
+
+def test_storage_validate_returns_nonzero_for_failed_active_writer(capsys) -> None:
+    from mercury.storage.terminal import print_storage_validate
+
+    cfg = default_storage_config()
+    identity = MountIdentity(
+        mount_path=cfg.legacy.mount_path, path_exists=False, is_mount=False,
+    )
+    failed = StorageRootStatus(
+        key="legacy", role="transition_source", label="MERCURY_DATA_USB",
+        mount_path=str(cfg.legacy.mount_path), filesystem_uuid=cfg.legacy.filesystem_uuid,
+        writable_policy=True,
+        validation=MountValidationResult(
+            code=MountValidationCode.MOUNT_PATH_MISSING, mount_path=cfg.legacy.mount_path,
+            expected_uuid=cfg.legacy.filesystem_uuid, expected_fstype="ext4", identity=identity,
+            blocker="mount path missing",
+        ),
+        is_active_writer=True,
+    )
+    primary = replace(failed, key="primary", label="MERCURY_DATA_V2", is_active_writer=False)
+    report = StorageStatusReport(config=cfg, primary=primary, legacy=failed)
+
+    assert print_storage_validate(report) == 1
+    assert "Active write root failed validation" in capsys.readouterr().out
+
+
 def test_next_step_after_cutover_prefers_primary_mount() -> None:
     cfg = default_storage_config()
     from mercury.core.storage_roots import StorageConfig

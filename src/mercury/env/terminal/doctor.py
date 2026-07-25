@@ -47,7 +47,10 @@ def print_doctor_report(report: DoctorReport) -> None:
         output.field(
             "status",
             (
-                "mounted and writable"
+                "mounted read-only (physical mount)"
+                if storage.primary.validation.ok
+                and storage.primary.physical_mount_mode == "read-only"
+                else "mounted and writable"
                 if storage.primary.validation.ok and storage.primary.writable_policy
                 else (
                     "mounted (read-only policy)"
