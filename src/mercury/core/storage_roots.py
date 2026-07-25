@@ -364,6 +364,38 @@ def load_storage_config(
     else:
         cfg = _compat_from_mercury_section(mercury, base)
 
+    # A completed cutover makes the legacy volume an archive even when the
+    # compact destination config omits an explicit [storage.legacy] stanza.
+    # This is a runtime normalization only; the governed cutover receipt is
+    # still the durable evidence of the role change.
+    if (
+        cfg.cutover_complete
+        and cfg.active_write_role == StorageWriteRole.PRIMARY
+        and (
+            cfg.legacy.role != StorageRootRole.LEGACY_ARCHIVE
+            or cfg.legacy.writable
+        )
+    ):
+        legacy = StorageRootConfig(
+            key=cfg.legacy.key,
+            role=StorageRootRole.LEGACY_ARCHIVE,
+            label=cfg.legacy.label,
+            mount_path=cfg.legacy.mount_path,
+            filesystem_uuid=cfg.legacy.filesystem_uuid,
+            filesystem_type=cfg.legacy.filesystem_type,
+            writable=False,
+        )
+        cfg = StorageConfig(
+            primary=cfg.primary,
+            legacy=legacy,
+            active_write_role=cfg.active_write_role,
+            migration_state=cfg.migration_state,
+            space_policy=cfg.space_policy,
+            schema_version=cfg.schema_version,
+            source=cfg.source,
+            usb_mount_deprecated_override=cfg.usb_mount_deprecated_override,
+        )
+
     # Role-specific env overrides.
     deprecated_usb = False
     primary_env = _env_path(ENV_PRIMARY_MOUNT)

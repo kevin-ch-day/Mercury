@@ -79,6 +79,23 @@ def _resolve_usb_mount_for_repair(mercury_section: dict[str, object]):
     return resolve_usb_mount()
 
 
+def _resolve_operator_mount_for_repair(mercury_section: dict[str, object]) -> tuple[Path, bool]:
+    """Choose the authoritative writer root without retargeting a cutover archive."""
+    try:
+        from mercury.core.storage_roots import load_storage_config
+        from mercury.core.storage_roles import StorageWriteRole
+
+        storage = load_storage_config(warn_deprecated=False)
+        if (
+            storage.cutover_complete
+            and storage.active_write_role == StorageWriteRole.PRIMARY
+        ):
+            return storage.primary.mount_path.resolve(), True
+    except Exception:
+        pass
+    return _resolve_usb_mount_for_repair(mercury_section), False
+
+
 def _append_mercury_keys(text: str, additions: dict[str, str]) -> str:
     lines = text.splitlines()
     out: list[str] = []
@@ -131,6 +148,7 @@ def repair_local_config_paths() -> list[str]:
 
     notes: list[str] = []
     text = resolve_local_config().read_text(encoding="utf-8")
+    mount, cutover_complete = _resolve_operator_mount_for_repair(mercury)
 
     if missing_storage_section():
         storage_block = _default_storage_toml_block(mercury)
@@ -139,7 +157,6 @@ def repair_local_config_paths() -> list[str]:
 
     missing = missing_mercury_usb_artifact_keys()
     if missing:
-        mount = _resolve_usb_mount_for_repair(mercury)
         paths = default_usb_path_replacements(mount)
         additions = {key: paths[key] for key in missing}
         text = _append_mercury_keys(text, additions)
@@ -150,8 +167,10 @@ def repair_local_config_paths() -> list[str]:
     resolve_local_config().write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
 
     usb = discover_usb_target()
-    if usb.mercury_layout_present:
+    if usb.mercury_layout_present and not cutover_complete:
         notes.extend(_ensure_usb_layout(usb.mount_path))
+    elif cutover_complete:
+        notes.append("local.toml: post-cutover paths target the primary HDD; USB archive left unchanged")
     return notes
 
 

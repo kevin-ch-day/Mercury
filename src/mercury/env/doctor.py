@@ -499,6 +499,20 @@ def build_repair_plan(report: DoctorReport) -> list[tuple[str, list[str]]]:
 
 
 def _chown_repair_targets(report: DoctorReport) -> list[Path]:
+    # After cutover, USB is a recovery archive. Never generate ownership repair
+    # commands for its historical operator paths.
+    try:
+        from mercury.core.storage_roots import load_storage_config
+        from mercury.core.storage_roles import StorageWriteRole
+
+        storage = load_storage_config(warn_deprecated=False)
+        if (
+            storage.cutover_complete
+            and storage.active_write_role == StorageWriteRole.PRIMARY
+        ):
+            return []
+    except Exception:
+        pass
     mount = report.usb.mount_path
     from mercury.core.setup_paths import MERCURY_USB_CHOWN_DIRS
 

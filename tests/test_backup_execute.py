@@ -110,6 +110,30 @@ def test_resolve_backup_root_accepts_absolute_usb_path(tmp_path: Path) -> None:
     assert resolved == usb_root.resolve()
 
 
+def test_resolve_backup_root_uses_primary_after_governed_cutover(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("MERCURY_BACKUP_ROOT", raising=False)
+    primary = tmp_path / "primary"
+    config_path = tmp_path / "local.toml"
+    config_path.write_text(
+        (
+            "[mercury]\n"
+            "dry_run = false\n"
+            "\n"
+            "[storage]\n"
+            'active_write_role = "primary"\n'
+            'migration_state = "cutover_complete"\n'
+            "\n"
+            "[storage.primary]\n"
+            'mount_path = "' + str(primary) + '"\n'
+        ),
+        encoding="utf-8",
+    )
+
+    assert resolve_backup_root(local_config=config_path) == (primary / "mercury_backups").resolve()
+
+
 def test_live_execution_refuses_unmounted_usb_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from mercury import core
     from collections import namedtuple

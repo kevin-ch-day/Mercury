@@ -308,6 +308,7 @@ def resolve_backup_root(
             return Path(str(env_root).strip()).expanduser().resolve()
         # Explicit empty string means "ignore env_root; continue resolution".
 
+    config_path = local_config or resolve_local_config()
     if local_config is not None:
         section = _load_mercury_section(local_config)
         configured = section.get("backup_root")
@@ -321,7 +322,6 @@ def resolve_backup_root(
     if env_value and str(env_value).strip():
         return Path(str(env_value).strip()).expanduser().resolve()
 
-    config_path = resolve_local_config()
     section = _load_mercury_section(config_path)
     configured = section.get("backup_root")
     if configured and str(configured).strip():
@@ -329,6 +329,22 @@ def resolve_backup_root(
         if root.is_absolute():
             return root.resolve()
         return (REPO_ROOT / root).resolve()
+
+    # A governed cutover makes the primary storage root authoritative.  Do not
+    # fall back to the repository's development-only backups/ directory merely
+    # because the compact destination local.toml relies on [storage] defaults.
+    try:
+        from mercury.core.storage_roots import load_storage_config
+        from mercury.core.storage_roles import StorageWriteRole
+
+        storage = load_storage_config(local_config=config_path, warn_deprecated=False)
+        if (
+            storage.cutover_complete
+            and storage.active_write_role == StorageWriteRole.PRIMARY
+        ):
+            return storage.primary.backup_root.resolve()
+    except Exception:
+        pass
 
     return (REPO_ROOT / "backups").resolve()
 
