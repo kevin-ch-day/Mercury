@@ -107,6 +107,35 @@ def test_repo_deploy_from_usb_bundle(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert any("git clone" in command and "mercury.bundle" in command for command in commands)
 
 
+def test_usb_bundle_plan_replaces_clone_origin_with_manifest_remote() -> None:
+    from mercury.deploy.repos.models import RepoDeployCandidate
+
+    candidate = RepoDeployCandidate(
+        key="demo", display_name="Demo", target_path="/tmp/demo", source="usb_bundle",
+        bundle_path="/tmp/demo.bundle", branch="main", commit="abc123",
+        remote_url="https://github.com/example/demo.git",
+    )
+    commands, skip = planned_repo_commands(candidate, options=RepoDeployOptions())
+    assert skip is None
+    assert any("remote set-url origin" in command for command in commands)
+    assert not any("remote add origin" in command for command in commands)
+
+
+def test_usb_bundle_resume_never_reclones_existing_worktree() -> None:
+    from mercury.deploy.repos.models import RepoDeployCandidate
+
+    candidate = RepoDeployCandidate(
+        key="demo", display_name="Demo", target_path="/tmp/demo", source="usb_bundle",
+        bundle_path="/tmp/demo.bundle", branch="main", commit="abc123",
+        remote_url="https://github.com/example/demo.git", exists_on_system=True,
+    )
+    commands, skip = planned_repo_commands(candidate, options=RepoDeployOptions(skip_existing=False))
+    assert skip is None
+    assert not any("git clone" in command for command in commands)
+    assert any("cat-file -e abc123" in command for command in commands)
+    assert any("remote set-url origin" in command for command in commands)
+
+
 def test_latest_repo_manifest_entries_picks_newest(tmp_path: Path) -> None:
     older = tmp_path / "2026-06-08"
     newer = tmp_path / "2026-06-09"
