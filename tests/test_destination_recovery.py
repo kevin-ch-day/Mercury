@@ -12,6 +12,7 @@ from mercury.database.mariadb.config import MariaDbConnectionConfig
 from mercury.restore.destination_recovery import (
     build_destination_recovery_plan,
     execute_destination_recovery,
+    verify_existing_destination_recovery,
 )
 
 
@@ -124,3 +125,28 @@ def test_execution_uses_governed_recovery_and_destination_receipts(
     assert recorded["decision"] == "VERIFIED"
     assert recorded["package_id"] == PACKAGE_ID
     assert recorded["backup_id"] == BACKUP_ID
+
+
+def test_existing_target_verification_is_read_only_and_writes_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _package(tmp_path)
+    _patch_verifiers(monkeypatch, existing=[SCHEMA])
+    config = MariaDbConnectionConfig(host="localhost", user="root")
+    plan = build_destination_recovery_plan(
+        package_root=root, package_id=PACKAGE_ID, source_schema=SCHEMA,
+        target_schema=SCHEMA, backup_id=BACKUP_ID, config=config, allow_existing_target=True,
+    )
+    monkeypatch.setattr("mercury.restore.destination_recovery.assert_destination_receipt_root", lambda path: path)
+    monkeypatch.setattr(
+        "mercury.restore.destination_recovery.inspect_database_on_server",
+        lambda *_args: SimpleNamespace(exists_on_server=True, connected=True, table_count=1, view_count=0),
+    )
+    monkeypatch.setattr(
+        "mercury.deploy.verification.verify_deployed_database",
+        lambda *_args, **_kwargs: SimpleNamespace(verified=True, detail="ok"),
+    )
+    receipt, inspect = verify_existing_destination_recovery(plan, config=config, receipt_root=tmp_path)
+    assert inspect.table_count == 1
+    recorded = json.loads(receipt.read_text(encoding="utf-8"))
+    assert recorded["decision"] == "EXISTING_TARGET_VERIFIED"

@@ -118,6 +118,7 @@ def build_destination_recovery_plan(
     target_schema: str,
     backup_id: str,
     config: MariaDbConnectionConfig | None = None,
+    allow_existing_target: bool = False,
 ) -> DestinationRecoveryPlan:
     """Bind one absent target to one verified, immutable package payload."""
     if not package_id or package_id.lower() == "latest":
@@ -173,8 +174,11 @@ def build_destination_recovery_plan(
         blockers.append("MariaDB configuration is unavailable; target collision cannot be checked.")
     else:
         try:
-            if target_schema in set(fetch_user_database_names(config)):
+            exists = target_schema in set(fetch_user_database_names(config))
+            if exists and not allow_existing_target:
                 blockers.append(f"Target schema already exists: {target_schema}")
+            if allow_existing_target and not exists:
+                blockers.append(f"Target schema is absent: {target_schema}")
         except Exception as exc:
             blockers.append(f"Target schema cannot be checked safely: {exc}")
     return DestinationRecoveryPlan(
@@ -239,3 +243,42 @@ def execute_destination_recovery(
         _write_receipt(receipts, plan, decision="VERIFIED", result=result, inspection=inspect)
     )
     return result, inspect
+
+
+def verify_existing_destination_recovery(
+    plan: DestinationRecoveryPlan,
+    *,
+    config: MariaDbConnectionConfig,
+    receipt_root: Path,
+) -> tuple[Path, object]:
+    """Read-only evidence reconciliation for a target restored before receipt support.
+
+    This deliberately verifies an existing exact target and writes only a
+    destination-local receipt.  It never invokes an import runner or changes
+    database contents.
+    """
+    if not plan.allowed:
+        raise ValueError("Existing-target verification is blocked: " + "; ".join(plan.blockers))
+    receipts = assert_destination_receipt_root(receipt_root)
+    inspect = inspect_database_on_server(plan.target_schema, config)
+    if not inspect.exists_on_server or not inspect.connected or not inspect.table_count:
+        receipt = _write_receipt(
+            receipts, plan, decision="FAILED", inspection=inspect,
+            error="Existing target inspection did not confirm a populated schema.",
+        )
+        raise ValueError(f"Existing target inspection did not confirm a populated schema. Failure receipt: {receipt}")
+    from mercury.deploy.verification import verify_deployed_database
+
+    verification = verify_deployed_database(
+        plan.target_schema, manifest_path=plan.backup_directory / "manifest.json", config=config,
+    )
+    if not verification.verified:
+        receipt = _write_receipt(
+            receipts, plan, decision="FAILED", inspection=inspect,
+            error=verification.detail or "Existing target verification failed.",
+        )
+        raise ValueError(f"Existing target verification failed. Failure receipt: {receipt}")
+    path = _write_receipt(
+        receipts, plan, decision="EXISTING_TARGET_VERIFIED", inspection=inspect,
+    )
+    return path, inspect

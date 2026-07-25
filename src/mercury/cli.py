@@ -3192,6 +3192,11 @@ def restore_destination_cmd(
     package_root: Path = typer.Option(..., "--package-root", help="Exact verified package root."),
     package_id: str = typer.Option(..., "--package-id", help="Exact verified package ID; never latest."),
     execute: bool = typer.Option(False, "--execute", help="Create and restore after a successful preview."),
+    verify_existing: bool = typer.Option(
+        False,
+        "--verify-existing",
+        help="Read-only verification and receipt for an exact existing target; never imports or overwrites.",
+    ),
     confirm: str | None = typer.Option(None, "--confirm", help="Required with --execute."),
     receipt_root: Path = typer.Option(
         Path.home() / ".local" / "share" / "mercury" / "destination_recovery",
@@ -3216,6 +3221,7 @@ def restore_destination_cmd(
             target_schema=target_schema,
             backup_id=backup_id,
             config=config,
+            allow_existing_target=verify_existing,
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -3231,6 +3237,25 @@ def restore_destination_cmd(
         typer.echo(f"  BLOCKER: {blocker}")
     if not plan.allowed:
         raise typer.Exit(1)
+    if verify_existing:
+        if execute:
+            raise typer.BadParameter("--verify-existing is read-only and cannot be combined with --execute")
+        if config is None:
+            raise typer.BadParameter("MariaDB configuration is unavailable.")
+        from mercury.restore.destination_recovery import verify_existing_destination_recovery
+
+        try:
+            receipt, inspect = verify_existing_destination_recovery(
+                plan, config=config, receipt_root=receipt_root
+            )
+        except ValueError as exc:
+            typer.echo(f"  result: BLOCKED — {exc}")
+            raise typer.Exit(1) from exc
+        typer.echo("  result: EXISTING_TARGET_VERIFIED (read-only; no import performed)")
+        typer.echo(f"  tables: {inspect.table_count}")
+        typer.echo(f"  views: {inspect.view_count}")
+        typer.echo(f"  receipt: {receipt}")
+        return
     if not execute:
         typer.echo("  preview: PASS")
         return
