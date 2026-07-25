@@ -307,6 +307,20 @@ def storage_archive_receipt_cmd(
             output.write("Path manifest omitted for speed; use --full-manifest or --execute for the durable list.")
 
 
+@storage_app.command("archive-retire")
+def storage_archive_retire_cmd(
+    confirm: str = typer.Option("", "--confirm", help="Required phrase: RETIRE LEGACY USB."),
+) -> None:
+    """Permanently classify the completed-cutover USB as an offline recovery archive."""
+    from mercury.storage.archive_retire import retire_legacy_usb_archive
+
+    try:
+        receipt = retire_legacy_usb_archive(confirmation=confirm)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    output.write(f"Legacy USB retired as offline recovery archive. Receipt: {receipt}")
+
+
 @storage_app.command("archive-remount-ro")
 def storage_archive_remount_ro_cmd(
     execute: bool = typer.Option(False, "--execute", help="Remount the USB archive read-only (requires sudo)."),
