@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import UTC, datetime
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.safety import BACKUP_KIND_FULL
@@ -26,6 +28,63 @@ ALLOWED_SCHEMAS = frozenset(
     }
 )
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9_]+$")
+
+
+def _now() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _write_receipt(
+    receipt_root: Path,
+    plan: "DestinationRecoveryPlan",
+    *,
+    decision: str,
+    result=None,
+    inspection=None,
+    error: str | None = None,
+) -> Path:
+    """Persist destination recovery evidence outside the sealed package.
+
+    The generic restore-check ledger deliberately ignores non-temporary
+    schemas.  This narrow lane restores approved destination schemas, so it
+    must own its receipt rather than silently reporting none.
+    """
+    operation_id = f"destination_recovery_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}_{uuid4().hex[:8]}"
+    directory = receipt_root / "destination_recovery_receipts"
+    directory.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "operation_id": operation_id,
+        "recorded_at_utc": _now(),
+        "decision": decision,
+        "package_id": plan.package_id,
+        "package_root": str(plan.package_root),
+        "backup_id": plan.backup_id,
+        "source_schema": plan.source_schema,
+        "target_schema": plan.target_schema,
+        "backup_directory": str(plan.backup_directory),
+        "dump_path": str(plan.dump_path),
+        "collision_policy": "refuse existing target; never overwrite",
+    }
+    if result is not None:
+        payload["restore_result"] = (
+            result.model_dump(mode="json")
+            if hasattr(result, "model_dump")
+            else dict(vars(result))
+        )
+    if inspection is not None:
+        payload["inspection"] = {
+            "exists_on_server": inspection.exists_on_server,
+            "connected": inspection.connected,
+            "table_count": inspection.table_count,
+            "view_count": inspection.view_count,
+        }
+    if error is not None:
+        payload["error"] = error
+    path = directory / f"{operation_id}_{decision.lower()}.json"
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
+    return path
 
 
 @dataclass(frozen=True)
@@ -154,8 +213,29 @@ def execute_destination_recovery(
         config=config,
     )
     if not result.executed or result.verification_passed is not True:
-        raise ValueError(result.message or "Destination recovery import or verification failed.")
+        receipt = _write_receipt(
+            receipts,
+            plan,
+            decision="FAILED",
+            result=result,
+            error=result.message or "Destination recovery import or verification failed.",
+        )
+        raise ValueError(
+            f"{result.message or 'Destination recovery import or verification failed.'} "
+            f"Failure receipt: {receipt}"
+        )
     inspect = inspect_database_on_server(plan.target_schema, config)
     if not inspect.exists_on_server or not inspect.connected or not inspect.table_count:
-        raise ValueError("Post-restore schema inspection did not confirm populated target.")
+        receipt = _write_receipt(
+            receipts,
+            plan,
+            decision="FAILED",
+            result=result,
+            inspection=inspect,
+            error="Post-restore schema inspection did not confirm populated target.",
+        )
+        raise ValueError(f"Post-restore schema inspection did not confirm populated target. Failure receipt: {receipt}")
+    result.receipt_path = str(
+        _write_receipt(receipts, plan, decision="VERIFIED", result=result, inspection=inspect)
+    )
     return result, inspect

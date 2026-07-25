@@ -110,9 +110,17 @@ def test_execution_uses_governed_recovery_and_destination_receipts(
     monkeypatch.setattr("mercury.restore.destination_recovery.execute_restore_into_database", fake_restore)
     monkeypatch.setattr(
         "mercury.restore.destination_recovery.inspect_database_on_server",
-        lambda *_args: SimpleNamespace(exists_on_server=True, connected=True, table_count=1),
+        lambda *_args: SimpleNamespace(
+            exists_on_server=True, connected=True, table_count=1, view_count=0,
+        ),
     )
     result, inspect = execute_destination_recovery(plan, config=config, receipt_root=tmp_path)
     assert inspect.table_count == 1
     assert calls["kwargs"]["governed_destination_recovery"] is True
     assert calls["kwargs"]["rollback_new_target_on_failure"] is True
+    receipt = Path(result.receipt_path)
+    assert receipt.is_file()
+    recorded = json.loads(receipt.read_text(encoding="utf-8"))
+    assert recorded["decision"] == "VERIFIED"
+    assert recorded["package_id"] == PACKAGE_ID
+    assert recorded["backup_id"] == BACKUP_ID
