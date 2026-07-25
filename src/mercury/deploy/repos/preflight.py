@@ -11,7 +11,12 @@ from mercury.deploy.models import DeploymentPreflight, PreflightCheck
 from mercury.deploy.repos.selection import resolve_repo_deploy_candidates
 
 
-def run_repo_deploy_preflight(*, source_mode: str = "auto") -> DeploymentPreflight:
+def run_repo_deploy_preflight(
+    *,
+    source_mode: str = "auto",
+    selected_keys: list[str] | None = None,
+    include_existing_resume: bool = False,
+) -> DeploymentPreflight:
     env = build_environment_status(probe_database=False)
     checks: list[PreflightCheck] = []
 
@@ -44,8 +49,13 @@ def run_repo_deploy_preflight(*, source_mode: str = "auto") -> DeploymentPreflig
     else:
         checks.append(PreflightCheck(label="Git client", level="ready", detail="found"))
 
-    candidates = resolve_repo_deploy_candidates(source_mode=source_mode)
-    deployable = [c for c in candidates if not c.exists_on_system and c.source != "none"]
+    candidates = resolve_repo_deploy_candidates(
+        source_mode=source_mode, selected_keys=selected_keys
+    )
+    source_ready = [
+        c for c in candidates
+        if c.source != "none" and (include_existing_resume or not c.exists_on_system)
+    ]
     missing_sources = [c for c in candidates if c.source == "none" and not c.exists_on_system]
     if not candidates:
         checks.append(
@@ -55,7 +65,7 @@ def run_repo_deploy_preflight(*, source_mode: str = "auto") -> DeploymentPreflig
                 detail="No repositories configured in config/repos.toml",
             )
         )
-    elif not any(c.source != "none" for c in candidates if not c.exists_on_system):
+    elif not source_ready:
         checks.append(
             PreflightCheck(
                 label="Deployment sources",
@@ -64,7 +74,7 @@ def run_repo_deploy_preflight(*, source_mode: str = "auto") -> DeploymentPreflig
             )
         )
     else:
-        ready_count = sum(1 for c in candidates if c.source != "none" and not c.exists_on_system)
+        ready_count = len(source_ready)
         checks.append(
             PreflightCheck(
                 label="Deployment sources",

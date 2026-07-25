@@ -21,7 +21,11 @@ def build_repo_deploy_plan(
 ) -> RepoDeployPlan:
     resolved = policy or load_execution_policy()
     opts = options or RepoDeployOptions()
-    preflight = run_repo_deploy_preflight(source_mode=source_mode)
+    preflight = run_repo_deploy_preflight(
+        source_mode=source_mode,
+        selected_keys=selected_keys,
+        include_existing_resume=not opts.skip_existing,
+    )
     candidates = resolve_repo_deploy_candidates(
         selected_keys=selected_keys,
         prefer_usb_bundle=opts.prefer_usb_bundle,

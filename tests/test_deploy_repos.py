@@ -136,6 +136,35 @@ def test_usb_bundle_resume_never_reclones_existing_worktree() -> None:
     assert any("remote set-url origin" in command for command in commands)
 
 
+def test_resume_preflight_accepts_selected_existing_bundle_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    from mercury.deploy.repos.preflight import run_repo_deploy_preflight
+    from mercury.deploy.repos.models import RepoDeployCandidate
+
+    monkeypatch.setattr(
+        "mercury.deploy.repos.preflight.resolve_repo_deploy_candidates",
+        lambda **kwargs: [
+            RepoDeployCandidate(
+                key="demo", display_name="Demo", target_path=str(tmp_path / "demo"),
+                source="usb_bundle", bundle_path="/tmp/demo.bundle", commit="abc", exists_on_system=True,
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        "mercury.deploy.repos.preflight.build_environment_status",
+        lambda **kwargs: SimpleNamespace(config=SimpleNamespace(initialized=True)),
+    )
+    monkeypatch.setattr("mercury.deploy.repos.preflight.REPOS_LOCAL", tmp_path / "repos.toml")
+    (tmp_path / "repos.toml").write_text("[repos]\n", encoding="utf-8")
+    report = run_repo_deploy_preflight(
+        source_mode="usb", selected_keys=["demo"], include_existing_resume=True
+    )
+    assert report.ready_for_live
+
+
 def test_latest_repo_manifest_entries_picks_newest(tmp_path: Path) -> None:
     older = tmp_path / "2026-06-08"
     newer = tmp_path / "2026-06-09"
