@@ -90,10 +90,24 @@ def _preflight_patches(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cutover, "_writers_active", lambda: [])
     monkeypatch.setattr(cutover, "_run_rehearsal_smoke", lambda _ctx: {"passed": True, "summary": "29 exact comparisons"})
     monkeypatch.setattr(cutover, "_git_identity", lambda: {"mercury_commit": "m", "erebus_commit": "e", "erebus_tree": "t"})
+    monkeypatch.setattr(cutover, "inspect_production_privileges", lambda _cfg: {"passed": True, "account": "systemadmin@localhost"})
 
 
 def _config() -> MariaDbConnectionConfig:
     return MariaDbConnectionConfig(host="127.0.0.1", user="systemadmin", use_client=True, unix_socket="/tmp/mysql.sock")
+
+
+def _grant_lines(*, android: set[str] | None = None, erebus: set[str] | None = None, account: str = "`systemadmin`@`localhost`") -> list[str]:
+    from mercury.restore.production_cutover import required_production_privileges
+
+    required = required_production_privileges()
+    android = android if android is not None else set(required["android_permission_intel"])
+    erebus = erebus if erebus is not None else set(required["erebus_threat_intel_prod"])
+    return [
+        f"GRANT CREATE ON *.* TO {account}",
+        f"GRANT {', '.join(sorted(android))} ON `android_permission_intel`.* TO {account}",
+        f"GRANT {', '.join(sorted(erebus))} ON `erebus_threat_intel_prod`.* TO {account}",
+    ]
 
 
 def test_context_requires_exact_ids_schemas_targets_and_maps_both(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -134,7 +148,36 @@ def test_preview_is_read_only_and_writes_only_local_receipt(tmp_path: Path, monk
     preview, path = cutover.create_production_cutover_preview(context, config=_config())
     assert preview["preview_decision"] == cutover.PREVIEW_APPROVED
     assert preview["database_writes"] == 0
+    assert preview["preflight"]["privilege_preflight"]["passed"] is True
     assert path.is_file() and context.receipt_root in path.parents
+
+
+def test_privilege_preflight_requires_exact_local_schema_capabilities() -> None:
+    from mercury.restore.production_cutover import inspect_production_privileges, required_production_privileges
+
+    decision = inspect_production_privileges(_config(), grant_lines=_grant_lines())
+    assert decision["passed"] is True
+    required = required_production_privileges()
+    for capability in ("DROP", "CREATE VIEW", "TRIGGER"):
+        android = set(required["android_permission_intel"])
+        android.remove(capability)
+        with pytest.raises(ValueError, match=capability):
+            inspect_production_privileges(_config(), grant_lines=_grant_lines(android=android))
+    erebus = set(required["erebus_threat_intel_prod"])
+    erebus.remove("CREATE ROUTINE")
+    with pytest.raises(ValueError, match="CREATE ROUTINE"):
+        inspect_production_privileges(_config(), grant_lines=_grant_lines(erebus=erebus))
+    rehearsal_only = [
+        "GRANT CREATE ON *.* TO `systemadmin`@`localhost`",
+        "GRANT ALL PRIVILEGES ON `_restorecheck_android_permission_intel_20260722T055400Z_phase3b`.* TO `systemadmin`@`localhost`",
+    ]
+    with pytest.raises(ValueError, match="android_permission_intel"):
+        inspect_production_privileges(_config(), grant_lines=rehearsal_only)
+    with pytest.raises(ValueError, match="global CREATE"):
+        inspect_production_privileges(_config(), grant_lines=_grant_lines()[1:])
+    remote = _grant_lines(account="`systemadmin`@`%`")
+    with pytest.raises(ValueError, match="global CREATE"):
+        inspect_production_privileges(_config(), grant_lines=remote)
 
 
 def test_execute_requires_confirmation_orders_mapping_and_consumes_preview(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -150,6 +193,7 @@ def test_execute_requires_confirmation_orders_mapping_and_consumes_preview(tmp_p
     monkeypatch.setattr(cutover, "schema_object_counts", lambda _cfg, schema: counts.get(schema, A_COUNTS if schema == ANDROID_REHEARSAL else E_COUNTS))
     def fake_restore(**kwargs):
         calls.append(kwargs)
+        kwargs["on_target_created"](kwargs["target_database"])
         return RestoreExecutionResult(source_database=kwargs["source_database"], target_database=kwargs["target_database"], dump_path="x", dry_run=False, executed=True, verification_passed=True)
     result, _path = cutover.execute_production_cutover(
         context, preview_receipt=preview_path, confirmation=cutover.EXECUTE_CONFIRMATION, config=_config(), restore_executor=fake_restore,
@@ -170,6 +214,7 @@ def test_erebus_failure_rolls_back_only_new_production_targets(tmp_path: Path, m
     calls: list[str] = []
     monkeypatch.setattr(cutover, "schema_object_counts", lambda _cfg, schema: A_COUNTS if "android" in schema else E_COUNTS)
     def fake_restore(**kwargs):
+        kwargs["on_target_created"](kwargs["target_database"])
         if kwargs["target_database"] == "erebus_threat_intel_prod":
             return RestoreExecutionResult(source_database="erebus_threat_intel_prod", target_database="erebus_threat_intel_prod", dump_path="x", refused=True, message="broken")
         return RestoreExecutionResult(source_database=ANDROID_ID, target_database="android_permission_intel", dump_path="x", dry_run=False, executed=True, verification_passed=True)
@@ -178,4 +223,63 @@ def test_erebus_failure_rolls_back_only_new_production_targets(tmp_path: Path, m
         sql_executor=lambda _cfg, sql: calls.append(sql),
     )
     assert result["final_decision"] == "PRODUCTION_CUTOVER_ROLLED_BACK"
-    assert calls == ["DROP DATABASE IF EXISTS `android_permission_intel`"]
+    assert calls == ["DROP DATABASE IF EXISTS `erebus_threat_intel_prod`", "DROP DATABASE IF EXISTS `android_permission_intel`"]
+    assert [event["schema"] for event in result["rollback_events"]] == ["erebus_threat_intel_prod", "android_permission_intel"]
+
+
+@pytest.mark.parametrize("failure_stage", ["android_import", "android_validation", "erebus_validation"])
+def test_partial_creation_and_validation_failures_are_rolled_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure_stage: str,
+) -> None:
+    context = _context(tmp_path, monkeypatch)
+    _preflight_patches(monkeypatch)
+    import mercury.restore.production_cutover as cutover
+
+    _preview, preview_path = cutover.create_production_cutover_preview(context, config=_config())
+    drops: list[str] = []
+    state = {"production_calls": 0}
+
+    def counts(_cfg, schema):
+        if failure_stage == "android_validation" and schema == "android_permission_intel":
+            return {**A_COUNTS, "view_count": 0}
+        if failure_stage == "erebus_validation" and schema == "erebus_threat_intel_prod":
+            return {**E_COUNTS, "view_count": 0}
+        if schema in {ANDROID_REHEARSAL, "android_permission_intel"}:
+            return A_COUNTS
+        return E_COUNTS
+
+    monkeypatch.setattr(cutover, "schema_object_counts", counts)
+
+    def fake_restore(**kwargs):
+        state["production_calls"] += 1
+        kwargs["on_target_created"](kwargs["target_database"])
+        if failure_stage == "android_import" and kwargs["target_database"] == "android_permission_intel":
+            return RestoreExecutionResult(source_database="android_permission_intel", target_database="android_permission_intel", dump_path="x", refused=True, message="DROP TABLE denied")
+        return RestoreExecutionResult(source_database=kwargs["source_database"], target_database=kwargs["target_database"], dump_path="x", dry_run=False, executed=True, verification_passed=True)
+
+    result, _path = cutover.execute_production_cutover(
+        context, preview_receipt=preview_path, confirmation=cutover.EXECUTE_CONFIRMATION, config=_config(),
+        restore_executor=fake_restore, sql_executor=lambda _cfg, sql: drops.append(sql),
+    )
+    assert result["final_decision"] == "PRODUCTION_CUTOVER_ROLLED_BACK"
+    if failure_stage in {"android_import", "android_validation"}:
+        assert drops == ["DROP DATABASE IF EXISTS `android_permission_intel`"]
+    else:
+        assert drops == ["DROP DATABASE IF EXISTS `erebus_threat_intel_prod`", "DROP DATABASE IF EXISTS `android_permission_intel`"]
+
+
+def test_rollback_failure_is_recorded_without_hiding_import_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    context = _context(tmp_path, monkeypatch)
+    _preflight_patches(monkeypatch)
+    import mercury.restore.production_cutover as cutover
+
+    _preview, preview_path = cutover.create_production_cutover_preview(context, config=_config())
+    def fake_restore(**kwargs):
+        kwargs["on_target_created"](kwargs["target_database"])
+        return RestoreExecutionResult(source_database="android_permission_intel", target_database="android_permission_intel", dump_path="x", refused=True, message="DROP TABLE denied")
+    result, _path = cutover.execute_production_cutover(
+        context, preview_receipt=preview_path, confirmation=cutover.EXECUTE_CONFIRMATION, config=_config(),
+        restore_executor=fake_restore, sql_executor=lambda *_args: (_ for _ in ()).throw(RuntimeError("rollback denied")),
+    )
+    assert "DROP TABLE denied" in result["failure"]
+    assert result["rollback_events"][0]["error"] == "rollback denied"

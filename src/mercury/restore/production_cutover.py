@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -44,6 +45,17 @@ PREVIEW_APPROVED = "PRODUCTION_CUTOVER_PREVIEW_APPROVED"
 PREVIEW_CONSUMED = "PRODUCTION_CUTOVER_PREVIEW_CONSUMED"
 EXPECTED_EREBUS_COMMIT = "05f3abc2dd30c57a6a303e24b90d15d7dbf3a8f9"
 EXPECTED_EREBUS_TREE = "bdc547e6d89a9911755f5b3294edddafb16ae877"
+
+# These are the schema-scoped privileges exercised by the pinned dumps.  The
+# Erebus dump has stored procedures; the Android dump does not.  Events are
+# intentionally omitted because the governed Phase 3B baseline records zero
+# events in both schemas.
+COMMON_IMPORT_PRIVILEGES = frozenset({
+    "SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER",
+    "INDEX", "REFERENCES", "CREATE VIEW", "SHOW VIEW", "TRIGGER", "LOCK TABLES",
+})
+EREBUS_ROUTINE_PRIVILEGES = frozenset({"CREATE ROUTINE", "ALTER ROUTINE", "EXECUTE"})
+_GRANT_RE = re.compile(r"^GRANT\s+(.+?)\s+ON\s+(.+?)\s+TO\s+", re.IGNORECASE)
 
 
 def _now() -> str:
@@ -241,6 +253,85 @@ def _writers_active() -> list[str]:
     return active
 
 
+def required_production_privileges() -> dict[str, frozenset[str]]:
+    """Return the exact schema privileges required by the two sealed dumps."""
+    return {
+        ANDROID_TARGET: COMMON_IMPORT_PRIVILEGES,
+        EREBUS_TARGET: COMMON_IMPORT_PRIVILEGES | EREBUS_ROUTINE_PRIVILEGES,
+    }
+
+
+def _parse_grants(lines: list[str]) -> tuple[set[str], dict[str, set[str]]]:
+    """Parse MariaDB GRANT lines into global and exact-schema capabilities."""
+    global_capabilities: set[str] = set()
+    schema_capabilities: dict[str, set[str]] = {}
+    for line in lines:
+        normalized_account = line.replace("'", "`")
+        if "TO `systemadmin`@`localhost`" not in normalized_account:
+            # A broad grant to a remote or unrelated account is not evidence
+            # that the socket-authenticated cutover account can import.
+            continue
+        match = _GRANT_RE.match(line.strip())
+        if not match:
+            continue
+        raw_privileges, raw_scope = match.groups()
+        privileges = {item.strip().upper() for item in raw_privileges.split(",")}
+        if "ALL PRIVILEGES" in privileges:
+            privileges = {"ALL PRIVILEGES"}
+        scope = raw_scope.strip().replace("`", "")
+        if scope == "*.*":
+            global_capabilities.update(privileges)
+            continue
+        if not scope.endswith(".*"):
+            continue
+        schema = scope[:-2]
+        schema_capabilities.setdefault(schema, set()).update(privileges)
+    return global_capabilities, schema_capabilities
+
+
+def inspect_production_privileges(config, *, grant_lines: list[str] | None = None) -> dict[str, Any]:
+    """Fail closed unless the local operator has exact target-schema DDL grants."""
+    if config.user != "systemadmin":
+        raise ValueError("Production cutover requires the exact systemadmin@localhost account.")
+    lines = grant_lines
+    if lines is None:
+        current = run_client_query(config, "SELECT CURRENT_USER()").strip()
+        if current != "systemadmin@localhost":
+            raise ValueError(f"Expected socket account systemadmin@localhost, got {current or 'none'}.")
+        raw = run_client_query(config, "SHOW GRANTS FOR 'systemadmin'@'localhost'")
+        lines = [line for line in raw.splitlines() if line.strip()]
+    global_capabilities, schema_capabilities = _parse_grants(lines)
+    missing_by_schema: dict[str, list[str]] = {}
+    required = required_production_privileges()
+    for schema, capabilities in required.items():
+        granted = schema_capabilities.get(schema, set())
+        if "ALL PRIVILEGES" in granted:
+            continue
+        missing = sorted(capabilities - granted)
+        if missing:
+            missing_by_schema[schema] = missing
+    # CREATE DATABASE is intentionally checked separately: a schema-level
+    # CREATE grant cannot authorize CREATE DATABASE on a missing schema.
+    create_database_allowed = "CREATE" in global_capabilities or "ALL PRIVILEGES" in global_capabilities
+    decision = {
+        "account": "systemadmin@localhost",
+        "grant_lines": lines,
+        "global_capabilities": sorted(global_capabilities),
+        "schema_capabilities": {key: sorted(value) for key, value in schema_capabilities.items()},
+        "required": {key: sorted(value) for key, value in required.items()},
+        "create_database_allowed": create_database_allowed,
+        "missing_by_schema": missing_by_schema,
+        "passed": create_database_allowed and not missing_by_schema,
+    }
+    if not create_database_allowed or missing_by_schema:
+        missing_parts = []
+        if not create_database_allowed:
+            missing_parts.append("global CREATE required for CREATE DATABASE")
+        missing_parts.extend(f"{schema}: {', '.join(values)}" for schema, values in missing_by_schema.items())
+        raise ValueError("Production cutover privilege preflight failed: " + "; ".join(missing_parts))
+    return decision
+
+
 def _git_output(repo: Path, *args: str) -> str:
     result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=False)
     if result.returncode != 0:
@@ -314,6 +405,7 @@ def validate_production_cutover_preflight(
     writer_probe: Callable[[], list[str]] | None = None,
     smoke_runner: Callable[[ProductionCutoverContext], dict[str, Any]] | None = None,
     git_probe: Callable[[], dict[str, str]] | None = None,
+    privilege_probe: Callable[[Any], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run all preview-safe gates.  This performs no database writes."""
     cfg = config or try_load_mariadb_config()
@@ -325,12 +417,14 @@ def validate_production_cutover_preflight(
     writer_probe = writer_probe or _writers_active
     smoke_runner = smoke_runner or _run_rehearsal_smoke
     git_probe = git_probe or _git_identity
+    privilege_probe = privilege_probe or inspect_production_privileges
     options = mount_options(Path("/mnt/MERCURY_DATA_V2"))
     if "ro" not in {part.strip() for part in options.split(",")}:
         raise ValueError("Mercury HDD must remain read-only for production cutover.")
     writers = writer_probe()
     if writers:
         raise ValueError(f"Active Mercury/Erebus writers refuse cutover: {writers}")
+    privilege_decision = privilege_probe(cfg)
     schemas = set(fetch_user_database_names(cfg))
     collisions = sorted({ANDROID_TARGET, EREBUS_TARGET} & schemas)
     if collisions:
@@ -358,6 +452,7 @@ def validate_production_cutover_preflight(
         "erebus_smoke": smoke,
         "metadata_original_production_reference_count": 0,
         "git": git_probe(),
+        "privilege_preflight": privilege_decision,
     }
 
 
@@ -439,26 +534,36 @@ def execute_production_cutover(
     operation_id = f"production_cutover_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     result.update({"operation_id": operation_id, "action": "execute", "started_at_utc": _now(), "preview_receipt": str(preview_path)})
     created: list[str] = []
+
+    def record_created(schema: str) -> None:
+        """Record rollback ownership immediately after CREATE DATABASE succeeds."""
+        if schema not in {ANDROID_TARGET, EREBUS_TARGET}:
+            raise ValueError(f"Unexpected production schema creation callback: {schema}")
+        if schema in created:
+            raise ValueError(f"Duplicate production schema creation callback: {schema}")
+        created.append(schema)
+        result.setdefault("created_targets", []).append(schema)
+
     try:
         android = restore_executor(
             target_database=ANDROID_TARGET, dump_path=_dump_path(context.android), source_database=ANDROID_SOURCE,
             execute=True, recreate_target=False, cleanup_after_success=False, receipt_root=context.receipt_root,
             governed_production_cutover=True, schema_rewrites=context.schema_map, config=cfg,
+            on_target_created=record_created,
         )
         result["android_restore"] = android.model_dump(mode="json")
         if not android.executed or android.verification_passed is False:
             raise ValueError(android.message or "Android production restore failed")
-        created.append(ANDROID_TARGET)
         _validate_production_schema(cfg, ANDROID_TARGET, context.expected_android)
         erebus = restore_executor(
             target_database=EREBUS_TARGET, dump_path=_dump_path(context.erebus), source_database=EREBUS_SOURCE,
             execute=True, recreate_target=False, cleanup_after_success=False, receipt_root=context.receipt_root,
             governed_production_cutover=True, schema_rewrites=context.schema_map, config=cfg,
+            on_target_created=record_created,
         )
         result["erebus_restore"] = erebus.model_dump(mode="json")
         if not erebus.executed or erebus.verification_passed is False:
             raise ValueError(erebus.message or "Erebus production restore failed")
-        created.append(EREBUS_TARGET)
         _validate_production_schema(cfg, EREBUS_TARGET, context.expected_erebus)
         if _metadata_reference_count(cfg, EREBUS_TARGET, ("_restorecheck_",)):
             raise ValueError("Production Erebus metadata contains retained rehearsal references.")
@@ -466,9 +571,22 @@ def execute_production_cutover(
     except Exception as exc:
         result["final_decision"] = "PRODUCTION_CUTOVER_ROLLED_BACK"
         result["failure"] = str(exc)
+        rollback_events: list[dict[str, Any]] = []
         for schema in reversed(created):
-            sql_executor(cfg, f"DROP DATABASE IF EXISTS `{schema}`")
-        result["rollback_dropped"] = list(reversed(created))
+            event: dict[str, Any] = {
+                "schema": schema,
+                "command": f"DROP DATABASE IF EXISTS `{schema}`",
+                "attempted": True,
+                "completed": False,
+            }
+            try:
+                sql_executor(cfg, event["command"])
+                event["completed"] = True
+            except Exception as rollback_exc:  # Preserve the original import/validation failure.
+                event["error"] = str(rollback_exc)
+            rollback_events.append(event)
+        result["rollback_events"] = rollback_events
+        result["rollback_dropped"] = [event["schema"] for event in rollback_events if event["completed"]]
     finally:
         result["completed_at_utc"] = _now()
         preview["preview_consumed"] = True

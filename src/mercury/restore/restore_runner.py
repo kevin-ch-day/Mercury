@@ -174,6 +174,7 @@ def execute_restore_into_database(
     config: MariaDbConnectionConfig | None = None,
     import_runner: ImportRunner | None = None,
     inspect_row_fn=None,
+    on_target_created: Callable[[str], None] | None = None,
 ) -> RestoreExecutionResult:
     """Plan or run ``gunzip -c dump | mariadb target`` for verified backups."""
     if governed_production_cutover:
@@ -264,6 +265,11 @@ def execute_restore_into_database(
         if recreate_target:
             _execute_client_sql(cfg, f"DROP DATABASE IF EXISTS `{target_database}`")
         _execute_client_sql(cfg, f"CREATE DATABASE `{target_database}`")
+        # The production-cutover lane uses this callback to record rollback
+        # ownership before the first dump statement is streamed.  A dump can
+        # fail on its opening DROP TABLE after CREATE DATABASE succeeds.
+        if on_target_created is not None:
+            on_target_created(target_database)
         runner(import_argv, _client_env(cfg), dump_path, cfg, target_database)
     except BackupExecutionError as exc:
         result = RestoreExecutionResult(
