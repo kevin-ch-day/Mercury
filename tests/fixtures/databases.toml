@@ -1,0 +1,10 @@
+# Stable synthetic inventory for tests.  Do not read the operator-local
+# config/databases.toml: it is intentionally host-specific and gitignored.
+
+[databases]
+erebus_threat_intel_prod = { host = "localhost", port = 3306 }
+scytaledroid_core_prod = { host = "localhost", port = 3306 }
+obsidiandroid_core_prod = { host = "localhost", port = 3306 }
+erebus_threat_intel_dev = { host = "localhost", port = 3306 }
+scytaledroid_core_dev = { host = "localhost", port = 3306 }
+android_permission_intel = { host = "localhost", port = 3306 }

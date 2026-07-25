@@ -12,7 +12,20 @@ LOGS_DIR = REPO_ROOT / "logs"
 DATA_DIR = REPO_ROOT / "data"
 
 DATABASES_EXAMPLE = CONFIG_DIR / "databases.example.toml"
-DATABASES_LOCAL = CONFIG_DIR / "databases.toml"
+# Tests/CI can point inventory loaders at a synthetic databases.toml without
+# hiding the destination operator inventory (see MERCURY_DATABASES_CONFIG).
+ENV_DATABASES_CONFIG = "MERCURY_DATABASES_CONFIG"
+
+
+def resolve_databases_config() -> Path:
+    """Return operator ``databases.toml``, honoring a test/CI override."""
+    override = os.environ.get(ENV_DATABASES_CONFIG, "").strip()
+    if override:
+        return Path(override)
+    return CONFIG_DIR / "databases.toml"
+
+
+DATABASES_LOCAL = resolve_databases_config()
 REPOS_EXAMPLE = CONFIG_DIR / "repos.example.toml"
 REPOS_LOCAL = CONFIG_DIR / "repos.toml"
 LOCAL_EXAMPLE = CONFIG_DIR / "local.example.toml"

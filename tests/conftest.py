@@ -16,6 +16,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
 CLI = [sys.executable, "-m", "mercury.cli"]
 ENV_STATE_ROOT = "MERCURY_STATE_ROOT"
+TEST_DATABASES_CONFIG = REPO_ROOT / "tests" / "fixtures" / "databases.toml"
+
+# The destination inventory is deliberately local and can legitimately differ
+# from the repository's baseline.  Set this before any Mercury module import
+# so in-process and subprocess tests use the same synthetic fixture instead.
+os.environ.setdefault("MERCURY_DATABASES_CONFIG", str(TEST_DATABASES_CONFIG))
 
 # Stale repos.toml path under a legacy home prefix that must not exist on the test host.
 STALE_OPERATOR_REPO_PATH = Path("/home/secadmin/Laughlin/GitHub/legacy-mercury-checkout")
@@ -123,6 +129,7 @@ def subprocess_env(extra: dict[str, str] | None = None) -> dict[str, str]:
         "MERCURY_LOCAL_CONFIG",
         str(Path(tempfile.mkdtemp(prefix="mercury-pytest-nocfg-")) / "local.toml"),
     )
+    merged.setdefault("MERCURY_DATABASES_CONFIG", str(TEST_DATABASES_CONFIG))
     merged.setdefault("MERCURY_NO_COLOR", "1")
     merged.setdefault("NO_COLOR", "1")
     merged.setdefault("COLUMNS", "120")

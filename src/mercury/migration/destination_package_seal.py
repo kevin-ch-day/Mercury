@@ -160,6 +160,10 @@ def seal_destination_package_preview(
     mercury_commit: str,
     mercury_capture_id: str,
     policy: RetentionPolicy | None = None,
+    backup_ids: list[str] | None = None,
+    full_backup_run_id: str | None = None,
+    erebus_capture_id: str | None = None,
+    erebus_commit: str | None = None,
     expected_uuid: str = DEFAULT_PRIMARY_UUID,
     preview_id: str | None = None,
 ) -> dict[str, Any]:
@@ -181,8 +185,12 @@ def seal_destination_package_preview(
         mount_root,
         run_id=run_id,
         policy=policy,
+        backup_ids=backup_ids,
+        full_backup_run_id=full_backup_run_id,
         mercury_commit=mercury_commit,
         mercury_capture_id=mercury_capture_id,
+        erebus_capture_id=erebus_capture_id,
+        erebus_commit=erebus_commit,
     )
     if preview_id:
         if "latest" in preview_id.lower():

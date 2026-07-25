@@ -303,11 +303,13 @@ def test_destination_package_never_includes_refused_run_receipts() -> None:
     }
     assert is_governed_full_backup_receipt(refused) is False
     assert is_governed_full_backup_receipt(host_local) is False
-    # Destination package code has no full_backup_runs membership today.
+    # Full-backup receipts are packageable only through the explicit governed
+    # receipt path, which classifies the receipt before admitting it.
     from mercury.migration import destination_package as dp
 
     source = Path(dp.__file__).read_text(encoding="utf-8")
-    assert "full_backup_runs" not in source
+    assert "full_backup_runs" in source
+    assert "classify_full_backup_receipt_payload" in source
 
 
 def test_cli_full_backup_exits_2_on_maintenance_refusal(

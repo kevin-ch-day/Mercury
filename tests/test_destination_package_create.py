@@ -179,7 +179,7 @@ def _seal_preview(
         / "previews"
         / preview_id
     )
-    out.mkdir(parents=True)
+    out.mkdir(parents=True, exist_ok=True)
     (out / "preview.json").write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
@@ -274,6 +274,38 @@ def test_missing_artifact_refuses(tmp_path: Path, host_state, mount_ok) -> None:
     result = _create(mount)
     assert not result.ok
     assert any("missing" in e.lower() for e in result.errors)
+
+
+def test_expected_full_backup_receipt_must_be_sealed(tmp_path: Path, host_state, mount_ok) -> None:
+    mount, _ = _seed_ok_layout(tmp_path)
+    result = _create(mount, expected_full_backup_run_id="20260722T161643Z_full_backup")
+    assert not result.ok
+    assert any("full-backup receipt" in error for error in result.errors)
+
+
+def test_expected_full_backup_receipt_is_recorded(tmp_path: Path, host_state, mount_ok) -> None:
+    mount, members = _seed_ok_layout(tmp_path)
+    receipt_id = "20260722T161643Z_full_backup"
+    receipt = mount / ".mercury_control" / "full_backup_runs" / f"{receipt_id}.json"
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text('{"status":"verified"}\n', encoding="utf-8")
+    sidecar = receipt.with_suffix(".json.sha256")
+    sidecar.write_text("fixture-sha256  " + receipt.name + "\n", encoding="utf-8")
+    members.extend(
+        [
+            _member(receipt, "full_backup_run_receipt", receipt_id),
+            _member(sidecar, "full_backup_run_receipt_checksum", receipt_id),
+        ]
+    )
+    _seal_preview(mount, members)
+
+    result = _create(mount, expected_full_backup_run_id=receipt_id)
+
+    assert result.ok, result.errors
+    manifest = json.loads((result.package_root / "package_manifest.json").read_text())
+    receipt_payload = json.loads((result.package_root / "package_receipt.json").read_text())
+    assert manifest["full_backup_run_id"] == receipt_id
+    assert receipt_payload["full_backup_run_id"] == receipt_id
 
 
 def test_extra_member_refuses(tmp_path: Path, host_state, mount_ok, monkeypatch) -> None:

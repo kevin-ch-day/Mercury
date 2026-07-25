@@ -289,6 +289,7 @@ def create_destination_package(
     expected_uuid: str = DEFAULT_PRIMARY_UUID,
     package_id: str | None = None,
     expected_backup_ids: frozenset[str] | set[str] | None = None,
+    expected_full_backup_run_id: str | None = None,
     verify_git_head: bool = True,
     repo_root: Path | None = None,
     allow_synthetic_missing_capture_fixture: bool = False,
@@ -397,7 +398,20 @@ def create_destination_package(
     backup_ids = list(preview.get("included_backup_ids") or [])
     expected_backups = set(expected_backup_ids or PHASE3B_BACKUP_IDS)
     if set(backup_ids) != expected_backups:
-        errors.append(f"Phase 3B backup IDs differ: {backup_ids}")
+        errors.append(f"expected backup IDs differ: {backup_ids}")
+
+    if expected_full_backup_run_id:
+        receipt_members = {
+            (str(member.get("kind") or ""), str(member.get("identity") or ""))
+            for member in (preview.get("included") or [])
+            if isinstance(member, dict)
+        }
+        required_receipts = {
+            ("full_backup_run_receipt", expected_full_backup_run_id),
+            ("full_backup_run_receipt_checksum", expected_full_backup_run_id),
+        }
+        if not required_receipts.issubset(receipt_members):
+            errors.append("governed full-backup receipt differs / missing from preview")
 
     if erebus_capture_id not in (preview.get("included_capture_ids") or []):
         errors.append("Erebus capture differs / missing from preview")
@@ -611,6 +625,7 @@ def create_destination_package(
             "erebus_commit": erebus_commit,
             "erebus_capture_id": erebus_capture_id,
             "included_backup_ids": backup_ids,
+            "full_backup_run_id": expected_full_backup_run_id,
             "mount_uuid": expected_uuid,
             "member_count": len(member_records),
             "file_count": len(inventory),
@@ -700,6 +715,7 @@ def create_destination_package(
             "erebus_commit": erebus_commit,
             "erebus_capture_id": erebus_capture_id,
             "backup_ids": backup_ids,
+            "full_backup_run_id": expected_full_backup_run_id,
             "file_count": len(inventory),
             "total_bytes": sum(i["size_bytes"] for i in inventory),
             "errors": verify_errors,

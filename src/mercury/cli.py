@@ -719,6 +719,16 @@ def migration_package_cmd(
         "--run-id",
         help="Exact sealed Phase 3B run id (no 'latest').",
     ),
+    backup_id: list[str] = typer.Option(
+        None,
+        "--backup-id",
+        help="Exact backup ID to include (repeatable; never latest).",
+    ),
+    full_backup_run_id: str | None = typer.Option(
+        None,
+        "--full-backup-run-id",
+        help="Exact governed full-backup receipt covering the supplied backup IDs.",
+    ),
     allow_scytaledroid: bool = typer.Option(
         False,
         "--allow-scytaledroid",
@@ -772,10 +782,14 @@ def migration_package_cmd(
             mount,
             run_id=run_id,
             policy=policy,
+            backup_ids=list(backup_id or []),
+            full_backup_run_id=full_backup_run_id,
             allow_scytaledroid=allow_scytaledroid,
             scytaledroid_paths=list(scytaledroid_path or []),
             mercury_commit=mercury_commit,
             mercury_capture_id=mercury_capture_id,
+            erebus_capture_id=erebus_capture_id,
+            erebus_commit=erebus_commit,
         )
         code = print_destination_package_preview(report)
         if code:
@@ -793,6 +807,10 @@ def migration_package_cmd(
             mercury_commit=mercury_commit,
             mercury_capture_id=mercury_capture_id,
             policy=policy,
+            backup_ids=list(backup_id or []),
+            full_backup_run_id=full_backup_run_id,
+            erebus_capture_id=erebus_capture_id,
+            erebus_commit=erebus_commit,
             preview_id=preview_id,
         )
         output.heading("Destination package preview sealed")
@@ -827,6 +845,8 @@ def migration_package_cmd(
             mercury_capture_id=mercury_capture_id,
             erebus_commit=erebus_commit,
             erebus_capture_id=erebus_capture_id,
+            expected_backup_ids=frozenset(backup_id) if backup_id else None,
+            expected_full_backup_run_id=full_backup_run_id,
         )
         output.heading("Destination package create")
         output.field("Preview ID", result.preview_id or preview_id)

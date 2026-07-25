@@ -119,10 +119,14 @@ def preview_destination_package(
     *,
     run_id: str,
     policy: RetentionPolicy | None = None,
+    backup_ids: list[str] | None = None,
+    full_backup_run_id: str | None = None,
     allow_scytaledroid: bool = False,
     scytaledroid_paths: list[str] | None = None,
     mercury_commit: str | None = None,
     mercury_capture_id: str | None = None,
+    erebus_capture_id: str | None = None,
+    erebus_commit: str | None = None,
 ) -> DestinationPackagePreview:
     """Build an allowlist preview. Never creates a package."""
     policy = policy or load_retention_policy()
@@ -216,9 +220,15 @@ def preview_destination_package(
         report.estimated_size_bytes += size
         report.manifest_reference_count += 1
 
+    # Explicit IDs are allowed only as pinned identities for a governed package
+    # regeneration. This path never discovers or substitutes a latest backup.
+    selected_backup_ids = tuple(backup_ids or policy.protected_backup_ids)
+    if len(set(selected_backup_ids)) != len(selected_backup_ids):
+        report.errors.append("backup ids must be unique")
+
     # Protected production backup IDs (reference governed copies under mercury_backups)
     backup_root = mount_root / "mercury_backups"
-    for backup_id in policy.protected_backup_ids:
+    for backup_id in selected_backup_ids:
         if "latest" in backup_id.lower():
             report.uses_unqualified_latest = True
             report.errors.append(f"backup id uses unqualified latest: {backup_id}")
@@ -268,17 +278,70 @@ def preview_destination_package(
         if checksum_path.is_file():
             report.manifest_reference_count += 1
 
+    if full_backup_run_id:
+        if "latest" in full_backup_run_id.lower():
+            report.uses_unqualified_latest = True
+            report.errors.append("full-backup run id must not use unqualified latest")
+        receipt = mount_root / CONTROL_DIRNAME / "full_backup_runs" / f"{full_backup_run_id}.json"
+        sidecar = receipt.with_suffix(".json.sha256")
+        if not receipt.is_file() or not sidecar.is_file():
+            report.errors.append(f"governed full-backup receipt missing: {full_backup_run_id}")
+            report.unresolved.append(f"full_backup_run:{full_backup_run_id}")
+        else:
+            try:
+                expected_line = sidecar.read_text(encoding="utf-8").strip().splitlines()[0]
+                payload = json.loads(receipt.read_text(encoding="utf-8"))
+                from mercury.backup.full_backup_receipts import classify_full_backup_receipt_payload
+
+                if not isinstance(payload, dict):
+                    raise ValueError("receipt JSON root is not an object")
+                receipt_class = classify_full_backup_receipt_payload(payload, path=receipt)
+                receipt_ids = set((payload.get("production") or {}).get("backup_ids") or []) | set(
+                    (payload.get("development") or {}).get("backup_ids") or []
+                )
+                checksum_parts = expected_line.split(maxsplit=1)
+                expected_name = checksum_parts[1].lstrip("*") if len(checksum_parts) == 2 else ""
+                if (
+                    len(checksum_parts) != 2
+                    or checksum_parts[0] != _sha256_file(receipt)
+                    or expected_name != receipt.name
+                ):
+                    report.errors.append(f"full-backup receipt checksum mismatch: {full_backup_run_id}")
+                if not receipt_class.governed:
+                    report.errors.append(f"full-backup receipt is not governed: {full_backup_run_id}")
+                phase3b_ids = set(policy.protected_backup_ids)
+                incremental_ids = set(selected_backup_ids) - phase3b_ids
+                if not incremental_ids.issubset(receipt_ids):
+                    report.errors.append(
+                        "full-backup receipt does not cover every non-Phase-3B explicit backup ID"
+                    )
+            except (OSError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                report.errors.append(f"full-backup receipt unreadable: {full_backup_run_id}: {exc}")
+            else:
+                for kind, path in (
+                    ("full_backup_run_receipt", receipt),
+                    ("full_backup_run_receipt_checksum", sidecar),
+                ):
+                    files, size = _count_files_and_size(path)
+                    report.included.append(PackageMember(path=str(path), kind=kind, identity=full_backup_run_id, mode="copy", size_bytes=size))
+                    report.file_count += files
+                    report.estimated_size_bytes += size
+                    report.manifest_reference_count += 1
+
     # Erebus capture
     control_root = mount_root / CONTROL_DIRNAME
     from mercury.migration.erebus_capture.package_validation import (
         assess_erebus_capture_for_package,
     )
 
-    for capture_id in policy.protected_capture_ids:
+    selected_capture_ids = (erebus_capture_id,) if erebus_capture_id else policy.protected_capture_ids
+    for capture_id in selected_capture_ids:
         capture_path = (
             mount_root / CONTROL_DIRNAME / "validation" / "erebus" / capture_id
         )
-        assessment = assess_erebus_capture_for_package(control_root, capture_id=capture_id)
+        assessment = assess_erebus_capture_for_package(
+            control_root, capture_id=capture_id, expected_commit=erebus_commit or None
+        )
         if assessment.classification == "MISSING":
             report.errors.append(f"required capture missing: {capture_id}")
             report.unresolved.append(capture_id)
@@ -474,7 +537,7 @@ def preview_destination_package(
     doc_mercury_capture = (
         mercury_capture_id or policy.current_destination_mercury_capture_id or ""
     ).strip()
-    doc_erebus_commit = (policy.current_erebus_destination_commit or "").strip()
+    doc_erebus_commit = (erebus_commit or policy.current_erebus_destination_commit or "").strip()
     if not doc_erebus_commit and loaded_docs:
         sample = next(iter(loaded_docs.values()))
         doc_erebus_commit = str(sample.payload.get("erebus_commit") or "").strip()
