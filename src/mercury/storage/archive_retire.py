@@ -251,7 +251,6 @@ def retire_legacy_usb_archive(*, confirmation: str, config: StorageConfig | None
     cfg = config or load_storage_config(warn_deprecated=False)
     cutover, generation, archive, status = _assert_retirement_prerequisites(cfg)
     receipt_path = cfg.primary.control_dir / RETIREMENT_RECEIPT_FILE
-    entries, files, bytes_total = _verify_historical_archive_on_primary(config=cfg, archive=archive)
     config_changed = apply_legacy_usb_runtime_policy(config=cfg)
 
     if receipt_path.exists() or receipt_path.is_symlink():
@@ -276,6 +275,7 @@ def retire_legacy_usb_archive(*, confirmation: str, config: StorageConfig | None
             )
         return receipt_path
 
+    entries, files, bytes_total = _verify_historical_archive_on_primary(config=cfg, archive=archive)
     transition_id = new_transition_id()
     host = load_host_maintenance()
     receipt = {
