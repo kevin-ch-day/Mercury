@@ -69,8 +69,10 @@ under the homes above and via unchanged CLI groups.
   receipt, repo status, and bundle plan/actions. When copies need sync, **[1]**
   is labeled with the pending count; **[2]** re-checks. Bundle execute stays
   `repo bundle --execute`.
-- **[5]** exposes restore-check, cleanup, DR planning, and pinned/destination
-  recovery commands.
+- **[5]** opens the consolidated **Restore and Disaster Recovery** dashboard
+  (seven required databases, readiness, pending restore-checks, cleanup,
+  pinned recovery, receipts). Separate status-only Restore-check Operations /
+  Disaster Recovery screens are removed from the menu path.
 - **[7]** owns DB bundle write, handoff (including **Handoff packaging tools**),
   deploy, and cutover CLI guidance with required exact IDs.
 - **[8]** includes full-backup receipt observation alongside history/protection.

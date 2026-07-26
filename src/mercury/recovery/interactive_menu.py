@@ -200,13 +200,24 @@ def _render_recovery_screen(data: RecoveryScreenData, *, show_title: bool) -> No
         notes.append(f"Latest transfer runbook: {data.latest_transfer_runbook}")
     elif data.latest_database_runbook:
         notes.append(f"Latest database runbook: {data.latest_database_runbook}")
-    from mercury.menu.options import ACTION_DEPLOY, ACTION_HANDOFF, main_menu_hint
+    from mercury.menu.options import ACTION_HANDOFF, main_menu_hint
 
-    notes.append(
-        f"Next: {main_menu_hint(ACTION_HANDOFF)}; "
-        "restore-check from this Restore hub; "
-        f"or {main_menu_hint(ACTION_DEPLOY)}."
+    not_restore_checked = sum(
+        1
+        for entry in report.entries
+        if entry.protection_status == "verified"
+        and entry.backup_id
+        and (
+            entry.restore_check_status is None
+            or entry.restore_check_backup_id != entry.backup_id
+        )
     )
+    if not_restore_checked:
+        notes.append(
+            "Next: Back [0], then Restore-check operations [1] on this Restore hub."
+        )
+    else:
+        notes.append(f"Next: {main_menu_hint(ACTION_HANDOFF)}.")
     if checklist.handoff_status == "complete":
         notes.append(
             "Handoff complete — use [2] for the receiving-workstation guide on the target host."
@@ -223,28 +234,7 @@ def _render_recovery_screen(data: RecoveryScreenData, *, show_title: bool) -> No
 
 
 def run_recovery_menu(*, interactive: bool = True) -> None:
-    data = _load_recovery_screen()
-    show_title = True
-    while True:
-        _render_recovery_screen(data, show_title=show_title)
-        show_title = False
-        if not interactive:
-            return
+    """Compatibility entry — consolidated under the recovery dashboard."""
+    from mercury.restore.interactive_dashboard import run_recovery_dashboard
 
-        choice = read_recovery_choice()
-        if choice in {None, "0"}:
-            return
-        if choice == "1":
-            data = _load_recovery_screen()
-            display_screen.write_summary(
-                f"Refreshed — {data.report.verified_count} verified, {data.report.missing_count} missing."
-            )
-            show_title = pause_and_redraw()
-            continue
-        if choice == "2":
-            from mercury.handoff.terminal import print_receiver_handoff_guide
-
-            print_receiver_handoff_guide(checklist=build_receiver_handoff_guide())
-            show_title = pause_and_redraw()
-            continue
-        menu_display.write_status("fail", menu_prompts.invalid_choice_message(choice))
+    run_recovery_dashboard(interactive=interactive)

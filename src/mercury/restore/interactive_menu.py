@@ -39,20 +39,97 @@ def _restorecheck_names_on_server() -> list[str]:
     return discover_restorecheck_names()
 
 
+def _rc_labels_by_database() -> dict[str, str]:
+    from mercury.backup.freshness import backup_entry_needs_restore_check
+    from mercury.backup.status import build_backup_status_report
+
+    labels: dict[str, str] = {}
+    try:
+        report = build_backup_status_report(live=should_probe_database_status())
+    except Exception:
+        return labels
+    for entry in report.entries:
+        if backup_entry_needs_restore_check(entry):
+            status = getattr(entry, "restore_check_status", None)
+            labels[entry.database] = (
+                "Failed"
+                if status in {"failed", "verification_failed"}
+                else "None"
+            )
+        elif getattr(entry, "restore_check_status", None) == "passed":
+            labels[entry.database] = "Passed"
+        else:
+            labels[entry.database] = "None"
+    return labels
+
+
+def _pending_restore_check_names(plans: list[RestoreCheckPlan]) -> list[str]:
+    rc_labels = _rc_labels_by_database()
+    return [
+        plan.source_prod
+        for plan in plans
+        if plan.allowed and rc_labels.get(plan.source_prod, "None") != "Passed"
+    ]
+
+
+def _write_restore_focus(pending: list[str], *, can_run: bool) -> None:
+    from mercury.terminal.theme import (
+        active_styles,
+        colors_enabled,
+        hint_text,
+        markup,
+        status_badge,
+    )
+
+    if not pending:
+        ready = "Next: No restore-check gaps for ready sources"
+        if colors_enabled():
+            output.write(f"{status_badge('ok')} {markup(ready, active_styles().ok)}")
+        else:
+            output.write(ready)
+        return
+
+    next_line = "Next: Run restore-checks [2]"
+    if not can_run:
+        next_line = f"{next_line} · enable live mode first"
+    pending_line = f"Pending: {', '.join(pending)}"
+    if colors_enabled():
+        styles = active_styles()
+        output.write(f"{status_badge('warn')} {markup(next_line, styles.recommended)}")
+        output.write(markup(pending_line, styles.value))
+    else:
+        output.write(next_line)
+        output.write(pending_line)
+    output.write(
+        hint_text("Imports into disposable _restorecheck_* databases only — never *_prod.")
+    )
+
+
 def _render_restore_screen(plans, *, show_title: bool) -> None:
     if show_title:
         menu_display.open_screen(RESTORE_SCREEN_TITLE)
+    pending = _pending_restore_check_names(plans)
+    policy = load_execution_policy()
+    can_run = bool(_allowed_plans(plans)) and policy.live_execution_allowed()
+    _write_restore_focus(pending, can_run=can_run if _allowed_plans(plans) else False)
+    display_screen.write_blank()
     if not plans:
         menu_display.write_status("warn", "No backup sources found.")
     else:
-        print_restore_check_plans(plans, compact=True, menu=True)
+        print_restore_check_plans(
+            plans,
+            compact=True,
+            menu=True,
+            rc_by_database=_rc_labels_by_database(),
+        )
     display_screen.write_blank()
     options: list[tuple[str, str]] = [("1", "Refresh")]
     if _allowed_plans(plans):
-        policy = load_execution_policy()
         label = "Run restore-checks"
         if not policy.live_execution_allowed():
             label = f"{label} (live mode required)"
+        if pending:
+            label = f"{label}      recommended"
         options.append(("2", label))
     else:
         options.append(("2", "Run restore-checks (none ready)"))
@@ -102,35 +179,7 @@ def run_restorecheck_cleanup() -> None:
 
 
 def run_restore_menu(*, interactive: bool = True) -> None:
-    plans = _load_plans()
-    show_title = True
-    while True:
-        _render_restore_screen(plans, show_title=show_title)
-        show_title = False
-        if not interactive:
-            return
+    """Compatibility entry — consolidated under the recovery dashboard."""
+    from mercury.restore.interactive_dashboard import run_recovery_dashboard
 
-        choice = read_restore_choice()
-        if choice is None:
-            return
-        if choice == "0":
-            return
-
-        if choice == "1":
-            plans = _load_plans()
-            ready = sum(1 for plan in plans if plan.allowed)
-            display_screen.write_summary(f"Rescanned — {ready} ready, {len(plans) - ready} blocked.")
-            show_title = pause_and_redraw()
-            continue
-
-        if choice == "2":
-            _run_allowed_restore_checks(plans)
-            show_title = pause_and_redraw()
-            continue
-
-        if choice == "3":
-            _cleanup_restorecheck_databases()
-            show_title = pause_and_redraw()
-            continue
-
-        output.write(menu_prompts.invalid_choice_message(choice))
+    run_recovery_dashboard(interactive=interactive)

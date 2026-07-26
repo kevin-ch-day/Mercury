@@ -7,8 +7,14 @@ from mercury.terminal.table import Table, TableStyle
 from mercury.restore.check_plan import RestoreCheckPlan
 
 
-def _compact_restore_status(plan: RestoreCheckPlan) -> str:
+def _compact_restore_status(plan: RestoreCheckPlan, *, rc_label: str | None = None) -> str:
     if plan.allowed:
+        if rc_label == "Passed":
+            return "ready · RC passed"
+        if rc_label in {"None", "Failed", "pending"}:
+            if rc_label == "Failed":
+                return "ready · RC failed"
+            return "ready · RC pending"
         return "ready"
     if "Backup root is repo-local fallback; configure operator-storage backups before restore-check." in plan.blockers:
         return "Operator storage root required"
@@ -26,20 +32,29 @@ def print_restore_check_plans(
     *,
     compact: bool = False,
     menu: bool = False,
+    rc_by_database: dict[str, str] | None = None,
 ) -> None:
     if compact:
         ready = sum(1 for plan in plans if plan.allowed)
         blocked = len(plans) - ready
-        display_screen.write_fields(
-            {
-                "Ready sources": ready,
-                "Blocked sources": blocked,
-                "Plan mode": "dry-run",
-            }
-        )
+        pending_rc = [
+            plan.source_prod
+            for plan in plans
+            if plan.allowed
+            and (rc_by_database or {}).get(plan.source_prod, "None") != "Passed"
+        ]
+        fields: dict[str, object] = {
+            "Ready sources": ready,
+            "Blocked sources": blocked,
+            "Plan mode": "dry-run",
+        }
+        if pending_rc:
+            fields["RC pending"] = len(pending_rc)
+        display_screen.write_fields(fields)
         rows: list[list[str]] = []
         for plan in plans:
-            status = _compact_restore_status(plan)
+            rc_label = (rc_by_database or {}).get(plan.source_prod)
+            status = _compact_restore_status(plan, rc_label=rc_label)
             rows.append([plan.source_prod, status])
         display_screen.write_blank()
         table = Table.from_headers(

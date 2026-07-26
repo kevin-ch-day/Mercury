@@ -104,14 +104,19 @@ Legacy UUID: `e4f0c7fb-132e-4867-9c16-5e4749f5c43a` (`MERCURY_DATA_USB`).
 | A-2-04 | Cleanup preview | Candidates classified | Locked until policy allows | Ungoverned delete |
 | A-2-05 | Detach while holders exist | Blockers listed | Refuse | Force detach |
 
-## Menu 5 — Restore and disaster recovery
+## Menu 5 — Restore and Disaster Recovery
+
+Main **[5]** opens one consolidated **Restore and Disaster Recovery** dashboard
+(no intermediate hub). Status for all **seven** required databases appears on
+that screen together with readiness, pending restore-checks, and actions.
 
 | ID | Case | Preview/status | Execute | Failure |
 |----|------|----------------|---------|---------|
 | A-3-01 | Restore-check exact prod ID | Plan allowed | Temp DB dropped after PASS | Prod target |
-| A-3-02 | Development restore-check | Explicit lane | Temp DB dropped | Missing lane / refuse wrongly |
+| A-3-02 | Development restore-check | Explicit lane (status on dashboard; execute lane still gap) | Temp DB dropped | Missing lane / refuse wrongly |
 | A-3-03 | Cross-schema restore-check | Plan allowed | PASS | Cross-DB bleed |
 | A-3-04 | Unknown backup-id | Refuse | — | Proceeds |
+| A-3-05 | Consolidated dashboard | 7/7 listed; readiness NOT READY while RC pending | [1] runs pending prod only | False “complete with warnings” |
 
 ## Menu 6 — Workstation migration
 

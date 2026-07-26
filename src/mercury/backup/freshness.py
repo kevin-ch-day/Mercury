@@ -210,10 +210,22 @@ def backup_entry_needs_restore_check(entry) -> bool:
 
 
 def backup_entry_needs_backup_work(entry) -> bool:
-    """True when freshness/integrity requires another backup (not restore-check alone)."""
+    """True when freshness/integrity requires another backup (not restore-check alone).
+
+    Unknown freshness alone does not demand another backup when artifacts already
+    verify — operators still need restore-check routing in that state.
+    """
     freshness = backup_entry_freshness_label(entry)
     verify = backup_entry_verify_label(entry)
-    if freshness in {"Stale", "Unknown", "Empty", "—"}:
+    if freshness in {"Stale", "Empty"}:
+        return True
+    if freshness in {"Unknown", "—"} and verify in {
+        "Missing",
+        "Absent",
+        "Unverified",
+        "Verify failed",
+        "Missing manifest",
+    }:
         return True
     if verify in {
         "Missing",

@@ -75,3 +75,5 @@ def test_recovery_screen_shows_pipeline_and_receiver_options(
     assert "Recovery gaps:" in out
     assert "not restore-checked" in out
     assert "baseline complete" not in out
+    assert "Next: Back [0], then Restore-check operations [1]" in out
+    assert "Deployment and handoff [7]; restore-check" not in out

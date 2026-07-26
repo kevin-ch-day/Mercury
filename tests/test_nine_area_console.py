@@ -118,6 +118,10 @@ def test_all_nine_hubs_reachable_and_non_destructive(monkeypatch: pytest.MonkeyP
         "mercury.restore.interactive_menu.run_restore_menu", mark("restore")
     )
     monkeypatch.setattr(
+        "mercury.restore.interactive_dashboard.run_recovery_dashboard",
+        mark("dashboard"),
+    )
+    monkeypatch.setattr(
         "mercury.recovery.interactive_menu.run_recovery_menu", mark("recovery")
     )
     monkeypatch.setattr(
@@ -209,6 +213,8 @@ def test_all_nine_hubs_reachable_and_non_destructive(monkeypatch: pytest.MonkeyP
     # Back-only hub entries must not have launched expert menus above.
     for name in ("guided", "sync", "deploy", "handoff", "restore"):
         assert called.count(name) == 0
+    # Main [5] opens consolidated dashboard (mocked) once during back-only pass.
+    assert called.count("dashboard") == 1
 
     called.clear()
     # Main [1] opens Backup Operations directly (no intermediate hub choices).
@@ -244,38 +250,21 @@ def test_all_nine_hubs_reachable_and_non_destructive(monkeypatch: pytest.MonkeyP
     assert "packaging" in called
 
 
-def test_restore_hub_does_not_open_advanced_or_deploy(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_restore_hub_opens_consolidated_dashboard(monkeypatch: pytest.MonkeyPatch) -> None:
     opened: list[str] = []
     monkeypatch.setattr(
-        "mercury.restore.interactive_menu.run_restore_menu",
-        lambda **_k: opened.append("restore"),
-    )
-    monkeypatch.setattr(
-        "mercury.restore.interactive_menu.run_restorecheck_cleanup",
-        lambda **_k: opened.append("cleanup"),
-    )
-    monkeypatch.setattr(
-        "mercury.recovery.interactive_menu.run_recovery_menu",
-        lambda **_k: opened.append("recovery"),
+        "mercury.restore.interactive_dashboard.run_recovery_dashboard",
+        lambda **_k: opened.append("dashboard"),
     )
     monkeypatch.setattr(
         "mercury.deploy.interactive_menu.run_deploy_menu",
         lambda **_k: opened.append("deploy"),
     )
-    monkeypatch.setattr(
-        "mercury.handoff.interactive_menu.run_handoff_menu",
-        lambda **_k: opened.append("handoff"),
-    )
-    answers = iter(["1", "2", "", "3", "4", "", "0"])
-    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
     from mercury.menu.task_menus import run_recovery_hub
 
     run_recovery_hub()
-    assert "restore" in opened
-    assert "cleanup" in opened
-    assert "recovery" in opened
+    assert opened == ["dashboard"]
     assert "deploy" not in opened
-    assert "handoff" not in opened
 
 
 def test_direct_cli_routes_unchanged() -> None:

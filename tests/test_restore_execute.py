@@ -329,26 +329,51 @@ def test_run_restore_menu_non_interactive(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from mercury.core.execution_policy import ExecutionPolicy
+    from mercury.restore.dashboard import RecoveryDashboard, RecoveryDashboardRow
+    from mercury.backup.status import BackupStatusReport
+    from mercury.restore.recovery_scope import REQUIRED_RECOVERY_DATABASES
 
-    monkeypatch.setattr("mercury.restore.interactive_menu._load_plans", lambda: [])
-    monkeypatch.setattr(
-        "mercury.restore.interactive_menu.load_execution_policy",
-        lambda: ExecutionPolicy(
-            dry_run=True,
-            live_actions_enabled=False,
-            backup_root=Path("/tmp/mercury-restore-menu"),
-            allow_unsafe_backup_root=True,
+    dash = RecoveryDashboard(
+        report=BackupStatusReport(
+            backup_root="/tmp",
+            backup_root_state="ok",
+            source_count=7,
         ),
+        rows=[
+            RecoveryDashboardRow(
+                database=name,
+                role="prod",
+                freshness="Fresh",
+                artifact="Verified",
+                restore_check="Passed",
+                last_backup="-",
+                backup_id=None,
+                pending=False,
+                runnable=False,
+            )
+            for name in REQUIRED_RECOVERY_DATABASES
+        ],
+        readiness="READY · all required restore-checks passed",
+        production_backed_up=4,
+        production_total=4,
+        development_backed_up=3,
+        development_total=3,
+        restore_checks_passed=7,
+        restore_checks_pending=0,
+        pending_names=[],
+        runnable_pending=[],
+        temp_restore_schemas=[],
+        latest_backup_label="none",
+        package_line="No sealed Phase 3B package noted",
+        runbooks_path="/tmp/runbooks",
+        plans_by_database={},
     )
     monkeypatch.setattr(
-        "mercury.restore.interactive_menu._restorecheck_names_on_server",
-        lambda: [],
+        "mercury.restore.interactive_dashboard.build_recovery_dashboard",
+        lambda: dash,
     )
     run_restore_menu(interactive=False)
     out = capsys.readouterr().out
-    assert "Restore-check operations" in out
-    assert "No backup sources found" in out
-    assert "\n      [1] Refresh" in out
-    assert "Run restore-checks (none ready)" in out
+    assert "Restore and Disaster Recovery" in out
+    assert "android_permission_intel_dev" in out
     assert "[0] Back" in out

@@ -296,56 +296,10 @@ def run_restore_tools_hub() -> None:
 
 
 def run_recovery_hub() -> None:
-    """[5] Restore and disaster recovery."""
-    while True:
-        choice = _submenu(
-            "Restore and disaster recovery",
-            [
-                ("1", "Restore-check operations"),
-                ("2", "Clean up temp restore-check databases"),
-                ("3", "Disaster recovery planning"),
-                ("4", "Pinned / destination recovery commands"),
-            ],
-            purpose=(
-                "Validate production backups without touching *_prod. "
-                "Pinned and destination recovery stay explicitly gated."
-            ),
-        )
-        if choice is None:
-            return
-        if choice == "1":
-            from mercury.restore.interactive_menu import run_restore_menu
+    """[5] Restore and Disaster Recovery — consolidated dashboard."""
+    from mercury.restore.interactive_dashboard import run_recovery_dashboard
 
-            run_restore_menu()
-            continue
-        if choice == "2":
-            from mercury.restore.interactive_menu import run_restorecheck_cleanup
-
-            run_restorecheck_cleanup()
-            _pause()
-            continue
-        if choice == "3":
-            from mercury.recovery.interactive_menu import run_recovery_menu
-
-            run_recovery_menu()
-            continue
-        if choice == "4":
-            _command_card(
-                "Pinned / destination recovery",
-                [
-                    "Destination recovery (package-pinned schemas):",
-                    "  ./run.sh restore-check destination --help",
-                    "",
-                    "Exact restore-check by backup ID:",
-                    "  ./run.sh restore-check run --db <prod> --backup-id <id>",
-                    "",
-                    "Production cutover preview/execute stays under "
-                    "Deployment and handoff [7].",
-                ],
-            )
-            _pause()
-            continue
-        output.write(menu_prompts.invalid_choice_message(choice))
+    run_recovery_dashboard()
 
 
 def run_migration_hub() -> None:

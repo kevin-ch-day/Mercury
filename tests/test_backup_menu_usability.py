@@ -175,6 +175,64 @@ def test_recommendation_restore_check_when_fresh_pending(
     assert "scytaledroid_core_prod" in recommendation.recommended_label
 
 
+def test_unknown_freshness_verified_does_not_force_backup() -> None:
+    from mercury.backup.freshness import (
+        backup_entry_needs_backup_work,
+        backup_entry_needs_restore_check,
+    )
+
+    entry = SimpleNamespace(
+        database="scytaledroid_core_prod",
+        protection_status="verified",
+        freshness="unknown",
+        backup_age=None,
+        backup_id="scytaledroid_core_prod-full-1",
+        restore_check_status=None,
+        restore_check_backup_id=None,
+        manifest_verification_stamp=True,
+    )
+    assert backup_entry_needs_backup_work(entry) is False
+    assert backup_entry_needs_restore_check(entry) is True
+
+
+def test_assess_restore_check_when_freshness_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "mercury.backup.status.build_backup_status_report",
+        lambda live=False: SimpleNamespace(
+            entries=[
+                SimpleNamespace(
+                    database="scytaledroid_core_prod",
+                    protection_status="verified",
+                    freshness="unknown",
+                    backup_age=None,
+                    backup_id="scytaledroid_core_prod-full-1",
+                    restore_check_status=None,
+                    restore_check_backup_id=None,
+                    manifest_verification_stamp=True,
+                ),
+                SimpleNamespace(
+                    database="obsidiandroid_core_prod",
+                    protection_status="verified",
+                    freshness="unknown",
+                    backup_age=None,
+                    backup_id="obsidiandroid_core_prod-full-1",
+                    restore_check_status=None,
+                    restore_check_backup_id=None,
+                    manifest_verification_stamp=True,
+                ),
+            ]
+        ),
+    )
+    next_action = assess_operator_backup_next(live=False)
+    assert next_action["recommend"] == "restore_check"
+    assert next_action["pending_restore_check"] == [
+        "scytaledroid_core_prod",
+        "obsidiandroid_core_prod",
+    ]
+
+
 def test_recommendation_backup_when_stale(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "mercury.backup.status.build_backup_status_report",

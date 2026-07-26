@@ -227,13 +227,22 @@ def build_backup_status_report(
     live: bool = False,
     selected: list[str] | None = None,
     policy: ExecutionPolicy | None = None,
+    sources_override: list[str] | None = None,
+    allow_development_backup: bool = False,
 ) -> BackupStatusReport:
     """Inspect the latest **written** backup directory for each active source database.
 
     Restore-check labels are bound to the exact displayed ``backup_id`` only.
+    Pass ``sources_override`` for recovery-scope dashboards that include
+    development recovery databases (status only; restore-check execution stays gated).
     """
+    from mercury.database.core.scope import is_active_dev_recovery_database
+
     resolved_policy = policy or load_execution_policy()
-    sources = select_batch_sources(selected=selected, live=live)
+    if sources_override is not None:
+        sources = list(sources_override)
+    else:
+        sources = select_batch_sources(selected=selected, live=live)
     warning = _untrusted_root_warning(resolved_policy)
     server_names = _live_server_database_names(live=live)
     restore_by_id = latest_restore_check_by_backup_id()
@@ -252,6 +261,7 @@ def build_backup_status_report(
 
     for database in sources:
         role = _role_label(database)
+        allow_dev = allow_development_backup or is_active_dev_recovery_database(database)
         backup_dir = find_latest_backup_directory(resolved_policy.backup_root, database)
         absent_on_server = server_names is not None and database not in server_names
         source_is_empty = _source_is_empty_on_server(
@@ -302,7 +312,11 @@ def build_backup_status_report(
             source_is_empty=source_is_empty,
         )
 
-        verification = verify_backup_artifacts(backup_dir, database=database)
+        verification = verify_backup_artifacts(
+            backup_dir,
+            database=database,
+            allow_development_backup=allow_dev,
+        )
         stamp = manifest_verified_stamp(backup_dir / MANIFEST_FILENAME)
         restore_fields = _restore_fields_for_backup_id(verification.backup_id, restore_by_id)
         status = "absent" if absent_on_server else ("verified" if verification.verified else "failed")
@@ -389,4 +403,20 @@ def build_backup_status_report(
         absent_count=absent_count,
         entries=entries,
         warnings=warnings,
+    )
+
+
+def build_recovery_scope_status_report(
+    *,
+    live: bool = False,
+    policy: ExecutionPolicy | None = None,
+) -> BackupStatusReport:
+    """Status for the seven required recovery databases (prod + recovery.devs)."""
+    from mercury.restore.recovery_scope import REQUIRED_RECOVERY_DATABASES
+
+    return build_backup_status_report(
+        live=live,
+        policy=policy,
+        sources_override=list(REQUIRED_RECOVERY_DATABASES),
+        allow_development_backup=True,
     )
