@@ -1,10 +1,33 @@
-# Erebus source-capture preview and synthetic execute
+# Erebus source-capture preview and real execute
 
-This workflow prepares a governed, read-only receipt for a replacement Erebus
-source capture. Preview does not copy source files, write a capture, generate a
-package, start MariaDB, modify Phase 3B, or detach the Mercury HDD. Production
-capture execution remains locked; only explicitly synthetic test contexts may
-write a capture.
+This workflow prepares a governed, read-only preview receipt for an Erebus
+source capture, then (when authorized) writes a durable
+`CAPTURE_VERIFIED` capture that destination packaging may treat as package
+authority.
+
+Preview does not copy source files into a final capture, generate a destination
+package, start MariaDB, modify Phase 3B, or detach the Mercury HDD.
+
+## Completed real capture (platform record)
+
+A host-local authorization receipt
+(`mercury.erebus_capture.execution_authorization.v1`) authorized real execute.
+The capture was written, validated, and consumed as package authority:
+
+| Field | Value |
+|-------|-------|
+| Preview ID | `erebus_source_preview_05f3abc_20260724T185539Z` |
+| Capture ID | `erebus_destination_candidate_05f3abc_20260724T185539Z` |
+| Commit | `05f3abc2dd30c57a6a303e24b90d15d7dbf3a8f9` |
+| Tree | `bdc547e6d89a9911755f5b3294edddafb16ae877` |
+| Status | `CAPTURE_VERIFIED` |
+| Preview state | `CONSUMED` |
+| Real execution | `true` (not synthetic) |
+| Authorization receipt SHA-256 | `5c1c78f116cee6cceced3eec22cd6b313b7ce16f090ef885e50ea1ac4e1755d6` |
+| Control path | `/mnt/MERCURY_DATA_V2/.mercury_control/validation/erebus/erebus_destination_candidate_05f3abc_20260724T185539Z` |
+
+Historical reference capture `erebus_destination_candidate_3f1bb5b_20260722T150930Z`
+remains preserved for display only and is not package authority.
 
 ## Request, context, and validator order
 
@@ -41,20 +64,7 @@ single publisher create a temporary receipt directory.
 not silently inspect or mutate the mounted HDD. A refusal exits nonzero and
 prints stable reason codes.
 
-Production execute is available as a refusal route only:
-
-```bash
-./run.sh migration capture-erebus-source execute \
-  --preview-id <exact-ready-id> --repo <repo> \
-  --recovery-receipt <receipt.json> --phase3b-root <evidence-root> \
-  --intake-contract <contract.json> --control-root <control-root> \
-  --storage-facts <reviewed-facts.json>
-```
-
-There is no CLI flag, environment variable, or preview field that enables
-synthetic capture from the operator CLI.
-
-## Durable receipt
+## Durable preview receipt
 
 The publisher writes a private temporary directory beneath
 `validation/previews/erebus/`, fsyncs receipt files and directories, verifies
@@ -84,16 +94,20 @@ writer, the complete source, storage, recovery, Phase 3B, intake, checksum,
 state, and final-path checks must be repeated. No capture temporary directory
 is created by preview or revalidation.
 
-## Synthetic Phase B execution
+## Authorized real execution (and synthetic tests)
 
-The implementation has a capture writer used by synthetic tests and by
-authorized real execution. Synthetic tests set
-`CaptureContext.allow_synthetic_execution`. Real execution requires a host-local
-authorization receipt (`mercury.erebus_capture.execution_authorization.v1`) that
-pins an exact preview ID, capture ID, Mercury/Erebus commits, confirmation
-phrase `AUTHORIZE EREBUS CAPTURE EXECUTE`, optional expiry, and optional approved
-full-suite exceptions. Ordinary CLI/menu contexts without that receipt remain
-locked (`EXECUTION_NOT_AUTHORIZED`).
+The capture writer serves two gated contexts:
+
+1. **Synthetic tests** — `CaptureContext.allow_synthetic_execution` (test-only).
+2. **Authorized real execution** — host-local authorization receipt
+   (`mercury.erebus_capture.execution_authorization.v1`) that pins an exact
+   preview ID, capture ID, Mercury/Erebus commits, confirmation phrase
+   `AUTHORIZE EREBUS CAPTURE EXECUTE`, optional expiry, and optional approved
+   full-suite exceptions.
+
+Ordinary CLI/menu contexts **without** that receipt remain locked
+(`EXECUTION_NOT_AUTHORIZED`). There is no environment variable or preview field
+that enables capture.
 
 ```bash
 ./run.sh migration capture-erebus-source review-preview \
@@ -107,15 +121,15 @@ locked (`EXECUTION_NOT_AUTHORIZED`).
   --authorization-receipt <host-local-auth.json>
 ```
 
-Without `--authorization-receipt`, execute refuses. There is no environment
-variable or preview field that enables capture.
+Without `--authorization-receipt`, execute refuses.
 
-A synthetic READY preview is revalidated, reserved, written under
+When authorized, a READY preview is revalidated, reserved, written under
 `validation/erebus/.<capture-id>.tmp-*`, and only then atomically renamed after
 Git evidence, an explicit-main bundle, independent reconstruction, governed
 identity artifacts, member/prohibited-content checks, and a checksum manifest
 verify. Failure removes the exact temporary directory and never publishes a
-final capture; success consumes the preview.
+final capture; success consumes the preview (`CONSUMED`) and records
+`real_execution: true` on the capture summary and execution receipt.
 
 Stable writer/execute reason codes include:
 
@@ -134,7 +148,7 @@ Stable writer/execute reason codes include:
 The resulting capture includes Git and validation evidence, recovery/intake and
 Phase 3B linkage, reconstruction receipts, `checksums.sha256`, its verification
 receipt, `manifest_receipt.json`, `capture_summary.json`, `CAPTURE_REPORT.md`,
-and a supersession record for the historical incomplete capture. Package
+and a supersession record for any historical incomplete capture. Package
 validation accepts only an explicit `CAPTURE_VERIFIED` capture with matching
 commit/tree, manifest, reconstruction, recovery hash, and Phase 3B linkage.
 Tampered status, authority, identity, reconstruction, receipt, recovery, Phase
@@ -146,6 +160,7 @@ Destination package preview and create share
 `assess_erebus_capture_for_package()` and classify each capture as:
 
 - `PACKAGE_AUTHORITY` — `CAPTURE_VERIFIED`, active, validator passes
+  (this platform’s authority is `erebus_destination_candidate_05f3abc_20260724T185539Z`)
 - `HISTORICAL_REFERENCE` — preserved for display only; create refuses
 - `MISSING` — fail closed in production preview/create
 - `REFUSED` — claimed verified but failed validation or identity pins
@@ -168,8 +183,12 @@ one exact preview loads as READY. Entering the menu does not create a preview.
 Preview capture asks for every explicit CLI input, including the reviewed
 storage-facts receipt, and invokes the same `create_preview()` service as the
 CLI. Review lists exact named preview directories; it never selects a "latest"
-receipt. The execute action still uses a production context and refuses with
-`EXECUTION_NOT_AUTHORIZED`.
+receipt.
+
+**Create approved capture** uses the production path and requires a host-local
+authorization receipt bound to that exact preview. Without it, execute refuses
+with `EXECUTION_NOT_AUTHORIZED`. With a valid receipt, real execute proceeds as
+above (as completed for the `05f3abc` capture).
 
 Troubleshoot the emitted stable refusal (for example
 `INVALID_PREVIEW_ID`, `FINAL_CAPTURE_EXISTS`, `EXTERNAL_IDENTITY_MISMATCH`,

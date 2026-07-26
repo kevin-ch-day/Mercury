@@ -12,26 +12,31 @@ identities. They must not be compared as though the USB remains the writer.
   and restore-check evidence change it. Logs and transient state do not.
 
 `./run.sh migration package-status` uses the HDD generation after
-`migration_state=cutover_complete`; it does not call normal HDD changes USB/HDD
-drift.
+`migration_state=cutover_complete`; normal HDD changes are not USB/HDD drift.
 
-## USB recovery archive
+## Legacy USB — retired offline archive
 
-The USB remains an **application-policy archive** after cutover. Mercury blocks
-normal writes to it, but this is not the same as an operating-system read-only
-mount. Check the actual filesystem mount mode and record immutable archive
-evidence with:
+The USB (`MERCURY_DATA_USB`, UUID `e4f0c7fb-132e-4867-9c16-5e4749f5c43a`) is a
+**retired offline recovery archive**, not an ongoing operational dependency.
+
+Governed host-maintenance reconciliation records decision
+`LEGACY_USB_RETIRED_ARCHIVE_ONLY`: the primary HDD (`MERCURY_DATA_V2`) is the
+only Mercury writer. Mercury policy sets USB `writable=false` /
+`legacy_archive`. That is **not** the same as an OS read-only mount—confirm
+physical mount mode before transport and remount RO when moving drives.
+
+Record immutable archive evidence on the HDD (never onto USB) with:
 
 ```bash
 ./run.sh storage archive-receipt
 ./run.sh storage archive-receipt --execute
 ```
 
-The receipt is written on the HDD under `.mercury_control/`, never onto USB. It
-contains the USB identity, durable relative-path manifest and SHA-256, generation
-and mount mode. It is write-once unless an explicit administrative override is
-used. Physical USB removal or erasure remains an operator decision; it is not
-authorized by recording a receipt.
+The receipt under `.mercury_control/` contains USB identity, durable
+relative-path manifest and SHA-256, generation, and mount mode. It is write-once
+unless an explicit administrative override is used. Physical USB removal or
+erasure remains an operator decision; it is not authorized by recording a
+receipt. Do not reactivate USB as a Mercury writer.
 
 ## Dirty worktrees
 
@@ -52,30 +57,46 @@ packages separately before validating the destination workstation.
 
 ## Safe removal criteria
 
-Retain the USB until the archive receipt is recorded, the HDD is readable on the
-destination, the active HDD package has a fresh backup, and recovery exercises
-are accepted. Mercury does not perform physical retirement, USB formatting, or
-automatic rollback.
+Retain the retired USB offline archive until the archive receipt is recorded,
+the HDD is readable on the destination, the active HDD package has a fresh
+backup of the required seven schemas, and recovery exercises are accepted.
+Mercury does not perform physical retirement, USB formatting, or automatic
+rollback.
 
 Future rollback must use a config lock and journal, validate all five writer
 paths plus role/state, restore the saved configuration if validation fails, and
 create an immutable audit record after explicit confirmation.
 
-## Optional development recovery backups
+## Required seven-database backup scope
 
-Routine protection remains production and shared-authority only.  When a
-workstation move needs existing development schemas/data as a fallback, use the
-separate, confirmation-gated lane for configured development targets:
+This research platform’s governed recovery set is **seven schemas**, not
+production-only:
+
+| Role | Databases |
+|------|-----------|
+| Production / shared authority | `android_permission_intel`, `erebus_threat_intel_prod`, `scytaledroid_core_prod`, `obsidiandroid_core_prod` |
+| Required development | `android_permission_intel_dev`, `erebus_threat_intel_dev`, `scytaledroid_core_dev` |
+
+The three development schemas are **mandatory** for workstation recovery and
+tester readiness on this platform. They are confirmation-gated so they cannot be
+confused with accidental `*_dev` discovery noise, but they are not optional
+afterthoughts for this environment.
+
+Preferred governed lane (prod + required dev in one full-backup run):
+
+```bash
+./run.sh backup full --include-dev --confirm-dev 'BACKUP DEV DATABASES'
+```
+
+Development-only lane (same confirmation phrase):
 
 ```bash
 ./run.sh backup dev
 ./run.sh backup dev --execute --confirm 'BACKUP DEV DATABASES'
 ```
 
-To re-verify an already-written optional development recovery backup without
-creating another dump, use the explicit recovery gate. It accepts only the
-configured recovery databases and stamps `manifest.json` only after the normal
-artifact checks pass:
+Re-verify an already-written development backup without creating another dump
+(exact `--backup-id` preferred; `--allow-development-recovery` required):
 
 ```bash
 ./run.sh backup verify --db android_permission_intel_dev --allow-development-recovery
@@ -83,15 +104,16 @@ artifact checks pass:
 ./run.sh backup verify --db scytaledroid_core_dev --allow-development-recovery
 ```
 
-They can be planned on the receiving PC without weakening the normal
-production deployment lane:
+Destination import of development backups remains confirmation-gated and accepts
+only configured development targets:
 
 ```bash
 ./run.sh deploy dev --dry-run
 ./run.sh deploy dev --execute --confirm 'DEPLOY DEV BACKUPS'
 ```
 
-The live import is confirmation-gated and accepts only configured development
-targets. These artifacts remain optional recovery material; they do not change
-the production-protection status or make development databases part of the
-routine handoff package.
+Development artifacts remain outside the default **sealed destination handoff
+package** membership rules unless policy explicitly includes them. That packaging
+boundary does **not** make the three development schemas optional for local
+Fedora recovery, restore-check drills, or Asus tester readiness—those workflows
+require all seven.

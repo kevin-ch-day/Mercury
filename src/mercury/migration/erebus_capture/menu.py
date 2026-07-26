@@ -14,7 +14,7 @@ from .service import create_preview, execute_capture, load_preview
 from .storage_preflight import StorageFacts
 
 EXECUTE_AVAILABILITY = (
-    "production execute locked unless a host-local authorization receipt is supplied"
+    "authorized real execute requires host-local receipt; completed 05f3abc capture is CAPTURE_VERIFIED"
 )
 
 
