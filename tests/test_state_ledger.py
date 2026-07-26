@@ -94,11 +94,14 @@ def test_build_state_summary_counts_files(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (state_root / "database_backups.csv").write_text(
-        "timestamp,database\n2026-06-09T00:00:00+00:00,android_permission_intel\n",
+        "timestamp,database,role,event,backup_kind,backup_id,backup_path,dump_file,schema_file,size_bytes,verified,restore_check_status,warnings\n"
+        "2026-06-09T00:00:00+00:00,android_permission_intel,shared,verify,full,id1,/mnt/MERCURY_DATA_V2/mercury_backups/db,,,,True,,\n"
+        "2026-06-09T01:00:00+00:00,erebus_threat_intel_prod,production,verify,full,id2,/mnt/MERCURY_DATA_V2/mercury_backups/db,,,,True,,\n",
         encoding="utf-8",
     )
     (state_root / "repo_bundles.csv").write_text(
-        "timestamp,repo_name\n2026-06-09T00:00:00+00:00,Mercury\n",
+        "timestamp,repo_name,path,branch,commit,remote,dirty,untracked_count,bundle_path,bundle_verified,bundle_size_bytes,warnings\n"
+        "2026-06-09T02:00:00+00:00,Mercury,/repo,main,abc,origin,false,0,/mnt/MERCURY_DATA_V2/mercury_repo_backups/m.bundle,True,1,\n",
         encoding="utf-8",
     )
     (state_root / "transfer_packages.csv").write_text(
@@ -118,12 +121,39 @@ def test_build_state_summary_counts_files(tmp_path: Path) -> None:
     summary = build_state_summary(state_root=state_root)
     assert summary.source == "usb"
     assert summary.operations == 2
-    assert summary.database_backup_rows == 1
+    assert summary.database_backup_rows == 2
     assert summary.database_bundle_rows == 1
     assert summary.repo_bundle_rows == 1
     assert summary.transfer_package_rows == 1
     assert summary.sync_event_rows == 1
     assert summary.latest_transfer_manifest == "/tmp/transfer.json"
+    assert summary.verified_source_count == 2
+    assert summary.latest_verified_backup_at is not None
+    assert summary.latest_repo_bundle_at is not None
+
+
+def test_dashboard_compact_backup_line_uses_verified_summary(monkeypatch, tmp_path: Path) -> None:
+    from mercury.menu.dashboard import _compact_backup_and_git_lines
+    from mercury.state.summary import StateSummary
+
+    summary = StateSummary(
+        state_root=tmp_path,
+        source="usb",
+        operations=1,
+        database_backup_rows=2,
+        database_bundle_rows=0,
+        repo_bundle_rows=3,
+        transfer_package_rows=0,
+        sync_event_rows=0,
+        latest_verified_backup_at="7/26/2026 1:12 PM CDT",
+        verified_source_count=7,
+        latest_repo_bundle_at="7/26/2026 1:12 PM CDT",
+    )
+    monkeypatch.setattr("mercury.state.summary.build_state_summary", lambda: summary)
+    last_backup, git_recovery = _compact_backup_and_git_lines()
+    assert last_backup == "Verified · 7/26/2026 1:12 PM CDT"
+    assert "No recent verified backup" not in last_backup
+    assert git_recovery == "Bundle · 7/26/2026 1:12 PM CDT"
 
 
 def test_build_state_summary_ignores_pytest_generated_operator_debris(tmp_path: Path) -> None:

@@ -34,6 +34,11 @@ class StateSummary:
     latest_transfer_at: str | None = None
     latest_database_bundle_status: str | None = None
     wizard_run_count: int = 0
+    # Dashboard truthfulness (A-DASH-001): populated from operator ledger rows.
+    latest_verified_backup_at: str | None = None
+    latest_backup_at: str | None = None
+    verified_source_count: int = 0
+    latest_repo_bundle_at: str | None = None
 
 
 def _latest_transfer_row(rows: list[dict[str, str]]) -> dict[str, str] | None:
@@ -48,25 +53,49 @@ def _latest_bundle_row(rows: list[dict[str, str]]) -> dict[str, str] | None:
     return max(rows, key=lambda row: row.get("timestamp", ""))
 
 
+def _row_timestamp(row: dict[str, str]) -> str:
+    return str(row.get("timestamp") or "")
+
+
+def _is_verified_backup_row(row: dict[str, str]) -> bool:
+    return str(row.get("verified") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _human_latest_timestamp(rows: list[dict[str, str]]) -> str | None:
+    if not rows:
+        return None
+    latest = max(rows, key=_row_timestamp)
+    raw = _row_timestamp(latest)
+    return format_human_datetime(raw) if raw else None
+
+
 def build_state_summary(*, state_root: Path | None = None) -> StateSummary:
     root = (state_root or resolve_state_root()).expanduser().resolve()
     source = "usb" if root.name == STATE_DIRNAME else "repo-local fallback"
     transfer_rows = read_operator_transfer_package_rows(state_root=root)
     bundle_rows = read_operator_database_bundle_rows(state_root=root)
     operation_rows = read_operator_operation_rows(state_root=root)
+    backup_rows = read_operator_database_backup_rows(state_root=root)
+    repo_rows = read_operator_repo_bundle_rows(state_root=root)
     latest_transfer = _latest_transfer_row(transfer_rows)
     latest_bundle = _latest_bundle_row(bundle_rows)
     wizard_runs = sum(1 for row in operation_rows if row.get("event_type") == "handoff_wizard_run")
     latest_transfer_at = None
     if latest_transfer and latest_transfer.get("timestamp"):
         latest_transfer_at = format_human_datetime(str(latest_transfer["timestamp"]))
+    verified_rows = [row for row in backup_rows if _is_verified_backup_row(row)]
+    verified_sources = {
+        str(row.get("database") or "").strip()
+        for row in verified_rows
+        if str(row.get("database") or "").strip()
+    }
     return StateSummary(
         state_root=root,
         source=source,
         operations=len(operation_rows),
-        database_backup_rows=len(read_operator_database_backup_rows(state_root=root)),
+        database_backup_rows=len(backup_rows),
         database_bundle_rows=len(bundle_rows),
-        repo_bundle_rows=len(read_operator_repo_bundle_rows(state_root=root)),
+        repo_bundle_rows=len(repo_rows),
         transfer_package_rows=len(transfer_rows),
         sync_event_rows=len(read_operator_sync_event_rows(state_root=root)),
         latest_handoff_status=(
@@ -86,6 +115,10 @@ def build_state_summary(*, state_root: Path | None = None) -> StateSummary:
             else None
         ),
         wizard_run_count=wizard_runs,
+        latest_verified_backup_at=_human_latest_timestamp(verified_rows),
+        latest_backup_at=_human_latest_timestamp(backup_rows),
+        verified_source_count=len(verified_sources),
+        latest_repo_bundle_at=_human_latest_timestamp(repo_rows),
     )
 
 
@@ -107,3 +140,11 @@ def print_state_summary(summary: StateSummary) -> None:
         output.field("latest_database_bundle_status", summary.latest_database_bundle_status)
     if summary.wizard_run_count:
         output.field("guided_wizard_runs", summary.wizard_run_count)
+    if summary.latest_verified_backup_at:
+        output.field("latest_verified_backup", summary.latest_verified_backup_at)
+    elif summary.latest_backup_at:
+        output.field("latest_backup", summary.latest_backup_at)
+    if summary.verified_source_count:
+        output.field("verified_backup_sources", summary.verified_source_count)
+    if summary.latest_repo_bundle_at:
+        output.field("latest_repo_bundle", summary.latest_repo_bundle_at)
