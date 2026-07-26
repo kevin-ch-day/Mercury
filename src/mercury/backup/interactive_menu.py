@@ -106,6 +106,59 @@ def _write_phase3b_note(warning: str) -> None:
         output.write(hint_text(text))
 
 
+def _write_focus_callout(
+    *,
+    needs_backup: bool,
+    pending_rc: list[str],
+) -> None:
+    """High-visibility operator focus block (DEFCON glance target)."""
+    from mercury.terminal.theme import (
+        active_styles,
+        colors_enabled,
+        hint_text,
+        markup,
+        status_badge,
+    )
+
+    if pending_rc and not needs_backup:
+        next_line = "Next: Restore and disaster recovery [5]"
+        pending_line = f"Pending: {', '.join(pending_rc)}"
+        if colors_enabled():
+            styles = active_styles()
+            output.write(f"{status_badge('warn')} {markup(next_line, styles.recommended)}")
+            output.write(markup(pending_line, styles.value))
+        else:
+            output.write(next_line)
+            output.write(pending_line)
+        output.write(
+            hint_text("Back [0] → Main Menu [5]. Do not run another backup.")
+        )
+        return
+
+    if needs_backup:
+        next_line = "Next: Guided backup session [1]"
+        if colors_enabled():
+            styles = active_styles()
+            output.write(f"{status_badge('warn')} {markup(next_line, styles.recommended)}")
+        else:
+            output.write(next_line)
+        if pending_rc:
+            pending_line = (
+                f"Pending: restore-check after backup · {', '.join(pending_rc)}"
+            )
+            if colors_enabled():
+                output.write(markup(pending_line, active_styles().value))
+            else:
+                output.write(pending_line)
+        return
+
+    ready = "Next: Production backups look ready on this screen"
+    if colors_enabled():
+        output.write(f"{status_badge('ok')} {markup(ready, active_styles().ok)}")
+    else:
+        output.write(ready)
+
+
 def _storage_usage_fields(policy) -> dict[str, str]:
     """Compact Backup Operations header fields (root, writer, status, capacity)."""
     root = policy.backup_root.resolve()
@@ -251,12 +304,11 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
         menu_display.open_screen(BACKUP_SCREEN_TITLE)
     policy = load_execution_policy()
     _write_backup_fields(_storage_usage_fields(policy))
-    display_screen.write_blank()
     status_report = build_backup_status_report(live=should_probe_database_status())
     status_entries = {entry.database: entry for entry in status_report.entries}
     rows = _backup_screen_rows(plan, status_entries=status_entries)
 
-    body_notes: list[tuple[str, str]] = []  # ("warn"|"info"|"hint"|"summary"|"next", text)
+    body_notes: list[tuple[str, str]] = []  # ("warn"|"info"|"hint"|"summary", text)
     pending_rc = [
         entry.database
         for entry in status_report.entries
@@ -265,6 +317,37 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
     needs_backup = any(
         backup_entry_needs_backup_work(entry) for entry in status_report.entries
     )
+    counts = _status_counts(rows) if rows else Counter()
+    if any(
+        counts.get(label, 0)
+        for label in (
+            "Stale",
+            "Unknown",
+            "Empty",
+            "Missing",
+            "Unverified",
+            "Verify failed",
+            "Missing manifest",
+            "Absent",
+            "RC passed · unstamped",
+            "OK unstamped",
+        )
+    ):
+        needs_backup = True
+    if not pending_rc:
+        # Fall back to visible restore-check labels when status entries are sparse.
+        for row in rows:
+            if len(row) >= 3 and row[2] in {
+                "Not restore-checked",
+                "OK* · no RC",
+                "Restore-check failed",
+            }:
+                pending_rc.append(row[0])
+
+    # Focus callout sits above the table so the next action is unmistakable.
+    display_screen.write_blank()
+    _write_focus_callout(needs_backup=needs_backup, pending_rc=pending_rc)
+    display_screen.write_blank()
 
     if rows:
         table = Table.from_headers(
@@ -275,7 +358,6 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
             max_col_widths=[36, 12, 22, 12, 44],
         )
         display_screen.write_structured_table(table)
-        counts = _status_counts(rows)
         problem_parts: list[str] = []
         for label in (
             "Stale",
@@ -302,15 +384,8 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
                     problem_parts.append(f"{count} RC passed · unstamped")
                 else:
                     problem_parts.append(f"{count} {label.lower()}")
-        if pending_rc and not needs_backup:
-            body_notes.append(
-                (
-                    "next",
-                    "Next: Restore and disaster recovery [5]\n"
-                    f"Pending: {', '.join(pending_rc)}",
-                )
-            )
-        elif problem_parts:
+        # Restore-check-only gaps are already covered by the focus callout.
+        if problem_parts and not (pending_rc and not needs_backup):
             only_absent = all(part.endswith("absent from server") for part in problem_parts)
             message = (
                 "Catalog source(s) not on this MariaDB server: "
@@ -320,14 +395,6 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
                 else menu_handoff_problem_summary(problem_parts)
             )
             body_notes.append(("info" if only_absent else "warn", message))
-        else:
-            body_notes.append(
-                (
-                    "summary",
-                    "All visible production backups are verified and fresh "
-                    "(freshness and integrity are separate checks).",
-                )
-            )
     else:
         display_screen.write_status("warn", "No databases in active backup scope.")
 
@@ -347,11 +414,6 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
                 output.write(f"[INFO] {text}")
             elif kind == "hint":
                 _write_phase3b_note(text)
-            elif kind == "next":
-                for line in text.splitlines():
-                    display_screen.write_summary(line)
-            elif kind == "summary":
-                display_screen.write_summary(text)
             else:
                 display_screen.write_status("warn", text)
 
@@ -360,6 +422,7 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
     render_submenu(
         backup_menu_render_options(
             writes_allowed=writes_allowed(),
+            recommend_guided=needs_backup,
         ),
         indent=0,
     )

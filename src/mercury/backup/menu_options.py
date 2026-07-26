@@ -83,19 +83,23 @@ DETACH_UNAVAILABLE_SUFFIX = "unavailable · Mercury writes disabled"
 def backup_menu_render_options(
     *,
     writes_allowed: bool = True,
+    recommend_guided: bool = False,
 ) -> list[tuple[str, str]]:
     """Options for ``render_submenu``."""
     options: list[tuple[str, str]] = []
     for key, label, action_id, _help in BACKUP_MENU_OPTIONS:
+        display = label
+        if recommend_guided and action_id == ACTION_BACKUP_SYNC_SESSION:
+            display = f"{label}      recommended"
         # Session remains selectable while writes are disabled so guided restore can run.
         if (
             not writes_allowed
             and action_id in BACKUP_MENU_WRITE_ACTIONS
             and action_id != ACTION_BACKUP_SYNC_SESSION
         ):
-            options.append((key, f"{label}  {DETACH_UNAVAILABLE_SUFFIX}"))
+            options.append((key, f"{display}  {DETACH_UNAVAILABLE_SUFFIX}"))
         else:
-            options.append((key, label))
+            options.append((key, display))
     return options
 
 

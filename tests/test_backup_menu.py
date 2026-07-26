@@ -192,31 +192,34 @@ def test_backup_menu_section_spacing_boundaries(
     title_i = index_of(lambda line: line.strip() == "Backup Operations")
     status_i = index_of(lambda line: "Status" in line and "ok" in line)
     capacity_i = index_of(lambda line: "Capacity" in line)
+    next_i = index_of(lambda line: "Next: Restore and disaster recovery [5]" in line)
+    pending_i = index_of(lambda line: line.startswith("Pending: android_permission_intel"))
     header_i = index_of(lambda line: line.startswith("DATABASE"))
     assert status_i > title_i
     assert capacity_i > status_i
     assert lines[capacity_i + 1] == ""
-    assert header_i == capacity_i + 2
+    assert next_i == capacity_i + 2
+    assert pending_i == next_i + 1
+    hint_i = index_of(lambda line: "Back [0]" in line and "Main Menu [5]" in line)
+    assert hint_i == pending_i + 1
+    assert lines[hint_i + 1] == ""
+    assert header_i == hint_i + 2
 
     # Last table body row is the database name line (not the rule).
     db_i = index_of(lambda line: line.startswith("android_permission_intel"))
     assert lines[db_i + 1] == ""
 
-    next_i = index_of(lambda line: "Next: Restore and disaster recovery [5]" in line)
-    assert next_i == db_i + 2
-    pending_i = index_of(lambda line: line.startswith("Pending: android_permission_intel"))
-    assert pending_i == next_i + 1
-
     phase_i = index_of(
         lambda line: "Phase 3B package sealed — routine backups do not replace it."
         in line
     )
-    assert phase_i == pending_i + 1
+    assert phase_i == db_i + 2
     assert "Latest routine backups" not in out
     assert lines[phase_i + 1] == ""
 
     menu_i = index_of(lambda line: line.startswith("[1] Guided backup session"))
     assert menu_i == phase_i + 2
+    assert "recommended" not in lines[menu_i].lower()
     back_i = index_of(lambda line: line.startswith("[0] Back"))
     assert back_i > menu_i
     # No blank lines between consecutive menu choices.

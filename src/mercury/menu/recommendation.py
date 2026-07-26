@@ -38,6 +38,11 @@ class MainMenuRecommendation:
             from mercury.menu.destination_move import destination_move_action_label
 
             return destination_move_action_label()
+        if (
+            self.recommended_action == MAIN_RECOVERY
+            and self.facts.get("pending_restore_check")
+        ):
+            return self.explanation
         labels = {
             MAIN_BACKUP: "Backup and verification",
             MAIN_SYNC: "Database sync and data movement",
@@ -322,6 +327,15 @@ def build_main_menu_recommendation(
         if next_action.get("recommend") == "restore_check":
             pending = list(next_action.get("pending_restore_check") or [])
             pending_note = ", ".join(pending) if pending else "restore-check pending"
+            if not pending:
+                explanation = "Restore and disaster recovery"
+            elif len(pending) <= 2:
+                explanation = f"Restore-check pending · {pending_note}"
+            else:
+                explanation = (
+                    f"Restore-check pending · {len(pending)} databases "
+                    f"({pending[0]}, …)"
+                )
             return MainMenuRecommendation(
                 host_role=host_role,
                 storage_state=storage_state,
@@ -329,7 +343,7 @@ def build_main_menu_recommendation(
                 backup_state="fresh_restore_check_pending",
                 package_state=package,
                 recommended_action=MAIN_RECOVERY,
-                explanation="Restore and disaster recovery",
+                explanation=explanation,
                 allowed_actions=allowed,
                 facts={
                     "package_id": package_id,

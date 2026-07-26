@@ -135,7 +135,8 @@ def test_restore_check_column_label(
     out = capsys.readouterr().out
     assert "RESTORE-CHECK" in out
     assert " VERIFY" not in out
-    assert out.count("Guided backup session") == 1
+    assert out.count("\n[1] Guided backup session") == 1
+    assert "Next: Guided backup session [1]" in out
 
 
 def test_recommendation_restore_check_when_fresh_pending(
@@ -168,6 +169,10 @@ def test_recommendation_restore_check_when_fresh_pending(
     )
     assert recommendation.recommended_action == MAIN_RECOVERY
     assert recommendation.recommended_action != MAIN_BACKUP
+    assert "Restore-check pending" in recommendation.explanation
+    assert "scytaledroid_core_prod" in recommendation.explanation
+    assert "obsidiandroid_core_prod" in recommendation.explanation
+    assert "scytaledroid_core_prod" in recommendation.recommended_label
 
 
 def test_recommendation_backup_when_stale(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -319,6 +324,58 @@ def test_backup_screen_next_pending_restore_check(
     assert "RESTORE-CHECK" in out
     assert "Next: Restore and disaster recovery [5]" in out
     assert "Pending: scytaledroid_core_prod, obsidiandroid_core_prod" in out
+    assert "Back [0]" in out and "Main Menu [5]" in out
+    assert "Do not run another backup" in out
     assert "Phase 3B package sealed — routine backups do not replace it." in out
     assert "Latest routine backups do not replace" not in out
     assert "[WARN] Restore-check required" not in out
+    assert "Guided backup session      recommended" not in out
+
+
+def test_backup_screen_recommends_guided_when_stale(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    from mercury.backup.interactive_menu import _render_backup_screen
+    from mercury.database.backup_planning import build_backup_plan
+
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.build_prod_dev_pairs",
+        lambda names: [],
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.latest_records_by_database",
+        lambda listing: [],
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.build_on_disk_backup_list",
+        lambda _root: object(),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.build_backup_status_report",
+        lambda live=False: SimpleNamespace(
+            entries=[_stale_entry("erebus_threat_intel_prod")],
+            warnings=[],
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.load_execution_policy",
+        lambda: SimpleNamespace(
+            backup_root=tmp_path / "backups",
+            backup_execution_allowed=lambda: True,
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu._storage_usage_fields",
+        lambda policy: {
+            "Backup root": str(tmp_path / "backups"),
+            "Backup writer": "Enabled",
+            "Status": "ok",
+        },
+    )
+    plan = build_backup_plan(["erebus_threat_intel_prod"])
+    _render_backup_screen(plan, show_title=True)
+    out = capsys.readouterr().out
+    assert "Next: Guided backup session [1]" in out
+    assert "Guided backup session      recommended" in out
