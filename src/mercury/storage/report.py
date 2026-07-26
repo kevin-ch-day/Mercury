@@ -45,7 +45,7 @@ class StorageRootStatus:
 
     def one_line(self) -> str:
         if self.is_offline_archive:
-            detail = "offline recovery archive (allowed after cutover)"
+            detail = "retired offline archive"
         elif self.validation.ok:
             # An inactive root is intentionally validated without requiring
             # writes, so configured policy alone cannot describe its mount.
@@ -96,6 +96,13 @@ class StorageStatusReport:
         }:
             if not self.primary.validation.ok:
                 return "storage validate / mount primary HDD"
+            try:
+                from mercury.storage.archive_retire import legacy_usb_is_phased_out
+
+                if legacy_usb_is_phased_out(config=self.config):
+                    return "storage status  # primary HDD writer active"
+            except Exception:
+                pass
             return "storage status  # HDD writer active; USB optional archive"
         if state == MigrationState.VERIFYING:
             return "storage migrate-verify --update-state"
@@ -135,6 +142,17 @@ class StorageStatusReport:
         short = next_step.split(" — ")[0].split("  #")[0]
         if short.startswith("storage "):
             short = short.removeprefix("storage ")
+        try:
+            from mercury.storage.archive_retire import legacy_usb_is_phased_out
+
+            if legacy_usb_is_phased_out(config=self.config):
+                archive = "retired/offline" if self.legacy.is_offline_archive else "retired"
+                return (
+                    f"writer={writer} · archive={archive} · "
+                    f"primary {primary_tag} {primary_detail}"
+                )
+        except Exception:
+            pass
         return (
             f"writer={writer} · migration={self.migration_state.value} · "
             f"primary {primary_tag} {primary_detail} · next={short}"
@@ -161,10 +179,23 @@ class StorageStatusReport:
             and self.legacy.role == StorageRootRole.LEGACY_ARCHIVE.value
             and self.legacy.physical_mount_mode == "read-write"
         ):
-            warnings.append(
-                "Legacy USB archive is physically mounted read-write — Mercury blocks its writes, "
-                "but other processes can still modify it. Remount it read-only before transport."
-            )
+            try:
+                from mercury.storage.archive_retire import legacy_usb_is_phased_out
+
+                phased = legacy_usb_is_phased_out(config=self.config)
+            except Exception:
+                phased = False
+            if phased:
+                warnings.append(
+                    "Retired USB archive is connected writable — informational only; "
+                    "it is not a Mercury writer. Use ./run.sh storage archive-remount-ro "
+                    "before transport if desired."
+                )
+            else:
+                warnings.append(
+                    "Legacy USB archive is physically mounted read-write — Mercury blocks its writes, "
+                    "but other processes can still modify it. Remount it read-only before transport."
+                )
         if self.config.usb_mount_deprecated_override:
             warnings.append(
                 "MERCURY_USB_MOUNT is set (deprecated). Prefer MERCURY_LEGACY_MOUNT / MERCURY_PRIMARY_MOUNT."

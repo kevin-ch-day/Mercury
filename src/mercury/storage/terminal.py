@@ -29,7 +29,7 @@ def print_storage_status(report: StorageStatusReport) -> None:
         kind = "ok" if root.validation.ok else "warn" if root.status_tag == "[--]" else "fail"
         active = " · ACTIVE WRITER" if root.is_active_writer else ""
         if root.is_offline_archive:
-            detail = "offline recovery archive (allowed after cutover)"
+            detail = "retired offline archive"
         elif root.validation.ok:
             if root.physical_mount_mode == "read-only":
                 detail = "mounted read-only (physical mount)"
@@ -66,7 +66,20 @@ def print_storage_status(report: StorageStatusReport) -> None:
             display_screen.write_status("warn", warning)
     display_screen.write_blank()
     display_screen.write_section("Operator notes")
-    if report.config.cutover_complete:
+    phased_out = False
+    try:
+        from mercury.storage.archive_retire import legacy_usb_is_phased_out
+
+        phased_out = legacy_usb_is_phased_out(config=report.config)
+    except Exception:
+        phased_out = False
+    if report.config.cutover_complete and phased_out:
+        display_screen.write_hint("Active storage: primary HDD writer. Legacy USB is retired offline archive.")
+        display_screen.write_hint("Archive inspection only: ./run.sh storage archive-status")
+        display_screen.write_hint("Archive receipt: ./run.sh storage archive-receipt")
+        display_screen.write_hint("Optional RO remount: ./run.sh storage archive-remount-ro")
+        display_screen.write_hint("Package status: ./run.sh migration package-status")
+    elif report.config.cutover_complete:
         display_screen.write_hint("Routine backups and migration artifacts write to the canonical HDD. USB is recovery archive only.")
         display_screen.write_hint("Package status: ./run.sh migration package-status")
         display_screen.write_hint("USB archive receipt: ./run.sh storage archive-receipt")

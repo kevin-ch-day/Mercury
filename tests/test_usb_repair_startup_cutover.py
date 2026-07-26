@@ -183,6 +183,10 @@ def test_doctor_repair_plan_suggests_usb_ro_remount_after_cutover(monkeypatch) -
         "mercury.core.storage_roots.load_storage_config",
         lambda warn_deprecated=True: cfg,
     )
+    monkeypatch.setattr(
+        "mercury.storage.archive_retire.legacy_usb_is_phased_out",
+        lambda **_kwargs: False,
+    )
     report = SimpleNamespace(
         repo_root=REPO_ROOT,
         current_user="secadmin",

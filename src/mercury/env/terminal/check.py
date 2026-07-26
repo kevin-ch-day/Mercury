@@ -76,15 +76,33 @@ def build_environment_check_fields(
         mariadb_fields["Connection"] = "not configured — run: ./run.sh config init"
     fields["MariaDB"] = mariadb_fields
 
-    backup_storage = {
+    backup_storage: dict[str, object] = {
         "Target": str(policy.backup_root.resolve()),
         "Mount": backup_root_mount_label(policy),
-        "USB detected": (
+    }
+    try:
+        from mercury.storage.archive_retire import build_legacy_archive_status, legacy_usb_is_phased_out
+        from mercury.core.storage_roots import load_storage_config
+
+        storage_cfg = load_storage_config(warn_deprecated=False)
+        if legacy_usb_is_phased_out(config=storage_cfg):
+            archive = build_legacy_archive_status(config=storage_cfg)
+            backup_storage["Active storage"] = (
+                f"{storage_cfg.primary.label} ({storage_cfg.primary.mount_path})"
+            )
+            backup_storage["Legacy archive"] = archive.operator_line
+        else:
+            backup_storage["USB detected"] = (
+                f"yes ({usb.mount_path})"
+                if usb.mercury_layout_present
+                else ("mounted, layout incomplete" if usb.mounted else "no")
+            )
+    except Exception:
+        backup_storage["USB detected"] = (
             f"yes ({usb.mount_path})"
             if usb.mercury_layout_present
             else ("mounted, layout incomplete" if usb.mounted else "no")
-        ),
-    }
+        )
     filesystem = backup_root_filesystem(policy.backup_root)
     if filesystem is not None:
         backup_storage["Filesystem"] = filesystem

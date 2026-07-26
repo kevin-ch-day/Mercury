@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from dataclasses import replace
+from unittest.mock import patch
 
 from mercury.core.storage_roles import MigrationState, StorageRootRole, StorageWriteRole
 from mercury.core.storage_validate import MountIdentity, MountValidationCode
@@ -135,7 +136,16 @@ def test_post_cutover_warns_when_legacy_archive_is_physically_read_write() -> No
     report = StorageStatusReport(config=config, primary=primary, legacy=legacy)
 
     assert legacy.physical_mount_mode == "read-write"
-    assert any("physically mounted read-write" in warning for warning in report.warning_lines())
+    with patch(
+        "mercury.storage.archive_retire.legacy_usb_is_phased_out",
+        return_value=False,
+    ):
+        assert any("physically mounted read-write" in warning for warning in report.warning_lines())
+    with patch(
+        "mercury.storage.archive_retire.legacy_usb_is_phased_out",
+        return_value=True,
+    ):
+        assert any("Retired USB archive is connected writable" in warning for warning in report.warning_lines())
 
 
 def test_post_cutover_offline_legacy_archive_is_neutral_status() -> None:
@@ -154,7 +164,7 @@ def test_post_cutover_offline_legacy_archive_is_neutral_status() -> None:
         is_active_writer=False, offline_archive_allowed=True,
     )
     assert legacy.status_tag == "[--]"
-    assert "offline recovery archive" in legacy.one_line()
+    assert "retired offline archive" in legacy.one_line()
 
 
 def test_terminal_prints_offline_archive_as_allowed(capsys) -> None:
@@ -182,8 +192,11 @@ def test_terminal_prints_offline_archive_as_allowed(capsys) -> None:
     )
     primary = replace(legacy, key="primary", role="canonical", label="HDD", is_active_writer=True, offline_archive_allowed=False,
                       validation=replace(validation, code=MountValidationCode.OK))
-    print_storage_status(StorageStatusReport(config=config, primary=primary, legacy=legacy))
-    assert "offline recovery archive (allowed after cutover)" in capsys.readouterr().out
+    with patch("mercury.storage.archive_retire.legacy_usb_is_phased_out", return_value=True):
+        print_storage_status(StorageStatusReport(config=config, primary=primary, legacy=legacy))
+    out = capsys.readouterr().out
+    assert "retired offline archive" in out
+    assert "archive-status" in out
 
 
 def test_print_storage_status_smoke(capsys, tmp_path: Path) -> None:

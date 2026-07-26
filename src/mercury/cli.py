@@ -311,7 +311,7 @@ def storage_archive_receipt_cmd(
 def storage_archive_retire_cmd(
     confirm: str = typer.Option("", "--confirm", help="Required phrase: RETIRE LEGACY USB."),
 ) -> None:
-    """Permanently classify the completed-cutover USB as an offline recovery archive."""
+    """Retire the legacy USB from normal runtime; keep offline archive provenance."""
     from mercury.storage.archive_retire import retire_legacy_usb_archive
 
     try:
@@ -319,6 +319,26 @@ def storage_archive_retire_cmd(
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     output.write(f"Legacy USB retired as offline recovery archive. Receipt: {receipt}")
+    output.write("Normal Mercury validation no longer depends on MERCURY_DATA_USB.")
+
+
+@storage_app.command("archive-status")
+def storage_archive_status_cmd() -> None:
+    """Show retired USB archive identity (informational; not a readiness check)."""
+    from mercury.storage.archive_retire import build_legacy_archive_status
+
+    status = build_legacy_archive_status()
+    output.heading("Legacy USB archive")
+    output.field("Policy", "retired offline archive" if status.phased_out else "not fully retired")
+    output.field("Label", status.label)
+    output.field("UUID", status.uuid)
+    output.field("Mount path", status.mount_path)
+    output.field("State", status.operator_line)
+    output.field("Connected", "yes" if status.connected else "no")
+    output.field("Mount mode", status.mount_mode)
+    if status.retirement_receipt:
+        output.field("Retirement receipt", str(status.retirement_receipt))
+    output.write("This status does not change readiness, recommendations, or backup eligibility.")
 
 
 @storage_app.command("archive-remount-ro")

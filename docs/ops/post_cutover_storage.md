@@ -14,29 +14,38 @@ identities. They must not be compared as though the USB remains the writer.
 `./run.sh migration package-status` uses the HDD generation after
 `migration_state=cutover_complete`; normal HDD changes are not USB/HDD drift.
 
-## Legacy USB — retired offline archive
+## Legacy USB — fully phased out of normal operation
 
 The USB (`MERCURY_DATA_USB`, UUID `e4f0c7fb-132e-4867-9c16-5e4749f5c43a`) is a
-**retired offline recovery archive**, not an ongoing operational dependency.
+**retired offline recovery archive**. It is **not** a normal Mercury dependency.
 
-Governed host-maintenance reconciliation records decision
-`LEGACY_USB_RETIRED_ARCHIVE_ONLY`: the primary HDD (`MERCURY_DATA_V2`) is the
-only Mercury writer. Mercury policy sets USB `writable=false` /
-`legacy_archive`. That is **not** the same as an OS read-only mount—confirm
-physical mount mode before transport and remount RO when moving drives.
+After governed retirement (`LEGACY_USB_RETIRED_ARCHIVE_ONLY`):
 
-Record immutable archive evidence on the HDD (never onto USB) with:
+| Concern | Behavior |
+|---------|----------|
+| Active writer | `MERCURY_DATA_V2` only |
+| Backup / restore / migration readiness | Do not require USB |
+| Doctor / dashboard / env check | No USB activation, mount, or writer repair |
+| USB absent | No warning, failure, or degraded status |
+| USB present | Informational archive detail only |
+| Writable USB mount | Warns; never becomes a writer |
+
+Record and inspect archive evidence with explicit commands only:
 
 ```bash
+./run.sh storage archive-retire --confirm 'RETIRE LEGACY USB'
+./run.sh storage archive-status
 ./run.sh storage archive-receipt
-./run.sh storage archive-receipt --execute
+./run.sh storage archive-remount-ro
 ```
 
-The receipt under `.mercury_control/` contains USB identity, durable
-relative-path manifest and SHA-256, generation, and mount mode. It is write-once
-unless an explicit administrative override is used. Physical USB removal or
-erasure remains an operator decision; it is not authorized by recording a
-receipt. Do not reactivate USB as a Mercury writer.
+`archive-retire` is idempotent: it verifies primary health, cutover completion,
+zero-mismatch generation evidence, and the retirement receipt; applies
+`legacy_runtime_dependency = "none"` in local runtime policy; and never modifies
+USB contents or mounts.
+
+Physical USB removal, power-off, or later wipe/reuse remain operator decisions.
+Mercury does not reactivate USB as a writer from normal workflows.
 
 ## Dirty worktrees
 
@@ -57,11 +66,11 @@ packages separately before validating the destination workstation.
 
 ## Safe removal criteria
 
-Retain the retired USB offline archive until the archive receipt is recorded,
-the HDD is readable on the destination, the active HDD package has a fresh
-backup of the required seven schemas, and recovery exercises are accepted.
-Mercury does not perform physical retirement, USB formatting, or automatic
-rollback.
+Retain the retired USB offline until the archive receipt and retirement receipt
+are recorded, the HDD is readable on the destination, the active HDD package has
+a fresh backup of the required seven schemas, and recovery exercises are
+accepted. Mercury does not perform physical retirement, USB formatting, or
+automatic rollback.
 
 Future rollback must use a config lock and journal, validate all five writer
 paths plus role/state, restore the saved configuration if validation fails, and

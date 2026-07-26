@@ -157,6 +157,14 @@ def build_repair_plan(report: DoctorReport) -> list[tuple[str, list[str]]]:
 
     from mercury.repair.usb import USB_REPAIR_COMMAND
 
+    usb_phased_out = False
+    try:
+        from mercury.storage.archive_retire import legacy_usb_is_phased_out
+
+        usb_phased_out = legacy_usb_is_phased_out()
+    except Exception:
+        usb_phased_out = False
+
     if config.missing_labels:
         sections.append(("Create local config", ["./run.sh config init"]))
 
@@ -244,6 +252,7 @@ def build_repair_plan(report: DoctorReport) -> list[tuple[str, list[str]]]:
             and legacy.role == "legacy_archive"
             and legacy.validation.identity.is_mount
             and legacy.physical_mount_mode == "read-write"
+            and not usb_phased_out
         ):
             sections.append(
                 (
@@ -258,10 +267,25 @@ def build_repair_plan(report: DoctorReport) -> list[tuple[str, list[str]]]:
                     ],
                 )
             )
+        elif (
+            usb_phased_out
+            and legacy.validation.identity.is_mount
+            and legacy.physical_mount_mode == "read-write"
+        ):
+            sections.append(
+                (
+                    "Archive detail only: retired USB is connected writable (not a writer)",
+                    [
+                        "./run.sh storage archive-status",
+                        "./run.sh storage archive-remount-ro --execute --confirm 'REMOUNT ARCHIVE RO'",
+                        "This does not affect readiness, backup eligibility, or Doctor blockers.",
+                    ],
+                )
+            )
     except Exception:
         pass
 
-    if not usb.mounted:
+    if not usb.mounted and not usb_phased_out:
         cutover_done = False
         try:
             from mercury.core.storage_roots import load_storage_config
@@ -304,7 +328,7 @@ def build_repair_plan(report: DoctorReport) -> list[tuple[str, list[str]]]:
                 )
             )
 
-    if not usb.mercury_layout_present:
+    if not usb.mercury_layout_present and not usb_phased_out:
         cutover_done_layout = False
         try:
             from mercury.core.storage_roots import load_storage_config
@@ -326,7 +350,11 @@ def build_repair_plan(report: DoctorReport) -> list[tuple[str, list[str]]]:
                     ],
                 )
             )
-    elif usb.mercury_layout_present and report.policy.config_path is None:
+    elif (
+        not usb_phased_out
+        and usb.mercury_layout_present
+        and report.policy.config_path is None
+    ):
         sections.append(
             (
                 "Operator storage mounted — initialize Mercury config",
@@ -693,7 +721,19 @@ def _collect_warnings(env, report: DoctorReport) -> list[str]:
                 + ") — run: ./run.sh config repair-local"
             )
     usb = getattr(env, "usb", None)
-    if usb is not None and not usb.mounted and getattr(usb, "device_attached", False):
+    usb_phased_out = False
+    try:
+        from mercury.storage.archive_retire import legacy_usb_is_phased_out
+
+        usb_phased_out = legacy_usb_is_phased_out()
+    except Exception:
+        usb_phased_out = False
+    if (
+        usb is not None
+        and not usb.mounted
+        and getattr(usb, "device_attached", False)
+        and not usb_phased_out
+    ):
         command = getattr(usb, "quick_mount_command", None)
         if command:
             warnings.append(f"USB drive attached but not mounted — run: {command}")

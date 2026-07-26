@@ -39,7 +39,7 @@ For each operation, file one row (or linked receipt) with:
 |----|------|---------|----------------|
 | A-DASH-001 | Main menu status | Dashboard expected `latest_verified_backup_at` / `verified_source_count` that `StateSummary` did not populate. **Fixed** in `src/mercury/state/summary.py` (ledger-backed). Live compact line now `Verified · <timestamp>`. | **accepted** |
 | A-3-02-GAP | Restore-check / development | `restore-check` refuses configured development schemas (`not an approved production backup source`) and does not honor development artifact verification. Conflicts with mandatory seven-schema platform scope. | **gap** |
-| A-2-03-USB | Storage | USB is policy archive-only but physically RW without sudo remount. Doctor/storage warn correctly; transport remount still operator-gated. | **blocked** (sudo) |
+| A-2-03-USB | Storage | Legacy USB fully phased out of normal operation after archive-retire. Absence is non-blocking; presence is archive-status only. Physical RO remount remains optional operator transport step. | **accepted** (policy) |
 | A-MSG-DEV | Backup terminal copy | Full-backup result still labels development lane “optional recovery; not default handoff” while platform docs require the three `_dev` schemas for recovery readiness. Packaging boundary vs local recovery wording needs alignment. | **gap** (wording) |
 
 ## Authority pins (Fedora source host)
@@ -86,7 +86,7 @@ Legacy UUID: `e4f0c7fb-132e-4867-9c16-5e4749f5c43a` (`MERCURY_DATA_USB`).
 |----|------|----------------|---------|---------|
 | A-2-01 | Connected / unmounted / RO / RW detection | Each state labeled truthfully | Mount/reconnect only when requested | Wrong UUID refused |
 | A-2-02 | Active writer validation | `primary` after restore-writes | Writes gated until `RESTORE MERCURY WRITES` | Detached/disabled blocks backup |
-| A-2-03 | Legacy archive behavior | USB never active writer | Remount RO path documented/executed | RW USB warns before transport |
+| A-2-03 | Legacy archive behavior | USB never active writer; normal screens show retired/offline | Archive commands only; remount RO optional | RW USB warns; never writer |
 | A-2-04 | SMART evidence | Preview | Record on V2 only | USB not written |
 | A-2-05 | Safe detach / reconnect | Pre-detach checklist | Detach → reconnect → restore writes | No USB reactivation |
 
@@ -149,7 +149,7 @@ Distro: Fedora 43 (`ID=fedora`). Host: Dell Inspiron 15 7000 Gaming. Writer: `ME
 | A-1-01 | `backup full --include-dev` | Dry-run 7 planned | Prior run `20260726T180739Z_full_backup` PASS | Receipt + sha256 on V2 | **accepted** |
 | A-1-02 | repeat `backup full --include-dev` | Dashboard shows verified timestamp | `20260726T183046Z_full_backup` PASS; new exact IDs | `/mnt/MERCURY_DATA_V2/.mercury_control/full_backup_runs/20260726T183046Z_full_backup.json` sha256 `96245dba…ad9b39` | **accepted** |
 | A-1-03 / A-1-05 | `repo bundle` (prior consolidation) | Dirty Mercury + Obsidian reported | Bundles verified; dirty not labeled clean | Manifest `repo_transfer_manifest_20260726_181227.json` | **accepted** |
-| A-1-04 | storage + backup paths | USB policy archive-only | Artifacts only under V2 | Doctor warns physical USB RW | **accepted** (policy) |
+| A-1-04 | storage + backup paths | USB retired offline archive | Artifacts only under V2 | No USB writer dependency | **accepted** (policy) |
 | A-4-01 / A-4-02 / A-4-03 | `backup full-receipts` + `backup verify --backup-id` | Governed vs invalid separated | All 7 new IDs verify PASS | Receipt plan shows 4 governed PASS including today’s two runs | **accepted** |
 | A-4-04 | main-menu last-backup line | — | Truthful after A-DASH-001 fix | — | **accepted** |
 | A-3-01 | `restore-check run --execute` erebus prod | Plan allowed | PASS; temp DB dropped | `erebus_threat_intel_prod-full-20260726_183103_691` | **accepted** |
@@ -157,9 +157,9 @@ Distro: Fedora 43 (`ID=fedora`). Host: Dell Inspiron 15 7000 Gaming. Writer: `ME
 | A-3-03 | restore-check android_permission_intel | Plan allowed | PASS; temp DB dropped | Cross-schema with Erebus prod drill | **accepted** |
 | A-3-04 | bogus backup-id plan | `allowed: False` | — | Refuses closed | **accepted** |
 | A-2-02 | write preflight / reconnect | Writes restored earlier | Backup allowed when mounted+restored | — | **accepted** |
-| A-2-03 | USB archive | Policy RO; physical RW | Remount RO needs sudo | `archive-remount-ro` preview OK | **blocked** |
+| A-2-03 | USB archive phase-out | Env/Doctor/storage show retired offline; no USB detected requirement | `archive-retire` idempotent; `archive-status` identifies UUID `e4f0c7fb-…` | Doctor does not suggest USB activation | **accepted** |
 | A-2-05 | `storage detach status/preview` | Correctly **refuses** while writes enabled | Full detach/reconnect not executed this pass | Preflight `DETACH_BLOCKED_*` / writes not disabled | **blocked** (deferred; gates work) |
-| A-6-01 / A-6-03 | `doctor` | 4/4 verified prod; USB warn; no USB-as-writer reactivation | — | Actionable blockers: none | **accepted** |
+| A-6-01 / A-6-03 | `doctor` | 4/4 verified prod; no USB-writer / USB-mount repair when phased out | — | Actionable blockers: none | **accepted** |
 | A-7-01 | `mercury --help` inventory | Top-level commands listed | Label taxonomy (supported/experimental/obsolete) not yet formalized | — | **gap** (inventory incomplete) |
 | A-7-02 | detach/sync gates | Destructive paths gated | No workers enabled | — | **accepted** (spot) |
 
@@ -178,7 +178,7 @@ Distro: Fedora 43 (`ID=fedora`). Host: Dell Inspiron 15 7000 Gaming. Writer: `ME
 **Not passed yet.** Open required gaps/blockers:
 
 1. Development restore-check support (A-3-02) — blocks exit criterion #3.
-2. USB physical RO + full detach/reconnect cycle (A-2-03 / A-2-05).
+2. Full HDD detach/reconnect cycle (A-2-05) — USB is already phased out of normal operation (A-2-03 / A-6-03 **accepted**).
 3. Optional wording: development “optional” terminal copy (A-MSG-DEV).
 4. Advanced-command taxonomy labels (A-7-01).
 

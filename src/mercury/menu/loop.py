@@ -40,10 +40,22 @@ def handle_menu_choice(choice: str) -> MenuResult:
             if hint:
                 menu_display.write_status("warn", hint)
             else:
-                menu_display.write_summary(
-                    "HDD writer is ready. USB repair is optional archive maintenance "
-                    "(./run.sh repair-usb)."
-                )
+                try:
+                    from mercury.storage.archive_retire import legacy_usb_is_phased_out
+
+                    phased = legacy_usb_is_phased_out()
+                except Exception:
+                    phased = False
+                if phased:
+                    menu_display.write_summary(
+                        "HDD writer is ready. Legacy USB is retired — "
+                        "use ./run.sh storage archive-status for archive inspection only."
+                    )
+                else:
+                    menu_display.write_summary(
+                        "HDD writer is ready. USB repair is optional archive maintenance "
+                        "(./run.sh repair-usb)."
+                    )
             log_menu_action(choice=normalized, title="Primary mount hint", result="continue")
             return "continue"
         run_usb_repair_flow(interactive=True, default_yes=True)
