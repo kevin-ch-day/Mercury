@@ -325,7 +325,6 @@ def test_restore_check_run_cli_exits_nonzero_on_post_import_verification_failure
     assert result.exit_code == 1
     assert "verification failed" in result.stdout.lower()
 
-# merged from test_restore_menu.py
 def test_run_restore_menu_non_interactive(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

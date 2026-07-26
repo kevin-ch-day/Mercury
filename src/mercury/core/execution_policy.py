@@ -13,18 +13,19 @@ from mercury.core.paths import REPO_ROOT, resolve_local_config
 from mercury.core.platform import detect_platform
 from mercury.core.safety import DRY_RUN_ONLY, LIVE_ACTIONS_ENABLED
 from mercury.core.usb_mount import (
-    DEFAULT_USB_MOUNT,
     resolve_operator_mount,
     storage_mount_label,
     unmounted_storage_path_blocker,
     usb_mount_is_active,
 )
+from mercury.core.storage_roles import DEFAULT_PRIMARY_MOUNT
 
 ENV_DRY_RUN = "MERCURY_DRY_RUN"
 ENV_LIVE_ACTIONS = "MERCURY_LIVE_ACTIONS"
 ENV_BACKUP_ROOT = "MERCURY_BACKUP_ROOT"
 ENV_ALLOW_UNSAFE_BACKUP_ROOT = "MERCURY_ALLOW_UNSAFE_BACKUP_ROOT"
-REQUIRED_BACKUP_MOUNT = DEFAULT_USB_MOUNT
+# Active-writer mount default after cutover (legacy USB is DEFAULT_USB_MOUNT).
+REQUIRED_BACKUP_MOUNT = Path(DEFAULT_PRIMARY_MOUNT)
 MIN_FREE_BYTES = 20 * 1024 * 1024 * 1024
 
 
@@ -113,7 +114,7 @@ class ExecutionPolicy:
         if not self.backup_root_is_under_operator_mount():
             return "unsafe path"
         if not self.operator_mount_is_active():
-            return "usb not mounted"
+            return "operator mount not mounted"
         free_bytes = self.backup_root_free_bytes()
         if free_bytes is None:
             return "free space unknown"
@@ -122,7 +123,7 @@ class ExecutionPolicy:
         return "operator-mounted"
 
     def backup_environment_refusal(self) -> str | None:
-        """Environment checks for backup writes (platform, USB, config)."""
+        """Environment checks for backup writes (platform, operator mount, config)."""
         try:
             from mercury.core.storage_roots import (
                 assess_routine_write_permission,

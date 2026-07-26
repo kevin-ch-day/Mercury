@@ -162,7 +162,6 @@ def test_backup_plan_uses_one_timestamp_per_render(
     assert all(date == "2026-05-30" for date, _ in seen)
     assert all(timestamp == "20260530_120000_123" for _, timestamp in seen)
 
-# merged from test_backup_batch_terminal.py
 def test_print_backup_batch_result_menu_shows_result_table(capsys) -> None:
     batch = BackupBatchResult(
         backup_kind="full",

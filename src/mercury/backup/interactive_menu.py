@@ -66,7 +66,7 @@ def _backup_target_label(policy) -> str:
     state = policy.backup_root_state()
     if backup_root_state_is_ready(state):
         return "operator storage mounted"
-    if state == "usb not mounted":
+    if state == "operator mount not mounted":
         return "operator storage not mounted"
     if state == "repo-local fallback":
         return "repo-local fallback"
@@ -119,7 +119,7 @@ def _storage_usage_fields(policy) -> dict[str, str]:
         storage_label = "mounted" if root.exists() else "not mounted"
         if backup_root_state_is_ready(state) and root.exists():
             storage_label = "mounted and validated"
-        elif state == "usb not mounted":
+        elif state == "operator mount not mounted":
             storage_label = "operator storage not mounted"
         fields: dict[str, str] = {
             "Backup root": str(root),
@@ -153,7 +153,7 @@ def _storage_usage_fields(policy) -> dict[str, str]:
             storage = load_storage_config(warn_deprecated=False)
             if storage.cutover_complete and storage.active_write_role == StorageWriteRole.PRIMARY:
                 # USB archive is optional after cutover — only hint when backup root itself is down.
-                if state in {"usb not mounted", "missing path"}:
+                if state in {"operator mount not mounted", "missing path"}:
                     fields["Mount fix"] = "./run.sh storage validate"
             elif usb.quick_mount_command:
                 from mercury.repair.usb import USB_REPAIR_COMMAND
@@ -172,7 +172,7 @@ def _storage_usage_fields(policy) -> dict[str, str]:
         fields["Usage"] = "n/a"
         if state == "missing path":
             fields["Status"] = "path missing — mount operator storage first"
-        elif state == "usb not mounted":
+        elif state == "operator mount not mounted":
             fields["Status"] = "operator storage not mounted"
         else:
             fields["Status"] = state.replace("-", " ")

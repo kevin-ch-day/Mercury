@@ -66,4 +66,4 @@ mercury backup verify --db erebus_threat_intel_prod --update-manifest
 Backup writes require a safe Fedora/Windows + operator-storage backup environment (see `database_backup_policy.md`). Use `--dry-run` to preview only.
 
 Sync, deploy, and restore destructive actions additionally require `[mercury] dry_run = false` and `live_actions_enabled = true` in `config/local.toml`.
-For the first live milestone, Mercury also requires a mounted operator-storage root (primary default `/mnt/MERCURY_DATA_V2/mercury_backups`); repo-local artifacts do not count as production protection or sync readiness in live/operator mode.
+Mercury also requires a mounted operator-storage root (primary default `/mnt/MERCURY_DATA_V2/mercury_backups`); repo-local artifacts do not count as production protection or sync readiness in live/operator mode.

@@ -22,7 +22,8 @@ from mercury.core.environment_status import (
     mariadb_dashboard_label,
     resolve_dashboard_blocker,
 )
-from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy, REQUIRED_BACKUP_MOUNT
+from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
+from mercury.core.usb_mount import DEFAULT_USB_MOUNT
 from mercury.core.path_permissions import PathPermissionCheck, check_path_permission
 from mercury.core.paths import REPO_ROOT
 from mercury.core.safety import MODE_SEED
@@ -65,7 +66,6 @@ def _env_result() -> EnvProbeResult:
         dry_run_only=True,
     )
 
-# from test_environment_status.py
 def test_assess_config_setup_reflects_missing_local_files(monkeypatch, tmp_path: Path) -> None:
     config_dir = tmp_path / "config"
     config_dir.mkdir()
@@ -77,7 +77,6 @@ def test_assess_config_setup_reflects_missing_local_files(monkeypatch, tmp_path:
     assert status.local_toml_present is False
     assert status.missing_labels == ("local.toml", "databases.toml", "repos.toml")
 
-# from test_environment_status.py
 def test_discover_usb_target_detects_mounted_layout(monkeypatch, tmp_path: Path) -> None:
     mount = tmp_path / "mnt" / "MERCURY_DATA_USB"
     mount.mkdir(parents=True)
@@ -90,7 +89,6 @@ def test_discover_usb_target_detects_mounted_layout(monkeypatch, tmp_path: Path)
     assert usb.mercury_layout_present is True
     assert usb.suggested_backup_root == mount / "mercury_backups"
 
-# from test_environment_status.py
 def test_backup_target_label_calls_out_usb_when_config_missing(monkeypatch, tmp_path: Path) -> None:
     repo_backups = tmp_path / "repo" / "backups"
     repo_backups.mkdir(parents=True)
@@ -111,7 +109,6 @@ def test_backup_target_label_calls_out_usb_when_config_missing(monkeypatch, tmp_
     label = backup_target_dashboard_label(policy, usb)
     assert "not configured" in label.lower() or "operator storage detected" in label.lower() or "usb detected" in label.lower()
 
-# from test_environment_status.py
 def test_backup_root_unsafe_reason_explains_missing_local_config(tmp_path: Path) -> None:
     policy = ExecutionPolicy(
         dry_run=True,
@@ -120,11 +117,10 @@ def test_backup_root_unsafe_reason_explains_missing_local_config(tmp_path: Path)
         config_path=None,
     )
     config = ConfigSetupStatus(False, False, False)
-    usb = UsbDiscovery(REQUIRED_BACKUP_MOUNT, False, False, None)
+    usb = UsbDiscovery(DEFAULT_USB_MOUNT, False, False, None)
     reason = backup_root_unsafe_reason(policy, config=config, usb=usb)
     assert "local config missing" in reason or "setup required" in reason
 
-# from test_environment_status.py
 def test_mariadb_dashboard_label_distinguishes_config_missing_from_service_down() -> None:
     active_no_config = SimpleNamespace(
         connection_works=None,
@@ -145,7 +141,6 @@ def test_mariadb_dashboard_label_distinguishes_config_missing_from_service_down(
     assert "config missing" in mariadb_dashboard_label(active_no_config)
     assert "service stopped" in mariadb_dashboard_label(inactive)
 
-# from test_environment_status.py
 def test_build_environment_status_prioritizes_setup_blocker(monkeypatch, tmp_path: Path) -> None:
     mount = tmp_path / "usb"
     mount.mkdir()
@@ -186,7 +181,6 @@ def test_build_environment_status_prioritizes_setup_blocker(monkeypatch, tmp_pat
     assert env.setup_hints
     assert "config init" in env.setup_hints[0]
 
-# from test_environment_status.py
 def test_dashboard_rows_show_first_run_messaging(monkeypatch, tmp_path: Path) -> None:
     repo_backups = tmp_path / "backups"
     repo_backups.mkdir()
@@ -237,7 +231,6 @@ def test_dashboard_rows_show_first_run_messaging(monkeypatch, tmp_path: Path) ->
     assert "Local config not initialized" in text
     assert "doctor --repair-plan" in text or "config init" in text
 
-# from test_environment_status.py
 def test_resolve_dashboard_blocker_prefers_setup_over_backup_gap() -> None:
     blocker = resolve_dashboard_blocker(
         setup_blocker="Local config not initialized — run: ./run.sh config init.",
@@ -248,7 +241,6 @@ def test_resolve_dashboard_blocker_prefers_setup_over_backup_gap() -> None:
     )
     assert blocker.startswith("Local config not initialized")
 
-# from test_doctor.py
 def test_config_init_repo_local_when_usb_absent(tmp_path: Path) -> None:
     text = (
         'backup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"\n'
@@ -258,7 +250,6 @@ def test_config_init_repo_local_when_usb_absent(tmp_path: Path) -> None:
     assert "/mnt/MERCURY_DATA_USB" not in out
     assert "backups" in out
 
-# from test_doctor.py
 def test_root_owned_log_file_blocks_directory(tmp_path: Path) -> None:
     logs = tmp_path / "mercury_logs"
     logs.mkdir()
@@ -277,7 +268,6 @@ def test_root_owned_log_file_blocks_directory(tmp_path: Path) -> None:
     finally:
         os.chown(log_file, os.geteuid(), os.getegid())
 
-# from test_doctor.py
 def test_fresh_rebuild_missing_dbs_are_warnings_not_blockers() -> None:
     from mercury.env.doctor import DoctorReport, _collect_blockers, _collect_warnings
 
@@ -285,11 +275,11 @@ def test_fresh_rebuild_missing_dbs_are_warnings_not_blockers() -> None:
         primary_setup_blocker=None,
         repairable_blockers=(),
         config=ConfigSetupStatus(True, True, True),
-        usb=UsbDiscovery(REQUIRED_BACKUP_MOUNT, True, True, REQUIRED_BACKUP_MOUNT / "mercury_backups"),
+        usb=UsbDiscovery(DEFAULT_USB_MOUNT, True, True, DEFAULT_USB_MOUNT / "mercury_backups"),
         policy=ExecutionPolicy(
             dry_run=True,
             live_actions_enabled=False,
-            backup_root=REQUIRED_BACKUP_MOUNT / "mercury_backups",
+            backup_root=DEFAULT_USB_MOUNT / "mercury_backups",
             config_path=Path("/tmp/local.toml"),
         ),
         mariadb=_mariadb_stub(config_present=True, configured_user="linuxadmin", connection_works=True),
@@ -315,7 +305,6 @@ def test_fresh_rebuild_missing_dbs_are_warnings_not_blockers() -> None:
     assert not any("missing on server" in item for item in blockers)
     assert any("Fresh rebuild" in item for item in warnings)
 
-# from test_doctor.py
 def test_doctor_repo_warnings_use_effective_paths(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -345,7 +334,7 @@ def test_doctor_repo_warnings_use_effective_paths(
         policy=ExecutionPolicy(
             dry_run=True,
             live_actions_enabled=False,
-            backup_root=REQUIRED_BACKUP_MOUNT / "mercury_backups",
+            backup_root=DEFAULT_USB_MOUNT / "mercury_backups",
             config_path=Path("/tmp/local.toml"),
         ),
         mariadb=_mariadb_stub(config_present=True, configured_user="linuxadmin", connection_works=True),
@@ -356,7 +345,7 @@ def test_doctor_repo_warnings_use_effective_paths(
         python_version="3.14",
         platform_label="Fedora",
         config=env.config,
-        usb=UsbDiscovery(REQUIRED_BACKUP_MOUNT, True, True, REQUIRED_BACKUP_MOUNT / "mercury_backups"),
+        usb=UsbDiscovery(DEFAULT_USB_MOUNT, True, True, DEFAULT_USB_MOUNT / "mercury_backups"),
         mariadb=env.mariadb,
         policy=env.policy,
         source_databases=[],
@@ -369,7 +358,6 @@ def test_doctor_repo_warnings_use_effective_paths(
     assert any("Missing Repo" in item for item in warnings)
 
 
-# from test_doctor.py
 def test_doctor_repair_plan_includes_web_directory_prep(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -398,12 +386,12 @@ def test_doctor_repair_plan_includes_web_directory_prep(
         python_version="3.14",
         platform_label="Fedora",
         config=ConfigSetupStatus(True, True, True),
-        usb=UsbDiscovery(REQUIRED_BACKUP_MOUNT, True, True, REQUIRED_BACKUP_MOUNT / "mercury_backups"),
+        usb=UsbDiscovery(DEFAULT_USB_MOUNT, True, True, DEFAULT_USB_MOUNT / "mercury_backups"),
         mariadb=_mariadb_stub(config_present=True, configured_user="linuxadmin", connection_works=True),
         policy=ExecutionPolicy(
             dry_run=True,
             live_actions_enabled=False,
-            backup_root=REQUIRED_BACKUP_MOUNT / "mercury_backups",
+            backup_root=DEFAULT_USB_MOUNT / "mercury_backups",
             config_path=tmp_path / "local.toml",
         ),
         permission_checks=[],
@@ -425,7 +413,6 @@ def test_doctor_repair_plan_includes_web_directory_prep(
     assert "sudo chown linuxadmin:linuxadmin /var/www/html" in text
 
 
-# from test_doctor.py
 def test_root_owned_usb_dir_needs_repair(tmp_path: Path) -> None:
     mount = tmp_path / "usb"
     logs = mount / "mercury_logs"
@@ -443,7 +430,6 @@ def test_root_owned_usb_dir_needs_repair(tmp_path: Path) -> None:
     finally:
         os.chown(logs, os.geteuid(), os.getegid())
 
-# from test_doctor.py
 def test_doctor_repair_plan_includes_chown_commands(tmp_path: Path, monkeypatch) -> None:
     from mercury.core.storage_roots import default_storage_config
 
@@ -507,7 +493,6 @@ def test_doctor_repair_plan_includes_chown_commands(tmp_path: Path, monkeypatch)
     assert "chown" in text
     assert "mercury_logs" in text
 
-# from test_doctor.py
 def test_doctor_repair_plan_mariadb_root_auth() -> None:
     report = SimpleNamespace(
         repo_root=REPO_ROOT,
@@ -515,7 +500,7 @@ def test_doctor_repair_plan_mariadb_root_auth() -> None:
         python_version="3.14",
         platform_label="Fedora",
         config=ConfigSetupStatus(True, True, True),
-        usb=UsbDiscovery(REQUIRED_BACKUP_MOUNT, True, True, REQUIRED_BACKUP_MOUNT / "mercury_backups"),
+        usb=UsbDiscovery(DEFAULT_USB_MOUNT, True, True, DEFAULT_USB_MOUNT / "mercury_backups"),
         mariadb=_mariadb_stub(
             config_present=True,
             configured_user="root",
@@ -525,7 +510,7 @@ def test_doctor_repair_plan_mariadb_root_auth() -> None:
         policy=ExecutionPolicy(
             dry_run=True,
             live_actions_enabled=False,
-            backup_root=REQUIRED_BACKUP_MOUNT / "mercury_backups",
+            backup_root=DEFAULT_USB_MOUNT / "mercury_backups",
             config_path=Path("/tmp/local.toml"),
         ),
         permission_checks=[],
@@ -543,7 +528,6 @@ def test_doctor_repair_plan_mariadb_root_auth() -> None:
     assert "linuxadmin" in text
     assert "unix_socket" in text
 
-# from test_doctor.py
 def test_doctor_repair_plan_usb_not_mounted(monkeypatch) -> None:
     """Pre-cutover: USB repair still prepares mercury_* layout (ignore live local.toml)."""
     from mercury.core.storage_roles import MigrationState, StorageWriteRole
@@ -587,7 +571,7 @@ def test_doctor_repair_plan_usb_not_mounted(monkeypatch) -> None:
         python_version="3.14",
         platform_label="Fedora",
         config=ConfigSetupStatus(False, False, False),
-        usb=UsbDiscovery(REQUIRED_BACKUP_MOUNT, False, False, None),
+        usb=UsbDiscovery(DEFAULT_USB_MOUNT, False, False, None),
         mariadb=_mariadb_stub(),
         policy=ExecutionPolicy(
             dry_run=True,
@@ -650,7 +634,7 @@ def test_doctor_repair_plan_usb_optional_after_cutover(monkeypatch) -> None:
         python_version="3.14",
         platform_label="Fedora",
         config=ConfigSetupStatus(False, False, False),
-        usb=UsbDiscovery(REQUIRED_BACKUP_MOUNT, False, False, None),
+        usb=UsbDiscovery(DEFAULT_USB_MOUNT, False, False, None),
         mariadb=_mariadb_stub(),
         policy=ExecutionPolicy(
             dry_run=True,
@@ -674,7 +658,6 @@ def test_doctor_repair_plan_usb_optional_after_cutover(monkeypatch) -> None:
     assert "mercury_backups" not in text
     assert "config init" in text
 
-# from test_doctor.py
 def test_repo_local_never_live_safe() -> None:
     policy = ExecutionPolicy(
         dry_run=True,
@@ -684,7 +667,6 @@ def test_repo_local_never_live_safe() -> None:
     )
     assert policy.live_execution_allowed() is False
 
-# from test_config_init.py
 def test_init_creates_files(tmp_path: Path, monkeypatch) -> None:
     config_dir = tmp_path / "config"
     config_dir.mkdir()
@@ -716,7 +698,6 @@ def test_init_creates_files(tmp_path: Path, monkeypatch) -> None:
     assert local_local.exists()
     assert any("created" in r for r in results)
 
-# from test_config_init.py
 def test_init_customizes_mariadb_user_for_os_user(tmp_path: Path, monkeypatch) -> None:
     config_dir = tmp_path / "config"
     config_dir.mkdir()
@@ -787,7 +768,6 @@ def test_init_prefers_mounted_canonical_hdd_over_legacy_usb(tmp_path: Path, monk
     assert str(tmp_path / "hdd" / "mercury_backups") in text
     assert any("Canonical HDD layout detected" in line for line in results)
 
-# from test_env_probe.py
 def test_probe_returns_expected_fields() -> None:
     result = probe_environment()
     policy = load_execution_policy()
@@ -799,19 +779,16 @@ def test_probe_returns_expected_fields() -> None:
     assert result.mode == expected_mode
     assert result.dry_run_only is (not policy.backup_execution_allowed())
 
-# from test_env_probe.py
 def test_probe_config_status_keys() -> None:
     result = probe_environment()
     assert "databases.toml" in result.config_status
     assert "local.toml" in result.config_status
     assert "platform_support" in result.config_status
 
-# from test_env_probe.py
 def test_probe_notes_non_empty() -> None:
     result = probe_environment()
     assert len(result.notes) >= 1
 
-# from test_env_display.py
 def test_connection_label_socket() -> None:
     probe = MariaDbServerProbe(
         host="127.0.0.1",
@@ -823,7 +800,6 @@ def test_connection_label_socket() -> None:
     )
     assert connection_label(probe) == "root@localhost"
 
-# from test_env_display.py
 def test_build_environment_check_fields_connected(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         "mercury.core.execution_policy.load_execution_policy",
@@ -856,7 +832,6 @@ def test_build_environment_check_fields_connected(monkeypatch, tmp_path: Path) -
     assert "Database Scope" not in fields
     assert "Recommended action" not in fields
 
-# from test_env_display.py
 def test_build_environment_check_fields_not_configured(monkeypatch, tmp_path: Path) -> None:
     config_dir = tmp_path / "config"
     config_dir.mkdir()
@@ -893,7 +868,6 @@ def test_build_environment_check_fields_not_configured(monkeypatch, tmp_path: Pa
     assert "not configured" in str(fields["MariaDB"]["Connection"])
     assert fields["Local Config"]["local.toml"] == "missing"
 
-# from test_env_display.py
 def test_build_environment_check_fields_live_sync_mentions_sync_dev(
     monkeypatch,
 ) -> None:
@@ -918,7 +892,6 @@ def test_build_environment_check_fields_live_sync_mentions_sync_dev(
     assert fields["Execution Safety"]["Sync/deploy/restore"] == "enabled with confirmation"
     assert fields["Execution Safety"]["Backup mode"] == "writes to operator storage"
 
-# from test_env_menu.py
 def test_run_env_menu_non_interactive(capsys: pytest.CaptureFixture[str]) -> None:
     run_env_menu(interactive=False)
     out = capsys.readouterr().out
@@ -931,13 +904,11 @@ def test_run_env_menu_non_interactive(capsys: pytest.CaptureFixture[str]) -> Non
     assert "╭" not in out
     assert "Submenu choice" not in out
 
-# from test_env_menu.py
 def test_run_env_menu_no_duplicate_heading(capsys: pytest.CaptureFixture[str]) -> None:
     run_env_menu(interactive=False)
     out = capsys.readouterr().out
     assert out.count("ENVIRONMENT CHECK") == 1
 
-# from test_env_menu.py
 def test_live_mode_guide_has_no_decorative_bullets(capsys: pytest.CaptureFixture[str]) -> None:
     _print_live_mode_guide()
     out = capsys.readouterr().out

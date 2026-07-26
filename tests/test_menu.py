@@ -202,13 +202,11 @@ def test_handle_menu_action(
     assert handle_menu_choice(choice) == "continue"
     assert calls == [choice]
 
-# merged from test_menu_display.py
 def test_status_line_includes_tags() -> None:
     line = menu_display.status_line(probe_database=False)
     assert "Status:" in line
     assert "[--]" in line or "[ok]" in line
 
-# merged from test_menu_display.py
 def test_status_rows_include_operator_fields() -> None:
     rows = menu_display.status_rows(probe_database=False)
     text = "\n".join(rows)
@@ -216,12 +214,10 @@ def test_status_rows_include_operator_fields() -> None:
     assert "Database" in text
     assert "Backups" in text
 
-# merged from test_menu_display.py
 def test_format_menu_bottom_option_exit_and_return() -> None:
     assert menu_display.format_menu_bottom_option("Exit") == "      [0] Exit"
     assert menu_display.format_menu_bottom_option("Return") == "      [0] Return"
 
-# merged from test_menu_display.py
 def test_render_option_menu_puts_return_last() -> None:
     text = menu_display.render_option_menu(
         title="Sub menu",
@@ -232,7 +228,6 @@ def test_render_option_menu_puts_return_last() -> None:
     assert lines[-1] == "      [0] Return"
     assert "      [1] First" in lines
 
-# merged from test_menu_display.py
 def test_render_main_menu_matches_simple_layout(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "mercury.menu.main_display.dashboard_rows",
@@ -279,7 +274,6 @@ def test_main_menu_options_are_single_action_lines(monkeypatch: pytest.MonkeyPat
     assert [line.strip().split("]", 1)[0][1:] for line in option_lines] == expected
     assert all(" — " not in line and "→" not in line for line in option_lines)
 
-# merged from test_menu_display.py
 def test_render_main_menu_body_omits_title_block(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "mercury.menu.main_display.dashboard_rows",
@@ -291,7 +285,6 @@ def test_render_main_menu_body_omits_title_block(monkeypatch: pytest.MonkeyPatch
     assert "Active writer" in body
     assert "      [1] Back up and sync this workstation" in body
 
-# merged from test_menu_display.py
 def test_render_menu_help_lists_shortcuts() -> None:
     help_text = menu_display.render_menu_help()
     assert "Operator console help" in help_text

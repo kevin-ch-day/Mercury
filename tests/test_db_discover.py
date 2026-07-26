@@ -89,7 +89,6 @@ def test_demo_catalog_matches_real_platform_databases() -> None:
         "obsidiandroid_core_prod",
     }
 
-# merged from test_discover_for_planning.py
 def test_discover_for_planning_falls_back_to_demo_when_live_empty(monkeypatch) -> None:
     empty_live = DatabaseInventory(connection="connected", mode="mariadb_readonly", primary_config="local.toml")
 
@@ -131,7 +130,6 @@ def test_resolve_batch_sources_live_anchors_configured_missing_sources(monkeypat
     assert "obsidiandroid_core_prod" in sources
     assert "gecko_research_database_prod" not in sources
 
-# merged from test_db_classifier.py
 @pytest.mark.parametrize(
     ("name", "role", "backup_source", "dev_target", "manual_review"),
     [

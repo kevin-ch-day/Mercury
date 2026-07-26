@@ -27,8 +27,8 @@ def _backup_root_from_config() -> str | None:
             return f"{resolved} [operator-mounted]"
         if state == "missing path":
             return f"{resolved} [missing path]"
-        if state == "usb not mounted":
-            return f"{resolved} [usb not mounted]"
+        if state == "operator mount not mounted":
+            return f"{resolved} [not mounted]"
         if state == "unsafe path":
             return f"{resolved} [unsafe path]"
         if state == "low free space":

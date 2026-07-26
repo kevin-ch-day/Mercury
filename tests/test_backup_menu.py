@@ -417,7 +417,6 @@ def test_backup_menu_uses_human_last_backup_format(
         time.tzset()
 
 
-# merged from test_verify_menu.py
 def test_run_backup_menu_executes_when_environment_ready(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

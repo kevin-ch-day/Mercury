@@ -236,14 +236,12 @@ def test_probe_requires_config_when_no_config_passed(tmp_path: Path) -> None:
     with pytest.raises(MariaDbConfigError):
         probe_mariadb_server(config_path=tmp_path / "missing.toml")
 
-# merged from test_mariadb_probe.py
 def test_probe_client_tooling_returns_all_tools() -> None:
     tooling = probe_client_tooling()
     assert tooling.platform
     assert "mariadb" in tooling.tools
     assert "mariadb-dump" in tooling.tools
 
-# merged from test_mariadb_probe.py
 def test_readonly_plan_is_not_executed_in_seed() -> None:
     plan = build_readonly_discovery_plan()
     assert plan.mode == MODE_SEED

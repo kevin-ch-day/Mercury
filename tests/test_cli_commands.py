@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from tests.conftest import run_cli
 
-# merged from test_cli_seed.py
 def test_backup_plan_without_demo_uses_live_or_config_inventory() -> None:
     """backup plan (no --demo) should not crash; uses live inventory when configured."""
     result = run_cli("backup", "plan", "--demo")
@@ -12,7 +11,6 @@ def test_backup_plan_without_demo_uses_live_or_config_inventory() -> None:
     combined = (result.stdout + result.stderr).lower()
     assert "backup plan" in combined or "backup sources" in combined
 
-# merged from test_cli_seed.py
 def test_classify_does_not_import_discover_at_startup() -> None:
     """classify should work without loading discovery at cli import."""
     result = run_cli(
@@ -24,7 +22,6 @@ def test_classify_does_not_import_discover_at_startup() -> None:
     assert result.returncode == 0
     assert "production" in result.stdout
 
-# merged from test_cli_seed.py
 def test_status_default_scope_is_clean() -> None:
     result = run_cli("status")
     assert result.returncode == 0, result.stdout + result.stderr
@@ -33,13 +30,11 @@ def test_status_default_scope_is_clean() -> None:
     assert "random_test_db" not in combined
     assert "_restorecheck_" not in combined
 
-# merged from test_cli_m4.py
 def test_cli_schema_plan_demo() -> None:
     result = run_cli("backup", "schema-plan", "--demo")
     assert result.returncode == 0
     assert "SCHEMA-ONLY BACKUP PLAN" in result.stdout
 
-# merged from test_cli_m4.py
 def test_cli_manifest_preview_schema_only() -> None:
     result = run_cli(
         "backup",
@@ -53,7 +48,6 @@ def test_cli_manifest_preview_schema_only() -> None:
     assert ".schema.sql.gz" in result.stdout
     assert '"dry_run": true' in result.stdout
 
-# merged from test_cli_m4.py
 def test_cli_manifest_preview_full() -> None:
     result = run_cli(
         "backup",
@@ -66,7 +60,6 @@ def test_cli_manifest_preview_full() -> None:
     assert result.returncode == 0
     assert ".sql.gz" in result.stdout
 
-# merged from test_cli_m4.py
 def test_cli_manifest_preview_rejects_dev() -> None:
     result = run_cli(
         "backup",
@@ -90,12 +83,10 @@ def test_cli_backup_verify_exposes_explicit_dev_recovery_gate() -> None:
     assert "configured optional" in collapsed
     assert "development" in collapsed and "recovery" in collapsed
 
-# merged from test_cli_m4.py
 def test_cli_db_active() -> None:
     result = run_cli("db", "active")
     assert result.returncode == 0 or "local.toml" in (result.stdout + result.stderr).lower()
 
-# merged from test_cli_m4.py
 def test_cli_sync_run_help_does_not_offer_yes_bypass() -> None:
     result = run_cli("sync", "run", "--help")
     assert result.returncode == 0

@@ -160,7 +160,6 @@ def test_log_routing(
     assert current_fn() == path_fn(log_dir=log_dir)
     assert snippet in read_log(current_fn)
 
-# merged from test_logging_permissions.py
 def test_configure_logging_survives_permission_error(monkeypatch, tmp_path: Path, capsys) -> None:
     reset_logging()
     log_dir = tmp_path / "mercury_logs"

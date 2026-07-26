@@ -214,7 +214,6 @@ def test_ask_confirmation_phrase_exact_match() -> None:
     finally:
         menu_prompts.set_prompt_reader(None)
 
-# merged from test_menu_subscreen.py
 def test_read_submenu_choice_empty_reprompts(monkeypatch: pytest.MonkeyPatch) -> None:
     answers = iter(["", "1"])
     monkeypatch.setattr(
@@ -223,7 +222,6 @@ def test_read_submenu_choice_empty_reprompts(monkeypatch: pytest.MonkeyPatch) ->
     )
     assert read_submenu_choice() == "1"
 
-# merged from test_menu_subscreen.py
 def test_read_submenu_choice_zero_returns_back(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("mercury.menu.prompts.ask_stripped", lambda _prompt: "0")
     assert read_submenu_choice() == "0"

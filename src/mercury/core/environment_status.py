@@ -333,7 +333,7 @@ def backup_root_unsafe_reason(
         if usb.mercury_layout_present:
             return "Operator storage mounted but backup_root still points at repo"
         return "repo-local path is dev-only, not production protection"
-    if state == "usb not mounted":
+    if state == "operator mount not mounted":
         from mercury.repair.usb import USB_REPAIR_COMMAND
 
         try:

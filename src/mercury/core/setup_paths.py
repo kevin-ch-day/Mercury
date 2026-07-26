@@ -8,7 +8,7 @@ from mercury.core.path_permissions import PathPermissionCheck, check_path_permis
 from mercury.core.paths import REPO_ROOT
 from mercury.logging.config import load_mercury_section, resolve_log_dir
 
-MERCURY_USB_DIR_LABELS: tuple[tuple[str, str], ...] = (
+MERCURY_LAYOUT_DIR_LABELS: tuple[tuple[str, str], ...] = (
     ("mercury_backups", "Operator backup root"),
     ("mercury_logs", "Operator log directory"),
     ("mercury_manifests", "Operator manifest directory"),
@@ -27,9 +27,6 @@ MERCURY_OPERATOR_STORAGE_DIRS = (
     "mercury_restore_checks",
     "mercury_runbooks",
 )
-
-# Compatibility import for older repair/doctor call sites.
-MERCURY_USB_CHOWN_DIRS = MERCURY_OPERATOR_STORAGE_DIRS
 
 
 def _usb_layout_permissions_in_scope() -> bool:
@@ -56,7 +53,7 @@ def assess_mercury_path_permissions(
     checks: list[PathPermissionCheck] = []
 
     if usb.mercury_layout_present and _usb_layout_permissions_in_scope():
-        for dirname, label in MERCURY_USB_DIR_LABELS:
+        for dirname, label in MERCURY_LAYOUT_DIR_LABELS:
             path = usb.mount_path / dirname
             if self_heal and not path.exists():
                 ok, message = safe_ensure_directory(path)

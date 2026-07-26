@@ -54,7 +54,6 @@ def _latest_runbook(pattern: str) -> Path | None:
 
 def _load_recovery_screen() -> RecoveryScreenData:
     report = build_backup_status_report(live=should_probe_database_status())
-    # Database-keyed restore-check map is deprecated and unused for display decisions.
     return RecoveryScreenData(
         report=report,
         restore_check_status={},

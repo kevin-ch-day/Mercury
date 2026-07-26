@@ -124,7 +124,6 @@ class _ActiveScopeConfig:
     use_client = True
 
 
-# merged from test_db_active_scope.py
 def test_fetch_active_scope_report_uses_one_query() -> None:
     calls: list[str] = []
 
@@ -154,7 +153,6 @@ def test_fetch_active_scope_report_uses_one_query() -> None:
     obsidian = next(row for row in report.rows if row.name == "obsidiandroid_core_prod")
     assert obsidian.sync_role == "backup-only"
 
-# merged from test_db_active_scope.py
 def test_print_active_scope_report_compact(capsys: pytest.CaptureFixture[str]) -> None:
     report = fetch_active_scope_report(
         _ActiveScopeConfig(),

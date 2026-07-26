@@ -118,7 +118,8 @@ def test_doctor_repair_plan_suggests_usb_ro_remount_after_cutover(monkeypatch) -
     from types import SimpleNamespace
 
     from mercury.core.environment_status import ConfigSetupStatus, UsbDiscovery
-    from mercury.core.execution_policy import ExecutionPolicy, REQUIRED_BACKUP_MOUNT
+    from mercury.core.execution_policy import ExecutionPolicy
+    from mercury.core.usb_mount import DEFAULT_USB_MOUNT
     from mercury.core.paths import REPO_ROOT
     from mercury.env.doctor import build_repair_plan
     from mercury.core.storage_validate import MountIdentity, MountValidationCode, MountValidationResult
@@ -193,7 +194,7 @@ def test_doctor_repair_plan_suggests_usb_ro_remount_after_cutover(monkeypatch) -
         python_version="3.14",
         platform_label="Fedora",
         config=ConfigSetupStatus(True, True, True),
-        usb=UsbDiscovery(REQUIRED_BACKUP_MOUNT, True, True, REQUIRED_BACKUP_MOUNT / "mercury_backups"),
+        usb=UsbDiscovery(DEFAULT_USB_MOUNT, True, True, DEFAULT_USB_MOUNT / "mercury_backups"),
         mariadb=SimpleNamespace(
             service_state="active",
             config_present=True,
@@ -203,7 +204,7 @@ def test_doctor_repair_plan_suggests_usb_ro_remount_after_cutover(monkeypatch) -
         policy=ExecutionPolicy(
             dry_run=True,
             live_actions_enabled=False,
-            backup_root=REQUIRED_BACKUP_MOUNT / "mercury_backups",
+            backup_root=DEFAULT_USB_MOUNT / "mercury_backups",
             config_path=REPO_ROOT / "config" / "local.toml",
         ),
         permission_checks=[],

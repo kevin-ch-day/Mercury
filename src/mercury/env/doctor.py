@@ -337,9 +337,9 @@ def build_repair_plan(report: DoctorReport) -> list[tuple[str, list[str]]]:
         except Exception:
             pass
         if not cutover_done_layout:
-            from mercury.core.setup_paths import MERCURY_USB_DIR_LABELS
+            from mercury.core.setup_paths import MERCURY_LAYOUT_DIR_LABELS
 
-            layout_paths = " ".join(str(mount / dirname) for dirname, _label in MERCURY_USB_DIR_LABELS)
+            layout_paths = " ".join(str(mount / dirname) for dirname, _label in MERCURY_LAYOUT_DIR_LABELS)
             sections.append(
                 (
                     "Prepare Mercury USB directories (after mount, requires sudo)",
@@ -542,9 +542,9 @@ def _chown_repair_targets(report: DoctorReport) -> list[Path]:
     except Exception:
         pass
     mount = report.usb.mount_path
-    from mercury.core.setup_paths import MERCURY_USB_CHOWN_DIRS
+    from mercury.core.setup_paths import MERCURY_OPERATOR_STORAGE_DIRS
 
-    standard = [mount / dirname for dirname in MERCURY_USB_CHOWN_DIRS]
+    standard = [mount / dirname for dirname in MERCURY_OPERATOR_STORAGE_DIRS]
     targets: list[Path] = []
     seen: set[str] = set()
     for path in standard:
@@ -555,7 +555,7 @@ def _chown_repair_targets(report: DoctorReport) -> list[Path]:
         if check is None and path.exists():
             from mercury.core.path_permissions import check_path_permission
 
-            check = check_path_permission(path, label="USB path")
+            check = check_path_permission(path, label="operator storage path")
         if check is not None and check.needs_repair and path.exists():
             targets.append(path)
             seen.add(key)
@@ -693,7 +693,7 @@ def _collect_blockers(env, report: DoctorReport) -> list[str]:
             continue
         if (
             env.primary_setup_blocker
-            and "USB Mercury paths not writable" in env.primary_setup_blocker
+            and "Operator storage paths not writable" in env.primary_setup_blocker
             and label.endswith("not writable")
         ):
             continue

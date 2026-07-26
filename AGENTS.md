@@ -46,7 +46,7 @@ Policy constants live in `src/mercury/core/safety.py`. Execution gates live in `
 
 ## Current development phase
 
-**Seed / guarded destructive ops** is still the default for sync/deploy/restore:
+**Guarded destructive ops** remain the default for sync/deploy/restore:
 
 - Planning, discovery, manifests, and reports are implemented.
 - Live **read-only** server access works (`db ping`, `db discover`, `db inspect`, `db access`).

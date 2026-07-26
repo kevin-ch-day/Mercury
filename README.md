@@ -300,22 +300,24 @@ python -m mercury.cli storage migrate-verify
 
 ```
 src/mercury/
-  cli.py, menu.py
+  cli.py, db_commands.py, bootstrap.py, output.py
+  menu/          interactive menu loop, dashboard, runners
+  terminal/      shared CLI formatting
   core/          paths, safety, runtime, execution policy, storage roles/validation
   storage/       primary vs legacy status, validate, migrate-plan (no copy)
   backup/        plan, execute, verify, manifests
   config/        settings, init
   database/      discovery, MariaDB, classification
-  env/           environment probe
+  env/           environment probe, doctor
   reporting/     protection status, previews
   transfer/      combined database + repository transfer manifest/runbook
   handoff/       workstation handoff checklist and wizard
   sync/          prod→dev planning, readiness, execution
   restore/       restore-check planning and execution
-  deploy/        recovery deployment of verified USB DB backups and repo bundles
+  deploy/        recovery deployment of verified DB backups and repo bundles
 ```
 
-Top-level compatibility shims under `src/mercury/*.py` remain for external callers only. New code should use the canonical subpackages (`mercury.backup.*`, `mercury.core.*`, `mercury.database.*`, `mercury.menu.*`, `mercury.terminal.*`).
+Prefer canonical subpackages (`mercury.backup.*`, `mercury.core.*`, `mercury.database.*`, `mercury.menu.*`, `mercury.terminal.*`).
 
 See [AGENTS.md](AGENTS.md) for contributor/agent guidance. See [CONTRIBUTING.md](CONTRIBUTING.md) for pull request expectations.
 

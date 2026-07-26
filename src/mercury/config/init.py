@@ -9,7 +9,7 @@ from pathlib import Path
 
 from mercury.core.environment_status import discover_usb_target
 from mercury.core.usb_mount import default_usb_path_replacements
-from mercury.core.setup_paths import MERCURY_USB_DIR_LABELS
+from mercury.core.setup_paths import MERCURY_LAYOUT_DIR_LABELS
 from mercury.core.path_permissions import safe_ensure_directory
 from mercury.core.paths import (
     DATABASES_EXAMPLE,
@@ -394,11 +394,11 @@ def _ensure_usb_layout(mount_path) -> list[str]:
             "(refusing host-local shadow directories)."
         )
         return notes
-    for dirname, label in MERCURY_USB_DIR_LABELS:
+    for dirname, label in MERCURY_LAYOUT_DIR_LABELS:
         path = root / dirname
         ok, message = safe_ensure_directory(path)
         if message == "created":
-            notes.append(f"Created USB {label}: {path}")
+            notes.append(f"Created {label}: {path}")
         elif not ok:
             notes.append(f"Could not create {label} at {path}: {message}")
     return notes

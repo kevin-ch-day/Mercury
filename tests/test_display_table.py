@@ -88,7 +88,6 @@ def test_display_format_reexports_format_table() -> None:
     lines = display_format.format_table(["X"], [["y"]])
     assert "X" in lines[0]
 
-# merged from test_display_screen.py
 def test_write_status_tags(capsys) -> None:
     display_screen.write_status("ok", "verified")
     display_screen.write_status("warn", "missing")
@@ -96,13 +95,11 @@ def test_write_status_tags(capsys) -> None:
     assert "[ok]" in out
     assert "[--]" in out
 
-# merged from test_display_screen.py
 def test_write_count_header(capsys) -> None:
     display_screen.write_count_header(ready=2, blocked=1)
     out = capsys.readouterr().out
     assert "2 ready, 1 blocked" in out
 
-# merged from test_display_screen.py
 def test_write_report_header(capsys) -> None:
     display_screen.write_report_header("BACKUP LIST")
     out = capsys.readouterr().out

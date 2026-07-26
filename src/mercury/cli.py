@@ -197,7 +197,7 @@ def state_handoff_history_cmd(
         help="Maximum handoff history rows to show.",
     ),
 ) -> None:
-    """Show recent handoff events recorded on the USB state ledger."""
+    """Show recent handoff events recorded on the operator state ledger."""
     from mercury.handoff.history import build_handoff_history
     from mercury.handoff.terminal import print_handoff_history
 
@@ -1762,7 +1762,7 @@ def transfer_history_cmd(
         help="Maximum handoff history rows to show.",
     ),
 ) -> None:
-    """Show recent handoff-related events from the USB state ledger."""
+    """Show recent handoff-related events from the operator state ledger."""
     from mercury.handoff.history import build_handoff_history
     from mercury.handoff.terminal import print_handoff_history
 

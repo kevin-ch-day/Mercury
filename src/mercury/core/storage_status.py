@@ -14,7 +14,7 @@ def backup_root_mount_label(policy, *, styled: bool = False) -> str:
         return "[ok] mounted" if styled else "mounted"
     if state == "repo-local fallback":
         return "[!!] repo-local fallback" if styled else "repo-local fallback"
-    if state == "usb not mounted":
+    if state == "operator mount not mounted":
         return "[!!] not mounted" if styled else "not mounted"
     if state == "unsafe path":
         return "[!!] unsafe path" if styled else "unsafe path"
@@ -57,7 +57,7 @@ def backup_root_summary_label(policy) -> str:
         return "[--] storage warning"
     if state == "repo-local fallback":
         return f"[!!] repo-local fallback — {target}"
-    if state == "usb not mounted":
+    if state == "operator mount not mounted":
         return "[!!] storage not mounted"
     if state == "unsafe path":
         return f"[!!] unsafe path — {target}"
