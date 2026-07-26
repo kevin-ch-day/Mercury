@@ -1,4 +1,4 @@
-"""Governed Backup and Sync session receipts."""
+"""Governed guided-backup session receipts."""
 
 from __future__ import annotations
 
@@ -168,7 +168,7 @@ def write_host_local_session_refusal(
 
 def render_session_summary_text(session: BackupSyncSession) -> str:
     lines = [
-        "BACKUP AND SYNC SESSION",
+        "GUIDED BACKUP SESSION",
         "─" * 62,
         f"Session ID: {session.session_id}",
         f"Result:     {session.session_result.value}",

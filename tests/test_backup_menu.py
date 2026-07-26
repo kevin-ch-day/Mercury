@@ -82,19 +82,19 @@ def test_run_backup_menu_non_interactive(
     assert "excluded" not in out
     assert "Ignored databases:" not in out
     assert "Fresh full backup needed before workstation handoff" in out
-    assert "\n[1] Back up and sync this workstation" in out
+    assert "\n[1] Guided backup session" in out
     assert "\n[2] Run full database backup" in out
     assert "\n[3] Back up production databases" in out
-    assert "\n[4] Verify source backups" in out
-    assert "\n[5] Restore-check source backups" in out
-    assert "\n[6] Write DB bundle and runbooks" in out
-    assert "\n[8] Open workstation handoff" in out
-    assert "\n[9] Back up development databases" in out
+    assert "\n[4] Back up development databases" in out
+    assert "\n[5] Verify source backups" in out
+    assert "\n[6] Preview backup plan" in out
+    assert "Restore-check source backups" not in out
+    assert "Write DB bundle and runbooks" not in out
+    assert "Open workstation handoff" not in out
     assert "Verify on-disk backups" not in out
-    assert "\n[7] Preview backup plan" in out
     from mercury.backup.menu_options import ACTION_VERIFY, backup_menu_hint
 
-    assert backup_menu_hint(ACTION_VERIFY) == "Verify source backups [4]"
+    assert backup_menu_hint(ACTION_VERIFY) == "Verify source backups [5]"
 
 
 def test_backup_menu_section_spacing_boundaries(
@@ -215,7 +215,7 @@ def test_backup_menu_section_spacing_boundaries(
     assert follow_i == phase_i + 1
     assert lines[follow_i + 1] == ""
 
-    menu_i = index_of(lambda line: line.startswith("[1] Back up and sync this workstation"))
+    menu_i = index_of(lambda line: line.startswith("[1] Guided backup session"))
     assert menu_i == follow_i + 2
     back_i = index_of(lambda line: line.startswith("[0] Back"))
     assert back_i > menu_i

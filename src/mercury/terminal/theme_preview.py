@@ -42,7 +42,7 @@ def _dashboard(state: str) -> list[str]:
             ("Package", "VERIFIED · destination rehearsal"),
             ("Source", "No changes since package"),
             ("Migration", "Destination validation pending"),
-            ("Recommended", "Back up and sync"),
+            ("Recommended", "Guided backup"),
         ],
         "write_disabled": [
             ("Mercury HDD", "Connected · mounted · writes disabled"),
@@ -161,7 +161,7 @@ def _print_theme_preview_body(*, theme_id: str, width: int) -> None:
         menu_section_header("OPERATIONS", indent=0),
         rule_line(width=62, level="normal"),
         menu_item_line("1", "Safely disconnect Mercury HDD", indent=2, recommended=True),
-        menu_item_line("2", "Back up and sync again", indent=2),
+        menu_item_line("2", "Guided backup again", indent=2),
         menu_item_line("3", "Prepare destination move", indent=2),
         menu_item_line("4", "Browse all operations", indent=2),
         menu_item_line(

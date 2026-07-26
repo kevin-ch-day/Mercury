@@ -20,7 +20,7 @@ from mercury.storage.terminal import (
 )
 from mercury.terminal import screen as display_screen
 
-STORAGE_SCREEN_TITLE = "MERCURY HDD AND STORAGE"
+STORAGE_SCREEN_TITLE = "Mercury HDD and storage"
 
 
 def _package_display(snap) -> str:
@@ -48,6 +48,11 @@ def _render_storage_screen(*, show_title: bool) -> None:
 
     if show_title:
         display_screen.write_report_header(STORAGE_SCREEN_TITLE)
+        display_screen.write_summary(
+            "Attach, validate, detach, and storage cutover. "
+            "Workstation package move lives under Main Menu [6]."
+        )
+        display_screen.write_blank()
     snap = assess_storage_lifecycle(probe_disconnect=True)
     storage = "—"
     if snap.device_label or snap.filesystem:
@@ -197,7 +202,7 @@ def _run_status_and_validation() -> None:
 
 
 def run_safe_disconnect_wizard() -> bool | str:
-    """Public entry for Safe Disconnect (post Backup and Sync, storage menu).
+    """Public entry for Safe Disconnect (post guided backup, storage menu).
 
     Returns:
       ``False`` — cancelled before a terminal detach outcome (re-show chooser)

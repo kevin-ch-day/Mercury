@@ -15,7 +15,7 @@ from mercury.database import MariaDbConfigError, MariaDbLiveError
 from mercury.menu.subscreen import pause_and_redraw, read_submenu_choice, render_submenu
 from mercury.reporting.protection import ProtectionReport, build_protection_report, print_protection_report
 
-REPORTS_SCREEN_TITLE = "REPORTS AND BACKUP HISTORY"
+REPORTS_SCREEN_TITLE = "Reports, evidence, and history"
 
 
 def read_reports_choice() -> str | None:
@@ -64,6 +64,7 @@ def _render_reports_screen(
             ("1", "Refresh"),
             ("2", "Show backup history"),
             ("3", "Show protection status"),
+            ("4", "Full-backup receipts (observe-only)"),
         ],
         indent=0,
     )
@@ -108,6 +109,13 @@ def run_reports_menu(*, interactive: bool = True) -> None:
 
         if choice == "3":
             print_protection_report(report, compact=True)
+            show_title = pause_and_redraw()
+            continue
+
+        if choice == "4":
+            from mercury.menu.task_menus import _show_full_backup_receipts
+
+            _show_full_backup_receipts()
             show_title = pause_and_redraw()
             continue
 

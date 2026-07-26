@@ -129,7 +129,7 @@ def print_handoff_status_panel(checklist: HandoffChecklist) -> None:
     display_screen.write_blank()
     display_screen.write_summary(
         f"Legacy transfer checklist readiness: {checklist.handoff_status} "
-        "(see Advanced handoff tools for historical transfer packages)."
+        "(see Handoff packaging tools for historical transfer packages)."
     )
 
 

@@ -284,7 +284,7 @@ def build_destination_hub_options(
     )
     if not recommend_disconnect:
         ordered.append((HUB_SAFE_DISCONNECT, "Safely disconnect Mercury HDD"))
-    ordered.append((HUB_ADVANCED_HANDOFF, "Advanced handoff tools"))
+    ordered.append((HUB_ADVANCED_HANDOFF, "Handoff packaging tools"))
 
     recommended = HUB_SAFE_DISCONNECT if recommend_disconnect else HUB_DESTINATION_STATUS
     options: list[tuple[str, str, str]] = []

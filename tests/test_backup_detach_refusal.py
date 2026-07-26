@@ -207,11 +207,9 @@ def test_menu_marks_write_actions_unavailable(detach_host: Path) -> None:
     assert DETACH_UNAVAILABLE_SUFFIX in options["3"]
     assert DETACH_UNAVAILABLE_SUFFIX in options["4"]
     assert DETACH_UNAVAILABLE_SUFFIX in options["5"]
-    assert DETACH_UNAVAILABLE_SUFFIX in options["6"]
-    assert DETACH_UNAVAILABLE_SUFFIX in options["9"]
     assert DETACH_UNAVAILABLE_SUFFIX not in options["1"]
-    assert DETACH_UNAVAILABLE_SUFFIX not in options["7"]
-    assert DETACH_UNAVAILABLE_SUFFIX not in options["8"]
+    assert DETACH_UNAVAILABLE_SUFFIX not in options["6"]
+    assert set(options) == {"1", "2", "3", "4", "5", "6"}
 
 
 def test_menu_write_actions_available_after_restore(tmp_path: Path, monkeypatch) -> None:
@@ -282,7 +280,7 @@ def test_backup_screen_shows_write_disabled_state(
     assert "Backup actions" in out
     assert "unavailable" in out
     assert DETACH_UNAVAILABLE_SUFFIX in out
-    assert "Back up and sync this workstation" in out
+    assert "Guided backup session" in out
     assert "Preview backup plan" in out
 
 

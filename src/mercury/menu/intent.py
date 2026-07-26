@@ -285,7 +285,7 @@ def dispatch_startup_intent(intent: str) -> str | None:
         from mercury.storage.interactive_menu import run_storage_menu
 
         display_screen.write_summary(
-            "Open Mercury HDD and Storage → Storage status and validation "
+            "Open Mercury HDD and storage → Storage status and validation "
             "to review the destination package."
         )
         run_storage_menu()

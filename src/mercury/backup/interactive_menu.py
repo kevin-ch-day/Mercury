@@ -57,7 +57,6 @@ from mercury.database.discovery import discover_for_planning
 from mercury.database.core.classifier import DatabaseRole, classify_database
 from mercury.database.prod_dev_pairs import build_prod_dev_pairs
 from mercury.menu.subscreen import pause_and_redraw, render_submenu
-from mercury.restore.interactive_menu import run_restore_menu
 
 BACKUP_SCREEN_TITLE = "Backup Operations"
 
@@ -692,7 +691,8 @@ def _run_verify_sources() -> None:
     )
 
 
-def _write_backup_bundle() -> None:
+def run_write_database_bundle() -> None:
+    """Write DB bundle + runbooks (Deployment and handoff home)."""
     from mercury.backup.bundle import bundle_package_status
     from mercury.core.handoff_status import handoff_write_ack_prompt, handoff_write_requires_force
     from mercury.menu.prompts import ask_yes_no
@@ -720,6 +720,10 @@ def _write_backup_bundle() -> None:
         display_screen.write_status("fail", str(exc))
         return
     print_database_bundle_plan(plan, executed=True)
+
+
+# Compatibility alias for older call sites / tests.
+_write_backup_bundle = run_write_database_bundle
 
 
 def run_production_backup_flow() -> None:
@@ -768,46 +772,17 @@ def run_backup_menu(*, interactive: bool = True) -> None:
             continue
 
         if choice == "4":
-            _run_verify_sources()
+            _run_development_backup()
             show_title = pause_and_redraw()
             continue
 
         if choice == "5":
-            preflight = assess_backup_write_preflight()
-            if not preflight.allowed:
-                print_global_backup_refusal(
-                    reason=(
-                        "Restore-check refused. "
-                        f"{preflight.reason}"
-                    ),
-                    detail_lines=preflight.detail_lines,
-                    next_steps=preflight.next_steps,
-                )
-            else:
-                run_restore_menu()
+            _run_verify_sources()
             show_title = pause_and_redraw()
             continue
 
         if choice == "6":
-            _write_backup_bundle()
-            show_title = pause_and_redraw()
-            continue
-
-        if choice == "7":
             _preview_backup_plan(plan)
-            show_title = pause_and_redraw()
-            continue
-
-        if choice == "8":
-            from mercury.handoff.interactive_menu import run_handoff_menu
-
-            run_handoff_menu(interactive=True)
-            plan = _load_plan()
-            show_title = pause_and_redraw()
-            continue
-
-        if choice == "9":
-            _run_development_backup()
             show_title = pause_and_redraw()
             continue
 

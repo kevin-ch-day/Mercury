@@ -15,8 +15,15 @@ def _write_dense(lines: list[str]) -> None:
         output.write(hint_text(line))
 
 
-def print_offline_clone_plan(plan: OfflineClonePlan, *, executed: bool = False) -> None:
-    display_screen.open_screen("Sync Offline GitHub Repositories")
+def print_offline_clone_plan(
+    plan: OfflineClonePlan,
+    *,
+    executed: bool = False,
+    with_title: bool = True,
+    title: str = "Sync Offline GitHub Repositories",
+) -> None:
+    if with_title:
+        display_screen.open_screen(title)
     synced = sum(1 for entry in plan.entries if entry.executed)
     current = sum(1 for entry in plan.entries if entry.action == "current")
     blocked = sum(1 for entry in plan.entries if entry.action == "blocked")

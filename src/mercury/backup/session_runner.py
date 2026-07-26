@@ -1,4 +1,4 @@
-"""Orchestrate a guided Backup and Sync session (Phase 2)."""
+"""Orchestrate a guided backup session."""
 
 from __future__ import annotations
 
@@ -205,9 +205,9 @@ def preview_session(
         else SessionResult.REFUSED,
         receipt_result="NOT_REQUIRED",
         recommended_next_action=(
-            "Restore source writer, then run Backup and Sync"
+            "Restore source writer, then run guided backup"
             if not availability.available
-            else "Run Backup and Sync session"
+            else "Run guided backup session"
         ),
     )
     if availability.is_hard_block:
@@ -227,7 +227,7 @@ def run_backup_sync_session(
     accept_recoverable: bool | None = None,
     production_sources: list[str] | None = None,
 ) -> BackupSyncSession:
-    """Run or preview a Backup and Sync session.
+    """Run or preview a guided backup session.
 
     When ``preview=True`` or ``execute=False``, no lane runners are invoked and
     no HDD receipt is written.
@@ -782,10 +782,10 @@ def _recommend_next(session: BackupSyncSession) -> str:
     if session.session_result in {SessionResult.PASS, SessionResult.PARTIAL}:
         return "Safely disconnect Mercury HDD"
     if session.session_result == SessionResult.FAIL:
-        return "Review session failures, then retry Backup and Sync"
+        return "Review session failures, then retry guided backup"
     if session.session_result == SessionResult.REFUSED:
         return session.storage_preflight.get("next_action") or (
-            "Mercury HDD and Storage → Reconnect or change storage mode"
+            "Mercury HDD and storage → Reconnect or change storage mode"
         )
     return "Return to Backup Operations"
 

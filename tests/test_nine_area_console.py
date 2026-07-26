@@ -83,7 +83,24 @@ def test_all_nine_hubs_reachable_and_non_destructive(monkeypatch: pytest.MonkeyP
         "mercury.transfer.print_transfer_bundle", mark("transfer_status")
     )
     monkeypatch.setattr(
-        "mercury.repo.interactive_menu.run_offline_repo_menu", mark("offline_repos")
+        "mercury.handoff.history.build_handoff_history", lambda **_k: object()
+    )
+    monkeypatch.setattr(
+        "mercury.handoff.terminal.print_handoff_history", mark("transfer_history")
+    )
+    monkeypatch.setattr(
+        "mercury.repo.interactive_menu.run_offline_sync_now", mark("offline_sync")
+    )
+    monkeypatch.setattr(
+        "mercury.repo.interactive_menu.show_offline_sync_receipt", mark("offline_receipt")
+    )
+    monkeypatch.setattr(
+        "mercury.repo.interactive_menu.offline_clone_plan",
+        lambda: type("Plan", (), {"root": "/tmp", "entries": [], "receipt_path": None})(),
+    )
+    monkeypatch.setattr(
+        "mercury.repo.offline_terminal.print_offline_clone_plan",
+        lambda *_a, **_k: None,
     )
     monkeypatch.setattr(
         "mercury.repo.inspect_repositories", lambda *_a, **_k: []
@@ -131,6 +148,16 @@ def test_all_nine_hubs_reachable_and_non_destructive(monkeypatch: pytest.MonkeyP
     )
     monkeypatch.setattr(
         "mercury.handoff.terminal.print_receiver_handoff_guide", mark("receiver")
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.run_write_database_bundle", mark("bundle")
+    )
+    monkeypatch.setattr(
+        "mercury.handoff.interactive_menu.run_advanced_handoff_tools",
+        mark("packaging"),
+    )
+    monkeypatch.setattr(
+        "mercury.menu.task_menus._show_repo_bundle_plan", mark("repo_plan")
     )
     monkeypatch.setattr(
         "mercury.env.interactive_menu.run_env_menu", mark("env")
@@ -190,16 +217,18 @@ def test_all_nine_hubs_reachable_and_non_destructive(monkeypatch: pytest.MonkeyP
     assert called == ["guided", "backup_ops", "verify", "receipts"]
 
     called.clear()
-    answers = iter(["1", "2", "", "3", "", "0"])
+    answers = iter(["1", "2", "", "3", "", "4", "", "0"])
     monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
     task_menus.run_sync_hub()
     assert "sync" in called and "transfer_status" in called
+    assert "transfer_history" in called
 
     called.clear()
-    answers = iter(["1", "2", "", "3", "", "0"])
+    answers = iter(["1", "", "2", "", "3", "", "4", "", "5", "", "0"])
     monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
     task_menus.run_repo_hub()
-    assert "offline_repos" in called and "repo_status" in called
+    assert "offline_sync" in called and "offline_receipt" in called
+    assert "repo_status" in called
 
     called.clear()
     answers = iter(["1", "2", "3", "", "0"])
@@ -208,10 +237,12 @@ def test_all_nine_hubs_reachable_and_non_destructive(monkeypatch: pytest.MonkeyP
     assert "erebus" in called and "destination" in called
 
     called.clear()
-    answers = iter(["1", "2", "3", "", "4", "", "0"])
+    answers = iter(["1", "2", "3", "4", "", "5", "", "6", "", "0"])
     monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
     task_menus.run_deploy_handoff_hub()
     assert "deploy" in called and "handoff" in called and "receiver" in called
+    assert "bundle" in called
+    assert "packaging" in called
 
 
 def test_restore_hub_does_not_open_advanced_or_deploy(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -219,6 +250,10 @@ def test_restore_hub_does_not_open_advanced_or_deploy(monkeypatch: pytest.Monkey
     monkeypatch.setattr(
         "mercury.restore.interactive_menu.run_restore_menu",
         lambda **_k: opened.append("restore"),
+    )
+    monkeypatch.setattr(
+        "mercury.restore.interactive_menu.run_restorecheck_cleanup",
+        lambda **_k: opened.append("cleanup"),
     )
     monkeypatch.setattr(
         "mercury.recovery.interactive_menu.run_recovery_menu",
@@ -232,12 +267,13 @@ def test_restore_hub_does_not_open_advanced_or_deploy(monkeypatch: pytest.Monkey
         "mercury.handoff.interactive_menu.run_handoff_menu",
         lambda **_k: opened.append("handoff"),
     )
-    answers = iter(["1", "2", "3", "0", "0"])
+    answers = iter(["1", "2", "", "3", "4", "", "0"])
     monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
     from mercury.menu.task_menus import run_recovery_hub
 
     run_recovery_hub()
     assert "restore" in opened
+    assert "cleanup" in opened
     assert "recovery" in opened
     assert "deploy" not in opened
     assert "handoff" not in opened

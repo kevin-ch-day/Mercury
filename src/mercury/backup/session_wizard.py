@@ -1,13 +1,14 @@
-"""Interactive Backup and Sync session wizard (Phase 2)."""
+"""Interactive guided backup session wizard."""
 
 from __future__ import annotations
 
 from mercury import output
 from mercury.backup.session_models import (
     BackupSyncSession,
+    LaneResult,
     SessionPlan,
     SessionResult,
-    recommended_session_plan,
+    guided_backup_session_plan,
 )
 from mercury.backup.session_receipt import render_session_summary_text
 from mercury.backup.session_runner import SessionHooks, run_backup_sync_session
@@ -147,19 +148,34 @@ def _print_planned_session() -> None:
         dashboard_row("Development databases", "Ask before running", label_width=26)
     )
     output.write(
-        dashboard_row("Offline Git recovery", "Capture and verify", label_width=26)
+        dashboard_row(
+            "Offline Git recovery",
+            "Ask · also Main Menu [3]",
+            label_width=26,
+        )
     )
     output.write(
-        dashboard_row("Production → development", "Ask before running", label_width=26)
+        dashboard_row(
+            "Production → development",
+            "Ask · also Main Menu [2]",
+            label_width=26,
+        )
+    )
+    output.write(
+        dashboard_row(
+            "Restore-check",
+            "Optional · Main Menu [5]",
+            label_width=26,
+        )
     )
 
 
 def _print_overview(*, availability_classification: str) -> None:
     host = load_host_maintenance()
     title = (
-        "BACK UP AND SYNC AGAIN"
+        "GUIDED BACKUP AGAIN"
         if _package_verified(host)
-        else "BACK UP AND SYNC THIS WORKSTATION"
+        else "GUIDED BACKUP SESSION"
     )
     display_screen.open_screen(title)
     _print_status_rows(host, availability_classification=availability_classification)
@@ -168,9 +184,14 @@ def _print_overview(*, availability_classification: str) -> None:
     _print_planned_session()
 
 
-def _choice_menu() -> str | None:
+def _choice_menu(*, writes_ready: bool) -> str | None:
     output.write("")
-    output.write(menu_item_line("1", "Restore source writer and continue", indent=2))
+    continue_label = (
+        "Continue with guided backup"
+        if writes_ready
+        else "Restore source writer and continue"
+    )
+    output.write(menu_item_line("1", continue_label, indent=2))
     output.write(menu_item_line("2", "Review or customize this session", indent=2))
     output.write(menu_item_line("0", "Cancel", indent=2))
     output.write("")
@@ -187,13 +208,19 @@ def _customize_plan(plan: SessionPlan) -> tuple[SessionPlan, str] | None:
     """
     current = plan.model_copy(deep=True)
     while True:
-        display_screen.open_screen("Customize Backup and Sync")
+        display_screen.open_screen("Customize guided backup")
         flags = [
             ("Back up production databases", current.production_backup),
             ("Back up development databases", current.development_backup),
-            ("Capture offline Git recovery", current.git_recovery),
-            ("Sync production databases to development", current.sync_development),
-            ("Restore-check newly written backups", current.restore_check),
+            ("Capture offline Git recovery (also Main Menu [3])", current.git_recovery),
+            (
+                "Sync production → development (also Main Menu [2])",
+                current.sync_development,
+            ),
+            (
+                "Restore-check newly written backups (also Main Menu [5])",
+                current.restore_check,
+            ),
         ]
         for label, enabled in flags:
             mark = "x" if enabled else " "
@@ -290,8 +317,15 @@ def _ask_optional_lanes(plan: SessionPlan) -> SessionPlan:
             default=False,
         )
         current.development_backup = include_dev is True
+        include_git = menu_prompts.ask_yes_no(
+            "Also capture offline Git recovery now? (also available under Main Menu [3])",
+            default=False,
+        )
+        current.git_recovery = include_git is True
+        current.git_recovery_required = include_git is True
         include_sync = menu_prompts.ask_yes_no(
-            "Sync production databases into development after verified production backup?",
+            "Sync production → development after verified backup? "
+            "(also available under Main Menu [2])",
             default=False,
         )
         current.sync_development = include_sync is True
@@ -300,12 +334,12 @@ def _ask_optional_lanes(plan: SessionPlan) -> SessionPlan:
 
 def print_session_result(session: BackupSyncSession) -> None:
     title = {
-        SessionResult.PASS: "BACKUP AND SYNC COMPLETE",
-        SessionResult.PARTIAL: "BACKUP AND SYNC PARTIAL",
-        SessionResult.FAIL: "BACKUP AND SYNC FAILED",
-        SessionResult.REFUSED: "BACKUP AND SYNC REFUSED",
-        SessionResult.CANCELLED: "BACKUP AND SYNC CANCELLED",
-    }.get(session.session_result, "BACKUP AND SYNC RESULT")
+        SessionResult.PASS: "GUIDED BACKUP COMPLETE",
+        SessionResult.PARTIAL: "GUIDED BACKUP PARTIAL",
+        SessionResult.FAIL: "GUIDED BACKUP FAILED",
+        SessionResult.REFUSED: "GUIDED BACKUP REFUSED",
+        SessionResult.CANCELLED: "GUIDED BACKUP CANCELLED",
+    }.get(session.session_result, "GUIDED BACKUP RESULT")
     display_screen.open_screen(title)
     output.write(render_session_summary_text(session))
     output.write("")
@@ -350,6 +384,21 @@ def offer_post_session_actions(session: BackupSyncSession) -> str | None:
     options: list[tuple[str, str, str]] = []
     if allow_disconnect:
         options.append(("safe_disconnect", "Safely disconnect Mercury HDD", "safe_disconnect"))
+    if allow_disconnect and session.production_backup_result.result == LaneResult.PASS:
+        options.append(
+            ("restore_check", "Restore-check newly written backups [5]", "restore_check")
+        )
+        options.append(
+            ("deploy_handoff", "Open Deployment and handoff [7]", "deploy_handoff")
+        )
+    if allow_disconnect and not session.requested_operations.sync_development:
+        options.append(
+            ("open_sync", "Open Database sync and data movement [2]", "open_sync")
+        )
+    if allow_disconnect and not session.requested_operations.git_recovery:
+        options.append(
+            ("open_repo", "Open Git and repository recovery [3]", "open_repo")
+        )
     options.append(("review", "Review session details", "review"))
     options.append(("main_menu", "Return to main menu", "main_menu"))
     for index, (_key, label, _action) in enumerate(options, start=1):
@@ -391,10 +440,12 @@ def run_backup_sync_wizard(
     interactive: bool = True,
     hooks: SessionHooks | None = None,
 ) -> BackupSyncSession | None:
-    """Interactive Backup and Sync entry point.
+    """Interactive guided backup entry (Main Menu [1]).
 
     Returns ``None`` when the operator cancels (caller may re-show intent).
     """
+    from mercury.storage.host_maintenance import writes_allowed as writes_are_allowed
+
     if not interactive:
         return run_backup_sync_session(preview=True, execute=False, interactive=False)
 
@@ -408,17 +459,20 @@ def run_backup_sync_wizard(
         print_session_result(session)
         return session
 
-    choice = _choice_menu()
+    writes_ready = writes_are_allowed() and not availability.is_hard_block
+    if availability.available:
+        writes_ready = True
+    choice = _choice_menu(writes_ready=writes_ready)
     if choice in {None, "0"}:
-        display_screen.write_summary("Backup and Sync cancelled.")
+        display_screen.write_summary("Guided backup cancelled.")
         return None
 
-    plan = recommended_session_plan()
+    plan = guided_backup_session_plan()
     customize_mode: str | None = None
     if choice == "2":
         customized = _customize_plan(plan)
         if customized is None:
-            display_screen.write_summary("Backup and Sync cancelled.")
+            display_screen.write_summary("Guided backup cancelled.")
             return None
         plan, customize_mode = customized
     elif choice != "1":
@@ -427,7 +481,7 @@ def run_backup_sync_wizard(
 
     # Storage first — never ask optional lanes while writer is blocked.
     if not _ensure_writer_ready(hooks=hooks):
-        display_screen.write_summary("Backup and Sync cancelled.")
+        display_screen.write_summary("Guided backup cancelled.")
         display_screen.write_summary("Mercury writes remain disabled.")
         return None
 
@@ -437,6 +491,7 @@ def run_backup_sync_wizard(
         plan = _ask_optional_lanes(plan)
         if customize_mode == "databases_only":
             plan.git_recovery = False
+            plan.git_recovery_required = False
 
     # Writer already restored; runner should see AVAILABLE and continue.
     session = run_backup_sync_session(
@@ -451,6 +506,22 @@ def run_backup_sync_wizard(
         from mercury.storage.interactive_menu import run_safe_disconnect_wizard
 
         run_safe_disconnect_wizard()
+    elif action == "restore_check":
+        from mercury.restore.interactive_menu import run_restore_menu
+
+        run_restore_menu()
+    elif action == "deploy_handoff":
+        from mercury.menu.task_menus import run_deploy_handoff_hub
+
+        run_deploy_handoff_hub()
+    elif action == "open_sync":
+        from mercury.menu.task_menus import run_sync_hub
+
+        run_sync_hub()
+    elif action == "open_repo":
+        from mercury.menu.task_menus import run_repo_hub
+
+        run_repo_hub()
     elif action == "review":
         output.write(render_session_summary_text(session))
         if session.exact_artifact_ids:

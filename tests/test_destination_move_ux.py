@@ -182,7 +182,7 @@ def test_hub_hides_write_blocked_package_build_actions(host_path: Path) -> None:
     labels = " ".join(label for _k, label, _a in build_destination_hub_options())
     assert "Build Migration Package" not in labels
     assert "Capture Web Worktrees" not in labels
-    assert "Advanced handoff tools" in labels
+    assert "Handoff packaging tools" in labels
 
 
 def test_receiver_guide_pinned_to_package_id() -> None:
@@ -240,7 +240,7 @@ def test_exact_confirmation_cancel_prints_one_message(
         },
     )())
     monkeypatch.setattr(wiz, "_print_overview", lambda **_k: None)
-    monkeypatch.setattr(wiz, "_choice_menu", lambda: "1")
+    monkeypatch.setattr(wiz, "_choice_menu", lambda **_k: "1")
     monkeypatch.setattr(wiz, "ensure_backup_writes_available", _cancel_ensure)
     monkeypatch.setattr(
         "mercury.backup.session_wizard.ensure_backup_writes_available",
@@ -256,7 +256,7 @@ def test_exact_confirmation_cancel_prints_one_message(
     assert wiz.run_backup_sync_wizard() is None
     cancel_lines = [line for line in printed if "cancelled" in line.lower() or "writes remain" in line.lower()]
     assert cancel_lines == [
-        "Backup and Sync cancelled.",
+        "Guided backup cancelled.",
         "Mercury writes remain disabled.",
     ]
     out = capsys.readouterr().out

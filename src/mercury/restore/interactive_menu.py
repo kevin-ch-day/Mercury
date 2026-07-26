@@ -19,7 +19,7 @@ from mercury.restore.terminal.check import print_restore_check_plans
 from mercury.restore.restore_runner import execute_restore_into_database
 from mercury.restore.terminal.runner import print_restore_execution_result
 
-RESTORE_SCREEN_TITLE = "Restore-check Operations"
+RESTORE_SCREEN_TITLE = "Restore-check operations"
 
 
 def read_restore_choice() -> str | None:
@@ -94,6 +94,11 @@ def _cleanup_restorecheck_databases() -> None:
     execute = policy.live_execution_allowed()
     batch = cleanup_restorecheck_databases(names, execute=execute)
     print_restorecheck_cleanup_batch(batch, compact=True)
+
+
+def run_restorecheck_cleanup() -> None:
+    """Drop leftover ``_restorecheck_*`` databases (policy-gated)."""
+    _cleanup_restorecheck_databases()
 
 
 def run_restore_menu(*, interactive: bool = True) -> None:

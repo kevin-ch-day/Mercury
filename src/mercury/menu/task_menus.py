@@ -7,10 +7,18 @@ from mercury.menu import prompts as menu_prompts
 from mercury.terminal import screen as display_screen
 
 
-def _submenu(title: str, options: list[tuple[str, str]]) -> str | None:
+def _submenu(
+    title: str,
+    options: list[tuple[str, str]],
+    *,
+    purpose: str | None = None,
+) -> str | None:
     from mercury.terminal.theme import menu_bottom_option, menu_item_line
 
     display_screen.open_screen(title)
+    if purpose:
+        display_screen.write_summary(purpose)
+        display_screen.write_blank()
     for key, label in options:
         output.write(menu_item_line(key, label, indent=2))
     output.write(menu_bottom_option("Back", indent=2))
@@ -19,6 +27,35 @@ def _submenu(title: str, options: list[tuple[str, str]]) -> str | None:
     if choice in {"", "0"}:
         return None
     return choice
+
+
+def _pause() -> None:
+    menu_prompts.ask("Press Enter to continue")
+
+
+def _command_card(title: str, lines: list[str]) -> None:
+    """Show a short CLI command card (multiline-safe)."""
+    display_screen.open_screen(title)
+    for line in lines:
+        if line:
+            display_screen.write_summary(line)
+        else:
+            display_screen.write_blank()
+
+
+def _show_local_configuration() -> None:
+    """Observe-only config status (same facts as ``mercury config show``)."""
+    from mercury.config.settings import config_status
+    from mercury.core.paths import resolve_local_config
+
+    status = config_status()
+    display_screen.open_screen("Local configuration")
+    fields = {"Config path": str(resolve_local_config())}
+    fields.update({key: value for key, value in status.items()})
+    display_screen.write_fields(fields)
+    display_screen.write_blank()
+    display_screen.write_summary("Never commit config/local.toml or passwords.")
+    display_screen.write_summary("Initialize missing files: ./run.sh config init")
 
 
 def _show_full_backup_receipts() -> None:
@@ -68,17 +105,43 @@ def _show_full_backup_receipts() -> None:
     )
 
 
+def _show_repo_bundle_plan() -> None:
+    """Dry-run repository bundle plan (execute remains CLI-gated)."""
+    from mercury.repo import (
+        build_repo_bundle_plan,
+        inspect_repositories,
+        load_repo_bundle_settings,
+        load_repo_definitions,
+    )
+    from mercury.repo.terminal import print_repo_bundle_plan
+
+    plan = build_repo_bundle_plan(
+        inspect_repositories(load_repo_definitions()),
+        load_repo_bundle_settings(),
+    )
+    print_repo_bundle_plan(plan, executed=False)
+    display_screen.write_blank()
+    display_screen.write_summary(
+        "Preview only. To write bundles: ./run.sh repo bundle --execute"
+    )
+
+
 def run_backup_hub() -> None:
     """[1] Backup and verification."""
     while True:
         choice = _submenu(
             "Backup and verification",
             [
-                ("1", "Run guided backup session"),
-                ("2", "Open Backup Operations menu"),
-                ("3", "Verify backups"),
+                ("1", "Guided backup session"),
+                ("2", "Backup Operations (write and verify)"),
+                ("3", "Verify all backups"),
                 ("4", "Full-backup receipts (observe-only)"),
             ],
+            purpose=(
+                "Production and development backup writes, verification, and "
+                "run receipts. Restore-check lives under Restore [5]; packaging "
+                "under Deployment and handoff [7]."
+            ),
         )
         if choice is None:
             return
@@ -99,7 +162,7 @@ def run_backup_hub() -> None:
             continue
         if choice == "4":
             _show_full_backup_receipts()
-            menu_prompts.ask("Press Enter to continue")
+            _pause()
             continue
         output.write(menu_prompts.invalid_choice_message(choice))
 
@@ -114,10 +177,15 @@ def run_sync_hub() -> None:
         choice = _submenu(
             "Database sync and data movement",
             [
-                ("1", "Production-to-development sync"),
+                ("1", "Sync readiness and execution"),
                 ("2", "Transfer package status"),
-                ("3", "Transfer CLI hint (write / receive)"),
+                ("3", "Transfer / handoff history"),
+                ("4", "How to write or receive a transfer package"),
             ],
+            purpose=(
+                "Move data between databases and workstations. Sync plans are "
+                "policy-gated; transfer write/receive stay CLI-first."
+            ),
         )
         if choice is None:
             return
@@ -133,51 +201,100 @@ def run_sync_hub() -> None:
             print_transfer_bundle(
                 build_transfer_bundle(live=should_probe_database_status())
             )
-            menu_prompts.ask("Press Enter to continue")
+            _pause()
             continue
         if choice == "3":
-            display_screen.write_summary(
-                "Controlled transfer execute paths remain CLI-first: "
-                "./run.sh transfer status | transfer write | transfer receive. "
-                "Handoff packaging lives under Deployment and handoff [7]."
+            from mercury.handoff.history import build_handoff_history
+            from mercury.handoff.terminal import print_handoff_history
+
+            print_handoff_history(build_handoff_history())
+            _pause()
+            continue
+        if choice == "4":
+            _command_card(
+                "Transfer package commands",
+                [
+                    "Inspect:  ./run.sh transfer status",
+                    "History:  ./run.sh transfer history",
+                    "Write:    ./run.sh transfer write [--execute]",
+                    "Receive:  ./run.sh transfer receive",
+                    "",
+                    "Omit --execute on write for a dry-run plan. "
+                    "Handoff packaging also lives under Deployment and handoff [7].",
+                ],
             )
-            menu_prompts.ask("Press Enter to continue")
+            _pause()
             continue
         output.write(menu_prompts.invalid_choice_message(choice))
 
 
-def run_repo_hub() -> None:
-    """[3] Git and repository recovery."""
+def run_repo_hub(*, interactive: bool = True) -> None:
+    """[3] Git and repository recovery — offline status and actions on one screen."""
+    from mercury.repo.interactive_menu import (
+        offline_clone_plan,
+        run_offline_sync_now,
+        show_offline_sync_receipt,
+    )
+    from mercury.repo.offline_terminal import print_offline_clone_plan
+    from mercury.terminal.theme import menu_bottom_option, menu_item_line
+
     while True:
-        choice = _submenu(
-            "Git and repository recovery",
-            [
-                ("1", "Offline GitHub recovery"),
-                ("2", "Repository status"),
-                ("3", "Repository bundle CLI hint"),
-            ],
+        display_screen.open_screen("Git and repository recovery")
+        display_screen.write_summary(
+            "Offline HDD clones, repository status, and Git bundle planning. "
+            "Bundle execute remains CLI-gated so dirty worktrees stay explicit."
         )
-        if choice is None:
+        display_screen.write_blank()
+        print_offline_clone_plan(offline_clone_plan(), with_title=False)
+        display_screen.write_blank()
+        options = [
+            ("1", "Sync offline GitHub repositories"),
+            ("2", "View last sync receipt"),
+            ("3", "Repository status"),
+            ("4", "Preview repository bundle plan"),
+            ("5", "How to create or restore Git bundles"),
+        ]
+        for key, label in options:
+            output.write(menu_item_line(key, label, indent=2))
+        output.write(menu_bottom_option("Back", indent=2))
+        output.write("")
+        if not interactive:
+            return
+        choice = (menu_prompts.ask("Choice") or "").strip()
+        if choice in {"", "0"}:
             return
         if choice == "1":
-            from mercury.repo.interactive_menu import run_offline_repo_menu
-
-            run_offline_repo_menu()
+            run_offline_sync_now()
+            menu_prompts.ask("Press Enter to continue")
             continue
         if choice == "2":
+            show_offline_sync_receipt()
+            menu_prompts.ask("Press Enter to continue")
+            continue
+        if choice == "3":
             from mercury.repo import inspect_repositories, load_repo_definitions
             from mercury.repo.terminal import print_repo_statuses
 
             print_repo_statuses(inspect_repositories(load_repo_definitions()))
-            menu_prompts.ask("Press Enter to continue")
+            _pause()
             continue
-        if choice == "3":
-            display_screen.write_summary(
-                "Bundle create/verify/restore: ./run.sh repo bundle [--execute] "
-                "and ./run.sh repo status. Dirty worktree capture is reported in "
-                "repo status / transfer status; committing remains outside Mercury."
+        if choice == "4":
+            _show_repo_bundle_plan()
+            _pause()
+            continue
+        if choice == "5":
+            _command_card(
+                "Repository bundle commands",
+                [
+                    "Status:   ./run.sh repo status",
+                    "Preview:  ./run.sh repo bundle",
+                    "Write:    ./run.sh repo bundle --execute",
+                    "",
+                    "Dirty worktree capture is reported in repo/transfer status; "
+                    "committing remains outside Mercury.",
+                ],
             )
-            menu_prompts.ask("Press Enter to continue")
+            _pause()
             continue
         output.write(menu_prompts.invalid_choice_message(choice))
 
@@ -189,8 +306,12 @@ def run_restore_tools_hub() -> None:
             "Restore tools",
             [
                 ("1", "Restore-check operations"),
-                ("2", "Failed restore-check cleanup"),
+                ("2", "Clean up temp restore-check databases"),
             ],
+            purpose=(
+                "Validate backups into disposable _restorecheck_* databases. "
+                "Never restores into *_prod."
+            ),
         )
         if choice is None:
             return
@@ -200,15 +321,10 @@ def run_restore_tools_hub() -> None:
             run_restore_menu()
             continue
         if choice == "2":
-            from mercury.restore.interactive_menu import run_restore_menu
+            from mercury.restore.interactive_menu import run_restorecheck_cleanup
 
-            # Cleanup is option [3] inside restore-check ops when temp DBs exist.
-            display_screen.write_summary(
-                "Open Restore-check operations and choose cleanup when "
-                "_restorecheck_* databases are listed. CLI: "
-                "./run.sh restore-check cleanup."
-            )
-            run_restore_menu()
+            run_restorecheck_cleanup()
+            _pause()
             continue
         output.write(menu_prompts.invalid_choice_message(choice))
 
@@ -220,9 +336,14 @@ def run_recovery_hub() -> None:
             "Restore and disaster recovery",
             [
                 ("1", "Restore-check operations"),
-                ("2", "Disaster recovery planning"),
-                ("3", "Restore tools"),
+                ("2", "Clean up temp restore-check databases"),
+                ("3", "Disaster recovery planning"),
+                ("4", "Pinned / destination recovery commands"),
             ],
+            purpose=(
+                "Validate production backups without touching *_prod. "
+                "Pinned and destination recovery stay explicitly gated."
+            ),
         )
         if choice is None:
             return
@@ -232,12 +353,31 @@ def run_recovery_hub() -> None:
             run_restore_menu()
             continue
         if choice == "2":
+            from mercury.restore.interactive_menu import run_restorecheck_cleanup
+
+            run_restorecheck_cleanup()
+            _pause()
+            continue
+        if choice == "3":
             from mercury.recovery.interactive_menu import run_recovery_menu
 
             run_recovery_menu()
             continue
-        if choice == "3":
-            run_restore_tools_hub()
+        if choice == "4":
+            _command_card(
+                "Pinned / destination recovery",
+                [
+                    "Destination recovery (package-pinned schemas):",
+                    "  ./run.sh restore-check destination --help",
+                    "",
+                    "Exact restore-check by backup ID:",
+                    "  ./run.sh restore-check run --db <prod> --backup-id <id>",
+                    "",
+                    "Production cutover preview/execute stays under "
+                    "Deployment and handoff [7].",
+                ],
+            )
+            _pause()
             continue
         output.write(menu_prompts.invalid_choice_message(choice))
 
@@ -252,6 +392,11 @@ def run_migration_hub() -> None:
                 ("2", "Destination move / package validation"),
                 ("3", "Migration readiness"),
             ],
+            purpose=(
+                "Capture and validate workstation move packages. Handoff "
+                "packaging and deploy live under Deployment and handoff [7]; "
+                "storage cutover under Mercury HDD and storage [4]."
+            ),
         )
         if choice is None:
             return
@@ -270,7 +415,7 @@ def run_migration_hub() -> None:
             report = build_migration_readiness()
             print_migration_blockers(report)
             print_migration_next(report)
-            menu_prompts.ask("Press Enter to continue")
+            _pause()
             continue
         output.write(menu_prompts.invalid_choice_message(choice))
 
@@ -282,10 +427,16 @@ def run_deploy_handoff_hub() -> None:
             "Deployment and handoff",
             [
                 ("1", "System deployment"),
-                ("2", "Workstation handoff"),
-                ("3", "Production cutover preview (observe-only)"),
-                ("4", "Receiving workstation guide"),
+                ("2", "Workstation handoff status"),
+                ("3", "Handoff packaging tools"),
+                ("4", "Write DB bundle and runbooks"),
+                ("5", "Production cutover commands"),
+                ("6", "Receiving workstation guide"),
             ],
+            purpose=(
+                "Package evidence for the next host and deploy sealed "
+                "artifacts. Production cutover execute stays CLI-gated."
+            ),
         )
         if choice is None:
             return
@@ -300,20 +451,46 @@ def run_deploy_handoff_hub() -> None:
             run_handoff_menu(interactive=True)
             continue
         if choice == "3":
-            display_screen.write_summary(
-                "Sealed-package production cutover remains CLI-gated: "
-                "./run.sh production-cutover preview "
-                "then production-cutover execute (approval required). "
-                "Acceptance/rollback evidence is recorded by those commands."
-            )
-            menu_prompts.ask("Press Enter to continue")
+            from mercury.handoff.interactive_menu import run_advanced_handoff_tools
+
+            run_advanced_handoff_tools()
             continue
         if choice == "4":
+            from mercury.backup.interactive_menu import run_write_database_bundle
+
+            run_write_database_bundle()
+            _pause()
+            continue
+        if choice == "5":
+            _command_card(
+                "Production cutover",
+                [
+                    "Exact sealed-package promotion (never 'latest').",
+                    "",
+                    "Preview (observe-only):",
+                    "  ./run.sh production-cutover preview \\",
+                    "    --package-root <path> --package-id <id> \\",
+                    "    --android-backup-id <id> --erebus-backup-id <id> \\",
+                    "    --android-source-schema <name> --erebus-source-schema <name> \\",
+                    "    --android-target-schema android_permission_intel \\",
+                    "    --erebus-target-schema erebus_threat_intel_prod \\",
+                    "    --receipt-root <path>",
+                    "",
+                    "Execute requires an approved preview receipt and:",
+                    "  --confirm 'PROMOTE SEALED DESTINATION PACKAGE'",
+                    "",
+                    "Pinned destination recovery (non-prod schemas) is under "
+                    "Restore and disaster recovery [5].",
+                ],
+            )
+            _pause()
+            continue
+        if choice == "6":
             from mercury.handoff.receiver import build_receiver_handoff_guide
             from mercury.handoff.terminal import print_receiver_handoff_guide
 
             print_receiver_handoff_guide(checklist=build_receiver_handoff_guide())
-            menu_prompts.ask("Press Enter to continue")
+            _pause()
             continue
         output.write(menu_prompts.invalid_choice_message(choice))
 
@@ -329,8 +506,12 @@ def run_health_hub() -> None:
                 ("3", "System doctor and repair guide"),
                 ("4", "Storage status summary (observe-only)"),
                 ("5", "Appearance and theme"),
-                ("6", "Local configuration CLI hint"),
+                ("6", "Show local configuration"),
             ],
+            purpose=(
+                "Host readiness, inventory, and doctor. Storage lifecycle "
+                "belongs under Mercury HDD and storage [4]."
+            ),
         )
         if choice is None:
             return
@@ -356,9 +537,10 @@ def run_health_hub() -> None:
             print_storage_status(build_storage_status_report())
             output.write("")
             output.write(
-                "Lifecycle, cleanup, and detach: Main Menu → Mercury HDD and storage [4]."
+                "Lifecycle, cleanup, and detach: Main Menu → "
+                "Mercury HDD and storage [4]."
             )
-            menu_prompts.ask("Press Enter to continue")
+            _pause()
             continue
         if choice == "5":
             from mercury.menu.options_menu import run_appearance_menu
@@ -366,11 +548,8 @@ def run_health_hub() -> None:
             run_appearance_menu()
             continue
         if choice == "6":
-            display_screen.write_summary(
-                "Local config: ./run.sh config init | config show. "
-                "Never commit config/local.toml or passwords."
-            )
-            menu_prompts.ask("Press Enter to continue")
+            _show_local_configuration()
+            _pause()
             continue
         output.write(menu_prompts.invalid_choice_message(choice))
 

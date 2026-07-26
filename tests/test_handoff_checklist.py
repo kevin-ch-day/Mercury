@@ -302,7 +302,7 @@ def test_compact_handoff_status_panel_omits_checklist_table(
     assert "Latest transfer" not in out
     assert "Readiness checklist" not in out
     assert "Operator backup root" not in out
-    assert "Advanced handoff tools" in out
+    assert "Handoff packaging tools" in out
 
 
 def test_handoff_action_menu_is_one_compact_block(capsys: pytest.CaptureFixture[str]) -> None:

@@ -292,7 +292,7 @@ def _migration_dashboard_rows(report, policy) -> list[str]:
             dashboard_row("Mercury HDD", _compact_hdd_line()),
             dashboard_row("Package", _compact_package_line()),
             dashboard_row("Migration", _compact_phase_line(report.operator_phase, unresolved)),
-            dashboard_row("Recommended", "Open Mercury HDD and Storage"),
+            dashboard_row("Recommended", "Open Mercury HDD and storage"),
         ]
 
 

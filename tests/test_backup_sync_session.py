@@ -202,6 +202,17 @@ def test_recommended_session_defaults() -> None:
     assert plan.restore_check is False
 
 
+def test_guided_backup_session_defaults() -> None:
+    from mercury.backup.session_models import guided_backup_session_plan
+
+    plan = guided_backup_session_plan()
+    assert plan.production_backup is True
+    assert plan.verify_production is True
+    assert plan.git_recovery is False
+    assert plan.sync_development is False
+    assert plan.restore_check is False
+
+
 def test_writer_already_enabled(host_path: Path, tmp_path: Path) -> None:
     _enabled_host(host_path)
     receipt_dir = tmp_path / "receipts"
@@ -674,7 +685,7 @@ def test_preview_and_menu_session_option() -> None:
     assert backup_menu_hint(ACTION_BACKUP_SYNC_SESSION).endswith("[1]")
     assert backup_menu_hint(ACTION_FULL_BACKUP).endswith("[2]")
     options = dict(backup_menu_render_options(writes_allowed=False))
-    assert "Back up and sync this workstation" in options["1"]
+    assert "Guided backup session" in options["1"]
     assert "unavailable" not in options["1"]
     assert "unavailable" in options["2"]
 
@@ -933,11 +944,14 @@ def test_source_delta_first_git_write_only(host_path: Path, tmp_path: Path) -> N
 
 
 def test_end_of_session_disconnect_offer() -> None:
-    from mercury.backup.session_models import BackupSyncSession
+    from mercury.backup.session_models import BackupSyncSession, LaneResult, LaneSummary
     from mercury.backup.session_wizard import offer_post_session_actions
 
     session = BackupSyncSession(
-        session_id="x", session_result=SessionResult.PASS, recommended_next_action="safe_disconnect"
+        session_id="x",
+        session_result=SessionResult.PASS,
+        recommended_next_action="safe_disconnect",
+        production_backup_result=LaneSummary(result=LaneResult.PASS),
     )
     import mercury.backup.session_wizard as wiz
 
@@ -1032,16 +1046,18 @@ def test_session_choice_menu_operator_presentation(
 
     wiz._print_overview(availability_classification="STRONG_CONFIRMATION")
     text = "\n".join(printed)
-    assert "BACK UP AND SYNC AGAIN" in text
+    assert "GUIDED BACKUP AGAIN" in text
     assert "STRONG_CONFIRMATION" not in text
     assert "Exact confirmation before enabling writes" in text
     assert "IMPORTANT" in text
     assert "Those new artifacts will not be included" in text
     assert "Back up and verify" in text
     assert "Ask before running" in text
+    assert "Main Menu [3]" in text
+    assert "Main Menu [2]" in text
     assert "Availability" not in text or "Action required" in text
 
-    assert wiz._choice_menu() == "0"
+    assert wiz._choice_menu(writes_ready=False) == "0"
     choices = "\n".join(printed)
     assert "Restore source writer and continue" in choices
     assert "Review or customize this session" in choices

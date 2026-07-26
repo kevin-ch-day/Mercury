@@ -17,14 +17,14 @@ ACTION_DEV_BACKUP = "development_backup"
 # Backward-compatible alias (Refresh removed from primary slots in Phase 2).
 ACTION_REFRESH = "refresh"
 
-# (key, label, action_id, help blurb shown in docs / extended summaries)
+# Backup Ops is backup/verify only. Restore, bundle, and handoff live elsewhere.
 BACKUP_MENU_OPTIONS: Final[list[tuple[str, str, str, str]]] = [
     (
         "1",
-        "Back up and sync this workstation",
+        "Guided backup session",
         ACTION_BACKUP_SYNC_SESSION,
-        "Guided session: storage transition, production backup+verify, optional "
-        "development backup, offline Git recovery, optional prod→dev sync.",
+        "Guided production backup and verify; optional development backup. "
+        "Sync and Git lanes remain under their own Main Menu areas.",
     ),
     (
         "2",
@@ -41,41 +41,38 @@ BACKUP_MENU_OPTIONS: Final[list[tuple[str, str, str, str]]] = [
     ),
     (
         "4",
+        "Back up development databases",
+        ACTION_DEV_BACKUP,
+        "Development-only optional recovery workflow (not the default handoff package).",
+    ),
+    (
+        "5",
         "Verify source backups",
         ACTION_VERIFY,
         "Verify on-disk production/shared backup artifacts and stamp manifests.",
     ),
     (
-        "5",
-        "Restore-check source backups",
-        ACTION_RESTORE_CHECK,
-        "Restore newly verified backups into disposable _restorecheck_* schemas.",
-    ),
-    (
         "6",
-        "Write DB bundle and runbooks",
-        ACTION_BUNDLE,
-        "Write handoff package members from verified backups.",
-    ),
-    ("7", "Preview backup plan", ACTION_PREVIEW, "Dry-run production backup plan."),
-    ("8", "Open workstation handoff", ACTION_HANDOFF, "Open the workstation handoff menu."),
-    (
-        "9",
-        "Back up development databases",
-        ACTION_DEV_BACKUP,
-        "Development-only optional recovery workflow (not the default handoff package).",
+        "Preview backup plan",
+        ACTION_PREVIEW,
+        "Dry-run production backup plan.",
     ),
 ]
 
-# Actions that write under the Mercury HDD (or mutate manifests / restore schemas).
+# Next-step hints that point at other Main Menu homes (not Backup Ops slots).
+CROSS_AREA_NEXT_HINTS: Final[dict[str, tuple[str, str]]] = {
+    ACTION_RESTORE_CHECK: ("5", "Restore and disaster recovery"),
+    ACTION_BUNDLE: ("7", "Deployment and handoff"),
+    ACTION_HANDOFF: ("7", "Deployment and handoff"),
+}
+
+# Actions that write under the Mercury HDD (or mutate manifests).
 BACKUP_MENU_WRITE_ACTIONS: Final[frozenset[str]] = frozenset(
     {
         ACTION_BACKUP_SYNC_SESSION,
         ACTION_FULL_BACKUP,
         ACTION_PRODUCTION_BACKUP,
         ACTION_VERIFY,  # stamps manifests when update_manifest=True
-        ACTION_RESTORE_CHECK,  # creates restore-check schemas + ledger evidence
-        ACTION_BUNDLE,
         ACTION_DEV_BACKUP,
     }
 )
@@ -107,12 +104,17 @@ def backup_menu_option_by_action(action_id: str) -> tuple[str, str]:
     for key, label, action, _help in BACKUP_MENU_OPTIONS:
         if action == action_id:
             return key, label
+    if action_id in CROSS_AREA_NEXT_HINTS:
+        key, label = CROSS_AREA_NEXT_HINTS[action_id]
+        return key, label
     raise KeyError(f"Unknown backup menu action: {action_id}")
 
 
 def backup_menu_hint(action_id: str) -> str:
-    """Operator hint that stays synchronized with menu numbering, e.g. ``Verify source backups [4]``."""
+    """Operator hint synchronized with menu numbering (or Main Menu home)."""
     key, label = backup_menu_option_by_action(action_id)
+    if action_id in CROSS_AREA_NEXT_HINTS:
+        return f"{label} [{key}]"
     return f"{label} [{key}]"
 
 

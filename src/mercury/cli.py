@@ -2160,7 +2160,7 @@ def backup_session_cmd(
         help="Emit one structured JSON document (no console decoration).",
     ),
 ) -> None:
-    """Guided Backup and Sync session (Phase 2).
+    """Guided backup session (interactive Backup and Sync lanes).
 
     Exit codes:
       0  PASS
@@ -2207,8 +2207,8 @@ def backup_session_cmd(
             production_backup=True,
             verify_production=True,
             development_backup=include_development,
-            git_recovery=True,
-            git_recovery_required=True,
+            git_recovery=git,
+            git_recovery_required=git,
             sync_development=sync_development,
             restore_check=restore_check,
         ).normalize()
@@ -3787,6 +3787,22 @@ def status_cmd(
         PROTECTION_REPORT_FILE.write_text(text + "\n", encoding="utf-8")
         output.write()
         output.write(f"Saved: {PROTECTION_REPORT_FILE}")
+
+
+@config_app.command("show")
+def config_show_cmd() -> None:
+    """Observe-only local configuration status (never prints passwords)."""
+    from mercury.config.settings import config_status
+    from mercury.core.paths import resolve_local_config
+
+    status = config_status()
+    output.heading("Local configuration")
+    output.field("config_path", str(resolve_local_config()))
+    for key, value in status.items():
+        output.field(key, value)
+    output.write("")
+    output.write("Never commit config/local.toml or passwords.")
+    output.write("Initialize missing files with: ./run.sh config init")
 
 
 @config_app.command("init")

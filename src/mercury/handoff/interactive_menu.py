@@ -147,7 +147,9 @@ def _run_guided_wizard(*, start_phase: str | None = None) -> None:
 
 
 def run_handoff_menu(*, interactive: bool = True) -> None:
-    """Destination checklist/status (package-first). Write tools live under Advanced."""
+    """Destination checklist/status (package-first). Packaging writes live under
+    Handoff packaging tools.
+    """
     show_title = True
     while True:
         snapshot = build_handoff_snapshot(
@@ -165,7 +167,7 @@ def run_handoff_menu(*, interactive: bool = True) -> None:
             [
                 ("1", "Refresh destination package status"),
                 ("2", "Open receiver guide (pinned package)"),
-                ("3", "Advanced handoff tools"),
+                ("3", "Handoff packaging tools"),
                 ("0", "Back"),
             ],
             indent=0,
@@ -191,7 +193,7 @@ def run_handoff_menu(*, interactive: bool = True) -> None:
 
 
 def run_advanced_handoff_tools() -> None:
-    """Historical transfer / package-build / worktree tools (expert path)."""
+    """Handoff packaging / transfer-build tools (expert path under Deployment [7])."""
     from mercury.handoff.display import step_progress_summary
 
     show_title = True
@@ -200,9 +202,10 @@ def run_advanced_handoff_tools() -> None:
             live=should_probe_database_status(),
             refresh=show_title,
         )
-        display_screen.open_screen("Advanced handoff tools")
+        display_screen.open_screen("Handoff packaging tools")
         display_screen.write_summary(
-            "Historical transfer manifests, package building, and worktree capture."
+            "Write transfer manifests, database/repo packages, and worktree capture. "
+            "Primary handoff status stays on the previous screen."
         )
         display_screen.write_fields(
             {

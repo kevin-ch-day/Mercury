@@ -347,7 +347,7 @@ def test_run_restore_menu_non_interactive(
     )
     run_restore_menu(interactive=False)
     out = capsys.readouterr().out
-    assert "Restore-check Operations" in out
+    assert "Restore-check operations" in out
     assert "No backup sources found" in out
     assert "\n      [1] Refresh" in out
     assert "Run restore-checks (none ready)" in out

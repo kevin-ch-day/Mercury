@@ -82,7 +82,7 @@ def _print_live_mode_guide() -> None:
     output.write("Backups")
     output.write("Backups write to operator storage when MariaDB, config, and the backup root are valid.")
     output.write("Inspect primary vs legacy roots with: ./run.sh storage status")
-    output.write("Use Backup Operations -> Run full backup now, or: ./run.sh backup all")
+    output.write("Use Backup Operations -> Run full database backup, or: ./run.sh backup all")
     output.write("Use Preview backup plan or ./run.sh backup plan --dry-run to preview only.")
     output.write("")
     output.write("Verification")
@@ -157,7 +157,7 @@ def run_doctor_menu(*, interactive: bool = True) -> None:
         options: list[tuple[str, str]] = [
             ("1", "Show repair plan"),
             ("2", "Rescan"),
-            ("3", "Open Mercury HDD and Storage"),
+            ("3", "Open Mercury HDD and storage"),
         ]
         from mercury.repair.startup import usb_repair_needed
 

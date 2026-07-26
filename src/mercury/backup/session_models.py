@@ -1,4 +1,4 @@
-"""Backup and Sync session models (Phase 2 orchestration)."""
+"""Backup/sync session models (guided backup orchestration)."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ class LaneResult(str, Enum):
 
 
 PHASE3B_SEPARATION_NOTE = (
-    "Routine backup-and-sync session. "
+    "Routine guided backup session. "
     "Does not supersede Phase 3B (20260722T055400Z_phase3b). "
     "Does not update the verified destination package. "
     "Requires explicit restore-check and package promotion."
@@ -38,7 +38,7 @@ PHASE3B_SEPARATION_NOTE = (
 
 
 class SessionPlan(BaseModel):
-    """Operator-selected lanes for one Backup and Sync session."""
+    """Operator-selected lanes for one guided backup session."""
 
     production_backup: bool = True
     verify_production: bool = True
@@ -278,6 +278,11 @@ def new_session_id(*, now: str | None = None) -> str:
 
 
 def recommended_session_plan() -> SessionPlan:
+    """Full recommended lanes for non-interactive / explicit session runs.
+
+    Interactive guided backup under Main Menu [1] uses
+    ``guided_backup_session_plan()`` instead (backup-first; optional Git/sync).
+    """
     return SessionPlan(
         production_backup=True,
         verify_production=True,
@@ -285,6 +290,21 @@ def recommended_session_plan() -> SessionPlan:
         verify_development=True,
         git_recovery=True,
         git_recovery_required=True,
+        sync_development=False,
+        restore_check=False,
+        restore_check_required=False,
+    ).normalize()
+
+
+def guided_backup_session_plan() -> SessionPlan:
+    """Backup-first plan for the interactive guided session under Main Menu [1]."""
+    return SessionPlan(
+        production_backup=True,
+        verify_production=True,
+        development_backup=False,
+        verify_development=True,
+        git_recovery=False,
+        git_recovery_required=False,
         sync_development=False,
         restore_check=False,
         restore_check_required=False,
