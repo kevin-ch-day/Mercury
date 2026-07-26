@@ -8,7 +8,6 @@ from types import SimpleNamespace
 import pytest
 
 from mercury.menu.options import (
-    MAIN_ADVANCED,
     MAIN_BACKUP_SYNC,
     MAIN_HEALTH,
     MAIN_MIGRATION,
@@ -32,12 +31,13 @@ def host_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return path
 
 
-def test_task_main_menu_has_seven_actions_maximum() -> None:
-    assert main_menu_max_primary_actions() == 7
+def test_task_main_menu_has_six_actions_maximum() -> None:
+    assert main_menu_max_primary_actions() == 6
     items = main_menu_items(writes_allowed=True)
-    assert len(items) == 7
+    assert len(items) == 6
     titles = [t for _k, t in items]
     assert titles[0].startswith("Back up and sync")
+    assert "Advanced tools" not in " ".join(titles)
     assert "Sync production to development" not in " ".join(titles)
     assert "Sync offline GitHub" not in " ".join(titles)
 
@@ -56,7 +56,7 @@ def test_symbolic_numbering_and_no_stale_eleven() -> None:
     assert main_menu_hint(MAIN_REPORTS).endswith("[4]")
     assert main_menu_hint(MAIN_MIGRATION).endswith("[5]")
     assert main_menu_hint(MAIN_HEALTH).endswith("[6]")
-    assert main_menu_hint(MAIN_ADVANCED).endswith("[7]")
+    assert "[7]" not in main_menu_hint(MAIN_HEALTH)
     assert "[11]" not in main_menu_hint("workstation_handoff")
     assert "[10]" not in main_menu_hint("disaster_recovery")
 
@@ -102,7 +102,7 @@ def test_software_only_when_detached(host_path: Path) -> None:
     rec = build_main_menu_recommendation()
     assert rec.software_only is True
     items = main_menu_items(software_only=True, hdd_detached=True)
-    assert len(items) == 5
+    assert len(items) == 4
     assert items[0][1].startswith("Reconnect")
 
 
@@ -200,25 +200,34 @@ def test_backup_sync_hub_launches_phase2_wizard(monkeypatch) -> None:
     assert called == ["wizard"]
 
 
-def test_backup_sync_hub_routes_production_and_development(monkeypatch) -> None:
+def test_backup_sync_hub_routes_to_full_backup_operations(monkeypatch) -> None:
+    """Prod/dev backup flows remain under full Backup Operations (not a separate Advanced door)."""
     called: list[str] = []
     monkeypatch.setattr(
-        "mercury.backup.interactive_menu.run_production_backup_flow",
-        lambda: called.append("prod"),
+        "mercury.backup.interactive_menu.run_backup_menu",
+        lambda **_k: called.append("backup_ops"),
     )
     monkeypatch.setattr(
-        "mercury.backup.interactive_menu.run_development_backup_flow",
-        lambda: called.append("dev"),
+        "mercury.sync.interactive_menu.run_sync_menu",
+        lambda **_k: called.append("sync"),
     )
+    from mercury.backup.interactive_menu import (
+        run_development_backup_flow,
+        run_production_backup_flow,
+    )
+    from mercury.backup.menu_options import BACKUP_MENU_OPTIONS
     from mercury.menu.task_menus import run_backup_sync_hub
 
-    answers = iter(["2", "0"])
+    assert callable(run_production_backup_flow)
+    assert callable(run_development_backup_flow)
+    labels = " ".join(label for _k, label, _a, _h in BACKUP_MENU_OPTIONS).lower()
+    assert "production" in labels
+    assert "development" in labels
+
+    answers = iter(["2", "3", "0"])
     monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
     run_backup_sync_hub()
-    answers = iter(["3", "0"])
-    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
-    run_backup_sync_hub()
-    assert called == ["prod", "dev"]
+    assert called == ["backup_ops", "sync"]
 
 
 def test_backup_sync_hub_title_again_when_package_verified(
@@ -288,17 +297,21 @@ def test_health_consolidates_environment_inventory_doctor(monkeypatch) -> None:
     assert called == ["env"]
 
 
-def test_advanced_retains_expert_backup(monkeypatch) -> None:
+def test_backup_sync_hub_retains_expert_backup(monkeypatch) -> None:
     called: list[str] = []
     monkeypatch.setattr(
         "mercury.backup.interactive_menu.run_backup_menu",
         lambda: called.append("backup"),
     )
-    answers = iter(["1", "0"])
+    monkeypatch.setattr(
+        "mercury.storage.host_maintenance.load_host_maintenance",
+        lambda: __import__("types").SimpleNamespace(package_verification_status="Pending"),
+    )
+    answers = iter(["2", "0"])
     monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
-    from mercury.menu.task_menus import run_advanced_hub
+    from mercury.menu.task_menus import run_backup_sync_hub
 
-    run_advanced_hub()
+    run_backup_sync_hub()
     assert called == ["backup"]
 
 
@@ -306,7 +319,7 @@ def test_old_capabilities_remain_reachable_via_hints() -> None:
     assert "migration" in main_menu_hint("workstation_handoff").lower()
     assert "recovery" in main_menu_hint("disaster_recovery").lower()
     assert "health" in main_menu_hint("system_doctor").lower()
-    assert "advanced" in main_menu_hint("sync_prod_dev").lower()
+    assert "back up and sync" in main_menu_hint("sync_prod_dev").lower()
 
 
 def test_menu_snapshot_does_not_depend_on_live_host(monkeypatch, tmp_path: Path) -> None:
@@ -329,13 +342,14 @@ def test_capability_routing_matrix_reachable() -> None:
     assert callable(task_menus.run_recovery_hub)
     assert callable(task_menus.run_migration_hub)
     assert callable(task_menus.run_health_hub)
-    assert callable(task_menus.run_advanced_hub)
+    assert callable(task_menus.run_restore_tools_hub)
+    assert not hasattr(task_menus, "run_advanced_hub")
 
     matrix = {
         "production_database_backup": MAIN_BACKUP_SYNC,
         "development_database_backup": MAIN_BACKUP_SYNC,
         "offline_git_capture": MAIN_BACKUP_SYNC,
-        "prod_to_dev_sync": MAIN_ADVANCED,
+        "prod_to_dev_sync": MAIN_BACKUP_SYNC,
         "storage_validation": MAIN_STORAGE,
         "safe_disconnect": MAIN_STORAGE,
         "exact_id_restore_check": MAIN_RECOVERY,
@@ -345,7 +359,7 @@ def test_capability_routing_matrix_reachable() -> None:
         "system_doctor": MAIN_HEALTH,
         "handoff_package": MAIN_MIGRATION,
         "deployment_validation": MAIN_MIGRATION,
-        "cleanup_smart_usb": MAIN_ADVANCED,
+        "cleanup_smart_usb": MAIN_STORAGE,
     }
     for capability, route in matrix.items():
         hint = main_menu_hint(route)
@@ -357,7 +371,6 @@ def test_capability_routing_matrix_reachable() -> None:
             MAIN_REPORTS,
             MAIN_MIGRATION,
             MAIN_HEALTH,
-            MAIN_ADVANCED,
         }
 
 

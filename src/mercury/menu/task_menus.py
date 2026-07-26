@@ -21,7 +21,7 @@ def _submenu(title: str, options: list[tuple[str, str]]) -> str | None:
     return choice
 
 def run_backup_sync_hub() -> None:
-    """Back up and sync — Phase 2 wizard plus expert subpaths."""
+    """Back up and sync — guided session plus retained expert subpaths."""
     from mercury.storage.host_maintenance import load_host_maintenance
 
     while True:
@@ -35,11 +35,9 @@ def run_backup_sync_hub() -> None:
             title,
             [
                 ("1", "Run guided Backup and Sync session"),
-                ("2", "Production database backup only"),
-                ("3", "Development database backup only"),
-                ("4", "Git recovery only"),
-                ("5", "Production-to-development sync"),
-                ("6", "Open full Backup Operations menu"),
+                ("2", "Open full Backup Operations menu"),
+                ("3", "Production-to-development sync"),
+                ("4", "Git recovery / offline repositories"),
             ],
         )
         if choice is None:
@@ -50,29 +48,44 @@ def run_backup_sync_hub() -> None:
             run_backup_sync_wizard()
             continue
         if choice == "2":
-            from mercury.backup.interactive_menu import run_production_backup_flow
+            from mercury.backup.interactive_menu import run_backup_menu
 
-            run_production_backup_flow()
+            run_backup_menu()
             continue
         if choice == "3":
-            from mercury.backup.interactive_menu import run_development_backup_flow
+            from mercury.sync.interactive_menu import run_sync_menu
 
-            run_development_backup_flow()
+            run_sync_menu()
             continue
         if choice == "4":
             from mercury.repo.interactive_menu import run_offline_repo_menu
 
             run_offline_repo_menu()
             continue
-        if choice == "5":
-            from mercury.sync.interactive_menu import run_sync_menu
+        output.write(menu_prompts.invalid_choice_message(choice))
 
-            run_sync_menu()
+
+def run_restore_tools_hub() -> None:
+    """Restore-specific tools only (never opens general expert routing)."""
+    while True:
+        choice = _submenu(
+            "Restore tools",
+            [
+                ("1", "Restore-check operations"),
+                ("2", "Verify backups"),
+            ],
+        )
+        if choice is None:
+            return
+        if choice == "1":
+            from mercury.restore.interactive_menu import run_restore_menu
+
+            run_restore_menu()
             continue
-        if choice == "6":
-            from mercury.backup.interactive_menu import run_backup_menu
+        if choice == "2":
+            from mercury.verify.interactive_menu import run_verify_menu
 
-            run_backup_menu()
+            run_verify_menu()
             continue
         output.write(menu_prompts.invalid_choice_message(choice))
 
@@ -84,8 +97,7 @@ def run_recovery_hub() -> None:
             [
                 ("1", "Restore-check by exact backup ID"),
                 ("2", "Disaster recovery planning"),
-                ("3", "Open Workstation migration (packages / cutover)"),
-                ("4", "Open Advanced restore tools"),
+                ("3", "Restore tools"),
             ],
         )
         if choice is None:
@@ -101,24 +113,20 @@ def run_recovery_hub() -> None:
             run_recovery_menu()
             continue
         if choice == "3":
-            run_migration_hub()
-            continue
-        if choice == "4":
-            run_advanced_hub()
+            run_restore_tools_hub()
             continue
         output.write(menu_prompts.invalid_choice_message(choice))
 
 
 def run_migration_hub() -> None:
-    """Consolidate handoff + deployment under workstation migration."""
+    """Workstation migration, deployment, and handoff."""
     while True:
         choice = _submenu(
             "Workstation migration",
             [
                 ("1", "Workstation handoff"),
                 ("2", "System deployment"),
-                ("3", "Disaster recovery / receiver planning"),
-                ("4", "Source capture → Capture Erebus source"),
+                ("3", "Source capture → Capture Erebus source"),
             ],
         )
         if choice is None:
@@ -134,11 +142,6 @@ def run_migration_hub() -> None:
             run_deploy_menu()
             continue
         if choice == "3":
-            from mercury.recovery.interactive_menu import run_recovery_menu
-
-            run_recovery_menu()
-            continue
-        if choice == "4":
             from mercury.migration.erebus_capture.menu import run_erebus_source_capture_menu
 
             run_erebus_source_capture_menu()
@@ -256,51 +259,3 @@ def run_destination_rehearsal_hub() -> None:
 
             run_advanced_handoff_tools()
             continue
-
-
-def run_advanced_hub() -> None:
-    while True:
-        choice = _submenu(
-            "Advanced tools",
-            [
-                ("1", "Backup Operations (expert)"),
-                ("2", "Sync production to development"),
-                ("3", "Offline GitHub repositories"),
-                ("4", "Mercury HDD cleanup and advanced storage"),
-                ("5", "System deployment (expert)"),
-                ("6", "Workstation handoff (expert)"),
-            ],
-        )
-        if choice is None:
-            return
-        if choice == "1":
-            from mercury.backup.interactive_menu import run_backup_menu
-
-            run_backup_menu()
-            continue
-        if choice == "2":
-            from mercury.sync.interactive_menu import run_sync_menu
-
-            run_sync_menu()
-            continue
-        if choice == "3":
-            from mercury.repo.interactive_menu import run_offline_repo_menu
-
-            run_offline_repo_menu()
-            continue
-        if choice == "4":
-            from mercury.storage.interactive_menu import run_storage_menu
-
-            run_storage_menu()
-            continue
-        if choice == "5":
-            from mercury.deploy.interactive_menu import run_deploy_menu
-
-            run_deploy_menu()
-            continue
-        if choice == "6":
-            from mercury.handoff.interactive_menu import run_handoff_menu
-
-            run_handoff_menu(interactive=True)
-            continue
-        output.write(menu_prompts.invalid_choice_message(choice))

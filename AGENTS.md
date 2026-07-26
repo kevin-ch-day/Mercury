@@ -297,4 +297,3 @@ Full test file index: [docs/ai_extension_points.md](docs/ai_extension_points.md#
 
 - Prod→dev sync execution polish with `SYNC DEV` confirmation.
 - Development restore-check lane (Track A A-3-02).
-- Advanced-command taxonomy labels (A-7-01).

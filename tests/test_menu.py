@@ -158,15 +158,15 @@ def test_handle_sync_plan_returns_to_menu_without_footer(
     )
     monkeypatch.setattr("mercury.sync.interactive_menu._load_report", lambda: report)
     monkeypatch.setattr("mercury.sync.interactive_menu.read_sync_choice", lambda: "0")
-    # Phase 3: sync is under Advanced tools [7] → Sync, then Back from hub.
-    answers = iter(["2", "0"])
+    # Sync lives under Backup and Sync [1] → Production-to-development sync [3].
+    answers = iter(["3", "0"])
     monkeypatch.setattr(
         "mercury.menu.prompts.ask",
         lambda *_a, **_k: next(answers),
     )
-    assert handle_menu_choice("7") == "continue"
+    assert handle_menu_choice("1") == "continue"
     out = capsys.readouterr().out
-    assert "ready" in out.lower() or "blocked" in out.lower() or "Advanced" in out
+    assert "ready" in out.lower() or "blocked" in out.lower() or "sync" in out.lower()
     assert "[0] Return" not in out
     assert "CLI:" not in out
 
@@ -252,7 +252,9 @@ def test_render_main_menu_matches_simple_layout(monkeypatch: pytest.MonkeyPatch)
     assert "      [2] Mercury HDD and Storage" in text
     assert "      [3] Restore and disaster recovery" in text
     assert "      [5] Workstation migration" in text
-    assert "      [7] Advanced tools" in text
+    assert "      [6] System health and configuration" in text
+    assert "Advanced tools" not in text
+    assert "      [7]" not in text
     assert "      [0] Exit" in text
     assert "[11]" not in text
     assert "Backup source databases" not in text

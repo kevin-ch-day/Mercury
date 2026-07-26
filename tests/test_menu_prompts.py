@@ -92,8 +92,8 @@ def test_is_valid_menu_choice() -> None:
     assert menu_prompts.is_valid_menu_choice("0")
     assert menu_prompts.is_valid_menu_choice("q")
     assert menu_prompts.is_valid_menu_choice("6")
-    assert menu_prompts.is_valid_menu_choice("7")
-    # Phase 3 primary console is 1-7; 8+ is invalid unless a submenu expands the range.
+    # Primary console is 1-6 after Advanced hub removal; 7+ is invalid.
+    assert not menu_prompts.is_valid_menu_choice("7")
     assert not menu_prompts.is_valid_menu_choice("8")
     assert not menu_prompts.is_valid_menu_choice("")
     assert not menu_prompts.is_valid_menu_choice("99")

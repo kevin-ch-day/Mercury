@@ -11,12 +11,11 @@ MAIN_RECOVERY = "main_recovery"
 MAIN_REPORTS = "reports_history"
 MAIN_MIGRATION = "main_migration"
 MAIN_HEALTH = "main_health"
-MAIN_ADVANCED = "main_advanced"
 
 # Backward-compatible aliases (expert / legacy call sites).
 ACTION_HDD_STORAGE = MAIN_STORAGE
 ACTION_BACKUP = MAIN_BACKUP_SYNC  # Phase 3: Backup and Sync is the primary backup entry
-ACTION_BACKUP_LEGACY = "backup_sources"  # expert backup submenu still exists under Advanced
+ACTION_BACKUP_LEGACY = "backup_sources"  # expert backup submenu under Backup and Sync
 ACTION_SYNC = "sync_prod_dev"
 ACTION_REPORTS = MAIN_REPORTS
 ACTION_OFFLINE_REPOS = "offline_repos"
@@ -28,6 +27,9 @@ ACTION_RECOVERY = MAIN_RECOVERY
 ACTION_RECOVERY_LEGACY = "disaster_recovery"
 ACTION_HANDOFF = "workstation_handoff"
 
+# Obsolete routing id — Advanced tools hub removed; maps to Backup and Sync.
+MAIN_ADVANCED = "main_advanced"
+
 # (key, title, action_id, requires_hdd_writes)
 MAIN_MENU_OPTIONS: Final[list[tuple[str, str, str, bool]]] = [
     ("1", "Back up and sync this workstation", MAIN_BACKUP_SYNC, True),
@@ -36,7 +38,6 @@ MAIN_MENU_OPTIONS: Final[list[tuple[str, str, str, bool]]] = [
     ("4", "Reports and backup history", MAIN_REPORTS, False),
     ("5", "Workstation migration", MAIN_MIGRATION, False),
     ("6", "System health and configuration", MAIN_HEALTH, False),
-    ("7", "Advanced tools", MAIN_ADVANCED, False),
 ]
 
 # Software-only console when the Mercury HDD is absent.
@@ -45,7 +46,6 @@ SOFTWARE_ONLY_MENU_OPTIONS: Final[list[tuple[str, str, str, bool]]] = [
     ("2", "Restore and disaster recovery planning", MAIN_RECOVERY, False),
     ("3", "Reports available on this host", MAIN_REPORTS, False),
     ("4", "System health and configuration", MAIN_HEALTH, False),
-    ("5", "Advanced software-only tools", MAIN_ADVANCED, False),
 ]
 
 WRITES_DISABLED_SUFFIX = "unavailable · writes disabled"
@@ -63,19 +63,20 @@ def main_menu_option_by_action(
     # Map legacy expert action ids onto the Phase 3 task that owns them.
     legacy_aliases = {
         ACTION_BACKUP_LEGACY: MAIN_BACKUP_SYNC,
-        ACTION_SYNC: MAIN_ADVANCED,
-        ACTION_OFFLINE_REPOS: MAIN_ADVANCED,
+        ACTION_SYNC: MAIN_BACKUP_SYNC,
+        ACTION_OFFLINE_REPOS: MAIN_BACKUP_SYNC,
         ACTION_ENVIRONMENT: MAIN_HEALTH,
         ACTION_INVENTORY: MAIN_HEALTH,
         ACTION_DOCTOR: MAIN_HEALTH,
         ACTION_DEPLOY: MAIN_MIGRATION,
         ACTION_RECOVERY_LEGACY: MAIN_RECOVERY,
         ACTION_HANDOFF: MAIN_MIGRATION,
+        MAIN_ADVANCED: MAIN_BACKUP_SYNC,
         "disaster_recovery": MAIN_RECOVERY,
         "workstation_handoff": MAIN_MIGRATION,
         "backup_sources": MAIN_BACKUP_SYNC,
-        "sync_prod_dev": MAIN_ADVANCED,
-        "offline_repos": MAIN_ADVANCED,
+        "sync_prod_dev": MAIN_BACKUP_SYNC,
+        "offline_repos": MAIN_BACKUP_SYNC,
         "environment_details": MAIN_HEALTH,
         "database_inventory": MAIN_HEALTH,
         "system_doctor": MAIN_HEALTH,

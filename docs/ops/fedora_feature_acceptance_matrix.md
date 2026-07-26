@@ -129,12 +129,33 @@ Migration saga need not be repeated end-to-end on Dell; rows may `SKIPPED` with 
 | A-6-03 | No retired USB reactivation | Repair plan omits USB-as-writer | — | Any USB writer suggestion = gap |
 | A-6-04 | Destination-local inventory | repos/databases paths reported | — | — |
 
-## Menu 7 — Advanced tools
+## Expert tooling routing (formerly Menu 7 — Advanced tools)
+
+The duplicate **Advanced tools** main-menu front door was removed. Capabilities remain
+supported under their proper hubs and direct CLI groups. The old Advanced hub is
+**obsolete routing only** — not obsolete functionality.
 
 | ID | Case | Preview/status | Execute | Failure |
 |----|------|----------------|---------|---------|
-| A-7-01 | Inventory all advanced commands | Supported / experimental / internal / obsolete labels | — | — |
-| A-7-02 | Bypass attempt | — | Advanced path cannot skip write gates or safety policy | Ungoverned destructive path = gap |
+| A-7-01 | Public hubs + retained expert commands inventory | Documented supported hubs/CLI below | — | Missing capability behind only Advanced = gap |
+| A-7-02 | Bypass attempt | — | Expert paths cannot skip write gates or safety policy | Ungoverned destructive path = gap |
+
+### Supported public hubs (A-7-01)
+
+| Main | Hub | Retained expert capabilities |
+|------|-----|------------------------------|
+| **1** | Back up and sync | Guided backup/sync; full Backup Operations; prod→dev sync; Git recovery / offline repositories |
+| **2** | Mercury HDD and Storage | Status/lifecycle; cleanup, migration, archive, detach, and other expert storage tools |
+| **3** | Restore and disaster recovery | Restore-check; disaster-recovery planning; restore-specific tools (verify) — never the old Advanced hub |
+| **4** | Reports and backup history | Reports / history |
+| **5** | Workstation migration | Workstation handoff; system deployment; Erebus source capture |
+| **6** | System health and configuration | Environment, inventory, doctor, appearance |
+
+### Retained direct CLI groups (unchanged)
+
+`backup`, `sync`, `repo`, `storage`, `deploy`, `restore-check`, plus related `migration` / `transfer` / `handoff`-adjacent flows.
+
+Obsolete routing label: former main-menu **Advanced tools** / software-only **Advanced software-only tools**.
 
 ---
 
@@ -160,7 +181,7 @@ Distro: Fedora 43 (`ID=fedora`). Host: Dell Inspiron 15 7000 Gaming. Writer: `ME
 | A-2-03 | USB archive phase-out | Env/Doctor/storage show retired offline; no USB detected requirement | `archive-retire` idempotent; `archive-status` identifies UUID `e4f0c7fb-…` | Doctor does not suggest USB activation | **accepted** |
 | A-2-05 | `storage detach status/preview` | Correctly **refuses** while writes enabled | Full detach/reconnect not executed this pass | Preflight `DETACH_BLOCKED_*` / writes not disabled | **blocked** (deferred; gates work) |
 | A-6-01 / A-6-03 | `doctor` | 4/4 verified prod; no USB-writer / USB-mount repair when phased out | — | Actionable blockers: none | **accepted** |
-| A-7-01 | `mercury --help` inventory | Top-level commands listed | Label taxonomy (supported/experimental/obsolete) not yet formalized | — | **gap** (inventory incomplete) |
+| A-7-01 | Public hubs + CLI inventory | Advanced hub removed; capabilities under Main 1/2/3/5 + CLI groups | Routing cleanup committed; taxonomy documented above | Obsolete Advanced hub = routing only | **accepted** |
 | A-7-02 | detach/sync gates | Destructive paths gated | No workers enabled | — | **accepted** (spot) |
 
 ### Repeat-run backup IDs (`20260726T183046Z_full_backup`)
@@ -180,7 +201,6 @@ Distro: Fedora 43 (`ID=fedora`). Host: Dell Inspiron 15 7000 Gaming. Writer: `ME
 1. Development restore-check support (A-3-02) — blocks exit criterion #3.
 2. Full HDD detach/reconnect cycle (A-2-05) — USB is already phased out of normal operation (A-2-03 / A-6-03 **accepted**).
 3. Optional wording: development “optional” terminal copy (A-MSG-DEV).
-4. Advanced-command taxonomy labels (A-7-01).
 
 Track B (`run.sh` os-release adapters) remains deferred.
 

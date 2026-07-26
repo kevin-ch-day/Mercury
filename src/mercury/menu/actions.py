@@ -6,7 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from mercury.menu.options import (
-    MAIN_ADVANCED,
     MAIN_BACKUP_SYNC,
     MAIN_HEALTH,
     MAIN_MIGRATION,
@@ -36,7 +35,6 @@ def menu_actions() -> dict[str, MenuAction]:
     """Return the current menu action map keyed by selection number."""
     from mercury.menu import main_display as menu_display
     from mercury.menu.runners import (
-        run_advanced_hub,
         run_backup_sync_hub,
         run_health_hub,
         run_migration_hub,
@@ -53,7 +51,6 @@ def menu_actions() -> dict[str, MenuAction]:
         MAIN_REPORTS: run_reports_and_history,
         MAIN_MIGRATION: run_migration_hub,
         MAIN_HEALTH: run_health_hub,
-        MAIN_ADVANCED: run_advanced_hub,
     }
     result: dict[str, MenuAction] = {}
     for item in menu_display.menu_items_by_key().values():

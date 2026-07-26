@@ -514,8 +514,9 @@ def test_menu_snapshot_detached_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     text = menu_display.render_main_menu(probe_database=False)
     assert "Reconnect or configure Mercury HDD" in text or "Mercury HDD and Storage" in text
     assert "Reports" in text
-    # Software-only console when detached: five primary actions max.
-    assert "[7]" not in text or "Advanced" in text
+    # Software-only console when detached: four primary actions max.
+    assert "[5]" not in text
+    assert "Advanced" not in text
 
 
 def test_software_only_first_run_prompt_text() -> None:

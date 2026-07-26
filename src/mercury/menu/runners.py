@@ -129,12 +129,6 @@ def run_health_hub() -> None:
     _run()
 
 
-def run_advanced_hub() -> None:
-    from mercury.menu.task_menus import run_advanced_hub as _run
-
-    _run()
-
-
 # Re-export interactive loop (implementation in menu.loop).
 from mercury.menu.loop import MenuResult, handle_menu_choice, run_menu  # noqa: E402
 
@@ -148,7 +142,6 @@ __all__ = [
     "render_menu_text",
     "render_status_block",
     "run_menu",
-    "run_advanced_hub",
     "run_backup_sync_hub",
     "run_health_hub",
     "run_migration_hub",

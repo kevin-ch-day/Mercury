@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from mercury.menu.options import (
-    MAIN_ADVANCED,
     MAIN_BACKUP_SYNC,
     MAIN_HEALTH,
     MAIN_MIGRATION,
@@ -43,7 +42,6 @@ class MainMenuRecommendation:
             MAIN_REPORTS: "Reports and backup history",
             MAIN_MIGRATION: "Workstation migration",
             MAIN_HEALTH: "System health and configuration",
-            MAIN_ADVANCED: "Advanced tools",
             "safe_disconnect": "Safely disconnect the Mercury HDD",
             "reconnect": "Reconnect and validate Mercury HDD",
             "attach": "Attach HDD and choose Reconnect",
@@ -66,7 +64,6 @@ def main_menu_action_for_recommendation(recommended_action: str) -> str | None:
         MAIN_REPORTS,
         MAIN_MIGRATION,
         MAIN_HEALTH,
-        MAIN_ADVANCED,
     }:
         return recommended_action
     if recommended_action in {
@@ -190,7 +187,6 @@ def build_main_menu_recommendation(
         MAIN_REPORTS,
         MAIN_MIGRATION,
         MAIN_HEALTH,
-        MAIN_ADVANCED,
     )
 
     # HDD absent → software-only posture.
@@ -211,7 +207,6 @@ def build_main_menu_recommendation(
                     MAIN_RECOVERY,
                     MAIN_REPORTS,
                     MAIN_HEALTH,
-                    MAIN_ADVANCED,
                 ),
                 software_only=True,
                 facts={
@@ -232,7 +227,6 @@ def build_main_menu_recommendation(
                 MAIN_RECOVERY,
                 MAIN_REPORTS,
                 MAIN_HEALTH,
-                MAIN_ADVANCED,
             ),
             software_only=True,
             facts={"package_id": package_id},
