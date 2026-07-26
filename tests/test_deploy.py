@@ -98,7 +98,7 @@ def _seed_all_verified(policy: ExecutionPolicy) -> None:
 
 
 def test_deploy_lane_appears_in_menu() -> None:
-    from mercury.menu.options import ACTION_DEPLOY, MAIN_MIGRATION, main_menu_option_by_action
+    from mercury.menu.options import ACTION_DEPLOY, MAIN_DEPLOY, main_menu_option_by_action
     from mercury.menu import main_display as menu_display
     from mercury.menu.actions import menu_actions
 
@@ -106,9 +106,9 @@ def test_deploy_lane_appears_in_menu() -> None:
     key, title = main_menu_option_by_action(ACTION_DEPLOY)
     keys = {item.key for _section, items in menu_display.MENU_SECTIONS for item in items}
     assert key in keys
-    assert key == "5"
-    assert menu_actions()[key].action_id == MAIN_MIGRATION
-    assert "migration" in title.lower() or "Migration" in menu_actions()[key].title
+    assert key == "7"
+    assert menu_actions()[key].action_id == MAIN_DEPLOY
+    assert "deployment" in title.lower() or "handoff" in title.lower()
 
 
 def test_database_deploy_status_rows_describe_missing_databases(
@@ -722,11 +722,13 @@ def test_deploy_plan_blocks_stale_backup_on_live_execute(
 def test_handoff_lane_appears_in_menu() -> None:
     from mercury.menu import main_display as menu_display
     from mercury.menu.actions import menu_actions
-    from mercury.menu.options import MAIN_MIGRATION, MAIN_STORAGE, MAIN_BACKUP_SYNC
+    from mercury.menu.options import MAIN_BACKUP, MAIN_DEPLOY, MAIN_MIGRATION, MAIN_STORAGE
 
     menu_display.refresh_menu_sections()
     keys = {item.key for _section, items in menu_display.MENU_SECTIONS for item in items}
-    assert "5" in keys
-    assert menu_actions()["5"].action_id == MAIN_MIGRATION
-    assert menu_actions()["1"].action_id == MAIN_BACKUP_SYNC
-    assert menu_actions()["2"].action_id == MAIN_STORAGE
+    assert "6" in keys
+    assert "7" in keys
+    assert menu_actions()["6"].action_id == MAIN_MIGRATION
+    assert menu_actions()["7"].action_id == MAIN_DEPLOY
+    assert menu_actions()["1"].action_id == MAIN_BACKUP
+    assert menu_actions()["4"].action_id == MAIN_STORAGE

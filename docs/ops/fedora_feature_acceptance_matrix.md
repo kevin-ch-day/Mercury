@@ -70,57 +70,72 @@ Legacy UUID: `e4f0c7fb-132e-4867-9c16-5e4749f5c43a` (`MERCURY_DATA_USB`).
 
 ---
 
-## Menu 1 — Back up and sync
+## Menu 1 — Backup and verification
 
 | ID | Case | Preview/status | Execute | Failure |
 |----|------|----------------|---------|---------|
-| A-1-01 | Seven-schema full backup (4 prod + 3 configured dev) | Dry-run lists all seven | Exact backup IDs, dumps, checksums, manifests, one full-run receipt + `.sha256` | Refuse when writes disabled / wrong mount |
-| A-1-02 | Repeat backup | Status reflects prior verified run (see A-DASH-001) | Second run gets new exact IDs; does not overwrite prior artifacts | — |
-| A-1-03 | Repo bundles for authority set | Plan shows dirty vs clean correctly | Bundles verify; dirty worktrees not labeled clean | Missing repo path refuses clearly |
-| A-1-04 | No USB writer dependency | Storage shows USB archive-only | Backup/bundle write only under V2 paths | — |
-| A-1-05 | Dirty Obsidian submodule | Bundle/status reports dirty + submodule divergence | Bundle still written for parent commit | Must not silently update submodule |
+| A-1-01 | Guided / full backup with `--include-dev` | 7 sources planned | Verified artifacts + receipt | Writer/mount refusal |
+| A-1-02 | Repeat backup | New exact backup IDs | Second receipt | Same-ID overwrite |
+| A-1-03 | Repo status dirty tree (via Menu 3 / CLI) | Dirty reported | Bundle still produced | Dirty labeled clean |
+| A-1-04 | Active root is V2 only | Paths under `/mnt/MERCURY_DATA_V2` | — | USB writer dependency |
+| A-1-05 | Bundle verification | PASS for written bundles | — | Unverified as ready |
 
-## Menu 2 — Mercury HDD and storage
-
-| ID | Case | Preview/status | Execute | Failure |
-|----|------|----------------|---------|---------|
-| A-2-01 | Connected / unmounted / RO / RW detection | Each state labeled truthfully | Mount/reconnect only when requested | Wrong UUID refused |
-| A-2-02 | Active writer validation | `primary` after restore-writes | Writes gated until `RESTORE MERCURY WRITES` | Detached/disabled blocks backup |
-| A-2-03 | Legacy archive behavior | USB never active writer; normal screens show retired/offline | Archive commands only; remount RO optional | RW USB warns; never writer |
-| A-2-04 | SMART evidence | Preview | Record on V2 only | USB not written |
-| A-2-05 | Safe detach / reconnect | Pre-detach checklist | Detach → reconnect → restore writes | No USB reactivation |
-
-## Menu 3 — Restore and disaster recovery
+## Menu 2 — Database sync and data movement
 
 | ID | Case | Preview/status | Execute | Failure |
 |----|------|----------------|---------|---------|
-| A-3-01 | Pinned prod restore-check | Plan names exact backup ID | Import into `_restorecheck_*` only | Existing non-temp target refused |
-| A-3-02 | Pinned dev restore-check | Dev allow flag required | Disposable target + verify | Prod path not used |
-| A-3-03 | Cross-schema case | Erebus or Scytale + PI dependency noted | Validate both schemas as needed | Missing dependency blocks clearly |
-| A-3-04 | Existing-target refusal | Collision detected | No overwrite | Receipt records refusal |
-| A-3-05 | Partial failure cleanup | — | Failed restore-check preserves debug DB + prints cleanup | No silent drop of unrelated schemas |
+| A-SYNC-01 | Prod→dev sync plan | Ready/blocked truthful | Gated execute | Ungoverned write |
+| A-SYNC-02 | Transfer status | Observe-only package summary | CLI write/receive | Menu-only destructive transfer |
 
-## Menu 4 — Reports and backup history
+## Menu 3 — Git and repository recovery
 
 | ID | Case | Preview/status | Execute | Failure |
 |----|------|----------------|---------|---------|
-| A-4-01 | Backup history lists today's seven IDs | Exact IDs visible | — | — |
-| A-4-02 | Full-backup receipt classification | Governed vs invalid maintenance separated | Observe-only quarantine plan | REFUSED receipts not treated as handoff evidence |
-| A-4-03 | Manifest/checksum verify | Per-DB verify PASS | — | Tamper/mismatch fails closed |
-| A-4-04 | Main menu last-backup line | Matches ledger / receipt truth | — | **A-DASH-001 fixed** (ledger-backed `StateSummary`) |
+| A-REPO-01 | Offline Git recovery | Plan printed | Confirm before sync | Silent overwrite |
+| A-REPO-02 | Repo status / bundle | Dirty + missing reported | CLI bundle execute | Dirty labeled clean |
 
-## Menu 5 — Workstation migration
+## Menu 4 — Mercury HDD and storage
 
 | ID | Case | Preview/status | Execute | Failure |
 |----|------|----------------|---------|---------|
-| A-5-01 | Package status / next | Destination validation pending shown honestly | No silent package rewrite | — |
-| A-5-02 | Source capture / package create | Preview membership | Only when explicitly in scope for this host | Secrets never packaged as values |
-| A-5-03 | Package verify | Checksums | — | Corrupt member fails |
-| A-5-04 | Destination restore / cutover | Readiness checklist | Not re-run casually on Dell source host | USB not writer |
+| A-2-01 | Storage status V2 primary | `active_write_role=primary` | — | Legacy shown as writer |
+| A-2-02 | Safe disconnect / reconnect | Gates clear | Detach → remount → writes | Data loss / wrong UUID |
+| A-2-03 | USB archive-only | Offline archive allowed | No writer reactivation | USB required for backup |
+| A-2-04 | Cleanup preview | Candidates classified | Locked until policy allows | Ungoverned delete |
+| A-2-05 | Detach while holders exist | Blockers listed | Refuse | Force detach |
 
-Migration saga need not be repeated end-to-end on Dell; rows may `SKIPPED` with pointer to Asus package evidence when destructive or destination-only.
+## Menu 5 — Restore and disaster recovery
 
-## Menu 6 — System health and configuration
+| ID | Case | Preview/status | Execute | Failure |
+|----|------|----------------|---------|---------|
+| A-3-01 | Restore-check exact prod ID | Plan allowed | Temp DB dropped after PASS | Prod target |
+| A-3-02 | Development restore-check | Explicit lane | Temp DB dropped | Missing lane / refuse wrongly |
+| A-3-03 | Cross-schema restore-check | Plan allowed | PASS | Cross-DB bleed |
+| A-3-04 | Unknown backup-id | Refuse | — | Proceeds |
+
+## Menu 6 — Workstation migration
+
+| ID | Case | Preview/status | Execute | Failure |
+|----|------|----------------|---------|---------|
+| A-MIG-01 | Source capture / readiness | Blockers truthful | — | False ready |
+| A-MIG-02 | Destination package validation | Package status | — | Wrong package trusted |
+
+## Menu 7 — Deployment and handoff
+
+| ID | Case | Preview/status | Execute | Failure |
+|----|------|----------------|---------|---------|
+| A-DEP-01 | System deployment plan | Artifacts listed | Gated deploy | Prod overwrite default |
+| A-DEP-02 | Workstation handoff | Checklist truthful | Wizard phases gated | Ungoverned transfer |
+| A-DEP-03 | Production cutover | CLI preview | Approval execute | Menu bypass |
+
+## Menu 8 — Reports, evidence, and history
+
+| ID | Case | Preview/status | Execute | Failure |
+|----|------|----------------|---------|---------|
+| A-4-01 | Backup history / protection | Verified counts match disk | — | Stale false verified |
+| A-4-02 | Receipts / manifests | Governed vs invalid separated | — | Invalid as evidence |
+
+## Menu 9 — System health and configuration
 
 | ID | Case | Preview/status | Execute | Failure |
 |----|------|----------------|---------|---------|
@@ -129,33 +144,21 @@ Migration saga need not be repeated end-to-end on Dell; rows may `SKIPPED` with 
 | A-6-03 | No retired USB reactivation | Repair plan omits USB-as-writer | — | Any USB writer suggestion = gap |
 | A-6-04 | Destination-local inventory | repos/databases paths reported | — | — |
 
-## Expert tooling routing (formerly Menu 7 — Advanced tools)
+## Expert tooling routing (nine-area console)
 
-The duplicate **Advanced tools** main-menu front door was removed. Capabilities remain
-supported under their proper hubs and direct CLI groups. The old Advanced hub is
-**obsolete routing only** — not obsolete functionality.
+See [nine_area_console.md](nine_area_console.md). Former Advanced hub is
+**obsolete routing**; capabilities live under Menus 1–9 and CLI groups.
 
 | ID | Case | Preview/status | Execute | Failure |
 |----|------|----------------|---------|---------|
-| A-7-01 | Public hubs + retained expert commands inventory | Documented supported hubs/CLI below | — | Missing capability behind only Advanced = gap |
-| A-7-02 | Bypass attempt | — | Expert paths cannot skip write gates or safety policy | Ungoverned destructive path = gap |
-
-### Supported public hubs (A-7-01)
-
-| Main | Hub | Retained expert capabilities |
-|------|-----|------------------------------|
-| **1** | Back up and sync | Guided backup/sync; full Backup Operations; prod→dev sync; Git recovery / offline repositories |
-| **2** | Mercury HDD and Storage | Status/lifecycle; cleanup, migration, archive, detach, and other expert storage tools |
-| **3** | Restore and disaster recovery | Restore-check; disaster-recovery planning; restore-specific tools (verify) — never the old Advanced hub |
-| **4** | Reports and backup history | Reports / history |
-| **5** | Workstation migration | Workstation handoff; system deployment; Erebus source capture |
-| **6** | System health and configuration | Environment, inventory, doctor, appearance |
+| A-7-01 | Public hubs + retained expert commands | Nine hubs documented | — | Capability only via removed Advanced |
+| A-7-02 | Bypass attempt | — | Expert paths cannot skip write gates | Ungoverned destructive path = gap |
 
 ### Retained direct CLI groups (unchanged)
 
-`backup`, `sync`, `repo`, `storage`, `deploy`, `restore-check`, plus related `migration` / `transfer` / `handoff`-adjacent flows.
+`backup`, `sync`, `repo`, `storage`, `deploy`, `restore-check`, `transfer`, `migration`, `production-cutover`.
 
-Obsolete routing label: former main-menu **Advanced tools** / software-only **Advanced software-only tools**.
+Obsolete routing: former **Advanced tools** / combined Backup+Sync+Git front door.
 
 ---
 
@@ -181,7 +184,7 @@ Distro: Fedora 43 (`ID=fedora`). Host: Dell Inspiron 15 7000 Gaming. Writer: `ME
 | A-2-03 | USB archive phase-out | Env/Doctor/storage show retired offline; no USB detected requirement | `archive-retire` idempotent; `archive-status` identifies UUID `e4f0c7fb-…` | Doctor does not suggest USB activation | **accepted** |
 | A-2-05 | `storage detach status/preview` | Correctly **refuses** while writes enabled | Full detach/reconnect not executed this pass | Preflight `DETACH_BLOCKED_*` / writes not disabled | **blocked** (deferred; gates work) |
 | A-6-01 / A-6-03 | `doctor` | 4/4 verified prod; no USB-writer / USB-mount repair when phased out | — | Actionable blockers: none | **accepted** |
-| A-7-01 | Public hubs + CLI inventory | Advanced hub removed; capabilities under Main 1/2/3/5 + CLI groups | Routing cleanup committed; taxonomy documented above | Obsolete Advanced hub = routing only | **accepted** |
+| A-7-01 | Public hubs + CLI inventory | Nine-area console; see `docs/ops/nine_area_console.md` | Routing redesign | Capability only via removed Advanced | **accepted** |
 | A-7-02 | detach/sync gates | Destructive paths gated | No workers enabled | — | **accepted** (spot) |
 
 ### Repeat-run backup IDs (`20260726T183046Z_full_backup`)

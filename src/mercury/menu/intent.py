@@ -110,13 +110,13 @@ def build_startup_intent_options(*, host=None) -> list[tuple[str, str, str]]:
     ):
         ordered = [
             (INTENT_VERIFY_PACKAGE, "Verify destination package"),
-            (INTENT_BACKUP_SYNC, "Back up and sync this workstation"),
+            (INTENT_BACKUP_SYNC, "Backup and verification"),
             (INTENT_BROWSE, "Browse all operations"),
         ]
     elif rehearsal_focus and verified:
         ordered = [
             (INTENT_DESTINATION_REHEARSAL, destination_move_action_label(host=state)),
-            (INTENT_BACKUP_SYNC, "Back up and sync again"),
+            (INTENT_BACKUP_SYNC, "Backup and verification again"),
             (INTENT_SAFE_DISCONNECT, "Safely disconnect the Mercury HDD"),
             (INTENT_BROWSE, "Browse all operations"),
         ]
@@ -124,18 +124,18 @@ def build_startup_intent_options(*, host=None) -> list[tuple[str, str, str]]:
         # Current live-like state: disconnect is the system-wide recommendation.
         ordered = [
             (INTENT_SAFE_DISCONNECT, "Safely disconnect the Mercury HDD"),
-            (INTENT_BACKUP_SYNC, "Back up and sync again"),
+            (INTENT_BACKUP_SYNC, "Backup and verification again"),
             (INTENT_DESTINATION_REHEARSAL, destination_move_action_label(host=state)),
             (INTENT_BROWSE, "Browse all operations"),
         ]
     elif writes:
         ordered = [
-            (INTENT_BACKUP_SYNC, "Back up and sync this workstation"),
+            (INTENT_BACKUP_SYNC, "Backup and verification"),
             (INTENT_BROWSE, "Browse all operations"),
         ]
     else:
         ordered = [
-            (INTENT_BACKUP_SYNC, "Back up and sync this workstation"),
+            (INTENT_BACKUP_SYNC, "Backup and verification"),
             (INTENT_SAFE_DISCONNECT, "Safely disconnect the Mercury HDD"),
             (INTENT_DESTINATION_REHEARSAL, destination_move_action_label(host=state)),
             (INTENT_BROWSE, "Browse all operations"),
@@ -195,9 +195,9 @@ def render_startup_intent_context(*, host=None) -> list[str]:
     labels = {
         INTENT_SAFE_DISCONNECT: "Safely disconnect the Mercury HDD",
         INTENT_BACKUP_SYNC: (
-            "Back up and sync again"
+            "Backup and verification again"
             if _package_verified(state)
-            else "Back up and sync this workstation"
+            else "Backup and verification"
         ),
         INTENT_DESTINATION_REHEARSAL: destination_move_action_label(host=state),
         INTENT_RECONNECT: "Reconnect or inspect Mercury HDD",

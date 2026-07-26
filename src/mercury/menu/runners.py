@@ -105,8 +105,23 @@ def run_storage_menu() -> None:
     _run_storage_menu()
 
 
-def run_backup_sync_hub() -> None:
-    from mercury.menu.task_menus import run_backup_sync_hub as _run
+def run_backup_hub() -> None:
+    from mercury.menu.task_menus import run_backup_hub as _run
+
+    _run()
+
+
+run_backup_sync_hub = run_backup_hub
+
+
+def run_sync_hub() -> None:
+    from mercury.menu.task_menus import run_sync_hub as _run
+
+    _run()
+
+
+def run_repo_hub() -> None:
+    from mercury.menu.task_menus import run_repo_hub as _run
 
     _run()
 
@@ -119,6 +134,12 @@ def run_recovery_hub() -> None:
 
 def run_migration_hub() -> None:
     from mercury.menu.task_menus import run_migration_hub as _run
+
+    _run()
+
+
+def run_deploy_handoff_hub() -> None:
+    from mercury.menu.task_menus import run_deploy_handoff_hub as _run
 
     _run()
 
@@ -142,7 +163,11 @@ __all__ = [
     "render_menu_text",
     "render_status_block",
     "run_menu",
+    "run_backup_hub",
     "run_backup_sync_hub",
+    "run_sync_hub",
+    "run_repo_hub",
+    "run_deploy_handoff_hub",
     "run_health_hub",
     "run_migration_hub",
     "run_recovery_hub",

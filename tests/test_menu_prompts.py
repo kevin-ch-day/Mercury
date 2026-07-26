@@ -92,9 +92,9 @@ def test_is_valid_menu_choice() -> None:
     assert menu_prompts.is_valid_menu_choice("0")
     assert menu_prompts.is_valid_menu_choice("q")
     assert menu_prompts.is_valid_menu_choice("6")
-    # Primary console is 1-6 after Advanced hub removal; 7+ is invalid.
-    assert not menu_prompts.is_valid_menu_choice("7")
-    assert not menu_prompts.is_valid_menu_choice("8")
+    # Primary console is 1-9 after nine-area redesign.
+    assert menu_prompts.is_valid_menu_choice("9")
+    assert not menu_prompts.is_valid_menu_choice("10")
     assert not menu_prompts.is_valid_menu_choice("")
     assert not menu_prompts.is_valid_menu_choice("99")
 

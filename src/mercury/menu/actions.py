@@ -6,12 +6,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from mercury.menu.options import (
-    MAIN_BACKUP_SYNC,
+    MAIN_BACKUP,
+    MAIN_DEPLOY,
     MAIN_HEALTH,
     MAIN_MIGRATION,
     MAIN_RECOVERY,
+    MAIN_REPO,
     MAIN_REPORTS,
     MAIN_STORAGE,
+    MAIN_SYNC,
     main_menu_action_id_for_key,
     main_menu_action_requires_writes,
 )
@@ -35,21 +38,27 @@ def menu_actions() -> dict[str, MenuAction]:
     """Return the current menu action map keyed by selection number."""
     from mercury.menu import main_display as menu_display
     from mercury.menu.runners import (
-        run_backup_sync_hub,
+        run_backup_hub,
+        run_deploy_handoff_hub,
         run_health_hub,
         run_migration_hub,
         run_recovery_hub,
+        run_repo_hub,
         run_reports_and_history,
         run_storage_menu,
+        run_sync_hub,
     )
 
     software_only = _software_only_mode()
     runners_by_action: dict[str, Callable[[], None]] = {
-        MAIN_BACKUP_SYNC: run_backup_sync_hub,
+        MAIN_BACKUP: run_backup_hub,
+        MAIN_SYNC: run_sync_hub,
+        MAIN_REPO: run_repo_hub,
         MAIN_STORAGE: run_storage_menu,
         MAIN_RECOVERY: run_recovery_hub,
-        MAIN_REPORTS: run_reports_and_history,
         MAIN_MIGRATION: run_migration_hub,
+        MAIN_DEPLOY: run_deploy_handoff_hub,
+        MAIN_REPORTS: run_reports_and_history,
         MAIN_HEALTH: run_health_hub,
     }
     result: dict[str, MenuAction] = {}
@@ -77,8 +86,8 @@ def menu_action_blocked_for_writes(action: MenuAction) -> bool:
 
     if not action.action_id:
         return False
-    # Guided Backup and Sync handles writer restoration itself.
-    if action.action_id == MAIN_BACKUP_SYNC:
+    # Backup hub handles writer restoration itself (guided session).
+    if action.action_id == MAIN_BACKUP:
         return False
     if not main_menu_action_requires_writes(action.action_id):
         return False

@@ -275,7 +275,7 @@ Full test file index: [docs/ai_extension_points.md](docs/ai_extension_points.md#
 
 - [README.md](README.md) — operator quick start
 - [docs/ai_extension_points.md](docs/ai_extension_points.md) — **agent cookbook** (CLI, backup, DB, tests)
-- [docs/ops/](docs/ops/) — Track A acceptance, post-cutover storage, Erebus capture
+- [docs/ops/](docs/ops/) — Track A acceptance, post-cutover storage, nine-area console, Erebus capture
 - [.cursor/rules/](.cursor/rules/) — Cursor rules (safety always on)
 - [.github/copilot-instructions.md](.github/copilot-instructions.md) — ChatGPT / Codex / Copilot pointer
 - [docs/database_backup_policy.md](docs/database_backup_policy.md) — backup rules

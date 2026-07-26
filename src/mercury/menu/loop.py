@@ -18,7 +18,7 @@ def handle_menu_choice(choice: str) -> MenuResult:
     from mercury.logging.events import log_menu_action
     from mercury.logging import get_logger, log_operation
     from mercury.menu.actions import menu_action_blocked_for_writes
-    from mercury.menu.options import ACTION_HANDOFF, MAIN_MIGRATION, main_menu_hint
+    from mercury.menu.options import MAIN_DEPLOY, main_menu_hint
     from mercury.storage.lifecycle import writes_disabled_redirect_message
 
     normalized = menu_prompts.normalize_menu_choice(choice)
@@ -62,12 +62,13 @@ def handle_menu_choice(choice: str) -> MenuResult:
         log_menu_action(choice=normalized, title="Repair USB", result="continue")
         return "continue"
     if normalized in {"h", "handoff"}:
-        from mercury.menu.task_menus import run_migration_hub
+        from mercury.menu.options import MAIN_DEPLOY
+        from mercury.menu.task_menus import run_deploy_handoff_hub
 
-        run_migration_hub()
+        run_deploy_handoff_hub()
         log_menu_action(
             choice=normalized,
-            title=main_menu_hint(MAIN_MIGRATION),
+            title=main_menu_hint(MAIN_DEPLOY),
             result="continue",
         )
         return "continue"

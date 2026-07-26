@@ -8,12 +8,15 @@ from types import SimpleNamespace
 import pytest
 
 from mercury.menu.options import (
-    MAIN_BACKUP_SYNC,
+    MAIN_BACKUP,
+    MAIN_DEPLOY,
     MAIN_HEALTH,
     MAIN_MIGRATION,
     MAIN_RECOVERY,
+    MAIN_REPO,
     MAIN_REPORTS,
     MAIN_STORAGE,
+    MAIN_SYNC,
     main_menu_hint,
     main_menu_items,
     main_menu_max_primary_actions,
@@ -31,32 +34,32 @@ def host_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return path
 
 
-def test_task_main_menu_has_six_actions_maximum() -> None:
-    assert main_menu_max_primary_actions() == 6
+def test_task_main_menu_has_nine_actions() -> None:
+    assert main_menu_max_primary_actions() == 9
     items = main_menu_items(writes_allowed=True)
-    assert len(items) == 6
+    assert len(items) == 9
     titles = [t for _k, t in items]
-    assert titles[0].startswith("Back up and sync")
+    assert titles[0].startswith("Backup and verification")
     assert "Advanced tools" not in " ".join(titles)
-    assert "Sync production to development" not in " ".join(titles)
-    assert "Sync offline GitHub" not in " ".join(titles)
+    assert titles[1].startswith("Database sync")
+    assert titles[2].startswith("Git and repository")
 
 
 def test_no_duplicate_backup_git_sync_top_level() -> None:
     titles = " ".join(t for _k, t in main_menu_items(writes_allowed=True)).lower()
-    assert titles.count("backup") == 1 or "back up and sync" in titles
+    assert titles.count("backup and verification") == 1
     assert "offline github" not in titles
     assert "sync production" not in titles
 
 
 def test_symbolic_numbering_and_no_stale_eleven() -> None:
-    assert main_menu_hint(MAIN_BACKUP_SYNC).endswith("[1]")
-    assert main_menu_hint(MAIN_STORAGE).endswith("[2]")
-    assert main_menu_hint(MAIN_RECOVERY).endswith("[3]")
-    assert main_menu_hint(MAIN_REPORTS).endswith("[4]")
-    assert main_menu_hint(MAIN_MIGRATION).endswith("[5]")
-    assert main_menu_hint(MAIN_HEALTH).endswith("[6]")
-    assert "[7]" not in main_menu_hint(MAIN_HEALTH)
+    assert main_menu_hint(MAIN_BACKUP).endswith("[1]")
+    assert main_menu_hint(MAIN_STORAGE).endswith("[4]")
+    assert main_menu_hint(MAIN_RECOVERY).endswith("[5]")
+    assert main_menu_hint(MAIN_REPORTS).endswith("[8]")
+    assert main_menu_hint(MAIN_MIGRATION).endswith("[6]")
+    assert main_menu_hint(MAIN_HEALTH).endswith("[9]")
+    assert "[10]" not in main_menu_hint(MAIN_HEALTH)
     assert "[11]" not in main_menu_hint("workstation_handoff")
     assert "[10]" not in main_menu_hint("disaster_recovery")
 
@@ -72,8 +75,8 @@ def test_recommended_action_writer_enabled(host_path: Path) -> None:
         path=host_path,
     )
     rec = build_main_menu_recommendation()
-    assert rec.recommended_action == MAIN_BACKUP_SYNC
-    assert "Back up and sync" in rec.explanation
+    assert rec.recommended_action == MAIN_BACKUP
+    assert "Backup and verification" in rec.explanation
 
 
 def test_recommended_action_writes_disabled_intent(host_path: Path) -> None:
@@ -102,7 +105,7 @@ def test_software_only_when_detached(host_path: Path) -> None:
     rec = build_main_menu_recommendation()
     assert rec.software_only is True
     items = main_menu_items(software_only=True, hdd_detached=True)
-    assert len(items) == 4
+    assert len(items) == 5
     assert items[0][1].startswith("Reconnect")
 
 
@@ -224,10 +227,10 @@ def test_backup_sync_hub_routes_to_full_backup_operations(monkeypatch) -> None:
     assert "production" in labels
     assert "development" in labels
 
-    answers = iter(["2", "3", "0"])
+    answers = iter(["2", "0"])
     monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
     run_backup_sync_hub()
-    assert called == ["backup_ops", "sync"]
+    assert called == ["backup_ops"]
 
 
 def test_backup_sync_hub_title_again_when_package_verified(
@@ -254,7 +257,7 @@ def test_backup_sync_hub_title_again_when_package_verified(
     )
     monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: "0")
     task_menus.run_backup_sync_hub()
-    assert titles and titles[0] == "Back up and sync again"
+    assert titles and titles[0] == "Backup and verification"
 
 
 def test_safe_disconnect_intent_launches_wizard(monkeypatch) -> None:
@@ -269,17 +272,31 @@ def test_safe_disconnect_intent_launches_wizard(monkeypatch) -> None:
     assert called == ["disconnect"]
 
 
-def test_migration_consolidates_handoff_and_deploy(monkeypatch) -> None:
+def test_migration_hub_opens_source_capture(monkeypatch) -> None:
     called: list[str] = []
     monkeypatch.setattr(
-        "mercury.handoff.interactive_menu.run_handoff_menu",
-        lambda **_k: called.append("handoff"),
+        "mercury.migration.erebus_capture.menu.run_erebus_source_capture_menu",
+        lambda **_k: called.append("erebus"),
     )
     answers = iter(["1", "0"])
     monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
     from mercury.menu.task_menus import run_migration_hub
 
     run_migration_hub()
+    assert called == ["erebus"]
+
+
+def test_deploy_handoff_hub_opens_handoff(monkeypatch) -> None:
+    called: list[str] = []
+    monkeypatch.setattr(
+        "mercury.handoff.interactive_menu.run_handoff_menu",
+        lambda **_k: called.append("handoff"),
+    )
+    answers = iter(["2", "0"])
+    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
+    from mercury.menu.task_menus import run_deploy_handoff_hub
+
+    run_deploy_handoff_hub()
     assert called == ["handoff"]
 
 
@@ -316,10 +333,10 @@ def test_backup_sync_hub_retains_expert_backup(monkeypatch) -> None:
 
 
 def test_old_capabilities_remain_reachable_via_hints() -> None:
-    assert "migration" in main_menu_hint("workstation_handoff").lower()
+    assert "deployment and handoff" in main_menu_hint("workstation_handoff").lower()
     assert "recovery" in main_menu_hint("disaster_recovery").lower()
     assert "health" in main_menu_hint("system_doctor").lower()
-    assert "back up and sync" in main_menu_hint("sync_prod_dev").lower()
+    assert "sync" in main_menu_hint("sync_prod_dev").lower()
 
 
 def test_menu_snapshot_does_not_depend_on_live_host(monkeypatch, tmp_path: Path) -> None:
@@ -329,27 +346,29 @@ def test_menu_snapshot_does_not_depend_on_live_host(monkeypatch, tmp_path: Path)
 
     monkeypatch.setattr("mercury.menu.main_display.dashboard_rows", lambda **_k: ["  Recommended"])
     text = menu_display.render_main_menu(probe_database=False)
-    assert "Back up and sync this workstation" in text or "Reconnect" in text
+    assert "Backup and verification" in text or "Reconnect" in text
     assert "/mnt/MERCURY_DATA_V2" not in text
 
 
 def test_capability_routing_matrix_reachable() -> None:
-    """Former main-menu capabilities remain reachable under Phase 3 hubs."""
+    """Former main-menu capabilities remain reachable under nine-area hubs."""
     from mercury.menu import task_menus
 
-    # Hub entry points exist and are callable.
-    assert callable(task_menus.run_backup_sync_hub)
+    assert callable(task_menus.run_backup_hub)
+    assert callable(task_menus.run_sync_hub)
+    assert callable(task_menus.run_repo_hub)
     assert callable(task_menus.run_recovery_hub)
     assert callable(task_menus.run_migration_hub)
+    assert callable(task_menus.run_deploy_handoff_hub)
     assert callable(task_menus.run_health_hub)
     assert callable(task_menus.run_restore_tools_hub)
     assert not hasattr(task_menus, "run_advanced_hub")
 
     matrix = {
-        "production_database_backup": MAIN_BACKUP_SYNC,
-        "development_database_backup": MAIN_BACKUP_SYNC,
-        "offline_git_capture": MAIN_BACKUP_SYNC,
-        "prod_to_dev_sync": MAIN_BACKUP_SYNC,
+        "production_database_backup": MAIN_BACKUP,
+        "development_database_backup": MAIN_BACKUP,
+        "offline_git_capture": MAIN_REPO,
+        "prod_to_dev_sync": MAIN_SYNC,
         "storage_validation": MAIN_STORAGE,
         "safe_disconnect": MAIN_STORAGE,
         "exact_id_restore_check": MAIN_RECOVERY,
@@ -357,19 +376,23 @@ def test_capability_routing_matrix_reachable() -> None:
         "environment_details": MAIN_HEALTH,
         "database_inventory": MAIN_HEALTH,
         "system_doctor": MAIN_HEALTH,
-        "handoff_package": MAIN_MIGRATION,
-        "deployment_validation": MAIN_MIGRATION,
+        "handoff_package": MAIN_DEPLOY,
+        "deployment_validation": MAIN_DEPLOY,
         "cleanup_smart_usb": MAIN_STORAGE,
+        "erebus_source_capture": MAIN_MIGRATION,
     }
     for capability, route in matrix.items():
         hint = main_menu_hint(route)
         assert "[" in hint, capability
         assert route in {
-            MAIN_BACKUP_SYNC,
+            MAIN_BACKUP,
+            MAIN_SYNC,
+            MAIN_REPO,
             MAIN_STORAGE,
             MAIN_RECOVERY,
-            MAIN_REPORTS,
             MAIN_MIGRATION,
+            MAIN_DEPLOY,
+            MAIN_REPORTS,
             MAIN_HEALTH,
         }
 
@@ -569,7 +592,7 @@ def test_viewing_intent_chooser_does_not_mutate_host(
                 "writes_allowed": True,
                 "active_write_role": "primary",
             },
-            MAIN_BACKUP_SYNC,
+            MAIN_BACKUP,
         ),
         (
             {
@@ -699,7 +722,7 @@ def test_main_menu_marks_storage_recommended_when_safe_disconnect(
             recommended_action_id=MAIN_STORAGE,
         )
     )
-    assert "recommended" in items["2"]
+    assert "recommended" in items["4"]
     assert "recommended" not in items["1"]
 
 

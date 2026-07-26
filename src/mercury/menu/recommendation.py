@@ -1,4 +1,4 @@
-"""Main-menu recommendation service (Phase 3)."""
+"""Main-menu recommendation service (nine-area console)."""
 
 from __future__ import annotations
 
@@ -6,12 +6,15 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from mercury.menu.options import (
-    MAIN_BACKUP_SYNC,
+    MAIN_BACKUP,
+    MAIN_DEPLOY,
     MAIN_HEALTH,
     MAIN_MIGRATION,
     MAIN_RECOVERY,
+    MAIN_REPO,
     MAIN_REPORTS,
     MAIN_STORAGE,
+    MAIN_SYNC,
 )
 
 
@@ -36,11 +39,14 @@ class MainMenuRecommendation:
 
             return destination_move_action_label()
         labels = {
-            MAIN_BACKUP_SYNC: "Back up and sync this workstation",
-            MAIN_STORAGE: "Mercury HDD and Storage",
+            MAIN_BACKUP: "Backup and verification",
+            MAIN_SYNC: "Database sync and data movement",
+            MAIN_REPO: "Git and repository recovery",
+            MAIN_STORAGE: "Mercury HDD and storage",
             MAIN_RECOVERY: "Restore and disaster recovery",
-            MAIN_REPORTS: "Reports and backup history",
             MAIN_MIGRATION: "Workstation migration",
+            MAIN_DEPLOY: "Deployment and handoff",
+            MAIN_REPORTS: "Reports, evidence, and history",
             MAIN_HEALTH: "System health and configuration",
             "safe_disconnect": "Safely disconnect the Mercury HDD",
             "reconnect": "Reconnect and validate Mercury HDD",
@@ -53,16 +59,19 @@ class MainMenuRecommendation:
 
 
 def main_menu_action_for_recommendation(recommended_action: str) -> str | None:
-    """Map recommendation service actions onto Phase 3 main-menu action IDs."""
+    """Map recommendation service actions onto nine-area main-menu action IDs."""
     if recommended_action == "physical_move":
         # Destination-move detach: do not recommend Reconnect on the source host.
         return None
     if recommended_action in {
-        MAIN_BACKUP_SYNC,
+        MAIN_BACKUP,
+        MAIN_SYNC,
+        MAIN_REPO,
         MAIN_STORAGE,
         MAIN_RECOVERY,
-        MAIN_REPORTS,
         MAIN_MIGRATION,
+        MAIN_DEPLOY,
+        MAIN_REPORTS,
         MAIN_HEALTH,
     }:
         return recommended_action
@@ -181,11 +190,14 @@ def build_main_menu_recommendation(
             identity_ok = bool(getattr(snap, "identity_ok", True))
 
     allowed = (
-        MAIN_BACKUP_SYNC,
+        MAIN_BACKUP,
+        MAIN_SYNC,
+        MAIN_REPO,
         MAIN_STORAGE,
         MAIN_RECOVERY,
-        MAIN_REPORTS,
         MAIN_MIGRATION,
+        MAIN_DEPLOY,
+        MAIN_REPORTS,
         MAIN_HEALTH,
     )
 
@@ -205,6 +217,7 @@ def build_main_menu_recommendation(
                 allowed_actions=(
                     MAIN_STORAGE,
                     MAIN_RECOVERY,
+                    MAIN_REPO,
                     MAIN_REPORTS,
                     MAIN_HEALTH,
                 ),
@@ -225,6 +238,7 @@ def build_main_menu_recommendation(
             allowed_actions=(
                 MAIN_STORAGE,
                 MAIN_RECOVERY,
+                MAIN_REPO,
                 MAIN_REPORTS,
                 MAIN_HEALTH,
             ),
@@ -307,8 +321,8 @@ def build_main_menu_recommendation(
             migration_state=migration_state,
             backup_state=backup_state,
             package_state=package,
-            recommended_action=MAIN_BACKUP_SYNC,
-            explanation="Back up and sync this workstation",
+            recommended_action=MAIN_BACKUP,
+            explanation="Backup and verification",
             allowed_actions=allowed,
             facts={"package_id": package_id, "writes_allowed": True},
         )

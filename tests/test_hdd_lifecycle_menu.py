@@ -103,32 +103,36 @@ def _option_labels(snapshot: StorageLifecycleSnapshot) -> list[str]:
     return [label for _key, label in hdd_menu_render_options(snapshot)]
 
 
-def test_main_menu_mercury_hdd_is_option_two() -> None:
+def test_main_menu_mercury_hdd_is_option_four() -> None:
     items = main_menu_items(writes_allowed=True)
-    assert items[0] == ("1", "Back up and sync this workstation")
-    assert items[1] == ("2", "Mercury HDD and Storage")
-    assert main_menu_hint(ACTION_HDD_STORAGE) == "Mercury HDD and Storage [2]"
-    action = resolve_menu_action("2")
+    assert items[0] == ("1", "Backup and verification")
+    assert items[3] == ("4", "Mercury HDD and storage")
+    assert main_menu_hint(ACTION_HDD_STORAGE) == "Mercury HDD and storage [4]"
+    action = resolve_menu_action("4")
     assert action is not None
     assert action.action_id == ACTION_HDD_STORAGE
 
 
 def test_main_menu_actions_shift_and_symbolic_hints_stay_synced() -> None:
     from mercury.menu.options import (
-        MAIN_BACKUP_SYNC,
+        MAIN_BACKUP,
+        MAIN_DEPLOY,
         MAIN_MIGRATION,
         MAIN_RECOVERY,
         MAIN_STORAGE,
+        MAIN_SYNC,
         main_menu_hint,
     )
 
     acts = menu_actions()
-    assert acts["1"].action_id == MAIN_BACKUP_SYNC
-    assert acts["2"].action_id == MAIN_STORAGE
-    assert acts["3"].action_id == MAIN_RECOVERY
-    assert acts["5"].action_id == MAIN_MIGRATION
-    assert len(acts) <= 7
-    assert main_menu_hint("workstation_handoff").endswith("[5]")
+    assert acts["1"].action_id == MAIN_BACKUP
+    assert acts["2"].action_id == MAIN_SYNC
+    assert acts["4"].action_id == MAIN_STORAGE
+    assert acts["5"].action_id == MAIN_RECOVERY
+    assert acts["6"].action_id == MAIN_MIGRATION
+    assert acts["7"].action_id == MAIN_DEPLOY
+    assert len(acts) == 9
+    assert main_menu_hint("workstation_handoff").endswith("[7]")
     assert "[11]" not in main_menu_hint("workstation_handoff")
     assert "[10]" not in main_menu_hint("workstation_handoff")
 
@@ -344,7 +348,7 @@ def test_assess_lifecycle_writes_disabled_ready(
     assert snap.recommended == "Safe disconnect Mercury HDD"
 
 
-def test_storage_menu_launches_from_main_menu_two(
+def test_storage_menu_launches_from_main_menu_four(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     called: list[str] = []
@@ -352,7 +356,7 @@ def test_storage_menu_launches_from_main_menu_two(
         "mercury.storage.interactive_menu.run_storage_menu",
         lambda **kwargs: called.append("storage"),
     )
-    action = resolve_menu_action("2")
+    action = resolve_menu_action("4")
     assert action is not None
     action.runner()
     assert called == ["storage"]
@@ -487,9 +491,9 @@ def test_menu_snapshot_writes_disabled_suffix(monkeypatch: pytest.MonkeyPatch) -
         ),
     )
     text = menu_display.render_main_menu(probe_database=False)
-    assert "Mercury HDD and Storage" in text
-    assert "Back up and sync this workstation" in text
-    assert "[5] Workstation migration" in text
+    assert "Mercury HDD and storage" in text
+    assert "Backup and verification" in text
+    assert "[6] Workstation migration" in text
     assert "[11]" not in text
 
 
@@ -512,10 +516,10 @@ def test_menu_snapshot_detached_mode(monkeypatch: pytest.MonkeyPatch) -> None:
         ),
     )
     text = menu_display.render_main_menu(probe_database=False)
-    assert "Reconnect or configure Mercury HDD" in text or "Mercury HDD and Storage" in text
+    assert "Reconnect or configure Mercury HDD" in text or "Mercury HDD and storage" in text
     assert "Reports" in text
-    # Software-only console when detached: four primary actions max.
-    assert "[5]" not in text
+    # Software-only console when detached: five primary actions max.
+    assert "[6]" not in text
     assert "Advanced" not in text
 
 

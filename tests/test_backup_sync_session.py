@@ -1336,7 +1336,7 @@ def test_main_menu_routes_backup_to_session_when_writes_disabled(
 ) -> None:
     from mercury.menu import loop as menu_loop
     from mercury.menu.actions import MenuAction
-    from mercury.menu.options import MAIN_BACKUP_SYNC
+    from mercury.menu.options import MAIN_BACKUP
 
     save_host_maintenance(
         HostMaintenanceState(
@@ -1355,11 +1355,11 @@ def test_main_menu_routes_backup_to_session_when_writes_disabled(
         lambda: called.append("session"),
     )
     monkeypatch.setattr(
-        "mercury.menu.actions.resolve_menu_action",
+        "mercury.menu.loop.resolve_menu_action",
         lambda _c: MenuAction(
             key="1",
-            title="Back up and sync this workstation",
-            action_id=MAIN_BACKUP_SYNC,
+            title="Backup and verification",
+            action_id=MAIN_BACKUP,
             runner=lambda: called.append("session"),
         ),
     )
