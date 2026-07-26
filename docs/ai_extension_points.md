@@ -24,7 +24,7 @@ Cookbook for AI agents (Cursor, ChatGPT, Codex) implementing features in this re
 | Path | Responsibility |
 |------|----------------|
 | `src/mercury/cli.py` | Top-level Typer app; backup/config/sync/report/env commands |
-| `src/mercury/database/commands.py` | `mercury db *` / `mercury database *` commands |
+| `src/mercury/db_commands.py` | `mercury db *` / `mercury database *` commands |
 | `src/mercury/menu/runners.py` | Interactive menu action runners |
 | `src/mercury/menu/loop.py` | Menu read-eval loop and choice routing |
 | `src/mercury/menu/options_menu.py` | Startup Options / Appearance (host-local theme + color mode) |
@@ -72,7 +72,7 @@ def backup_my_cmd(db: str = typer.Option(..., "--db")) -> None:
 
 Add tests: unit test for `do_thing`; optional subprocess test for CLI exit code.
 
-### Database command → `database/commands.py`
+### Database command → `db_commands.py`
 
 Add inside `register_commands()`:
 
@@ -125,7 +125,7 @@ execute_backup(
 2. Never use `INSERT`, `UPDATE`, `DELETE`, `DROP`, `CREATE`, `ALTER`
 3. Support both access modes: check `config.use_client` path in `client.py` vs `session.py`
 4. Return Pydantic model; display in `database/terminal/` (or domain `*_terminal.py`)
-5. Wire CLI in `database/commands.py`
+5. Wire CLI in `db_commands.py`
 6. Test with `probe_fn` fake or `@pytest.mark.skipif` for real socket
 
 ---

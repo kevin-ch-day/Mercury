@@ -4,7 +4,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-USER_NAME="${SUDO_USER:-${USER:-linuxadmin}}"
+USER_NAME="${SUDO_USER:-${USER:-secadmin}}"
 
 echo "Mercury host repair helper"
 echo "Target user: ${USER_NAME}"

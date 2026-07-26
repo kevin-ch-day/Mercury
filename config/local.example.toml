@@ -1,22 +1,24 @@
 # Copy to config/local.toml for local overrides (gitignored).
 
-# --- Storage roles ---
-# This is a transitional template. `./setup.sh --init-config` detects a mounted
-# canonical HDD with a Mercury layout and writes primary/HDD paths instead.
-# Before cutover: active_write_role = "legacy" (USB is transition_source, writable).
-# After verified cutover: active_write_role = "primary", legacy role = legacy_archive.
+# --- Storage roles (post-cutover defaults) ---
+# MERCURY_DATA_V2 is the sole active writer. MERCURY_DATA_USB is a retired
+# offline archive (legacy_runtime_dependency = "none").
+#
+# Fresh init still rewrites paths when a mounted HDD or USB layout is detected.
+# Pre-cutover hosts may still use active_write_role = "legacy".
 #
 # Env overrides (preferred):
 #   MERCURY_PRIMARY_MOUNT, MERCURY_LEGACY_MOUNT, MERCURY_BACKUP_ROOT
-# Deprecated (USB / transitional only — never overrides primary after cutover):
+# Deprecated (legacy USB only — never overrides primary after cutover):
 #   MERCURY_USB_MOUNT
 #
 # Operator fstab draft for primary (do not apply automatically):
 # UUID=715f29a9-2671-477b-8c8d-515d190addb9 /mnt/MERCURY_DATA_V2 ext4 defaults,nofail,x-systemd.device-timeout=10s 0 2
 
 [storage]
-active_write_role = "legacy"
-migration_state = "not_started"
+active_write_role = "primary"
+migration_state = "cutover_complete"
+legacy_runtime_dependency = "none"
 # cutover_complete is derived from migration_state; optional compatibility boolean only.
 
 [storage.primary]
@@ -28,13 +30,12 @@ filesystem_type = "ext4"
 writable = true
 
 [storage.legacy]
-# Until cutover this is the active writer (transition_source), not a read-only archive.
-role = "transition_source"
+role = "legacy_archive"
 label = "MERCURY_DATA_USB"
 mount_path = "/mnt/MERCURY_DATA_USB"
 filesystem_uuid = "e4f0c7fb-132e-4867-9c16-5e4749f5c43a"
 filesystem_type = "ext4"
-writable = true
+writable = false
 
 [storage.space_policy]
 # reserve = max(minimum_free_bytes, minimum_free_percent of capacity)
@@ -43,19 +44,14 @@ minimum_free_percent = 10
 
 [mercury]
 mode = "seed"
-# Fedora example: /var/backups/mercury
-# Stable USB mount example: /mnt/MERCURY_DATA_USB/mercury_backups (Linux)
-# Windows example: usb_mount = "E:/MERCURY_DATA_USB" then paths like E:/MERCURY_DATA_USB/mercury_backups
-# usb_mount = "E:/MERCURY_DATA_USB"
-# These USB paths are transitional defaults only; fresh receiver initialization
-# substitutes mounted canonical-HDD paths when available.
-backup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"
+# Linux primary writer:
+backup_root = "/mnt/MERCURY_DATA_V2/mercury_backups"
 dry_run = true
 # Gate for sync/deploy/restore (not required for backup writes)
 live_actions_enabled = false
-repo_backup_root = "/mnt/MERCURY_DATA_USB/mercury_repo_backups"
-manifest_dir = "/mnt/MERCURY_DATA_USB/mercury_manifests"
-runbook_dir = "/mnt/MERCURY_DATA_USB/mercury_runbooks"
+repo_backup_root = "/mnt/MERCURY_DATA_V2/mercury_repo_backups"
+manifest_dir = "/mnt/MERCURY_DATA_V2/mercury_manifests"
+runbook_dir = "/mnt/MERCURY_DATA_V2/mercury_runbooks"
 
 # File logging under logs/
 #   mercury-YYYY-MM-DD.log  — general session/operation log
@@ -64,8 +60,7 @@ runbook_dir = "/mnt/MERCURY_DATA_USB/mercury_runbooks"
 #   backup.log              — mercury.backup events (backup, verify, restore-check)
 logging_enabled = true
 log_level = "INFO"
-# Operator-storage example: /mnt/MERCURY_DATA_USB/mercury_logs (legacy until cutover)
-log_dir = "/mnt/MERCURY_DATA_USB/mercury_logs"
+log_dir = "/mnt/MERCURY_DATA_V2/mercury_logs"
 
 # --- Option A: TCP + password (production / remote server) ---
 # [mariadb]

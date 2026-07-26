@@ -50,7 +50,7 @@ exit 1
     assert "Mercury bootstrap failed while installing Python dependencies." in combined
     assert "MERCURY_SKIP_SYNC=1 ./run.sh" in combined
     assert "--system-site-packages" in combined
-    assert "/mnt/MERCURY_DATA_USB/mercury_backups" in combined
+    assert "/mnt/MERCURY_DATA_V2/mercury_backups" in combined
 
 
 def test_run_sh_uses_existing_venv_when_skip_sync_is_enabled(tmp_path: Path) -> None:

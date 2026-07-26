@@ -8,13 +8,13 @@
 
 [repos.mercury]
 display_name = "Mercury"
-path = "/home/linuxadmin/GitHub/Mercury"
+path = "/home/secadmin/Laughlin/GitHub/Mercury"
 default_branch = "main"
 # remote_url = "https://github.com/your-org/Mercury.git"
 
 [repos.erebus_engine]
 display_name = "Erebus Engine"
-path = "/home/linuxadmin/GitHub/erebus-engine-fedora"
+path = "/home/secadmin/Laughlin/GitHub/erebus-engine-fedora"
 default_branch = "main"
 # remote_url = "https://github.com/your-org/erebus-engine-fedora.git"
 
@@ -25,7 +25,7 @@ default_branch = "main"
 
 [repos.scytaledroid]
 display_name = "ScytaleDroid"
-path = "/home/linuxadmin/GitHub/ScytaleDroid"
+path = "/home/secadmin/Laughlin/GitHub/ScytaleDroid"
 default_branch = "main"
 # remote_url = "https://github.com/your-org/ScytaleDroid.git"
 
@@ -36,12 +36,12 @@ default_branch = "main"
 
 [repos.obsidiandroid]
 display_name = "ObsidianDroid"
-path = "/home/linuxadmin/GitHub/obsidiandroid"
+path = "/home/secadmin/Laughlin/GitHub/obsidiandroid"
 default_branch = "main"
 
 [repos.fedora_linux_scripts]
 display_name = "Fedora Linux Scripts"
-path = "/home/linuxadmin/GitHub/fedora-linux-scripts"
+path = "/home/secadmin/Laughlin/GitHub/fedora-linux-scripts"
 default_branch = "main"
 # Set false when this checkout is deliberately outside the workstation-migration scope.
 # migration_scope = false

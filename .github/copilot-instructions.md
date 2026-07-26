@@ -35,7 +35,7 @@ Use `.venv/bin/python`. Do not commit `config/local.toml`.
 ## Code location
 
 - Logic: `src/mercury/{core,backup,database,config,env,reporting,sync}/`
-- CLI: `src/mercury/cli.py`, `src/mercury/database/commands.py`
+- CLI: `src/mercury/cli.py`, `src/mercury/db_commands.py`
 - Menu / terminal: `src/mercury/menu/`, `src/mercury/terminal/`
 - Tests: `tests/test_*.py`
 - Prefer subpackages; root keeps `cli.py`, `db_commands.py`, `bootstrap.py`, `output.py` only

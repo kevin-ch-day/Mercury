@@ -22,7 +22,13 @@ from mercury.core.paths import (
     resolve_local_config,
 )
 
-_USB_PATH_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+_OPERATOR_PATH_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    ('backup_root = "/mnt/MERCURY_DATA_V2/mercury_backups"', 'backup_root = "{backup_root}"'),
+    ('log_dir = "/mnt/MERCURY_DATA_V2/mercury_logs"', 'log_dir = "{log_dir}"'),
+    ('repo_backup_root = "/mnt/MERCURY_DATA_V2/mercury_repo_backups"', 'repo_backup_root = "{repo_backup_root}"'),
+    ('manifest_dir = "/mnt/MERCURY_DATA_V2/mercury_manifests"', 'manifest_dir = "{manifest_dir}"'),
+    ('runbook_dir = "/mnt/MERCURY_DATA_V2/mercury_runbooks"', 'runbook_dir = "{runbook_dir}"'),
+    # Pre-cutover / historical example strings (still rewritten when present).
     ('backup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"', 'backup_root = "{backup_root}"'),
     ('log_dir = "/mnt/MERCURY_DATA_USB/mercury_logs"', 'log_dir = "{log_dir}"'),
     ('repo_backup_root = "/mnt/MERCURY_DATA_USB/mercury_repo_backups"', 'repo_backup_root = "{repo_backup_root}"'),
@@ -297,7 +303,17 @@ def _customize_created_local_config(path) -> list[str]:
 
 
 def _apply_usb_paths(text: str, mount_path) -> str:
+    """Retarget a fresh example at a transitional USB writer layout."""
     text = _apply_mercury_paths(text, mount_path)
+    text = text.replace('active_write_role = "primary"', 'active_write_role = "legacy"', 1)
+    text = text.replace('migration_state = "cutover_complete"', 'migration_state = "not_started"', 1)
+    text = text.replace('legacy_runtime_dependency = "none"\n', "", 1)
+    text = text.replace('role = "legacy_archive"', 'role = "transition_source"', 1)
+    text = text.replace(
+        'filesystem_type = "ext4"\nwritable = false\n\n[storage.space_policy]',
+        'filesystem_type = "ext4"\nwritable = true\n\n[storage.space_policy]',
+        1,
+    )
     # Keep [storage.legacy] aligned with the active transitional USB mount.
     return text.replace(
         'mount_path = "/mnt/MERCURY_DATA_USB"',
@@ -307,7 +323,7 @@ def _apply_usb_paths(text: str, mount_path) -> str:
 
 def _apply_mercury_paths(text: str, mount_path) -> str:
     paths = default_usb_path_replacements(mount_path)
-    for old, template in _USB_PATH_REPLACEMENTS:
+    for old, template in _OPERATOR_PATH_REPLACEMENTS:
         text = text.replace(old, template.format(**paths))
     return text
 
@@ -336,6 +352,12 @@ def _apply_primary_paths(text: str, mount_path: Path) -> str:
     text = text.replace('active_write_role = "legacy"', 'active_write_role = "primary"', 1)
     text = text.replace('migration_state = "not_started"', 'migration_state = "cutover_complete"', 1)
     text = text.replace('role = "transition_source"', 'role = "legacy_archive"', 1)
+    if 'legacy_runtime_dependency =' not in text:
+        text = text.replace(
+            'migration_state = "cutover_complete"\n',
+            'migration_state = "cutover_complete"\nlegacy_runtime_dependency = "none"\n',
+            1,
+        )
     # This replacement deliberately includes the following table header, so it
     # changes only the legacy role's writable policy, not the primary's.
     text = text.replace(
@@ -354,7 +376,7 @@ def _apply_repo_local_paths(text: str) -> str:
         "manifest_dir": str((REPO_ROOT / "output" / "manifests").resolve()),
         "runbook_dir": str((REPO_ROOT / "output" / "runbooks").resolve()),
     }
-    for old, template in _USB_PATH_REPLACEMENTS:
+    for old, template in _OPERATOR_PATH_REPLACEMENTS:
         text = text.replace(old, template.format(**paths))
     return text
 

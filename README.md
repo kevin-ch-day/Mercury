@@ -255,17 +255,21 @@ export MERCURY_MARIADB_PASSWORD='your-password'
 
 ### Windows
 
-Install **Python 3.12+**, **MariaDB client tools** (`mariadb`, `mariadb-dump` or `mysql`/`mysqldump` on PATH), and **Git for Windows**. Format the USB drive with the Mercury folder layout (`mercury_backups/`, `mercury_logs/`, etc.) or run `mercury config init` after the drive is connected.
+Install **Python 3.12+**, **MariaDB client tools** (`mariadb`, `mariadb-dump` or `mysql`/`mysqldump` on PATH), and **Git for Windows**. Prefer a dedicated Mercury volume with the operator layout (`mercury_backups/`, `mercury_logs/`, etc.), then run `mercury config init`.
 
 ```toml
-# config/local.toml
+# config/local.toml — example after primary cutover on Windows
+[storage]
+active_write_role = "primary"
+migration_state = "cutover_complete"
+legacy_runtime_dependency = "none"
+
 [mercury]
-usb_mount = "E:/MERCURY_DATA_USB"
-backup_root = "E:/MERCURY_DATA_USB/mercury_backups"
-log_dir = "E:/MERCURY_DATA_USB/mercury_logs"
-repo_backup_root = "E:/MERCURY_DATA_USB/mercury_repo_backups"
-manifest_dir = "E:/MERCURY_DATA_USB/mercury_manifests"
-runbook_dir = "E:/MERCURY_DATA_USB/mercury_runbooks"
+backup_root = "E:/MERCURY_DATA_V2/mercury_backups"
+log_dir = "E:/MERCURY_DATA_V2/mercury_logs"
+repo_backup_root = "E:/MERCURY_DATA_V2/mercury_repo_backups"
+manifest_dir = "E:/MERCURY_DATA_V2/mercury_manifests"
+runbook_dir = "E:/MERCURY_DATA_V2/mercury_runbooks"
 dry_run = true
 live_actions_enabled = false
 
@@ -278,7 +282,7 @@ use_client = true
 ssl_disabled = true
 ```
 
-Mercury auto-detects a drive letter when `mercury_backups/` and `mercury_logs/` exist at the root (e.g. `E:/`). Prefer `MERCURY_LEGACY_MOUNT` / `MERCURY_PRIMARY_MOUNT` (or `[storage.*]` in `config/local.toml`). `MERCURY_USB_MOUNT` remains as a deprecated alias for the transitional USB role only and never overrides primary after cutover. Use TCP/password for local or remote MariaDB on Windows (unix socket auth is Linux-only).
+Mercury auto-detects a drive letter when `mercury_backups/` and `mercury_logs/` exist at the root (e.g. `E:/`). Prefer `MERCURY_PRIMARY_MOUNT` / `MERCURY_LEGACY_MOUNT` (or `[storage.*]` in `config/local.toml`). `MERCURY_USB_MOUNT` remains a deprecated alias for the retired USB archive role only and never overrides primary after cutover. Use TCP/password for local or remote MariaDB on Windows (unix socket auth is Linux-only).
 
 ```powershell
 python -m mercury.cli menu

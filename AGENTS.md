@@ -13,7 +13,7 @@ Guidance for AI coding agents (Cursor, ChatGPT, Codex) working in this repositor
 | Task | Start in |
 |------|----------|
 | New backup feature | `backup/backup_runner.py`, `core/execution_policy.py`, `tests/test_backup_execute.py` |
-| New DB command | `database/commands.py`, `database/mariadb/`, matching `tests/test_m*.py` |
+| New DB command | `db_commands.py`, `database/mariadb/`, matching `tests/test_m*.py` |
 | New CLI (non-db) | `cli.py`, `menu/runners.py`, `tests/test_cli_*.py` |
 | Policy/report | `reporting/protection.py`, `core/safety.py` |
 | Classification | `database/core/catalog.py`, `database/core/classifier.py` |

@@ -76,7 +76,7 @@ def test_parse_schema_artifact_counts_tables_and_views(tmp_path: Path) -> None:
     assert names == {"alpha", "beta"}
 
 
-def test_target_completeness_flags_neptune_incomplete_catalog(
+def test_target_completeness_flags_incomplete_catalog(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
