@@ -7,15 +7,16 @@ This repo is a **Fedora- and Windows-supported Python CLI** for MariaDB backup, 
 1. **[AGENTS.md](../AGENTS.md)** — safety policy, layout, CLI, pitfalls (authoritative)
    Compatibility note: some tools may discover the lowercase root file [agents.md](../agents.md), which points back to `AGENTS.md`.
 2. **[docs/ai_extension_points.md](../docs/ai_extension_points.md)** — recipes for CLI, backup, DB, tests
+3. **[docs/ops/post_cutover_storage.md](../docs/ops/post_cutover_storage.md)** — primary HDD writer; legacy USB retired
 
 ## Safety (never violate)
 
-- Backup only `*_prod` and `android_permission_intel`. Never `*_dev`.
+- Backup only `*_prod` and `android_permission_intel` (plus confirmation-gated required `_dev` for this platform). Never invent extra `*_dev` backup sources.
 - Never drop/overwrite/restore into `*_prod`.
-- **Backup writes** require a safe operator-storage environment (legacy USB until cutover); **sync/deploy/restore** additionally require explicit live-action gates.
+- **Backup writes** require a safe operator-storage environment (primary HDD after cutover); **sync/deploy/restore** additionally require explicit live-action gates.
 - Live execution is supported on **Fedora and Windows** when configured; non-Fedora Linux is seed/status only.
-- Live backup execution requires the USB layout under `[mercury].backup_root` (Linux default `/mnt/MERCURY_DATA_USB/mercury_backups`); repo-local `backups/` is dev-only.
-- When USB is plugged in but unmounted, doctor repair plan suggests `sudo systemctl start mnt-MERCURY_DATA_USB.mount` (fstab) or mount-by-label.
+- Live backup root is under the active writer (Linux default `/mnt/MERCURY_DATA_V2/mercury_backups`); repo-local `backups/` is dev-only.
+- Legacy `MERCURY_DATA_USB` is a retired offline archive — not a Doctor/dashboard dependency. Use `storage archive-status` for inspection only.
 - Live SQL: read-only only.
 
 ## Stack

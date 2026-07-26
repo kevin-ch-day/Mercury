@@ -337,15 +337,14 @@ See [database module](docs/database_module.md).
 
 ## Docs
 
-- [Platform vision](docs/platform_vision.md)
 - [Database module](docs/database_module.md)
 - [Database backup policy](docs/database_backup_policy.md)
 - [Prod-to-dev sync policy](docs/prod_to_dev_sync_policy.md)
 - [Backup layout](docs/backup_layout.md)
-- [Disaster recovery runbook](docs/disaster_recovery_runbook.md)
 - [Backup verification](docs/backup_verification.md)
-- [MariaDB live discovery](docs/mariadb_discovery.md)
-- [Mercury v1 checklist](docs/mercury_v1_checklist.md)
+- [Post-cutover storage](docs/ops/post_cutover_storage.md)
+- [Fedora feature acceptance matrix](docs/ops/fedora_feature_acceptance_matrix.md)
+- [Erebus source capture](docs/ops/erebus_source_capture.md)
 
 ## License
 

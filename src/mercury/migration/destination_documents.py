@@ -1160,7 +1160,7 @@ def build_document_bodies(
         str(phase / "PHASE3B_REPORT.md"),
         str(phase / "phase3b_summary.json"),
         str(mercury_cap / "capture_identity.json"),
-        "docs/disaster_recovery_runbook.md",
+        "docs/ops/post_cutover_storage.md",
     ]
 
     return {

@@ -26,7 +26,7 @@ Mercury is a **Fedora- and Windows-supported Python CLI** for MariaDB backup, di
 
 It is **not** an AI tool, web app, malware analyzer, or full workstation/OS bootstrap utility.
 
-**Production targets:** Fedora and Windows for live operations when MariaDB tools, `config/local.toml`, and the MERCURY_DATA_USB layout are configured. Non-Fedora Linux remains seed planning/development only.
+**Production targets:** Fedora and Windows for live operations when MariaDB tools, `config/local.toml`, and the active operator storage root (`MERCURY_DATA_V2`) are configured. Non-Fedora Linux remains seed planning/development only. Legacy `MERCURY_DATA_USB` is a retired offline archive, not a normal dependency.
 
 ## Non-negotiable safety policy
 
@@ -50,11 +50,11 @@ Policy constants live in `src/mercury/core/safety.py`. Execution gates live in `
 
 - Planning, discovery, manifests, and reports are implemented.
 - Live **read-only** server access works (`db ping`, `db discover`, `db inspect`, `db access`).
-- **Backup writes** run when the backup environment is safe (Fedora/Windows, USB-backed `backup_root`, config present). They do **not** require `dry_run=false` or `live_actions_enabled=true`.
+- **Backup writes** run when the backup environment is safe (Fedora/Windows, primary HDD-backed `backup_root`, config present). They do **not** require `dry_run=false` or `live_actions_enabled=true`.
 - Prod→dev **sync**, **deploy**, and destructive restore-check cleanup require `dry_run=false`, `live_actions_enabled=true`, and confirmation (`SYNC DEV` for sync).
 - Menu and CLI default backup execution when the environment is ready; use `--dry-run` or **Preview backup plan** for dry-run.
 - Live execution is supported on **Fedora and Windows**; other Linux hosts remain seed/status only.
-- USB mount detection: when the MERCURY_DATA_USB drive is plugged in but unmounted, `./run.sh doctor --repair-plan` suggests `sudo systemctl start mnt-MERCURY_DATA_USB.mount` when fstab is configured.
+- Legacy USB is phased out of normal Doctor/dashboard validation; archive inspection uses `storage archive-status` / `archive-receipt` / `archive-remount-ro` only.
 
 ## Repository layout
 
@@ -164,20 +164,21 @@ use_client = false
 
 Then: `export MERCURY_MARIADB_PASSWORD=...`
 
-**Operator storage backup root (legacy USB until cutover):**
+**Operator storage backup root (primary HDD after cutover):**
 
 ```toml
 [mercury]
 # Backup writes use environment checks (Fedora/Windows + mounted operator root).
 # dry_run / live_actions_enabled gate sync, deploy, and restore — not routine backups.
-backup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"
+backup_root = "/mnt/MERCURY_DATA_V2/mercury_backups"
 
 [storage]
-active_write_role = "legacy"
-migration_state = "not_started"
+active_write_role = "primary"
+migration_state = "cutover_complete"
+legacy_runtime_dependency = "none"
 ```
 
-For the first live milestone, Mercury also requires the active write mount (today: `/mnt/MERCURY_DATA_USB`) to be active. Repo-local `backups/` are development artifacts only and do not count as production protection in live/operator mode. Inspect roots with `mercury storage status`; plan migration with `mercury storage migrate-plan` (dry-run only).
+The active write mount is `/mnt/MERCURY_DATA_V2` (`MERCURY_DATA_V2`). Legacy `MERCURY_DATA_USB` is a retired offline archive only — see `docs/ops/post_cutover_storage.md`. Repo-local `backups/` are development artifacts only and do not count as production protection. Inspect roots with `mercury storage status` / `storage archive-status`.
 
 Never commit passwords or `config/local.toml`.
 
@@ -219,7 +220,7 @@ mercury storage cutover-readiness        # read-only checklist (never switches w
 mercury menu
 ```
 
-Until storage cutover, routine writers still target the transitional USB (`active_write_role=legacy`). Prefer `MERCURY_LEGACY_MOUNT` / `MERCURY_PRIMARY_MOUNT` over deprecated `MERCURY_USB_MOUNT`. Mercury HDD lifecycle: Main Menu → Mercury HDD and Storage.
+After cutover, routine writers target the primary HDD (`active_write_role=primary`). Prefer `MERCURY_PRIMARY_MOUNT` / `MERCURY_LEGACY_MOUNT` over deprecated `MERCURY_USB_MOUNT`. Legacy USB archive commands: `storage archive-status`, `archive-receipt`, `archive-remount-ro`. Mercury HDD lifecycle: Main Menu → Mercury HDD and Storage.
 ## Code conventions
 
 - **Python 3.12+**, type hints, Pydantic models for structured data.
@@ -276,15 +277,14 @@ Full test file index: [docs/ai_extension_points.md](docs/ai_extension_points.md#
 
 - [README.md](README.md) — operator quick start
 - [docs/ai_extension_points.md](docs/ai_extension_points.md) — **agent cookbook** (CLI, backup, DB, tests)
-- [.cursor/rules/](.cursor/rules/) — Cursor project rules
-- [.github/copilot-instructions.md](.github/copilot-instructions.md) — Copilot/Codex pointer
+- [docs/ops/](docs/ops/) — Track A acceptance, post-cutover storage, Erebus capture
+- [.cursor/rules/](.cursor/rules/) — Cursor rules (safety always on)
 - [.github/copilot-instructions.md](.github/copilot-instructions.md) — ChatGPT / Codex / Copilot pointer
-- [docs/platform_vision.md](docs/platform_vision.md) — roadmap
 - [docs/database_backup_policy.md](docs/database_backup_policy.md) — backup rules
 - [docs/prod_to_dev_sync_policy.md](docs/prod_to_dev_sync_policy.md) — sync order
 - [docs/backup_layout.md](docs/backup_layout.md) — on-disk layout
 - [docs/backup_verification.md](docs/backup_verification.md) — verification checks
-- [docs/mariadb_discovery.md](docs/mariadb_discovery.md) — live discovery (may lag CLI; update when changing DB access)
+- [docs/database_module.md](docs/database_module.md) — `mercury.database` package map
 
 ## Common pitfalls
 

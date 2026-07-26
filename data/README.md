@@ -5,8 +5,8 @@ operation ledger.
 
 ## Operator / production ledger
 
-When the **active write root** is mounted (today: transitional USB until cutover),
-Mercury prefers:
+When the **active write root** is mounted (primary HDD after cutover), Mercury
+prefers:
 
 ```text
 {active_mount}/mercury_state/operations.jsonl
@@ -19,10 +19,10 @@ Mercury prefers:
 
 Typical mounts:
 
-- Transitional / legacy: `/mnt/MERCURY_DATA_USB/mercury_state/`
-- Canonical primary (after cutover): `/mnt/MERCURY_DATA_V2/mercury_state/`
+- Canonical primary: `/mnt/MERCURY_DATA_V2/mercury_state/`
+- Retired legacy archive (not a normal dependency): `/mnt/MERCURY_DATA_USB/mercury_state/`
 
-Inspect roles with `./run.sh storage status`.
+Inspect roles with `./run.sh storage status` or `./run.sh storage archive-status`.
 
 ## Repo-local fallback
 
