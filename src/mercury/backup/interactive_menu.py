@@ -29,6 +29,8 @@ from mercury.backup import (
 )
 from mercury.backup.freshness import (
     backup_entry_freshness_label,
+    backup_entry_needs_backup_work,
+    backup_entry_needs_restore_check,
     backup_entry_status_label,
     backup_entry_verify_label,
     menu_handoff_problem_summary,
@@ -99,76 +101,29 @@ def _write_backup_fields(fields: dict[str, str]) -> None:
 def _write_phase3b_note(warning: str) -> None:
     from mercury.terminal.theme import hint_text
 
-    for part in warning.splitlines():
-        text = part.strip()
-        if text:
-            output.write(hint_text(text))
+    text = " ".join(part.strip() for part in warning.splitlines() if part.strip())
+    if text:
+        output.write(hint_text(text))
 
 
 def _storage_usage_fields(policy) -> dict[str, str]:
-    from mercury.core.environment_status import discover_usb_target
-
-    usb = discover_usb_target()
+    """Compact Backup Operations header fields (root, writer, status, capacity)."""
     root = policy.backup_root.resolve()
     state = policy.backup_root_state()
     host = load_host_maintenance()
     hdd_writes = writes_allowed(host)
 
-    if not hdd_writes:
-        storage_label = "mounted" if root.exists() else "not mounted"
-        if backup_root_state_is_ready(state) and root.exists():
-            storage_label = "mounted and validated"
-        elif state == "operator mount not mounted":
-            storage_label = "operator storage not mounted"
-        fields: dict[str, str] = {
-            "Backup root": str(root),
-            "Storage": storage_label,
-            "Backup writer": "Disabled · disconnect preparation",
-            "Active writer": host.active_write_role or "none",
-            "Backup actions": "unavailable",
-        }
-        if root.exists():
-            try:
-                usage = shutil.disk_usage(root)
-                fields["Free"] = format_bytes(usage.free)
-            except OSError:
-                fields["Free"] = "unknown"
-        else:
-            fields["Free"] = "n/a"
-        return fields
-
-    fields = {
+    writer = (
+        "Enabled"
+        if hdd_writes
+        else "Disabled · disconnect preparation"
+    )
+    fields: dict[str, str] = {
         "Backup root": str(root),
-        "Environment": _backup_target_label(policy),
-        "Backup writer": "Enabled",
-        "Active writer": host.active_write_role or "primary",
-        "Backup actions": "available",
+        "Backup writer": writer,
     }
-    if not usb.mounted:
-        try:
-            from mercury.core.storage_roots import load_storage_config
-            from mercury.core.storage_roles import StorageWriteRole
-
-            storage = load_storage_config(warn_deprecated=False)
-            if storage.cutover_complete and storage.active_write_role == StorageWriteRole.PRIMARY:
-                # USB archive is optional after cutover — only hint when backup root itself is down.
-                if state in {"operator mount not mounted", "missing path"}:
-                    fields["Mount fix"] = "./run.sh storage validate"
-            elif usb.quick_mount_command:
-                from mercury.repair.usb import USB_REPAIR_COMMAND
-
-                fields["Mount fix"] = USB_REPAIR_COMMAND
-        except Exception:
-            if usb.quick_mount_command:
-                from mercury.repair.usb import USB_REPAIR_COMMAND
-
-                fields["Mount fix"] = USB_REPAIR_COMMAND
 
     if not root.exists():
-        fields["Used"] = "n/a"
-        fields["Total"] = "n/a"
-        fields["Free"] = "n/a"
-        fields["Usage"] = "n/a"
         if state == "missing path":
             fields["Status"] = "path missing — mount operator storage first"
         elif state == "operator mount not mounted":
@@ -180,10 +135,6 @@ def _storage_usage_fields(policy) -> dict[str, str]:
     try:
         usage = shutil.disk_usage(root)
     except OSError:
-        fields["Used"] = "unknown"
-        fields["Total"] = "unknown"
-        fields["Free"] = "unknown"
-        fields["Usage"] = "unknown"
         fields["Status"] = "unavailable"
         return fields
 
@@ -197,11 +148,11 @@ def _storage_usage_fields(policy) -> dict[str, str]:
     else:
         status = state.replace("-", " ")
 
-    fields["Used"] = format_bytes(usage.used)
-    fields["Total"] = format_bytes(usage.total)
-    fields["Free"] = format_bytes(usage.free)
-    fields["Usage"] = f"{used_percent:.0f}%"
     fields["Status"] = status
+    fields["Capacity"] = (
+        f"{format_bytes(usage.used)} used · {format_bytes(usage.free)} free "
+        f"({used_percent:.0f}%)"
+    )
     return fields
 
 
@@ -305,10 +256,19 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
     status_entries = {entry.database: entry for entry in status_report.entries}
     rows = _backup_screen_rows(plan, status_entries=status_entries)
 
-    body_notes: list[tuple[str, str]] = []  # ("warn"|"info"|"hint"|"summary", text)
+    body_notes: list[tuple[str, str]] = []  # ("warn"|"info"|"hint"|"summary"|"next", text)
+    pending_rc = [
+        entry.database
+        for entry in status_report.entries
+        if backup_entry_needs_restore_check(entry)
+    ]
+    needs_backup = any(
+        backup_entry_needs_backup_work(entry) for entry in status_report.entries
+    )
+
     if rows:
         table = Table.from_headers(
-            ["DATABASE", "FRESHNESS", "VERIFY", "SIZE", "LAST BACKUP"],
+            ["DATABASE", "FRESHNESS", "RESTORE-CHECK", "SIZE", "LAST BACKUP"],
             rows,
             style=TableStyle(indent=0),
             min_col_widths=[28, 10, 14, 10, 28],
@@ -342,7 +302,15 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
                     problem_parts.append(f"{count} RC passed · unstamped")
                 else:
                     problem_parts.append(f"{count} {label.lower()}")
-        if problem_parts:
+        if pending_rc and not needs_backup:
+            body_notes.append(
+                (
+                    "next",
+                    "Next: Restore and disaster recovery [5]\n"
+                    f"Pending: {', '.join(pending_rc)}",
+                )
+            )
+        elif problem_parts:
             only_absent = all(part.endswith("absent from server") for part in problem_parts)
             message = (
                 "Catalog source(s) not on this MariaDB server: "
@@ -379,6 +347,9 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
                 output.write(f"[INFO] {text}")
             elif kind == "hint":
                 _write_phase3b_note(text)
+            elif kind == "next":
+                for line in text.splitlines():
+                    display_screen.write_summary(line)
             elif kind == "summary":
                 display_screen.write_summary(text)
             else:

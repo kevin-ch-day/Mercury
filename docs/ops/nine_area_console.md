@@ -26,7 +26,7 @@ under the homes above and via unchanged CLI groups.
 
 | Former route | New home |
 |--------------|----------|
-| Main 1 guided Backup and Sync / Backup Operations | **[1]** Backup and verification |
+| Main 1 guided Backup and Sync / Backup Operations | **[1]** opens Backup Operations directly (Guided = Ops [1]) |
 | Main 1 / Advanced → prod→dev sync | **[2]** Database sync and data movement |
 | Main 1 / Advanced → offline Git | **[3]** Git and repository recovery |
 | Main 2 Mercury HDD and Storage | **[4]** Mercury HDD and storage |
@@ -52,16 +52,22 @@ under the homes above and via unchanged CLI groups.
 ## Hub UX notes (current)
 
 - Hubs show a one-line **purpose** before choices.
-- **[1] Guided backup session** is backup-first: production back up + verify by
-  default; Git/sync/dev asked optionally and labeled with Main Menu homes.
-  Full “recommended” multi-lane plan remains available to non-interactive /
-  customize paths via `recommended_session_plan()`.
-- **[1] Backup Operations** is backup/verify only (guided, full/prod/dev write,
-  verify, preview).
+- **[1]** opens **Backup Operations** directly (no intermediate Backup hub).
+  Header is compact: backup root, writer state, overall status, one capacity line.
+  The table column is **RESTORE-CHECK** (not VERIFY). When backups are fresh but
+  restore-check is pending, the screen points to Main **[5]** instead of another
+  backup.
+- **Backup Operations [1] Guided backup session** is backup-first: production
+  back up + verify by default; Git/sync/dev asked optionally and labeled with
+  Main Menu homes. Full “recommended” multi-lane plan remains available to
+  non-interactive / customize paths via `recommended_session_plan()`.
+- **Backup Operations** is backup/verify only (guided, full/prod/dev write,
+  verify, preview). Restore-check execution stays under Main **[5]**.
 - **[2]** includes sync readiness, transfer status, transfer/handoff history, and
   write/receive command card (`transfer write` dry-run without `--execute`).
-- **[3]** shows offline HDD clone status on the same screen as sync, receipt,
-  repo status, and bundle plan/actions. Bundle execute stays
+- **[3]** shows offline HDD clone status on the same screen as update/check,
+  receipt, repo status, and bundle plan/actions. When copies need sync, **[1]**
+  is labeled with the pending count; **[2]** re-checks. Bundle execute stays
   `repo bundle --execute`.
 - **[5]** exposes restore-check, cleanup, DR planning, and pinned/destination
   recovery commands.

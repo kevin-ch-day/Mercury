@@ -146,10 +146,7 @@ def sealed_phase3b_package_note() -> str | None:
         )
         if root.is_dir():
             return (
-                "Sealed Phase 3B rehearsal package present "
-                "(20260722T055400Z_phase3b).\n"
-                "Latest routine backups do not replace it until restore-check and "
-                "handoff packaging explicitly promote them."
+                "Phase 3B package sealed — routine backups do not replace it."
             )
     except Exception:
         return None

@@ -46,29 +46,28 @@ def test_run_backup_menu_non_interactive(
     monkeypatch.setattr(
         "mercury.backup.interactive_menu._storage_usage_fields",
         lambda policy: {
-            "USB Path": str(policy.backup_root),
-            "Used": "0 B",
-            "Total": "1 GiB",
-            "Free": "1 GiB",
-            "Usage": "0%",
+            "Backup root": str(policy.backup_root),
+            "Backup writer": "Enabled",
+            "Status": "ok",
+            "Capacity": "0 B used · 1 GiB free (0%)",
         },
     )
     run_backup_menu(interactive=False)
     out = capsys.readouterr().out
     assert "Backup Operations" in out
     assert "USB target" not in out
-    assert "USB Path" in out
-    assert "Used" in out
-    assert "Total" in out
-    assert "Free" in out
-    assert "Usage" in out
+    assert "Backup root" in out
+    assert "Backup writer" in out
+    assert "Capacity" in out
+    assert "USB Path" not in out
     assert "Status:" not in out
     assert "Mode:" not in out
     assert "Backup mode:" not in out
     assert "Action:" not in out
     assert "DATABASE" in out
     assert "FRESHNESS" in out
-    assert "VERIFY" in out
+    assert "RESTORE-CHECK" in out
+    assert " VERIFY" not in out
     assert "SIZE" in out
     assert "LAST BACKUP" in out
     assert "ARTIFACT" not in out
@@ -145,16 +144,15 @@ def test_backup_menu_section_spacing_boundaries(
                             "backup_age": "1h ago",
                             "backup_id": "android_permission_intel-full-20260609_150126",
                             "restore_check_status": None,
+                            "restore_check_backup_id": None,
+                            "manifest_verification_stamp": True,
                         },
                     )()
                 ],
                 "stale_count": 0,
                 "unknown_freshness_count": 0,
                 "warnings": [
-                    "Sealed Phase 3B rehearsal package present "
-                    "(20260722T055400Z_phase3b).\n"
-                    "Latest routine backups do not replace it until restore-check and "
-                    "handoff packaging explicitly promote them."
+                    "Phase 3B package sealed — routine backups do not replace it."
                 ],
             },
         )(),
@@ -174,12 +172,9 @@ def test_backup_menu_section_spacing_boundaries(
         "mercury.backup.interactive_menu._storage_usage_fields",
         lambda policy: {
             "Backup root": str(tmp_path / "backups"),
-            "Environment": "operator storage mounted",
-            "Used": "1 GiB",
-            "Total": "10 GiB",
-            "Free": "9 GiB",
-            "Usage": "10%",
+            "Backup writer": "Enabled",
             "Status": "ok",
+            "Capacity": "1 GiB used · 9 GiB free (10%)",
         },
     )
 
@@ -196,27 +191,32 @@ def test_backup_menu_section_spacing_boundaries(
 
     title_i = index_of(lambda line: line.strip() == "Backup Operations")
     status_i = index_of(lambda line: "Status" in line and "ok" in line)
+    capacity_i = index_of(lambda line: "Capacity" in line)
     header_i = index_of(lambda line: line.startswith("DATABASE"))
     assert status_i > title_i
-    assert lines[status_i + 1] == ""
-    assert header_i == status_i + 2
+    assert capacity_i > status_i
+    assert lines[capacity_i + 1] == ""
+    assert header_i == capacity_i + 2
 
     # Last table body row is the database name line (not the rule).
     db_i = index_of(lambda line: line.startswith("android_permission_intel"))
     assert lines[db_i + 1] == ""
 
-    warn_i = index_of(lambda line: "[WARN]" in line and "Restore-check required" in line)
-    assert warn_i == db_i + 2
+    next_i = index_of(lambda line: "Next: Restore and disaster recovery [5]" in line)
+    assert next_i == db_i + 2
+    pending_i = index_of(lambda line: line.startswith("Pending: android_permission_intel"))
+    assert pending_i == next_i + 1
 
-    phase_i = index_of(lambda line: "Sealed Phase 3B rehearsal package present" in line)
-    assert phase_i == warn_i + 1
-    assert "Latest routine backups" not in lines[phase_i]
-    follow_i = index_of(lambda line: line.startswith("Latest routine backups do not replace"))
-    assert follow_i == phase_i + 1
-    assert lines[follow_i + 1] == ""
+    phase_i = index_of(
+        lambda line: "Phase 3B package sealed — routine backups do not replace it."
+        in line
+    )
+    assert phase_i == pending_i + 1
+    assert "Latest routine backups" not in out
+    assert lines[phase_i + 1] == ""
 
     menu_i = index_of(lambda line: line.startswith("[1] Guided backup session"))
-    assert menu_i == follow_i + 2
+    assert menu_i == phase_i + 2
     back_i = index_of(lambda line: line.startswith("[0] Back"))
     assert back_i > menu_i
     # No blank lines between consecutive menu choices.

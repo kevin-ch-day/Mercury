@@ -350,7 +350,7 @@ def test_backup_status_includes_restore_check_and_phase3b_note(
     )
     monkeypatch.setattr(
         "mercury.backup.status.sealed_phase3b_package_note",
-        lambda: "Sealed Phase 3B rehearsal package present (20260722T055400Z_phase3b).",
+        lambda: "Phase 3B package sealed — routine backups do not replace it.",
     )
     report = build_backup_status_report(
         live=False,

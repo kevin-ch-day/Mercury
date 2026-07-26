@@ -199,6 +199,64 @@ def backup_entry_status_label(entry) -> str:
     return freshness
 
 
+def backup_entry_needs_restore_check(entry) -> bool:
+    """True when the displayed backup still needs restore-check before handoff."""
+    label = backup_entry_verify_label(entry)
+    return label in {
+        "Not restore-checked",
+        "OK* · no RC",
+        "Restore-check failed",
+    }
+
+
+def backup_entry_needs_backup_work(entry) -> bool:
+    """True when freshness/integrity requires another backup (not restore-check alone)."""
+    freshness = backup_entry_freshness_label(entry)
+    verify = backup_entry_verify_label(entry)
+    if freshness in {"Stale", "Unknown", "Empty", "—"}:
+        return True
+    if verify in {
+        "Missing",
+        "Absent",
+        "Unverified",
+        "Verify failed",
+        "Missing manifest",
+        "OK unstamped",
+        "RC passed · unstamped",
+    }:
+        return True
+    return False
+
+
+def assess_operator_backup_next(*, live: bool = False) -> dict[str, object]:
+    """Classify Main Menu / Backup Ops next action from on-disk backup status.
+
+    Returns keys:
+      recommend: ``backup`` | ``restore_check`` | ``ok``
+      pending_restore_check: list[str] database names
+    """
+    from mercury.backup.status import build_backup_status_report
+
+    try:
+        report = build_backup_status_report(live=live)
+    except Exception:
+        return {"recommend": "backup", "pending_restore_check": []}
+
+    pending_rc: list[str] = []
+    needs_backup = False
+    for entry in report.entries:
+        if backup_entry_needs_backup_work(entry):
+            needs_backup = True
+        if backup_entry_needs_restore_check(entry):
+            pending_rc.append(entry.database)
+
+    if needs_backup:
+        return {"recommend": "backup", "pending_restore_check": pending_rc}
+    if pending_rc:
+        return {"recommend": "restore_check", "pending_restore_check": pending_rc}
+    return {"recommend": "ok", "pending_restore_check": []}
+
+
 def menu_handoff_problem_summary(problem_parts: list[str]) -> str:
     """Operator warning for Backup Operations gaps before handoff.
 

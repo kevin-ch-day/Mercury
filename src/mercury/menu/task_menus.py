@@ -127,44 +127,10 @@ def _show_repo_bundle_plan() -> None:
 
 
 def run_backup_hub() -> None:
-    """[1] Backup and verification."""
-    while True:
-        choice = _submenu(
-            "Backup and verification",
-            [
-                ("1", "Guided backup session"),
-                ("2", "Backup Operations (write and verify)"),
-                ("3", "Verify all backups"),
-                ("4", "Full-backup receipts (observe-only)"),
-            ],
-            purpose=(
-                "Production and development backup writes, verification, and "
-                "run receipts. Restore-check lives under Restore [5]; packaging "
-                "under Deployment and handoff [7]."
-            ),
-        )
-        if choice is None:
-            return
-        if choice == "1":
-            from mercury.backup.session_wizard import run_backup_sync_wizard
+    """[1] Backup and verification — opens Backup Operations directly."""
+    from mercury.backup.interactive_menu import run_backup_menu
 
-            run_backup_sync_wizard()
-            continue
-        if choice == "2":
-            from mercury.backup.interactive_menu import run_backup_menu
-
-            run_backup_menu()
-            continue
-        if choice == "3":
-            from mercury.verify.interactive_menu import run_verify_menu
-
-            run_verify_menu()
-            continue
-        if choice == "4":
-            _show_full_backup_receipts()
-            _pause()
-            continue
-        output.write(menu_prompts.invalid_choice_message(choice))
+    run_backup_menu()
 
 
 # Compatibility name used by older runners/tests.

@@ -189,18 +189,22 @@ def test_startup_invalid_choice_reprompts(monkeypatch, host_path: Path) -> None:
     assert run_startup_intent_chooser() == INTENT_SAFE_DISCONNECT
 
 
-def test_backup_sync_hub_launches_phase2_wizard(monkeypatch) -> None:
+def test_backup_sync_hub_opens_backup_operations_directly(monkeypatch) -> None:
+    """Main [1] / hub opens Backup Operations; Guided Backup stays Ops [1]."""
     called: list[str] = []
     monkeypatch.setattr(
-        "mercury.backup.session_wizard.run_backup_sync_wizard",
-        lambda **_k: called.append("wizard"),
+        "mercury.backup.interactive_menu.run_backup_menu",
+        lambda **_k: called.append("backup_ops"),
     )
-    answers = iter(["1", "0"])
-    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
+    from mercury.backup.menu_options import ACTION_BACKUP_SYNC_SESSION, BACKUP_MENU_OPTIONS
     from mercury.menu.task_menus import run_backup_sync_hub
 
+    guided = [
+        key for key, _label, action, _h in BACKUP_MENU_OPTIONS if action == ACTION_BACKUP_SYNC_SESSION
+    ]
+    assert guided == ["1"]
     run_backup_sync_hub()
-    assert called == ["wizard"]
+    assert called == ["backup_ops"]
 
 
 def test_backup_sync_hub_routes_to_full_backup_operations(monkeypatch) -> None:
@@ -227,8 +231,6 @@ def test_backup_sync_hub_routes_to_full_backup_operations(monkeypatch) -> None:
     assert "production" in labels
     assert "development" in labels
 
-    answers = iter(["2", "0"])
-    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
     run_backup_sync_hub()
     assert called == ["backup_ops"]
 
@@ -236,6 +238,7 @@ def test_backup_sync_hub_routes_to_full_backup_operations(monkeypatch) -> None:
 def test_backup_sync_hub_title_again_when_package_verified(
     monkeypatch, host_path: Path
 ) -> None:
+    from mercury.backup.interactive_menu import BACKUP_SCREEN_TITLE
     from mercury.menu import task_menus
     from mercury.storage.host_maintenance import HostMaintenanceState, save_host_maintenance
 
@@ -249,15 +252,13 @@ def test_backup_sync_hub_title_again_when_package_verified(
         ),
         path=host_path,
     )
-    titles: list[str] = []
+    called: list[str] = []
     monkeypatch.setattr(
-        task_menus.display_screen,
-        "open_screen",
-        lambda title: titles.append(title),
+        "mercury.backup.interactive_menu.run_backup_menu",
+        lambda **_k: called.append(BACKUP_SCREEN_TITLE),
     )
-    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: "0")
     task_menus.run_backup_sync_hub()
-    assert titles and titles[0] == "Backup and verification"
+    assert called == ["Backup Operations"]
 
 
 def test_safe_disconnect_intent_launches_wizard(monkeypatch) -> None:
@@ -318,14 +319,12 @@ def test_backup_sync_hub_retains_expert_backup(monkeypatch) -> None:
     called: list[str] = []
     monkeypatch.setattr(
         "mercury.backup.interactive_menu.run_backup_menu",
-        lambda: called.append("backup"),
+        lambda **_k: called.append("backup"),
     )
     monkeypatch.setattr(
         "mercury.storage.host_maintenance.load_host_maintenance",
         lambda: __import__("types").SimpleNamespace(package_verification_status="Pending"),
     )
-    answers = iter(["2", "0"])
-    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
     from mercury.menu.task_menus import run_backup_sync_hub
 
     run_backup_sync_hub()

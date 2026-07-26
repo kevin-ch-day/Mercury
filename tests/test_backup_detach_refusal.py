@@ -277,7 +277,6 @@ def test_backup_screen_shows_write_disabled_state(
     out = capsys.readouterr().out
     assert "Backup writer" in out
     assert "Disabled" in out or "disabled" in out
-    assert "Backup actions" in out
     assert "unavailable" in out
     assert DETACH_UNAVAILABLE_SUFFIX in out
     assert "Guided backup session" in out

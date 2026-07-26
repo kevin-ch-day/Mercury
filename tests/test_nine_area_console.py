@@ -211,10 +211,9 @@ def test_all_nine_hubs_reachable_and_non_destructive(monkeypatch: pytest.MonkeyP
         assert called.count(name) == 0
 
     called.clear()
-    answers = iter(["1", "2", "3", "4", "", "0"])
-    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
+    # Main [1] opens Backup Operations directly (no intermediate hub choices).
     task_menus.run_backup_hub()
-    assert called == ["guided", "backup_ops", "verify", "receipts"]
+    assert called == ["backup_ops"]
 
     called.clear()
     answers = iter(["1", "2", "", "3", "", "4", "", "0"])

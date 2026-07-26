@@ -315,6 +315,29 @@ def build_main_menu_recommendation(
         )
 
     if writes:
+        from mercury.backup.freshness import assess_operator_backup_next
+        from mercury.core.runtime import should_probe_database_status
+
+        next_action = assess_operator_backup_next(live=should_probe_database_status())
+        if next_action.get("recommend") == "restore_check":
+            pending = list(next_action.get("pending_restore_check") or [])
+            pending_note = ", ".join(pending) if pending else "restore-check pending"
+            return MainMenuRecommendation(
+                host_role=host_role,
+                storage_state=storage_state,
+                migration_state=migration_state,
+                backup_state="fresh_restore_check_pending",
+                package_state=package,
+                recommended_action=MAIN_RECOVERY,
+                explanation="Restore and disaster recovery",
+                allowed_actions=allowed,
+                facts={
+                    "package_id": package_id,
+                    "writes_allowed": True,
+                    "pending_restore_check": pending,
+                    "pending_note": pending_note,
+                },
+            )
         return MainMenuRecommendation(
             host_role=host_role,
             storage_state=storage_state,
