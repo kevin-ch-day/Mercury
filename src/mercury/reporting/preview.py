@@ -20,7 +20,7 @@ READINESS_SCHEMA_ONLY = (
 )
 
 REPORT_SAFETY_NOTES = [
-    "Preview only — no backup files written or verified in seed mode.",
+    "Preview only — no backup files are written or verified by this command.",
     "A database is not considered protected until verification passes.",
     "Manifest and checksum are required for verified status.",
 ]

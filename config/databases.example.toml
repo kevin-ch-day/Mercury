@@ -1,5 +1,6 @@
 # Copy to config/databases.toml and adjust for your environment.
-# Mercury reads names (and optional host/port) only — no live connection in seed mode.
+# Mercury reads catalog names (and optional host/port) from this file.
+# Live MariaDB access uses config/local.toml — not this catalog alone.
 
 [databases]
 # Production (active backup sources for the current Mercury milestone)

@@ -226,6 +226,71 @@ def test_capability_hint_routing_matrix() -> None:
     assert "advanced" not in main_menu_hint(MAIN_ADVANCED).lower()
 
 
+def test_health_storage_status_is_observe_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    called: list[str] = []
+    monkeypatch.setattr(
+        "mercury.storage.report.build_storage_status_report",
+        lambda: called.append("report") or object(),
+    )
+    monkeypatch.setattr(
+        "mercury.storage.terminal.print_storage_status",
+        lambda _report: called.append("print"),
+    )
+    monkeypatch.setattr(
+        "mercury.storage.interactive_menu.run_storage_menu",
+        lambda **_k: called.append("storage_menu"),
+    )
+    answers = iter(["4", "", "0"])
+    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
+    from mercury.menu.task_menus import run_health_hub
+
+    run_health_hub()
+    assert called == ["report", "print"]
+    assert "storage_menu" not in called
+
+
+def test_recovery_menu_stays_on_restore_dr_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    opened: list[str] = []
+    monkeypatch.setattr(
+        "mercury.handoff.interactive_menu.run_handoff_menu",
+        lambda **_k: opened.append("handoff"),
+    )
+    monkeypatch.setattr(
+        "mercury.deploy.interactive_menu.run_deploy_menu",
+        lambda **_k: opened.append("deploy"),
+    )
+    monkeypatch.setattr(
+        "mercury.handoff.terminal.print_receiver_handoff_guide",
+        lambda **_k: opened.append("receiver"),
+    )
+    monkeypatch.setattr(
+        "mercury.recovery.interactive_menu._load_recovery_screen",
+        lambda: __import__("types").SimpleNamespace(
+            report=__import__("types").SimpleNamespace(verified_count=0, missing_count=0, source_count=0, entries=[]),
+            restore_check_status={},
+            latest_transfer_runbook=None,
+            latest_database_runbook=None,
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.recovery.interactive_menu._render_recovery_screen",
+        lambda *_a, **_k: None,
+    )
+    monkeypatch.setattr(
+        "mercury.recovery.interactive_menu.build_receiver_handoff_guide",
+        lambda: object(),
+    )
+    answers = iter(["2", "0"])
+    monkeypatch.setattr(
+        "mercury.recovery.interactive_menu.read_recovery_choice",
+        lambda: next(answers),
+    )
+    from mercury.recovery.interactive_menu import run_recovery_menu
+
+    run_recovery_menu()
+    assert opened == ["receiver"]
+
+
 def test_direct_cli_routes_unchanged() -> None:
     """Typer app still exposes retained expert command groups."""
     from mercury.cli import app

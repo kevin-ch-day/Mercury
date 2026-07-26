@@ -72,15 +72,6 @@ def main_menu_option_by_action(
         ACTION_RECOVERY_LEGACY: MAIN_RECOVERY,
         ACTION_HANDOFF: MAIN_MIGRATION,
         MAIN_ADVANCED: MAIN_BACKUP_SYNC,
-        "disaster_recovery": MAIN_RECOVERY,
-        "workstation_handoff": MAIN_MIGRATION,
-        "backup_sources": MAIN_BACKUP_SYNC,
-        "sync_prod_dev": MAIN_BACKUP_SYNC,
-        "offline_repos": MAIN_BACKUP_SYNC,
-        "environment_details": MAIN_HEALTH,
-        "database_inventory": MAIN_HEALTH,
-        "system_doctor": MAIN_HEALTH,
-        "system_deployment": MAIN_MIGRATION,
     }
     resolved = legacy_aliases.get(action_id, action_id)
     for key, title, action, _needs_writes in _active_menu_options(software_only=software_only):

@@ -64,4 +64,4 @@ After backups exist on disk, Mercury will read `manifest.json` and `checksum.sha
 
 ## Implementation model
 
-MariaDB [mariadb-dump](https://mariadb.com/docs/server/clients-and-utilities/backup-restore-and-import-utilities/mariadb-dump) performs logical backups. Schema-only planning maps to `--no-data` style options. **Seed mode does not run dumps or connect to databases.**
+MariaDB [mariadb-dump](https://mariadb.com/docs/server/clients-and-utilities/backup-restore-and-import-utilities/mariadb-dump) performs logical backups. Schema-only planning maps to `--no-data` style options. **Demo/offline planning commands do not run dumps or connect to databases.**

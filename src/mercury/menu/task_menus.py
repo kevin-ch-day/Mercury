@@ -157,7 +157,7 @@ def run_health_hub() -> None:
                 ("1", "Environment details"),
                 ("2", "Database inventory"),
                 ("3", "System doctor and repair guide"),
-                ("4", "Storage status summary"),
+                ("4", "Storage status summary (observe-only)"),
                 ("5", "Appearance and theme"),
             ],
         )
@@ -179,9 +179,13 @@ def run_health_hub() -> None:
             run_doctor_menu()
             continue
         if choice == "4":
-            from mercury.storage.interactive_menu import run_storage_menu
+            from mercury.storage.report import build_storage_status_report
+            from mercury.storage.terminal import print_storage_status
 
-            run_storage_menu()
+            print_storage_status(build_storage_status_report())
+            output.write("")
+            output.write("Lifecycle, cleanup, and detach: Main Menu → Mercury HDD and Storage [2].")
+            menu_prompts.ask("Press Enter to continue")
             continue
         if choice == "5":
             from mercury.menu.options_menu import run_appearance_menu

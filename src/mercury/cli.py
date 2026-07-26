@@ -11,7 +11,10 @@ from mercury import output
 
 app = typer.Typer(
     name="mercury",
-    help="Mercury — database backup, DR, and sync-readiness utility (seed / dry-run).",
+    help=(
+        "Mercury — MariaDB backup, disaster recovery, and prod→dev sync "
+        "(Fedora/Windows; destructive actions stay gated)."
+    ),
     no_args_is_help=True,
     invoke_without_command=True,
 )

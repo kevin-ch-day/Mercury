@@ -29,4 +29,4 @@ def print_prod_dev_pairs(*, inventory=None) -> None:
     output.write()
     output.write(shared_authority_note())
     output.write()
-    output.write("Seed mode: sync not executed. Back up and verify source databases before any dev sync.")
+    output.write("Sync is not executed from this view. Back up and verify sources before any prod→dev sync.")

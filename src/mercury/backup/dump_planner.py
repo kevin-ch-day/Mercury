@@ -1,4 +1,4 @@
-"""Planned mariadb-dump commands (not executed in seed mode)."""
+"""Planned mariadb-dump commands (planning helpers; execution is elsewhere)."""
 
 from typing import Literal
 

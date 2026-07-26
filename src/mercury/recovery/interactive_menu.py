@@ -203,20 +203,20 @@ def _render_recovery_screen(data: RecoveryScreenData, *, show_title: bool) -> No
     from mercury.menu.options import ACTION_DEPLOY, ACTION_HANDOFF, main_menu_hint
 
     notes.append(
-        f"Next: {main_menu_hint(ACTION_HANDOFF)} (or h); "
-        "restore-check from Backup → Restore-check; "
+        f"Next: {main_menu_hint(ACTION_HANDOFF)}; "
+        "restore-check from this Restore hub; "
         f"or {main_menu_hint(ACTION_DEPLOY)}."
     )
     if checklist.handoff_status == "complete":
-        notes.append("Handoff complete — use [3] for the receiving-workstation guide on the target host.")
+        notes.append(
+            "Handoff complete — use [2] for the receiving-workstation guide on the target host."
+        )
     _write_dense(notes)
 
     render_submenu(
         [
             ("1", "Refresh"),
-            ("2", "Open workstation handoff"),
-            ("3", "Receiving workstation guide"),
-            ("4", "Open system deployment"),
+            ("2", "Receiving workstation guide"),
         ],
         indent=0,
     )
@@ -242,23 +242,9 @@ def run_recovery_menu(*, interactive: bool = True) -> None:
             show_title = pause_and_redraw()
             continue
         if choice == "2":
-            from mercury.handoff.interactive_menu import run_handoff_menu
-
-            run_handoff_menu(interactive=True)
-            data = _load_recovery_screen()
-            show_title = pause_and_redraw()
-            continue
-        if choice == "3":
             from mercury.handoff.terminal import print_receiver_handoff_guide
 
             print_receiver_handoff_guide(checklist=build_receiver_handoff_guide())
-            show_title = pause_and_redraw()
-            continue
-        if choice == "4":
-            from mercury.deploy.interactive_menu import run_deploy_menu
-
-            run_deploy_menu(interactive=True)
-            data = _load_recovery_screen()
             show_title = pause_and_redraw()
             continue
         menu_display.write_status("fail", menu_prompts.invalid_choice_message(choice))

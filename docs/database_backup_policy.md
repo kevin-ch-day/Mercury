@@ -80,14 +80,14 @@ was found. These are deliberately different states: an absent schema does not
 become a missing backup merely because it is listed in the configured source
 catalog.
 
-## Seed mode (M4 / M4.5)
+## Demo / offline planning
 
 - `mercury backup schema-plan --demo` — schema-only dry-run plan
 - `mercury backup manifest-preview` — JSON preview only; no files written
 - `mercury backup verify-plan --demo` — verification process model; no real file checks
 - `mercury backup list --demo` — demo planned records only
 - `mercury report preview --db <name> --kind full|schema_only` — Markdown report preview
-- No `mariadb-dump` execution, no live connections, `live_actions = false`
+- Demo paths do not run `mariadb-dump` or require live MariaDB; destructive live actions stay gated (`live_actions = false` by default)
 
 ## Live backup execution
 
@@ -99,7 +99,7 @@ Backup writes are allowed when Mercury’s backup environment checks pass:
 - sufficient free space on the backup root
 - source database present on MariaDB (missing protected sources are refused, not silently skipped)
 
-If the USB drive is plugged in but unmounted, run `./run.sh doctor --repair-plan` (Linux) for mount and directory setup commands.
+If the primary HDD is plugged in but unmounted, run `./run.sh doctor --repair-plan` (Linux) for mount and directory setup commands. Legacy USB is a retired offline archive only.
 
 Use `--dry-run` on CLI backup commands or **Preview backup plan** in the menu to plan without writing files.
 
