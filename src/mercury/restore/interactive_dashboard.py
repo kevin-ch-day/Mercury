@@ -35,11 +35,10 @@ def _write_focus(dashboard: RecoveryDashboard) -> None:
         status_badge,
     )
 
-    if dashboard.restore_checks_pending:
-        next_line = (
-            f"Next: complete {dashboard.restore_checks_pending} pending restore-checks."
-        )
-        pending_line = f"Pending: {', '.join(dashboard.pending_names)}"
+    if dashboard.runnable_pending:
+        count = len(dashboard.runnable_pending)
+        next_line = f"Next: complete {count} pending restore-checks."
+        pending_line = f"Pending: {', '.join(dashboard.runnable_pending)}"
         if colors_enabled():
             styles = active_styles()
             output.write(
@@ -49,22 +48,29 @@ def _write_focus(dashboard: RecoveryDashboard) -> None:
         else:
             output.write(next_line)
             output.write(pending_line)
-        if dashboard.runnable_pending:
-            output.write(
-                hint_text(
-                    "Imports into disposable _restorecheck_* databases only — never *_prod."
-                )
+        output.write(
+            hint_text(
+                "Imports into disposable _restorecheck_* databases only — never *_prod."
             )
-        else:
-            output.write(
-                hint_text(
-                    "Pending development restore-check lanes are listed for status; "
-                    "production runnable gaps use [1]."
-                )
-            )
+        )
         return
 
-    ready = "Next: recovery scope is ready for this host."
+    if dashboard.pending_names:
+        # Production pending but not runnable (blocked plan) — still call it out.
+        next_line = (
+            f"Next: {len(dashboard.pending_names)} production restore-check(s) blocked."
+        )
+        pending_line = f"Pending: {', '.join(dashboard.pending_names)}"
+        if colors_enabled():
+            styles = active_styles()
+            output.write(f"{status_badge('warn')} {markup(next_line, styles.warn)}")
+            output.write(markup(pending_line, styles.value))
+        else:
+            output.write(next_line)
+            output.write(pending_line)
+        return
+
+    ready = "Next: production restore-checks are complete on this host."
     if colors_enabled():
         output.write(f"{status_badge('ok')} {markup(ready, active_styles().ok)}")
     else:
@@ -78,16 +84,7 @@ def _render_dashboard(dashboard: RecoveryDashboard, *, show_title: bool) -> None
     display_screen.write_fields(
         {
             "Readiness": dashboard.readiness,
-            "Production": (
-                f"{dashboard.production_backed_up}/{dashboard.production_total} backed up"
-            ),
-            "Development": (
-                f"{dashboard.development_backed_up}/{dashboard.development_total} backed up"
-            ),
-            "Required DBs": (
-                f"{dashboard.production_backed_up + dashboard.development_backed_up}/7 backed up "
-                f"· {dashboard.restore_checks_passed}/7 restore-checked"
-            ),
+            "Scope": dashboard.scope_summary,
             "Latest backup": dashboard.latest_backup_label,
             "Package": dashboard.package_line,
             "Runbooks": dashboard.runbooks_path,
@@ -96,9 +93,7 @@ def _render_dashboard(dashboard: RecoveryDashboard, *, show_title: bool) -> None
     if dashboard.temp_restore_schemas:
         display_screen.write_fields(
             {
-                "Temporary restore schemas": (
-                    f"{len(dashboard.temp_restore_schemas)} present"
-                )
+                "Temporary schemas": f"{len(dashboard.temp_restore_schemas)} present"
             }
         )
     else:
@@ -135,8 +130,6 @@ def _render_dashboard(dashboard: RecoveryDashboard, *, show_title: bool) -> None
                 f"Clean up restore-check databases ({len(dashboard.temp_restore_schemas)})",
             )
         )
-    else:
-        options.append(("3", "Clean up restore-check databases (none)"))
     options.append(("4", "Pinned and destination recovery"))
     options.append(("5", "Receiving workstation guide (also under [7])"))
     options.append(("6", "View receipts and verification history"))

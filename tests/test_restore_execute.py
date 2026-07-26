@@ -353,7 +353,7 @@ def test_run_restore_menu_non_interactive(
             )
             for name in REQUIRED_RECOVERY_DATABASES
         ],
-        readiness="READY · all required restore-checks passed",
+        readiness="READY · production restore-checks complete",
         production_backed_up=4,
         production_total=4,
         development_backed_up=3,
@@ -362,10 +362,12 @@ def test_run_restore_menu_non_interactive(
         restore_checks_pending=0,
         pending_names=[],
         runnable_pending=[],
+        deferred_dev_names=[],
         temp_restore_schemas=[],
         latest_backup_label="none",
         package_line="No sealed Phase 3B package noted",
         runbooks_path="/tmp/runbooks",
+        scope_summary="7/7 backed up · prod RC 4/4",
         plans_by_database={},
     )
     monkeypatch.setattr(

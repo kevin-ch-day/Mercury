@@ -106,14 +106,16 @@ def test_dashboard_lists_all_seven_and_readiness(
     assert dash.development_backed_up == 3
     assert dash.restore_checks_pending == 2
     assert "NOT READY" in dash.readiness
-    assert "2 restore-checks pending" in dash.readiness
+    assert "2 production restore-checks pending" in dash.readiness
     assert "complete with warnings" not in dash.readiness.lower()
     assert dash.pending_names == [
         "obsidiandroid_core_prod",
         "scytaledroid_core_prod",
     ]
     assert dash.runnable_pending == dash.pending_names
+    assert dash.deferred_dev_names == []
     assert dash.temp_restore_schemas == []
+    assert "dev RC deferred" not in dash.scope_summary
 
 
 def test_pending_plans_only_runnable(
@@ -174,8 +176,14 @@ def test_pending_plans_only_runnable(
         "obsidiandroid_core_prod",
         "scytaledroid_core_prod",
     ]
-    assert "scytaledroid_core_dev" in dash.pending_names
+    assert "scytaledroid_core_dev" in dash.deferred_dev_names
+    assert "scytaledroid_core_dev" not in dash.pending_names
     assert "scytaledroid_core_dev" not in dash.runnable_pending
+    assert dash.restore_checks_pending == 2
+    assert "2 production restore-checks pending" in dash.readiness
+    assert "dev RC deferred (1)" in dash.scope_summary
+    dev_row = next(row for row in dash.rows if row.database == "scytaledroid_core_dev")
+    assert dev_row.restore_check == "Deferred"
 
 
 def test_dashboard_render_and_back_is_readonly(
@@ -208,7 +216,7 @@ def test_dashboard_render_and_back_is_readonly(
             source_count=7,
         ),
         rows=rows,
-        readiness="NOT READY · 2 restore-checks pending",
+        readiness="NOT READY · 2 production restore-checks pending",
         production_backed_up=4,
         production_total=4,
         development_backed_up=3,
@@ -217,10 +225,12 @@ def test_dashboard_render_and_back_is_readonly(
         restore_checks_pending=2,
         pending_names=["obsidiandroid_core_prod", "scytaledroid_core_prod"],
         runnable_pending=["obsidiandroid_core_prod", "scytaledroid_core_prod"],
+        deferred_dev_names=[],
         temp_restore_schemas=[],
         latest_backup_label="7/26/2026 1:47 PM CDT",
         package_line="Phase 3B sealed",
         runbooks_path="/mnt/MERCURY_DATA_V2/mercury_runbooks",
+        scope_summary="7/7 backed up · prod RC 2/4",
         plans_by_database={},
     )
     monkeypatch.setattr(
@@ -238,16 +248,73 @@ def test_dashboard_render_and_back_is_readonly(
     run_recovery_dashboard(interactive=True)
     out = capsys.readouterr().out
     assert "Restore and Disaster Recovery" in out
-    assert "NOT READY · 2 restore-checks pending" in out
-    assert "4/4 backed up" in out
-    assert "3/3 backed up" in out
+    assert "NOT READY · 2 production restore-checks pending" in out
+    assert "7/7 backed up" in out
+    assert "Clean up restore-check databases (none)" not in out
     for name in REQUIRED_RECOVERY_DATABASES:
         assert name in out
     assert "Temporary restore schemas: none" in out
     assert "Run pending restore-checks      recommended" in out
     assert "Next: complete 2 pending restore-checks." in out
-    assert "Deployment and handoff [7]; restore-check" not in out
+    assert "Pending: obsidiandroid_core_prod, scytaledroid_core_prod" in out
     assert writes == []
+
+
+def test_dev_unknown_freshness_renders_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mercury.backup.status import BackupStatusReport
+    from mercury.restore.dashboard import build_recovery_dashboard
+    from mercury.restore.check_plan import RestoreCheckPlan
+
+    entries = [
+        _entry(
+            name,
+            restore_checked=name.endswith("_prod") or name == "android_permission_intel",
+            freshness="unknown" if name.endswith("_dev") else "fresh",
+        )
+        for name in REQUIRED_RECOVERY_DATABASES
+    ]
+    monkeypatch.setattr(
+        "mercury.restore.dashboard.build_recovery_scope_status_report",
+        lambda live=False: BackupStatusReport(
+            backup_root="/mnt/x",
+            backup_root_state="operator-mounted",
+            source_count=7,
+            verified_count=7,
+            entries=entries,
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.restore.dashboard.sealed_phase3b_package_note",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        "mercury.restore.dashboard.resolve_operator_mount",
+        lambda: Path("/mnt/x"),
+    )
+    monkeypatch.setattr(
+        "mercury.restore.check_cleanup.discover_restorecheck_names",
+        lambda: [],
+    )
+    monkeypatch.setattr(
+        "mercury.restore.dashboard.build_restore_check_plan",
+        lambda name: RestoreCheckPlan(
+            source_prod=name,
+            restore_target=f"_restorecheck_{name}_x",
+            allowed=True,
+            backup_verified=True,
+            backup_id=f"{name}-full-1",
+            backup_directory="/tmp",
+            dump_file="d.sql.gz",
+        ),
+    )
+    dash = build_recovery_dashboard(live=False)
+    assert dash.restore_checks_pending == 0
+    assert "READY" in dash.readiness
+    for row in dash.rows:
+        if row.role == "dev":
+            assert row.freshness == "OK"
+            assert row.restore_check == "Deferred"
+    assert len(dash.deferred_dev_names) == 3
 
 
 def test_main_five_opens_dashboard(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from mercury.backup.freshness import (
     backup_entry_artifact_label,
@@ -52,13 +51,17 @@ class RecoveryDashboard:
     development_backed_up: int
     development_total: int
     restore_checks_passed: int
+    # Actionable production restore-check gaps (drive readiness + [1]).
     restore_checks_pending: int
     pending_names: list[str]
     runnable_pending: list[str]
+    # Development RC is status-only until the A-3-02 lane ships.
+    deferred_dev_names: list[str]
     temp_restore_schemas: list[str]
     latest_backup_label: str
     package_line: str
     runbooks_path: str
+    scope_summary: str
     plans_by_database: dict[str, RestoreCheckPlan] = field(default_factory=dict)
 
 
@@ -83,6 +86,14 @@ def _backed_up(entry: BackupStatusEntry | None) -> bool:
     if entry is None:
         return False
     return entry.protection_status == "verified" and bool(entry.backup_id)
+
+
+def _freshness_display(entry: BackupStatusEntry | None, *, is_dev: bool) -> str:
+    """Avoid alarming Unknown on verified.devs (no live activity probe)."""
+    label = backup_entry_freshness_label(entry)
+    if is_dev and label == "Unknown" and _backed_up(entry):
+        return "OK"
+    return label
 
 
 def _latest_backup_label(report: BackupStatusReport) -> str:
@@ -112,38 +123,42 @@ def build_recovery_dashboard(*, live: bool | None = None) -> RecoveryDashboard:
     rows: list[RecoveryDashboardRow] = []
     pending_names: list[str] = []
     runnable_pending: list[str] = []
+    deferred_dev_names: list[str] = []
     passed = 0
 
     for name in REQUIRED_RECOVERY_DATABASES:
         entry = by_name.get(name)
-        rc_label, pending = _restore_check_display(entry)
+        is_prod = is_required_recovery_production(name)
+        rc_label, needs_rc = _restore_check_display(entry)
         if rc_label == "Passed":
             passed += 1
-        if pending and _backed_up(entry):
-            pending_names.append(name)
+
+        pending = False
         runnable = False
-        if name in plans and plans[name].allowed and pending and _backed_up(entry):
-            runnable = True
-            runnable_pending.append(name)
-        elif (
-            pending
-            and _backed_up(entry)
-            and not is_required_recovery_production(name)
-        ):
-            # Development restore-check lane is a tracked gap (A-3-02); show PENDING.
-            rc_label = "PENDING"
+        if needs_rc and _backed_up(entry):
+            if is_prod:
+                pending = True
+                pending_names.append(name)
+                if name in plans and plans[name].allowed:
+                    runnable = True
+                    runnable_pending.append(name)
+            else:
+                # Dev restore-check execute lane is not this change (A-3-02).
+                deferred_dev_names.append(name)
+                rc_label = "Deferred"
+
         rows.append(
             RecoveryDashboardRow(
                 database=name,
-                role="prod" if is_required_recovery_production(name) else "dev",
-                freshness=backup_entry_freshness_label(entry),
+                role="prod" if is_prod else "dev",
+                freshness=_freshness_display(entry, is_dev=not is_prod),
                 artifact=backup_entry_artifact_label(entry),
                 restore_check=rc_label,
                 last_backup=format_human_datetime(
                     entry.backup_created_at if entry else None
                 ),
                 backup_id=entry.backup_id if entry else None,
-                pending=pending and _backed_up(entry),
+                pending=pending,
                 runnable=runnable,
             )
         )
@@ -159,16 +174,32 @@ def build_recovery_dashboard(*, live: bool | None = None) -> RecoveryDashboard:
         if _backed_up(by_name.get(name))
     )
     pending_count = len(pending_names)
-    backed_total = sum(
-        1 for name in REQUIRED_RECOVERY_DATABASES if _backed_up(by_name.get(name))
+    backed_total = prod_backed + dev_backed
+    prod_rc_passed = sum(
+        1
+        for name in REQUIRED_RECOVERY_PRODUCTION
+        if _restore_check_display(by_name.get(name))[0] == "Passed"
     )
+
     if pending_count:
-        readiness = f"NOT READY · {pending_count} restore-checks pending"
+        readiness = f"NOT READY · {pending_count} production restore-checks pending"
     elif backed_total < len(REQUIRED_RECOVERY_DATABASES):
         missing = len(REQUIRED_RECOVERY_DATABASES) - backed_total
         readiness = f"NOT READY · {missing} databases missing verified backups"
     else:
-        readiness = "READY · all required restore-checks passed"
+        readiness = "READY · production restore-checks complete"
+
+    if deferred_dev_names:
+        scope_summary = (
+            f"{backed_total}/7 backed up · "
+            f"prod RC {prod_rc_passed}/{len(REQUIRED_RECOVERY_PRODUCTION)} · "
+            f"dev RC deferred ({len(deferred_dev_names)})"
+        )
+    else:
+        scope_summary = (
+            f"{backed_total}/7 backed up · "
+            f"prod RC {prod_rc_passed}/{len(REQUIRED_RECOVERY_PRODUCTION)}"
+        )
 
     package = sealed_phase3b_package_note() or "No sealed Phase 3B package noted"
     if package.startswith("Phase 3B"):
@@ -194,10 +225,12 @@ def build_recovery_dashboard(*, live: bool | None = None) -> RecoveryDashboard:
         restore_checks_pending=pending_count,
         pending_names=pending_names,
         runnable_pending=runnable_pending,
+        deferred_dev_names=deferred_dev_names,
         temp_restore_schemas=temp_schemas,
         latest_backup_label=_latest_backup_label(report),
         package_line=package,
         runbooks_path=str(resolve_operator_mount() / "mercury_runbooks"),
+        scope_summary=scope_summary,
         plans_by_database=plans,
     )
 
