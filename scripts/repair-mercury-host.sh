@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Neptune fresh-rebuild repair helper — review before running.
+# Mercury host repair helper — review before running.
 # Mercury never executes these steps automatically.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 USER_NAME="${SUDO_USER:-${USER:-linuxadmin}}"
 
-echo "Mercury Neptune repair helper"
+echo "Mercury host repair helper"
 echo "Target user: ${USER_NAME}"
 echo
 

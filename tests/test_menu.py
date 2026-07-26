@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from mercury import menu_display
+from mercury.menu import main_display as menu_display
 from mercury.menu.runners import (
     MENU_SUBTITLE,
     MENU_TITLE,

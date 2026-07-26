@@ -13,7 +13,7 @@ from mercury.database.core import (
     parse_host_port,
     record_from_name,
 )
-import mercury.paths as paths
+import mercury.core.paths as paths
 
 
 def discover_from_config(

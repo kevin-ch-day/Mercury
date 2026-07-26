@@ -1,6 +1,8 @@
 """Tests for uniform table formatting."""
 
-from mercury import display_format, display_table, display_screen
+from mercury.terminal import format as display_format
+from mercury.terminal import screen as display_screen
+from mercury.terminal import table as display_table
 
 
 def test_format_table_aligns_columns() -> None:

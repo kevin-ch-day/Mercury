@@ -3,7 +3,7 @@
 import os
 import time
 
-from mercury import display_format
+from mercury.terminal import format as display_format
 
 
 def test_format_bytes_scales() -> None:

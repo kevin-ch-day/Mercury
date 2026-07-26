@@ -1,4 +1,4 @@
-# System recovery deployment runbook (Neptune / prepared Fedora host)
+# System recovery deployment runbook (prepared Fedora host)
 
 Mercury can restore **Mercury-managed artifacts** — verified operator-storage database backups and configured Git repositories — onto a **prepared Fedora/MariaDB host**. This is recovery deployment, not full workstation provisioning.
 
@@ -41,7 +41,7 @@ Example:
 ```toml
 [repos.mercury]
 display_name = "Mercury"
-path = "/home/linuxadmin/GitHub/Mercury"
+path = "/home/secadmin/Laughlin/GitHub/Mercury"
 default_branch = "main"
 remote_url = "https://github.com/your-org/Mercury.git"
 ```

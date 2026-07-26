@@ -18,7 +18,7 @@ Guidance for AI coding agents (Cursor, ChatGPT, Codex) working in this repositor
 | Policy/report | `reporting/protection.py`, `core/safety.py` |
 | Classification | `database/core/catalog.py`, `database/core/classifier.py` |
 
-**Imports:** prefer subpackages (`mercury.backup.backup_runner`, `mercury.core.safety`, `mercury.logging`). Top-level shims (`mercury.safety`, `mercury.verification`) remain for external compatibility only — do not use them in new `src/` or test code.
+**Imports:** prefer subpackages (`mercury.backup.backup_runner`, `mercury.core.safety`, `mercury.logging`, `mercury.core.paths`). Use `mercury.output` for terminal writing. Do not add new top-level `src/mercury/*.py` compatibility modules.
 
 ## What Mercury is
 
@@ -65,9 +65,7 @@ src/mercury/
   menu/                    # Interactive menu loop, prompts, dashboard, runners
     loop.py, runners.py, main_display.py, prompts.py, …
   terminal/                # Shared CLI formatting (format, screen, table)
-  menu.py, menu_*.py       # Thin shims → menu.* (backward compat)
-  display_*.py, terminal_*.py  # Thin shims → terminal.* (backward compat)
-  paths.py, safety.py, …   # Thin shims → core.* (backward compat)
+  output.py                # Public terminal output re-export (`mercury.core.output`)
 
   core/                    # Paths, policy, runtime, output, execution gates
   backup/                  # backup_runner.py, batch_runner.py, terminal/, …
@@ -87,7 +85,7 @@ src/mercury/
     discovery/, mariadb/, prod_dev_pairs.py, backup_planning.py, …
 ```
 
-**Naming:** shared terminal helpers live in `mercury.terminal`; domain CLI output lives in `<package>/terminal/` (or legacy `*_terminal.py` shims); execution uses `*_runner.py`; feature menus use `interactive_menu.py`. Prefer canonical import paths (`mercury.backup.terminal.verify`, `mercury.database.terminal.inventory`). Top-level shims remain for compatibility.
+**Naming:** shared terminal helpers live in `mercury.terminal`; domain CLI output lives in `<package>/terminal/`; execution uses `*_runner.py`; feature menus use `interactive_menu.py`. Prefer canonical import paths (`mercury.backup.terminal.verify`, `mercury.database.terminal.inventory`, `mercury.core.paths`).
 
 Policy constants: `src/mercury/core/safety.py`. Execution gates: `src/mercury/core/execution_policy.py`.
 
@@ -268,7 +266,7 @@ Restore-check behavior: successful restore-check imports auto-drop the `_restore
 | `ExecutionPolicy(...)` / `local_config=` | Dry-run vs live gates |
 | `MERCURY_LOCAL_CONFIG` / `plain_cli_text()` | Offline CI parity; stable Rich help asserts |
 | `@pytest.mark.uses_operator_local_config` | Opt out of autouse local.toml isolation |
-| `monkeypatch.setattr("mercury.paths.OUTPUT_DIR", tmp_path)` | File output in tests |
+| `monkeypatch.setattr("mercury.core.paths.OUTPUT_DIR", tmp_path)` | File output in tests |
 | `subprocess.run([sys.executable, "-m", "mercury.cli", ...])` | CLI integration (separate process) |
 
 Full test file index: [docs/ai_extension_points.md](docs/ai_extension_points.md#test-file-index).
@@ -297,6 +295,6 @@ Full test file index: [docs/ai_extension_points.md](docs/ai_extension_points.md#
 
 ## What to build next (typical milestones)
 
-- Prod→dev sync execution with `SYNC DEV` confirmation.
-- Menu item 7: restore-check flow to `_restorecheck_*` only (non-destructive by default).
-- Remove top-level shim modules once all imports use subpackages (`mercury.backup.*`, `mercury.core.*`).
+- Prod→dev sync execution polish with `SYNC DEV` confirmation.
+- Development restore-check lane (Track A A-3-02).
+- Advanced-command taxonomy labels (A-7-01).

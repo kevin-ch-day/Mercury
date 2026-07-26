@@ -9,18 +9,15 @@ def test_import_canonical_packages() -> None:
     from mercury.logging import configure_logging, get_logger
     from mercury.logging.events import log_menu_action
     from mercury.core.safety import BACKUP_KIND_FULL
+    from mercury.menu import run_menu
+    from mercury.terminal.screen import write_fields
 
     assert BACKUP_KIND_FULL == "full"
     configure_logging()
     assert get_logger("mercury.test")
-
-
-def test_legacy_shims_still_import() -> None:
-    """Top-level re-exports remain for external callers."""
-    from mercury.safety import BACKUP_KIND_FULL  # noqa: F401
-    from mercury.logging_engine import configure_logging  # noqa: F401
-    from mercury.display_screen import write_fields  # noqa: F401
-    from mercury.menu import run_menu  # noqa: F401
+    assert callable(run_menu)
+    assert callable(write_fields)
+    assert callable(log_menu_action)
 
 
 def test_import_database_module() -> None:

@@ -1,4 +1,4 @@
-"""Backward compatibility — use mercury.core.output."""
+"""Public terminal output API — re-exports ``mercury.core.output``."""
 
 from mercury.core.output import (
     action_banner,

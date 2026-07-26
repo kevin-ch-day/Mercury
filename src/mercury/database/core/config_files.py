@@ -4,7 +4,7 @@ from pathlib import Path
 
 import tomllib
 
-import mercury.paths as paths
+import mercury.core.paths as paths
 
 
 def load_databases_from_file(path: Path) -> dict[str, dict[str, object]]:

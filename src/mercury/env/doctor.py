@@ -389,7 +389,7 @@ def build_repair_plan(report: DoctorReport) -> list[tuple[str, list[str]]]:
                     "Fix USB ownership (requires sudo)",
                     [USB_REPAIR_COMMAND]
                     + [chown_repair_command(path) for path in chown_targets]
-                    + ["Optional full host helper: sudo ./scripts/repair-neptune.sh"],
+                    + ["Optional full host helper: sudo ./scripts/repair-mercury-host.sh"],
                 )
             )
 

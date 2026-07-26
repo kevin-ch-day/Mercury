@@ -20,10 +20,10 @@ This lane is **not** prod→dev sync. It recreates protected databases on the lo
 - **Repo-local** `backups/` cannot be used for live deployment.
 - **No typed phrase** confirmations — simple `y/n` only for live menu deploy.
 
-## Quick start (Neptune)
+## Quick start
 
 ```bash
-cd /home/linuxadmin/GitHub/Mercury
+cd /home/secadmin/Laughlin/GitHub/Mercury
 ./run.sh doctor
 ./run.sh doctor --repair-plan
 ./run.sh deploy db --dry-run
@@ -33,7 +33,7 @@ cd /home/linuxadmin/GitHub/Mercury
 One-shot host repair (review first, requires sudo):
 
 ```bash
-sudo ./scripts/repair-neptune.sh
+sudo ./scripts/repair-mercury-host.sh
 ```
 
 ## CLI

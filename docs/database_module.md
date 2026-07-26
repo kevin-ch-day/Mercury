@@ -31,7 +31,7 @@ mercury/database/
     probe.py           Client tooling on PATH
 ```
 
-Legacy shims (`service.py`, `cli.py`, `*_terminal.py` at package root, and top-level `src/mercury/*.py` compatibility modules) re-export from the canonical paths above. New code should import the subpackages directly.
+Import canonical subpackages directly (`mercury.database.terminal.*`, `mercury.database.facade`, `mercury.db_commands`).
 
 ## Core API
 

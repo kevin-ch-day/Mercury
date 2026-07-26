@@ -2,8 +2,8 @@
 
 import pytest
 
-from mercury import menu_display
-from mercury import menu_prompts
+from mercury.menu import main_display as menu_display
+from mercury.menu import prompts as menu_prompts
 from mercury.menu.subscreen import read_submenu_choice
 
 

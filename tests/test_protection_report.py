@@ -46,13 +46,12 @@ def test_report_does_not_treat_shared_authority_as_sync_pair() -> None:
 
 
 def test_status_save_writes_file(tmp_path: Path, monkeypatch) -> None:
-    from mercury import protection_report as pr_mod
     from mercury.core.paths import OUTPUT_DIR, PROTECTION_REPORT_FILE
 
     out = tmp_path / "output"
     report_file = out / "protection_status.txt"
-    monkeypatch.setattr("mercury.paths.OUTPUT_DIR", out)
-    monkeypatch.setattr("mercury.paths.PROTECTION_REPORT_FILE", report_file)
+    monkeypatch.setattr("mercury.core.paths.OUTPUT_DIR", out)
+    monkeypatch.setattr("mercury.core.paths.PROTECTION_REPORT_FILE", report_file)
 
     text = format_protection_report(build_protection_report())
     out.mkdir(parents=True, exist_ok=True)

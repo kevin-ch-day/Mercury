@@ -53,7 +53,7 @@ Cookbook for AI agents (Cursor, ChatGPT, Codex) implementing features in this re
 | `src/mercury/reporting/protection.py` | Protection status report |
 | `src/mercury/sync/sync_plan.py` | Prod→dev sync planning and execution gates |
 
-Top-level `src/mercury/*.py` (except `cli.py`, `menu.py`) are **shims** — implement in subpackages.
+Prefer subpackages under `src/mercury/`. Keep `cli.py`, `db_commands.py`, `bootstrap.py`, and `output.py` at the package root.
 
 ---
 
@@ -174,47 +174,24 @@ Config: `config/local.toml` (gitignored). Never commit credentials.
 
 ---
 
-## Shim → canonical import reference
+## Canonical import paths
 
-| Shim (legacy) | Canonical |
-|---------------|-----------|
-| `mercury.safety` | `mercury.core.safety` |
-| `mercury.paths` | `mercury.core.paths` |
-| `mercury.runtime` | `mercury.core.runtime` |
-| `mercury.execution_policy` | `mercury.core.execution_policy` |
-| `mercury.output` | `mercury.core.output` |
-| `mercury.display_format` | `mercury.terminal.format` |
-| `mercury.display_screen` | `mercury.terminal.screen` |
-| `mercury.display_table` | `mercury.terminal.table` |
-| `mercury.terminal_format` | `mercury.terminal.format` |
-| `mercury.terminal_screen` | `mercury.terminal.screen` |
-| `mercury.menu` | `mercury.menu.runners` |
-| `mercury.menu_runners` | `mercury.menu.runners` |
-| `mercury.menu_display` | `mercury.menu.main_display` |
-| `mercury.menu_prompts` | `mercury.menu.prompts` |
-| `mercury.database.service` | `mercury.database.facade` |
-| `mercury.database.cli` | `mercury.db_commands` (shim: `mercury.database.commands`) |
-| `mercury.database.*_terminal` | `mercury.database.terminal.*` |
-| `mercury.backup_execute` | `mercury.backup.backup_runner` |
-| `mercury.backup_display` | `mercury.backup.terminal.plan` |
-| `mercury.backup_execute_display` | `mercury.backup.terminal.runner` |
-| `mercury.verify_display` | `mercury.backup.terminal.verify` |
-| `mercury.plan_display` | `mercury.reporting.terminal.plan` |
-| `mercury.log_display` | `mercury.logging.terminal.status` |
-| `mercury.backup.*_terminal` | `mercury.backup.terminal.*` |
-| `mercury.sync.*_terminal` | `mercury.sync.terminal.*` |
-| `mercury.restore.*_terminal` | `mercury.restore.terminal.*` |
-| `mercury.env.check_terminal` | `mercury.env.terminal.check` |
-| `mercury.backup_list` | `mercury.backup.on_disk_index` |
-| `mercury.verification` | `mercury.backup.verification` |
-| `mercury.protection_report` | `mercury.reporting.protection` |
-| `mercury.env_probe` | `mercury.env.probe` |
-| `mercury.logging_engine` | `mercury.logging` |
-| `mercury.log_events` | `mercury.logging.events` |
-| `mercury.log_display` | `mercury.logging.terminal.status` |
-| `mercury.sync_plan` (top-level) | `mercury.sync.sync_plan` |
+Top-level compatibility shims were removed. Import from subpackages:
 
-New code in `src/` and `tests/` must use canonical paths. Shims remain for external callers only.
+| Area | Canonical |
+|------|-----------|
+| Safety / paths / policy | `mercury.core.safety`, `mercury.core.paths`, `mercury.core.execution_policy` |
+| Terminal output | `mercury.output` (public) or `mercury.core.output` |
+| Shared formatting | `mercury.terminal.format` / `screen` / `table` |
+| Menu | `mercury.menu.*` |
+| Database | `mercury.database.facade`, `mercury.database.terminal.*`, `mercury.db_commands` |
+| Backup | `mercury.backup.backup_runner`, `mercury.backup.terminal.*` |
+| Sync / restore | `mercury.sync.*`, `mercury.restore.terminal.*` |
+| Logging | `mercury.logging`, `mercury.logging.events` |
+
+Root modules that remain: `cli.py`, `db_commands.py`, `bootstrap.py`, `output.py`.
+
+New code in `src/` and `tests/` must use the canonical paths above.
 
 ---
 
@@ -239,7 +216,7 @@ Do not branch assertions on `config/local.toml`.exists()`. Prefer tmp configs, m
 - Weakening safety checks or skipping `assert_safe_backup_source`
 - Defaulting to live execution without policy gates
 - Adding DDL/DML to “probe” or “inspect” code paths
-- New top-level shim modules instead of subpackages
+- New top-level compatibility modules instead of subpackages
 - Large refactors mixed with feature work
 - Committing `config/local.toml` or passwords
 - Assuming pymysql root works on Fedora (use `use_client` + socket)

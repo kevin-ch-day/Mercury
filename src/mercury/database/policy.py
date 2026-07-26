@@ -1,6 +1,6 @@
 """Validate database names against Mercury backup policy."""
 
-import mercury.paths as paths
+import mercury.core.paths as paths
 from pydantic import BaseModel, Field
 
 from mercury.database.core import (

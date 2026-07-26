@@ -50,8 +50,8 @@ def test_discover_merges_host_from_config(tmp_path: Path, monkeypatch: pytest.Mo
         'custom_prod = { host = "db.example.com", port = 5433 }\n',
         encoding="utf-8",
     )
-    monkeypatch.setattr("mercury.paths.DATABASES_LOCAL", toml)
-    monkeypatch.setattr("mercury.paths.DATABASES_EXAMPLE", config_dir / "missing.toml")
+    monkeypatch.setattr("mercury.core.paths.DATABASES_LOCAL", toml)
+    monkeypatch.setattr("mercury.core.paths.DATABASES_EXAMPLE", config_dir / "missing.toml")
 
     inventory = discover_from_config(include_catalog=False, prefer_local=True)
     assert len(inventory.entries) == 1
