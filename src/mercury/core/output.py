@@ -61,20 +61,22 @@ def _get_console():
             force_terminal=enabled,
             no_color=not enabled,
             highlight=False,
-            soft_wrap=True,
+            # Keep soft_wrap off: True can leave a one-cell styled fragment
+            # (often a stray "]") on the next operator line.
+            soft_wrap=False,
             theme=rich_theme() if enabled else None,
         )
     return _console
 
 
 def _looks_like_markup(text: str) -> bool:
-    if not colors_enabled(stream=_out()) or "[" not in text or "]" not in text:
+    if not colors_enabled(stream=_out()) or "[" not in text:
         return False
-    # Avoid treating plain status lines as markup when unstyled.
-    prefixes = ("[ok]", "[--]", "[!!]", "[i]", "[PASS]", "[WARN]", "[FAIL]", "[INFO]")
-    if text.lstrip().startswith(prefixes) and "[/" not in text:
-        return False
-    return True
+    # Only parse as Rich markup when we emitted real style tags. Plain operator
+    # lines like "  [prod 1/4] db" or "Next … [5]" must stay literal.
+    if "[/" in text or "\\[" in text:
+        return True
+    return False
 
 
 def write(text: str = "") -> None:

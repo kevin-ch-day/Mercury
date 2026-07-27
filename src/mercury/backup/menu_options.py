@@ -43,7 +43,8 @@ BACKUP_MENU_OPTIONS: Final[list[tuple[str, str, str, str]]] = [
         "4",
         "Back up development databases",
         ACTION_DEV_BACKUP,
-        "Development-only optional recovery workflow (not the default handoff package).",
+        "Development databases required for platform recovery scope "
+        "(RC execute still deferred under Restore [5]; not the handoff package).",
     ),
     (
         "5",

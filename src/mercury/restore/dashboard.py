@@ -57,6 +57,8 @@ class RecoveryDashboard:
     runnable_pending: list[str]
     # Development RC is status-only until the A-3-02 lane ships.
     deferred_dev_names: list[str]
+    # Compact one-line status (no per-DB development table on the dashboard).
+    development_summary: str
     temp_restore_schemas: list[str]
     latest_backup_label: str
     package_line: str
@@ -105,6 +107,25 @@ def _latest_backup_label(report: BackupStatusReport) -> str:
     if not timestamps:
         return "none"
     return format_human_datetime(max(timestamps))
+
+
+def _development_summary(
+    *,
+    backed: int,
+    total: int,
+    missing_names: list[str],
+    latest_label: str,
+) -> str:
+    """One-line development status — backups matter; RC execute is deferred."""
+    if total == 0:
+        return "none in scope"
+    if backed >= total and not missing_names:
+        latest = ""
+        if latest_label and latest_label != "none":
+            latest = f" · latest {latest_label}"
+        return f"{backed}/{total} backed up{latest} · RC deferred"
+    missing = ", ".join(missing_names) if missing_names else f"{total - backed} missing"
+    return f"{backed}/{total} backed up · missing {missing} · RC deferred"
 
 
 def build_recovery_dashboard(*, live: bool | None = None) -> RecoveryDashboard:
@@ -189,17 +210,10 @@ def build_recovery_dashboard(*, live: bool | None = None) -> RecoveryDashboard:
     else:
         readiness = "READY · production restore-checks complete"
 
-    if deferred_dev_names:
-        scope_summary = (
-            f"{backed_total}/7 backed up · "
-            f"prod RC {prod_rc_passed}/{len(REQUIRED_RECOVERY_PRODUCTION)} · "
-            f"dev RC deferred ({len(deferred_dev_names)})"
-        )
-    else:
-        scope_summary = (
-            f"{backed_total}/7 backed up · "
-            f"prod RC {prod_rc_passed}/{len(REQUIRED_RECOVERY_PRODUCTION)}"
-        )
+    scope_summary = (
+        f"{backed_total}/7 backed up · "
+        f"prod RC {prod_rc_passed}/{len(REQUIRED_RECOVERY_PRODUCTION)}"
+    )
 
     package = sealed_phase3b_package_note() or "No sealed Phase 3B package noted"
     if package.startswith("Phase 3B"):
@@ -212,6 +226,29 @@ def build_recovery_dashboard(*, live: bool | None = None) -> RecoveryDashboard:
         temp_schemas = discover_restorecheck_names()
     except Exception:
         temp_schemas = []
+
+    missing_dev = [
+        name
+        for name in REQUIRED_RECOVERY_DEVELOPMENT
+        if not _backed_up(by_name.get(name))
+    ]
+    dev_timestamps = [
+        entry.backup_created_at
+        for name in REQUIRED_RECOVERY_DEVELOPMENT
+        for entry in [by_name.get(name)]
+        if entry is not None
+        and entry.protection_status == "verified"
+        and entry.backup_created_at
+    ]
+    dev_latest = (
+        format_human_datetime(max(dev_timestamps)) if dev_timestamps else "none"
+    )
+    development_summary = _development_summary(
+        backed=dev_backed,
+        total=len(REQUIRED_RECOVERY_DEVELOPMENT),
+        missing_names=missing_dev,
+        latest_label=dev_latest,
+    )
 
     return RecoveryDashboard(
         report=report,
@@ -226,6 +263,7 @@ def build_recovery_dashboard(*, live: bool | None = None) -> RecoveryDashboard:
         pending_names=pending_names,
         runnable_pending=runnable_pending,
         deferred_dev_names=deferred_dev_names,
+        development_summary=development_summary,
         temp_restore_schemas=temp_schemas,
         latest_backup_label=_latest_backup_label(report),
         package_line=package,

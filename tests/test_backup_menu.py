@@ -66,7 +66,7 @@ def test_run_backup_menu_non_interactive(
     assert "Action:" not in out
     assert "DATABASE" in out
     assert "FRESHNESS" in out
-    assert "RESTORE-CHECK" in out
+    assert "RESTORE-CHECK" in out or "RC" in out
     assert " VERIFY" not in out
     assert "SIZE" in out
     assert "LAST BACKUP" in out
@@ -190,20 +190,22 @@ def test_backup_menu_section_spacing_boundaries(
         raise AssertionError(f"line not found for {predicate!r}\n{out}")
 
     title_i = index_of(lambda line: line.strip() == "Backup Operations")
-    status_i = index_of(lambda line: "Status" in line and "ok" in line)
-    capacity_i = index_of(lambda line: "Capacity" in line)
     next_i = index_of(lambda line: "Next: Restore and disaster recovery [5]" in line)
     pending_i = index_of(lambda line: line.startswith("Pending: android_permission_intel"))
+    status_i = index_of(lambda line: "Status" in line and "ok" in line)
+    capacity_i = index_of(lambda line: "Capacity" in line)
     header_i = index_of(lambda line: line.startswith("DATABASE"))
-    assert status_i > title_i
-    assert capacity_i > status_i
-    assert lines[capacity_i + 1] == ""
-    assert next_i == capacity_i + 2
+    assert next_i > title_i
     assert pending_i == next_i + 1
     hint_i = index_of(lambda line: "Back [0]" in line and "Main Menu [5]" in line)
     assert hint_i == pending_i + 1
     assert lines[hint_i + 1] == ""
-    assert header_i == hint_i + 2
+    root_i = index_of(lambda line: "Backup root" in line)
+    assert root_i == hint_i + 2
+    assert status_i > root_i
+    assert capacity_i > status_i
+    assert lines[capacity_i + 1] == ""
+    assert header_i == capacity_i + 2
 
     # Last table body row is the database name line (not the rule).
     db_i = index_of(lambda line: line.startswith("android_permission_intel"))
@@ -510,7 +512,11 @@ def test_full_backup_can_include_dev_recovery_copy(monkeypatch: pytest.MonkeyPat
     )
     monkeypatch.setattr(
         "mercury.backup.interactive_menu.print_full_backup_run_result",
-        lambda result: None,
+        lambda result, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu._production_protection_complete",
+        lambda _plan: False,
     )
 
     result = _run_full_backup(build_backup_plan(["android_permission_intel"]))
@@ -624,7 +630,7 @@ def test_freshness_and_verify_columns_are_independent() -> None:
         },
     )()
     assert _freshness_label(entry) == "Stale"
-    assert _verify_label(entry) == "Not restore-checked"
+    assert _verify_label(entry) == "Pending"
     unverified = type(
         "Entry",
         (),

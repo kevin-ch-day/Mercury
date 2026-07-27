@@ -175,6 +175,7 @@ def run_backup_batch(
     sources: list[str] | None = None,
     dump_runner=None,
     allow_development_backup: bool = False,
+    on_database_start=None,
 ) -> BackupBatchResult:
     """Plan or execute backups for all approved backup sources."""
     resolved_policy = policy or load_execution_policy()
@@ -185,8 +186,11 @@ def run_backup_batch(
         sources=batch_sources,
     )
     server_names = fetch_live_server_database_names() if live else None
+    total = len(batch_sources)
 
-    for database in batch_sources:
+    for index, database in enumerate(batch_sources, start=1):
+        if on_database_start is not None:
+            on_database_start(index, total, database)
         try:
             result = execute_backup(
                 database,

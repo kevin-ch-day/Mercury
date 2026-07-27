@@ -117,15 +117,22 @@ def assert_not_production_restore_target(
         )
 
 
+def _compress_cli() -> str | None:
+    """Prefer pigz (parallel) when present; fall back to gzip."""
+    return shutil.which("pigz") or shutil.which("gzip")
+
+
 def _default_dump_runner(
     argv: list[str],
     env: dict[str, str],
     output_path: Path,
     _config: MariaDbConnectionConfig,
 ) -> None:
-    """Run mariadb-dump, compressing with gzip CLI or Python gzip."""
+    """Run mariadb-dump, compressing with pigz/gzip CLI or Python gzip."""
     ensure_private_directory(output_path.parent)
-    if shutil.which("gzip"):
+    compress = _compress_cli()
+    if compress:
+        compress_name = Path(compress).name
         with output_path.open("wb") as handle:
             dump_proc = subprocess.Popen(
                 argv,
@@ -135,7 +142,7 @@ def _default_dump_runner(
             )
             assert dump_proc.stdout is not None
             gzip_proc = subprocess.Popen(
-                ["gzip", "-c"],
+                [compress, "-c"],
                 stdin=dump_proc.stdout,
                 stdout=handle,
                 stderr=subprocess.PIPE,
@@ -152,7 +159,8 @@ def _default_dump_runner(
             if gzip_proc.returncode != 0:
                 detail = (gzip_stderr or b"").decode("utf-8", errors="replace").strip()
                 raise BackupExecutionError(
-                    f"gzip failed (exit {gzip_proc.returncode}): {detail or 'unknown error'}"
+                    f"{compress_name} failed (exit {gzip_proc.returncode}): "
+                    f"{detail or 'unknown error'}"
                 )
         return
 

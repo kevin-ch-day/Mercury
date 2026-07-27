@@ -288,6 +288,37 @@ def test_bracket_labels_never_leak_rich_escapes() -> None:
         clear_style_cache()
 
 
+def test_output_write_keeps_literal_progress_brackets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Operator progress lines must not be parsed as Rich style tags."""
+    from io import StringIO
+    import re
+
+    from mercury.core import output
+    from mercury.terminal.theme import set_color_enabled
+    from mercury.terminal.design_system import clear_style_cache
+
+    buf = StringIO()
+    set_color_enabled(True)
+    clear_style_cache()
+    output.set_stream(buf)
+    try:
+        # Legacy bracket form — must remain literal if ever written raw.
+        output.write("  [prod 1/4] android_permission_intel")
+        # Current form after the stray-] fix.
+        output.write("  prod 1/4  android_permission_intel")
+        plain = re.sub(r"\x1b\[[0-9;]*m", "", buf.getvalue())
+        assert "[prod 1/4] android_permission_intel" in plain
+        assert "prod 1/4  android_permission_intel" in plain
+        # Rich would otherwise swallow "[prod 1/4]" into a blank style span.
+        assert plain.splitlines()[0].strip().startswith("[prod")
+    finally:
+        output.set_stream(None)
+        set_color_enabled(None)
+        clear_style_cache()
+
+
 def test_redline_header_and_recommended_marker() -> None:
     set_theme_override(THEME_REDLINE)
     set_color_enabled(False)

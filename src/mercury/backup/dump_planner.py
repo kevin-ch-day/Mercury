@@ -64,7 +64,8 @@ def build_planned_dump_command(
             f"--databases {database}  # schema-only"
         )
     return (
-        f"{base} --single-transaction {' '.join(RECOVERY_OBJECT_FLAGS)} "
+        f"{base} --single-transaction --quick --extended-insert "
+        f"--max-allowed-packet=1G {' '.join(RECOVERY_OBJECT_FLAGS)} "
         f"--databases {database}  # full logical"
     )
 
@@ -107,7 +108,17 @@ def build_dump_argv(
     if kind == BACKUP_KIND_SCHEMA_ONLY:
         argv.extend(["--no-data", *RECOVERY_OBJECT_FLAGS])
     else:
-        argv.extend(["--single-transaction", *RECOVERY_OBJECT_FLAGS])
+        # --quick streams rows; --extended-insert + 1G packet keep dumps compact.
+        # Older dumps may still be multi-line INSERT form — import_stream handles both.
+        argv.extend(
+            [
+                "--single-transaction",
+                "--quick",
+                "--extended-insert",
+                "--max-allowed-packet=1G",
+                *RECOVERY_OBJECT_FLAGS,
+            ]
+        )
     argv.extend(["--databases", database])
     return argv
 

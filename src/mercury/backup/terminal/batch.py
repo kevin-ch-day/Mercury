@@ -100,6 +100,7 @@ def print_backup_batch_result(
     menu: bool = False,
     databases_label: str = "Production databases selected",
     suggest_verify: bool = False,
+    summary_only: bool = False,
 ) -> None:
     if compact and menu:
         selected_label = databases_label.replace(" selected", "").replace("Selected", "").strip()
@@ -110,7 +111,7 @@ def print_backup_batch_result(
             f"written {batch.executed_count} · preview {batch.dry_run_count} · "
             f"refused {batch.refused_count}"
         )
-        if batch.results:
+        if batch.results and not summary_only:
             rows = [
                 [
                     result.database,
@@ -205,7 +206,11 @@ def print_backup_batch_result(
         )
 
 
-def print_full_backup_run_result(result: FullBackupRunResult) -> None:
+def print_full_backup_run_result(
+    result: FullBackupRunResult,
+    *,
+    lanes_already_shown: bool = False,
+) -> None:
     """Final full-backup summary — overall status only (lane tables already printed)."""
     if result.global_refusal:
         from mercury.menu import main_display as menu_display
@@ -231,47 +236,38 @@ def print_full_backup_run_result(result: FullBackupRunResult) -> None:
         return
 
     display_screen.write_summary(
-        f"Full Backup Result · {result.outcome.value} · {result.run_id}"
+        f"Result  {result.outcome.value} · {result.run_id}"
     )
-    prod = (
-        f"Prod: {result.production.written} written, {result.production.verified} verified, "
-        f"{result.production.failed} failed, {format_bytes(result.production.total_size_bytes)}"
-    )
-    _write_dense_lines([prod])
-    if result.development.requested:
-        dev = (
-            f"Dev: {result.development.written} written, {result.development.verified} verified, "
-            f"{result.development.failed} failed, {format_bytes(result.development.total_size_bytes)} "
-            "(optional recovery; not default handoff)"
+    if not lanes_already_shown:
+        prod = (
+            f"Prod    {result.production.written} written · "
+            f"{result.production.verified} verified · "
+            f"{result.production.failed} failed · "
+            f"{format_bytes(result.production.total_size_bytes)}"
         )
-        _write_dense_lines([dev])
+        _write_dense_lines([prod])
+        if result.development.requested:
+            dev = (
+                f"Dev     {result.development.written} written · "
+                f"{result.development.verified} verified · "
+                f"{result.development.failed} failed · "
+                f"{format_bytes(result.development.total_size_bytes)}"
+            )
+            _write_dense_lines([dev])
     overall = (
-        f"Overall: artifacts {result.backup_artifacts_result.value} · "
-        f"verification {result.verification_result.value} · "
-        f"evidence {result.run_evidence_result.value} · "
-        f"{result.package_classification}"
+        f"Status  artifacts {result.backup_artifacts_result.value} · "
+        f"verify {result.verification_result.value} · "
+        f"evidence {result.run_evidence_result.value}"
     )
     _write_dense_lines([overall])
-    receipt_lines: list[str] = []
     if result.receipt_path and result.run_evidence_result.value == "PASS":
-        receipt_lines.append(f"Receipt: {result.receipt_path}")
-    if result.receipt_sha256 and result.run_evidence_result.value == "PASS":
-        receipt_lines.append(f"SHA-256: {result.receipt_sha256}")
-    if receipt_lines:
-        _write_dense_lines(receipt_lines)
-    display_screen.write_blank()
-    for part in result.phase3b_separation_note.splitlines():
-        text = part.strip()
-        if text:
-            output.write(hint_text(text))
+        _write_dense_lines([f"Receipt {result.receipt_path}"])
 
     if result.outcome == FullBackupOutcome.PASS and result.next_actions:
-        display_screen.write_blank()
-        display_screen.write_summary("Next: " + "; ".join(result.next_actions))
+        display_screen.write_summary("Next    " + "; ".join(result.next_actions))
     elif result.outcome != FullBackupOutcome.PASS:
-        display_screen.write_blank()
         display_screen.write_summary(
-            "Handoff backup set is not ready — resolve failures before restore-check or bundle write."
+            "Next    resolve failures before restore-check or handoff"
         )
         if result.next_actions:
             _write_dense_lines(result.next_actions)

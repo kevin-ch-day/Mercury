@@ -331,7 +331,10 @@ def test_run_restore_menu_non_interactive(
 ) -> None:
     from mercury.restore.dashboard import RecoveryDashboard, RecoveryDashboardRow
     from mercury.backup.status import BackupStatusReport
-    from mercury.restore.recovery_scope import REQUIRED_RECOVERY_DATABASES
+    from mercury.restore.recovery_scope import (
+        REQUIRED_RECOVERY_DATABASES,
+        REQUIRED_RECOVERY_DEVELOPMENT,
+    )
 
     dash = RecoveryDashboard(
         report=BackupStatusReport(
@@ -342,10 +345,10 @@ def test_run_restore_menu_non_interactive(
         rows=[
             RecoveryDashboardRow(
                 database=name,
-                role="prod",
+                role="dev" if name in REQUIRED_RECOVERY_DEVELOPMENT else "prod",
                 freshness="Fresh",
                 artifact="Verified",
-                restore_check="Passed",
+                restore_check="Deferred" if name in REQUIRED_RECOVERY_DEVELOPMENT else "Passed",
                 last_backup="-",
                 backup_id=None,
                 pending=False,
@@ -362,7 +365,8 @@ def test_run_restore_menu_non_interactive(
         restore_checks_pending=0,
         pending_names=[],
         runnable_pending=[],
-        deferred_dev_names=[],
+        deferred_dev_names=list(REQUIRED_RECOVERY_DEVELOPMENT),
+        development_summary="3/3 backed up · RC deferred",
         temp_restore_schemas=[],
         latest_backup_label="none",
         package_line="No sealed Phase 3B package noted",
@@ -377,5 +381,7 @@ def test_run_restore_menu_non_interactive(
     run_restore_menu(interactive=False)
     out = capsys.readouterr().out
     assert "Restore and Disaster Recovery" in out
-    assert "android_permission_intel_dev" in out
+    assert "3/3 backed up" in out
+    assert "RC deferred" in out
+    assert "android_permission_intel_dev" not in out
     assert "[0] Back" in out

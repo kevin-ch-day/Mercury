@@ -40,7 +40,7 @@ For each operation, file one row (or linked receipt) with:
 | A-DASH-001 | Main menu status | Dashboard expected `latest_verified_backup_at` / `verified_source_count` that `StateSummary` did not populate. **Fixed** in `src/mercury/state/summary.py` (ledger-backed). Live compact line now `Verified · <timestamp>`. | **accepted** |
 | A-3-02-GAP | Restore-check / development | `restore-check` refuses configured development schemas (`not an approved production backup source`) and does not honor development artifact verification. Conflicts with mandatory seven-schema platform scope. | **gap** |
 | A-2-03-USB | Storage | Legacy USB fully phased out of normal operation after archive-retire. Absence is non-blocking; presence is archive-status only. Physical RO remount remains optional operator transport step. | **accepted** (policy) |
-| A-MSG-DEV | Backup terminal copy | Full-backup result still labels development lane “optional recovery; not default handoff” while platform docs require the three `_dev` schemas for recovery readiness. Packaging boundary vs local recovery wording needs alignment. | **gap** (wording) |
+| A-MSG-DEV | Backup terminal copy | Development lane previously labeled “optional recovery; not default handoff” while platform scope requires three `_dev` schemas. **Updated** to “platform recovery scope; not handoff package” / menu help aligned with Restore [5] deferred RC lane. | **accepted** |
 
 ## Authority pins (Fedora source host)
 

@@ -84,7 +84,7 @@ def assert_governed_destination_recovery_target(database: str) -> None:
 
 def build_import_argv(config: MariaDbConnectionConfig, database: str) -> list[str]:
     tool = select_client_tool()
-    argv = [tool, "-u", config.user, database]
+    argv = [tool, "-u", config.user, "--max-allowed-packet=1G", database]
     if config.unix_socket:
         argv[1:1] = [f"--socket={config.unix_socket}", "--protocol=SOCKET"]
     else:
@@ -117,6 +117,7 @@ def _default_import_runner(
     *,
     source_database: str,
     schema_rewrites: Mapping[str, str] | None = None,
+    on_progress=None,
 ) -> None:
     from mercury.database.mariadb.import_stream import run_compressed_sql_import
 
@@ -127,6 +128,7 @@ def _default_import_runner(
         strip_definer=True,
         rewrite_database=(source_database, target),
         rewrite_databases=schema_rewrites,
+        on_progress=on_progress,
     )
 
 
@@ -135,6 +137,7 @@ def _make_import_runner(
     target_database: str,
     *,
     schema_rewrites: Mapping[str, str] | None = None,
+    on_progress=None,
 ) -> ImportRunner:
     def runner(
         argv: list[str],
@@ -151,6 +154,7 @@ def _make_import_runner(
             target,
             source_database=source_database,
             schema_rewrites=schema_rewrites,
+            on_progress=on_progress,
         )
 
     return runner
@@ -192,6 +196,7 @@ def execute_restore_into_database(
     import_runner: ImportRunner | None = None,
     inspect_row_fn=None,
     on_target_created: Callable[[str], None] | None = None,
+    on_import_progress=None,
 ) -> RestoreExecutionResult:
     """Plan or run ``gunzip -c dump | mariadb target`` for verified backups."""
     if governed_production_cutover:
@@ -278,6 +283,7 @@ def execute_restore_into_database(
         source_database,
         target_database,
         schema_rewrites=schema_rewrites,
+        on_progress=on_import_progress,
     )
 
     target_created = False

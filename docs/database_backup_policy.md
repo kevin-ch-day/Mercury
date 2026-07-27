@@ -23,7 +23,7 @@ Backup Operations is **backup and verify only**. Restore-check lives under Main 
 | **[1] Guided backup session** | Guided production backup and verify; optional development backup. |
 | **[2] Run full database backup** | Back up all configured **production** databases, **automatically verify** the newly written backup IDs from that run, then optionally back up and verify development databases for migration recovery. |
 | **[3] Back up production databases** | Production-only write workflow (operator still runs **[5] Verify source backups** afterward unless using full backup). |
-| **[4] Back up development databases** | Development-only optional recovery capture. Not part of routine production protection or the default handoff package. |
+| **[4] Back up development databases** | Required platform recovery-scope `_dev` schemas. Not part of the default handoff package; restore-check execute for development remains deferred (A-3-02). |
 | **[5] Verify source backups** | Verify on-disk production/shared backup artifacts and stamp manifests. |
 | **[6] Preview backup plan** | Dry-run production backup plan. |
 

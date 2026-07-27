@@ -133,7 +133,7 @@ def test_restore_check_column_label(
     )
     run_backup_menu(interactive=False)
     out = capsys.readouterr().out
-    assert "RESTORE-CHECK" in out
+    assert "RC" in out
     assert " VERIFY" not in out
     assert out.count("\n[1] Guided backup session") == 1
     assert "Next: Guided backup session [1]" in out
@@ -379,15 +379,92 @@ def test_backup_screen_next_pending_restore_check(
     )
     _render_backup_screen(plan, show_title=True)
     out = capsys.readouterr().out
-    assert "RESTORE-CHECK" in out
-    assert "Next: Restore and disaster recovery [5]" in out
+    assert "RC" in out
+    assert "Next: Restore and disaster recovery [5] (2)" in out
     assert "Pending: scytaledroid_core_prod, obsidiandroid_core_prod" in out
+    # Focus precedes storage fields for DEFCON glance.
+    assert out.index("Next: Restore and disaster recovery [5]") < out.index("Backup root")
     assert "Back [0]" in out and "Main Menu [5]" in out
     assert "Do not run another backup" in out
     assert "Phase 3B package sealed — routine backups do not replace it." in out
     assert "Latest routine backups do not replace" not in out
     assert "[WARN] Restore-check required" not in out
     assert "Guided backup session      recommended" not in out
+
+
+def test_full_backup_warns_when_protection_already_complete(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mercury.backup.interactive_menu import _run_full_backup
+    from mercury.database.backup_planning import build_backup_plan
+
+    plan = build_backup_plan(["android_permission_intel"])
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu._ensure_writes_then_continue",
+        lambda: SimpleNamespace(available=True),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu._production_protection_complete",
+        lambda _plan: True,
+    )
+    answers = iter([False])  # decline redundant backup
+    monkeypatch.setattr(
+        "mercury.menu.prompts.ask_yes_no",
+        lambda *_a, **_k: next(answers),
+    )
+    ran: list[str] = []
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.run_backup_batch",
+        lambda *_a, **_k: ran.append("batch"),
+    )
+    result = _run_full_backup(plan)
+    out = capsys.readouterr().out
+    assert result is None
+    assert ran == []
+    assert "already fresh and restore-checked" in out
+    assert "Full backup cancelled" in out
+
+
+def test_dump_heartbeat_emits_after_interval(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mercury.backup.interactive_menu import _DumpHeartbeat
+
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu._DUMP_HEARTBEAT_SECONDS",
+        0.05,
+    )
+    with _DumpHeartbeat("scytaledroid_core_prod", interval=0.05):
+        import time
+
+        time.sleep(0.12)
+    out = capsys.readouterr().out
+    assert "still dumping" in out
+    assert "scytaledroid_core_prod" in out
+
+
+def test_compact_restore_result_is_short(capsys: pytest.CaptureFixture[str]) -> None:
+    from mercury.restore.restore_runner import RestoreExecutionResult
+    from mercury.restore.terminal.runner import print_restore_execution_result
+
+    print_restore_execution_result(
+        RestoreExecutionResult(
+            source_database="erebus_threat_intel_prod",
+            target_database="_restorecheck_erebus_threat_intel_prod_x",
+            dump_path="/tmp/x.sql.gz",
+            dry_run=False,
+            executed=True,
+            message="Restored erebus_threat_intel_prod into _restorecheck and dropped.",
+            verification_passed=True,
+            cleanup_dropped=True,
+        ),
+        compact=True,
+    )
+    out = capsys.readouterr().out
+    assert "ok · verified · cleaned" in out
+    assert "Restored erebus" not in out
 
 
 def test_backup_screen_recommends_guided_when_stale(

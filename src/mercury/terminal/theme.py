@@ -114,9 +114,9 @@ def styled_bracket_label(inner: str, style: str) -> str:
     """Render ``[INNER]`` with styling; brackets never use ``\\[`` escapes."""
     if not colors_enabled() or not style:
         return f"[{inner}]"
-    from rich.text import Text
-
-    return Text.assemble(("[", style), (str(inner), style), ("]", style)).markup
+    # Escape only the opening bracket so Rich cannot treat "[INNER]" as a tag.
+    # (rich.markup.escape leaves many "[word]" forms unchanged.)
+    return f"[{style}]\\[{inner}][/]"
 
 
 def _badges() -> dict[str, str]:

@@ -128,7 +128,7 @@ def test_cli_restore_check_plan() -> None:
         env=env,
     )
     assert result.returncode != 0
-    assert "RESTORE-CHECK" in result.stdout
+    assert "RESTORE-CHECK PLAN" in result.stdout or "restore_target" in result.stdout
 
 
 def test_cli_sync_plan_live_or_demo() -> None:

@@ -53,10 +53,14 @@ under the homes above and via unchanged CLI groups.
 
 - Hubs show a one-line **purpose** before choices.
 - **[1]** opens **Backup Operations** directly (no intermediate Backup hub).
-  Header is compact: backup root, writer state, overall status, one capacity line.
-  The table column is **RESTORE-CHECK** (not VERIFY). When backups are fresh but
-  restore-check is pending, the screen points to Main **[5]** instead of another
-  backup.
+  Header is compact: backup root, writer, status+capacity on one status line.
+  Table column is **RC** (short Passed/Pending). Focus/next-action is
+  shown first. When backups are fresh but restore-check is pending, the screen
+  points to Main **[5]** (with pending count) instead of another backup.
+  Full backup warns before rewriting already fresh+restore-checked production.
+  Long dumps print a heartbeat about every 20s so large databases do not look hung.
+  Production/dev write paths auto-verify after dump; pigz is preferred for
+  compress/decompress when installed.
 - **Backup Operations [1] Guided backup session** is backup-first: production
   back up + verify by default; Git/sync/dev asked optionally and labeled with
   Main Menu homes. Full “recommended” multi-lane plan remains available to
@@ -70,9 +74,12 @@ under the homes above and via unchanged CLI groups.
   is labeled with the pending count; **[2]** re-checks. Bundle execute stays
   `repo bundle --execute`.
 - **[5]** opens the consolidated **Restore and Disaster Recovery** dashboard
-  (seven required databases, readiness, pending restore-checks, cleanup,
-  pinned recovery, receipts). Separate status-only Restore-check Operations /
-  Disaster Recovery screens are removed from the menu path.
+  (seven required databases). Focus/next-action is first; the Production table
+  is actionable. Development is a one-line summary (backed up N/3 · RC deferred),
+  not a per-DB table. Pending production restore-checks drive readiness and
+  **[1]**; cleanup **[3]** appears only when `_restorecheck_*` schemas exist.
+  Separate status-only Restore-check Operations / Disaster Recovery screens are
+  removed from the menu path.
 - **[7]** owns DB bundle write, handoff (including **Handoff packaging tools**),
   deploy, and cutover CLI guidance with required exact IDs.
 - **[8]** includes full-backup receipt observation alongside history/protection.

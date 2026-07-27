@@ -5,6 +5,8 @@ from __future__ import annotations
 import gzip
 from pathlib import Path
 
+import pytest
+
 from mercury.database.mariadb.import_stream import run_compressed_sql_import
 
 
@@ -49,6 +51,8 @@ exit 0
     assert "SQL SECURITY DEFINER" not in written
     assert "DEFINER=" not in written
     assert "CREATE TABLE `demo`" in written
+    assert "SET SESSION unique_checks=0" in written
+    assert "SET SESSION foreign_key_checks=0" in written
 
 
 def test_import_stream_rewrites_source_database_to_target(tmp_path: Path) -> None:
@@ -146,6 +150,61 @@ exit 0
     assert "TRIGGER demo.trg_sample" in written
 
 
+def test_import_stream_skips_rewrite_on_plain_insert_rows(tmp_path: Path) -> None:
+    """Bulk INSERT rows must not pay schema-rewrite cost (Scytale hot path)."""
+    dump_path = tmp_path / "bulk.sql.gz"
+    # String payload deliberately contains the source DB name; rewrite must not
+    # touch it when the INSERT head is not schema-qualified.
+    payload = (
+        "INSERT INTO `static_string_samples` VALUES "
+        "(1,'scytaledroid_core_prod.looks_like_schema');\n"
+        "INSERT INTO `scytaledroid_core_prod`.`other` VALUES (2);\n"
+    )
+    with gzip.open(dump_path, "wt", encoding="utf-8") as handle:
+        handle.write(payload)
+    capture = tmp_path / "captured.sql"
+    fake_client = tmp_path / "fake-mariadb.sh"
+    _write_executable(fake_client, f'#!/usr/bin/env bash\ncat > "{capture}"\n')
+
+    run_compressed_sql_import(
+        [str(fake_client)],
+        {},
+        dump_path,
+        rewrite_database=(
+            "scytaledroid_core_prod",
+            "_restorecheck_scytaledroid_core_prod_x",
+        ),
+    )
+    written = capture.read_text(encoding="utf-8")
+    assert (
+        "INSERT INTO `static_string_samples` VALUES "
+        "(1,'scytaledroid_core_prod.looks_like_schema');"
+    ) in written
+    assert "`_restorecheck_scytaledroid_core_prod_x`.`other`" in written
+
+
+def test_import_stream_reports_progress(tmp_path: Path) -> None:
+    dump_path = tmp_path / "progress.sql.gz"
+    # Force multiple progress ticks with a tiny threshold.
+    line = "INSERT INTO `demo` VALUES (1);\n"
+    with gzip.open(dump_path, "wt", encoding="utf-8") as handle:
+        handle.write(line * 2000)
+    capture = tmp_path / "captured.sql"
+    fake_client = tmp_path / "fake-mariadb.sh"
+    _write_executable(fake_client, f'#!/usr/bin/env bash\ncat > "{capture}"\n')
+    ticks: list[tuple[int, int, float]] = []
+
+    run_compressed_sql_import(
+        [str(fake_client)],
+        {},
+        dump_path,
+        on_progress=lambda *args: ticks.append(args),
+        progress_every_bytes=64,
+    )
+    assert ticks
+    assert all(elapsed >= 0 for _, _, elapsed in ticks)
+
+
 def test_import_stream_closes_stdin_when_client_exits_early(tmp_path: Path) -> None:
     dump_path = tmp_path / "sample.sql.gz"
     with gzip.open(dump_path, "wt", encoding="utf-8") as handle:
@@ -161,3 +220,78 @@ exit 0
     )
 
     run_compressed_sql_import([str(fake_client)], {}, dump_path)
+
+
+def test_import_stream_passthrough_multiline_insert_values(tmp_path: Path) -> None:
+    """MariaDB dumps put one VALUES row per line — continuations must stay hot-path."""
+    dump_path = tmp_path / "multiline.sql.gz"
+    # Opening INSERT does not end with ';'; value rows follow.
+    payload = (
+        "INSERT INTO `static_string_samples` VALUES\n"
+        "(1,'scytaledroid_core_prod.looks_like_schema'),\n"
+        "(2,'another'),\n"
+        "(3,'done');\n"
+        "INSERT INTO `scytaledroid_core_prod`.`other` VALUES\n"
+        "(9);\n"
+    )
+    with gzip.open(dump_path, "wt", encoding="utf-8") as handle:
+        handle.write(payload)
+    capture = tmp_path / "captured.sql"
+    fake_client = tmp_path / "fake-mariadb.sh"
+    _write_executable(fake_client, f'#!/usr/bin/env bash\ncat > "{capture}"\n')
+
+    run_compressed_sql_import(
+        [str(fake_client)],
+        {},
+        dump_path,
+        rewrite_database=(
+            "scytaledroid_core_prod",
+            "_restorecheck_scytaledroid_core_prod_x",
+        ),
+    )
+    written = capture.read_text(encoding="utf-8")
+    assert "(1,'scytaledroid_core_prod.looks_like_schema')," in written
+    assert "(3,'done');" in written
+    assert "INSERT INTO `_restorecheck_scytaledroid_core_prod_x`.`other` VALUES" in written
+    assert "(9);" in written
+
+
+def test_import_stream_can_disable_session_preamble(tmp_path: Path) -> None:
+    dump_path = tmp_path / "nopreamble.sql.gz"
+    with gzip.open(dump_path, "wt", encoding="utf-8") as handle:
+        handle.write("CREATE TABLE `demo` (`id` int);\n")
+    capture = tmp_path / "captured.sql"
+    fake_client = tmp_path / "fake-mariadb.sh"
+    _write_executable(fake_client, f'#!/usr/bin/env bash\ncat > "{capture}"\n')
+
+    run_compressed_sql_import(
+        [str(fake_client)],
+        {},
+        dump_path,
+        session_preamble=False,
+    )
+    written = capture.read_text(encoding="utf-8")
+    assert "SET SESSION unique_checks" not in written
+    assert "CREATE TABLE `demo`" in written
+
+
+def test_import_stream_uses_pigz_when_available(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dump_path = tmp_path / "via_pigz.sql.gz"
+    with gzip.open(dump_path, "wt", encoding="utf-8") as handle:
+        handle.write("CREATE TABLE `demo` (`id` int);\n")
+    capture = tmp_path / "captured.sql"
+    fake_client = tmp_path / "fake-mariadb.sh"
+    _write_executable(fake_client, f'#!/usr/bin/env bash\ncat > "{capture}"\n')
+
+    pigz = tmp_path / "pigz"
+    _write_executable(pigz, "#!/usr/bin/env bash\nexec gzip -dc \"$@\"\n")
+    monkeypatch.setattr(
+        "mercury.database.mariadb.import_stream.shutil.which",
+        lambda name: str(pigz) if name == "pigz" else None,
+    )
+
+    run_compressed_sql_import([str(fake_client)], {}, dump_path)
+    written = capture.read_text(encoding="utf-8")
+    assert "CREATE TABLE `demo`" in written

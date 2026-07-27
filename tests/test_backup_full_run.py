@@ -411,12 +411,12 @@ def test_print_full_backup_run_result_is_dense(capsys: pytest.CaptureFixture[str
     )
     print_full_backup_run_result(result)
     out = capsys.readouterr().out
-    assert "Full Backup Result ·" in out
+    assert "Result  " in out
     assert "verify evidence:" not in out
     assert "Complete backup IDs" not in out
     assert "PRODUCTION" not in out
     assert "DEVELOPMENT" not in out
-    assert "Prod:" in out
-    assert "Overall:" in out
+    assert "Prod    " in out
+    assert "Status  " in out
     # No blank-line-separated backup_id dump in the final summary.
     assert "backup_id:" not in out
