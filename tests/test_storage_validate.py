@@ -21,6 +21,7 @@ from mercury.core.storage_roots import (
 from mercury.core.storage_space import SpacePolicy, assess_space
 from mercury.core.storage_validate import (
     MountIdentity,
+    find_mount_row,
     list_stale_mountpoint_entries,
     validate_storage_mount,
 )
@@ -86,6 +87,24 @@ def test_stale_mountpoint_entries_reported_not_deleted(tmp_path: Path) -> None:
     assert "scytaledroid_artifacts" in entries
     assert "notes.txt" in entries
     assert (mount / "notes.txt").exists()
+
+
+def test_find_mount_row_prefers_real_mount_over_fedora_autofs_placeholder(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    mount = tmp_path / "MERCURY_DATA_V2"
+    mount.mkdir()
+    monkeypatch.setattr(
+        "mercury.core.storage_validate._read_proc_mounts",
+        lambda: [
+            ("systemd-1", str(mount), "autofs", "rw,relatime"),
+            ("/dev/sda1", str(mount), "ext4", "rw,nosuid,nodev"),
+        ],
+    )
+
+    assert find_mount_row(mount) == (
+        "/dev/sda1", str(mount), "ext4", "rw,nosuid,nodev",
+    )
 
 
 def test_validate_mount_path_missing(tmp_path: Path) -> None:

@@ -70,19 +70,27 @@ def _unescape_mount_field(value: str) -> str:
 
 
 def find_mount_row(mount_path: Path) -> tuple[str, str, str, str] | None:
-    """Locate the /proc/mounts row whose target matches mount_path."""
+    """Locate the active /proc/mounts row whose target matches mount_path.
+
+    Fedora systemd automounts may expose an ``autofs`` placeholder and the
+    mounted filesystem at the same target.  ``/proc/mounts`` lists the
+    placeholder first and the real, topmost filesystem later.  Selecting the
+    last exact match preserves UUID/fstype validation for the mounted device
+    instead of mistaking the automount controller for the storage root.
+    """
     try:
         resolved = mount_path.resolve()
     except OSError:
         resolved = mount_path
+    matches: list[tuple[str, str, str, str]] = []
     for device, target, fstype, options in _read_proc_mounts():
         try:
             target_path = Path(_unescape_mount_field(target)).resolve()
         except OSError:
             target_path = Path(_unescape_mount_field(target))
         if target_path == resolved:
-            return device, target, fstype, options
-    return None
+            matches.append((device, target, fstype, options))
+    return matches[-1] if matches else None
 
 
 def resolve_uuid_for_device(device: str) -> str | None:
