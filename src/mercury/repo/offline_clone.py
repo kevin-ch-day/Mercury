@@ -126,6 +126,20 @@ def _destination_integrity_error(path: Path) -> str | None:
     return None
 
 
+def _is_repairable_stale_source_head(error: str) -> bool:
+    """Recognize only the obsolete zero-OID remote-HEAD metadata case.
+
+    Older local clones can retain a zero-valued ``mercury-source/HEAD`` after
+    their source workstation disappeared.  It is remote-tracking metadata, not
+    an object or checked-out-file corruption.  Every other fsck result remains
+    an execution blocker.
+    """
+    return (
+        "refs/remotes/mercury-source/HEAD: invalid sha1 pointer " in error
+        and "0000000000000000000000000000000000000000" in error
+    )
+
+
 def _checkout_and_verify(path: Path, entry: OfflineCloneEntry) -> None:
     subprocess.run(
         ["git", "checkout", "--detach", entry.commit], cwd=path,
@@ -188,6 +202,17 @@ def _refresh_source_remote(path: Path, source_path: Path) -> None:
     )
 
 
+def _refresh_source_head(path: Path) -> None:
+    """Refresh remote-tracking HEAD after fetching the configured source."""
+    subprocess.run(
+        ["git", "remote", "set-head", "mercury-source", "--auto"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
 def build_offline_clone_plan(statuses: list[RepoStatus], *, root: Path | None = None) -> OfflineClonePlan:
     """Plan clone/update actions without modifying source or operator storage."""
     target_root = root or offline_clone_root()
@@ -209,7 +234,10 @@ def build_offline_clone_plan(statuses: list[RepoStatus], *, root: Path | None = 
                     if _destination_is_dirty(destination):
                         action, error = "blocked", "offline copy has local changes; resolve them before sync"
                     elif integrity_error := _destination_integrity_error(destination):
-                        action, error = "blocked", f"offline copy Git integrity check failed: {integrity_error}"
+                        if _is_repairable_stale_source_head(integrity_error):
+                            action = "update"
+                        else:
+                            action, error = "blocked", f"offline copy Git integrity check failed: {integrity_error}"
                     elif _head(destination) == status.commit:
                         action = "current"
                     else:
@@ -251,6 +279,7 @@ def execute_offline_clone_plan(plan: OfflineClonePlan) -> OfflineClonePlan:
                     ["git", "fetch", "mercury-source", "--prune"], cwd=entry.destination_path,
                     check=True, capture_output=True, text=True,
                 )
+                _refresh_source_head(entry.destination_path)
                 _checkout_and_verify(entry.destination_path, entry)
             entry.executed = True
         except (OSError, subprocess.CalledProcessError, ValueError) as exc:

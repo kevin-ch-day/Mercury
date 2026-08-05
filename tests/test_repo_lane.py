@@ -14,6 +14,7 @@ import pytest
 from mercury.repo.bundle import build_repo_bundle_plan, execute_repo_bundle_plan
 from mercury.repo.offline_clone import (
     _subprocess_error_detail,
+    _is_repairable_stale_source_head,
     build_offline_clone_plan,
     execute_offline_clone_plan,
 )
@@ -157,6 +158,37 @@ def test_offline_clone_update_refreshes_stale_local_source_remote(
     assert updated.entries[0].executed is True
     assert _git_output(destination, "rev-parse", "HEAD") == updated_status.commit
     assert _git_output(destination, "remote", "get-url", "mercury-source") == str(source)
+
+
+def test_offline_clone_update_repairs_only_stale_zero_oid_source_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _make_repo(tmp_path, "source")
+    hdd = tmp_path / "hdd"
+    root = hdd / "mercury_repo_clones"
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_operator_mount", lambda **kwargs: hdd)
+    monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
+
+    status = inspect_repositories([RepoDefinition(key="source", display_name="Source", path=source)])[0]
+    initial = execute_offline_clone_plan(build_offline_clone_plan([status], root=root))
+    destination = initial.entries[0].destination_path
+    remote_head = destination / ".git" / "refs" / "remotes" / "mercury-source" / "HEAD"
+    remote_head.write_text("0" * 40 + "\n", encoding="utf-8")
+
+    repair_plan = build_offline_clone_plan([status], root=root)
+    assert repair_plan.entries[0].action == "update"
+    assert repair_plan.entries[0].error is None
+
+    repaired = execute_offline_clone_plan(repair_plan)
+    assert repaired.entries[0].executed is True
+    assert _git_output(destination, "symbolic-ref", "refs/remotes/mercury-source/HEAD") == (
+        "refs/remotes/mercury-source/main"
+    )
+
+    assert _is_repairable_stale_source_head(
+        "error: refs/remotes/mercury-source/HEAD: invalid sha1 pointer " + "0" * 40
+    )
+    assert not _is_repairable_stale_source_head("error: object corrupt")
 
 
 def test_offline_clone_error_detail_is_bounded() -> None:
