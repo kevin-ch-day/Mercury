@@ -158,6 +158,36 @@ def _clone_entry_to_staging(entry: OfflineCloneEntry, root: Path) -> None:
         shutil.rmtree(staging_root, ignore_errors=True)
 
 
+def _refresh_source_remote(path: Path, source_path: Path) -> None:
+    """Point an existing offline checkout at its configured local source.
+
+    Offline clones are deliberately made from a local checkout rather than a
+    network remote.  A workstation migration can therefore leave an otherwise
+    healthy HDD clone with a ``mercury-source`` path from the former host.
+    Refresh that remote immediately before fetch, while the clone has already
+    passed dirty-state and integrity checks.
+    """
+    remotes = subprocess.run(
+        ["git", "remote"], cwd=path, check=True, capture_output=True, text=True
+    ).stdout.splitlines()
+    if "mercury-source" in remotes:
+        subprocess.run(
+            ["git", "remote", "set-url", "mercury-source", str(source_path)],
+            cwd=path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return
+    subprocess.run(
+        ["git", "remote", "add", "mercury-source", str(source_path)],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
 def build_offline_clone_plan(statuses: list[RepoStatus], *, root: Path | None = None) -> OfflineClonePlan:
     """Plan clone/update actions without modifying source or operator storage."""
     target_root = root or offline_clone_root()
@@ -216,6 +246,7 @@ def execute_offline_clone_plan(plan: OfflineClonePlan) -> OfflineClonePlan:
             if entry.action == "clone":
                 _clone_entry_to_staging(entry, plan.root)
             else:
+                _refresh_source_remote(entry.destination_path, entry.source_path)
                 subprocess.run(
                     ["git", "fetch", "mercury-source", "--prune"], cwd=entry.destination_path,
                     check=True, capture_output=True, text=True,

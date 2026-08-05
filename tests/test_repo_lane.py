@@ -129,6 +129,36 @@ def test_offline_clone_preview_blocks_damaged_copy_before_head_comparison(
     assert "integrity check failed" in (plan.entries[0].error or "")
 
 
+def test_offline_clone_update_refreshes_stale_local_source_remote(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _make_repo(tmp_path, "source")
+    hdd = tmp_path / "hdd"
+    root = hdd / "mercury_repo_clones"
+    monkeypatch.setattr("mercury.core.usb_mount.resolve_operator_mount", lambda **kwargs: hdd)
+    monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
+
+    initial_status = inspect_repositories(
+        [RepoDefinition(key="source", display_name="Source", path=source)]
+    )[0]
+    initial = execute_offline_clone_plan(build_offline_clone_plan([initial_status], root=root))
+    destination = initial.entries[0].destination_path
+    _git(destination, "remote", "set-url", "mercury-source", str(tmp_path / "retired-source"))
+
+    (source / "next.txt").write_text("next\n", encoding="utf-8")
+    _git(source, "add", "next.txt")
+    _git(source, "commit", "-m", "next")
+    updated_status = inspect_repositories(
+        [RepoDefinition(key="source", display_name="Source", path=source)]
+    )[0]
+
+    updated = execute_offline_clone_plan(build_offline_clone_plan([updated_status], root=root))
+
+    assert updated.entries[0].executed is True
+    assert _git_output(destination, "rev-parse", "HEAD") == updated_status.commit
+    assert _git_output(destination, "remote", "get-url", "mercury-source") == str(source)
+
+
 def test_offline_clone_error_detail_is_bounded() -> None:
     exc = subprocess.CalledProcessError(
         1, ["git", "fetch"], stderr="one\ntwo\nthree\nfour\nfive\n",
