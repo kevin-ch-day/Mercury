@@ -26,6 +26,7 @@ from mercury.repo.config import (
     select_repo_definitions,
     write_local_repo_config,
 )
+from mercury.repo import config as repo_config
 from mercury.repo.status import inspect_repositories, summarize_repo_statuses
 
 
@@ -515,3 +516,51 @@ def test_write_local_repo_config_writes_existing_known_paths(
     assert "[repos.mercury]" in text
     assert "[repos.fedora_linux_scripts]" in text
     assert "missing_repo" not in text
+
+
+def test_repo_discovery_uses_existing_web_deployment_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    portable = tmp_path / "GitHub" / "erebus-web"
+    deployed = tmp_path / "www" / "erebus-web"
+    deployed.mkdir(parents=True)
+    monkeypatch.setattr(
+        repo_config,
+        "DEFAULT_LOCAL_REPO_CANDIDATES",
+        [("erebus_web", "Erebus Web", str(portable))],
+    )
+    monkeypatch.setattr(repo_config, "REPO_PATH_FALLBACKS", {"erebus_web": (str(deployed),)})
+    monkeypatch.setattr(repo_config, "_home_github_candidates", lambda: [])
+
+    definitions = repo_config.discover_local_repo_definitions()
+
+    assert [(definition.key, definition.path) for definition in definitions] == [
+        ("erebus_web", deployed.resolve())
+    ]
+
+
+def test_forced_repo_config_preserves_existing_path_and_deduplicates_discovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    web_checkout = tmp_path / "GitHub" / "erebus-web"
+    web_checkout.mkdir(parents=True)
+    monkeypatch.setattr(
+        repo_config,
+        "DEFAULT_LOCAL_REPO_CANDIDATES",
+        [("erebus_web", "Erebus Web", str(tmp_path / "missing-default"))],
+    )
+    monkeypatch.setattr(repo_config, "REPO_PATH_FALLBACKS", {})
+    monkeypatch.setattr(
+        repo_config,
+        "_home_github_candidates",
+        lambda: [("erebus_web_clone", "erebus-web", str(web_checkout))],
+    )
+
+    existing = [RepoDefinition(key="erebus_web", display_name="Erebus Web", path=web_checkout)]
+    definitions = repo_config.build_workstation_repo_definitions(existing)
+
+    assert [(definition.key, definition.path) for definition in definitions] == [
+        ("erebus_web", web_checkout.resolve())
+    ]

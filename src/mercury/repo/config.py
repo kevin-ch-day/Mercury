@@ -46,16 +46,20 @@ DEFAULT_RUNBOOK_DIR = default_runbook_dir()
 DEFAULT_LOCAL_REPO_CANDIDATES: list[tuple[str, str, str]] = [
     ("mercury", "Mercury", "{home}/GitHub/Mercury"),
     ("erebus_engine", "Erebus Engine", "{home}/GitHub/erebus-engine-fedora"),
-    ("erebus_web", "Erebus Web", "/var/www/html/erebus-web"),
+    ("erebus_web", "Erebus Web", "{home}/GitHub/erebus-web"),
     ("scytaledroid", "ScytaleDroid", "{home}/GitHub/ScytaleDroid"),
-    ("scytaledroid_web", "ScytaleDroid Web", "/var/www/html/ScytaleDroid-Web"),
+    ("scytaledroid_web", "ScytaleDroid Web", "{home}/GitHub/ScytaleDroid-Web"),
     ("obsidiandroid", "ObsidianDroid", "{home}/GitHub/obsidiandroid"),
     ("fedora_linux_scripts", "Fedora Linux Scripts", "{home}/GitHub/fedora-linux-scripts"),
-    # Legacy workstation layout (still probed when paths exist)
-    ("mercury_legacy", "Mercury", "/home/secadmin/Laughlin/GitHub/Mercury"),
-    ("erebus_engine_legacy", "Erebus Engine", "/home/secadmin/Laughlin/GitHub/erebus-engine-fedora"),
-    ("scytaledroid_legacy", "ScytaleDroid", "/home/secadmin/Laughlin/GitHub/ScytaleDroid"),
 ]
+
+# A workstation checkout is the portable default.  A web-server deployment is
+# an optional fallback when it is already present; it is never generated as a
+# fresh-host default.
+REPO_PATH_FALLBACKS: dict[str, tuple[str, ...]] = {
+    "erebus_web": ("/var/www/html/erebus-web",),
+    "scytaledroid_web": ("/var/www/html/ScytaleDroid-Web",),
+}
 
 
 class RepoDefinition(BaseModel):
@@ -77,18 +81,51 @@ class RepoBundleSettings(BaseModel):
     runbook_dir: Path = Field(default_factory=default_runbook_dir)
 
 
+def _candidate_paths(key: str, raw_path: str, *, home: str) -> list[Path]:
+    """Return the portable default followed by any established deployment path."""
+    candidates = (raw_path, *REPO_PATH_FALLBACKS.get(key, ()))
+    paths: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        path = Path(candidate.format(home=home)).expanduser()
+        marker = str(path)
+        if marker not in seen:
+            paths.append(path)
+            seen.add(marker)
+    return paths
+
+
+def _preferred_repo_path(
+    key: str,
+    raw_path: str,
+    *,
+    home: str,
+    existing: RepoDefinition | None = None,
+) -> Path:
+    """Prefer a configured or existing checkout without hard-coding one host."""
+    candidates = ([existing.path] if existing is not None else []) + _candidate_paths(
+        key, raw_path, home=home
+    )
+    for path in candidates:
+        expanded = path.expanduser()
+        if expanded.is_dir():
+            return expanded.resolve()
+    return candidates[0].expanduser()
+
+
 def discover_local_repo_definitions() -> list[RepoDefinition]:
     """Discover known local repository paths for the current workstation layout."""
     home = str(Path.home())
     repos: list[RepoDefinition] = []
     seen_paths: set[str] = set()
     for key, display_name, raw_path in DEFAULT_LOCAL_REPO_CANDIDATES:
-        expanded = raw_path.format(home=home)
-        repo_path = Path(expanded).expanduser().resolve()
-        path_key = str(repo_path)
-        if path_key in seen_paths:
-            continue
-        if repo_path.is_dir():
+        for candidate in _candidate_paths(key, raw_path, home=home):
+            if not candidate.is_dir():
+                continue
+            repo_path = candidate.resolve()
+            path_key = str(repo_path)
+            if path_key in seen_paths:
+                continue
             seen_paths.add(path_key)
             repos.append(
                 RepoDefinition(
@@ -97,6 +134,7 @@ def discover_local_repo_definitions() -> list[RepoDefinition]:
                     path=repo_path,
                 )
             )
+            break
     for key, display_name, raw_path in _home_github_candidates():
         repo_path = Path(raw_path).resolve()
         path_key = str(repo_path)
@@ -144,13 +182,12 @@ def build_workstation_repo_definitions(
     home = str(Path.home())
     repos: list[RepoDefinition] = []
     seen_keys: set[str] = set()
+    seen_paths: set[str] = set()
     for key, display_name, raw_path in DEFAULT_LOCAL_REPO_CANDIDATES:
-        if key.endswith("_legacy"):
-            continue
         if key in seen_keys:
             continue
-        repo_path = Path(raw_path.format(home=home)).expanduser()
         previous = existing_by_key.get(key)
+        repo_path = _preferred_repo_path(key, raw_path, home=home, existing=previous)
         repos.append(
             RepoDefinition(
                 key=key,
@@ -162,21 +199,26 @@ def build_workstation_repo_definitions(
             )
         )
         seen_keys.add(key)
+        seen_paths.add(str(repo_path.resolve()))
     for key, display_name, raw_path in _home_github_candidates():
         if key in seen_keys:
             continue
         previous = existing_by_key.get(key)
+        repo_path = Path(raw_path).resolve()
+        if str(repo_path) in seen_paths:
+            continue
         repos.append(
             RepoDefinition(
                 key=key,
                 display_name=display_name,
-                path=Path(raw_path),
+                path=repo_path,
                 remote_url=previous.remote_url if previous else None,
                 default_branch=previous.default_branch if previous else "main",
                 migration_scope=previous.migration_scope if previous else True,
             )
         )
         seen_keys.add(key)
+        seen_paths.add(str(repo_path))
     from mercury.repo.usb_metadata import enrich_repo_definitions_from_usb
 
     return enrich_repo_definitions_from_usb(repos)

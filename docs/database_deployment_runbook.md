@@ -23,7 +23,7 @@ This lane is **not** prod→dev sync. It recreates protected databases on the lo
 ## Quick start
 
 ```bash
-cd /home/secadmin/Laughlin/GitHub/Mercury
+cd ~/GitHub/Mercury
 ./run.sh doctor
 ./run.sh doctor --repair-plan
 ./run.sh deploy db --dry-run

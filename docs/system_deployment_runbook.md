@@ -41,7 +41,7 @@ Example:
 ```toml
 [repos.mercury]
 display_name = "Mercury"
-path = "/home/secadmin/Laughlin/GitHub/Mercury"
+path = "~/GitHub/Mercury"
 default_branch = "main"
 remote_url = "https://github.com/your-org/Mercury.git"
 ```
