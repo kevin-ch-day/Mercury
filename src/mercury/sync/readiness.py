@@ -46,6 +46,53 @@ class SyncReadinessEntry(BaseModel):
     blockers: list[str] = Field(default_factory=list)
 
 
+class RestoreCredentialStatus(BaseModel):
+    """Read-only health signal for the dedicated ordinary-dev reset identity."""
+
+    configured: bool = False
+    healthy: bool = False
+    configured_user: str | None = None
+    observed_identity: str | None = None
+    detail: str = "[mariadb_restore] not configured"
+
+
+def assess_restore_credentials(*, probe: bool) -> RestoreCredentialStatus:
+    """Inspect the dedicated credential lane without treating it as backup state."""
+    from mercury.database.mariadb.client import run_client_query
+    from mercury.database.mariadb.config import MariaDbConfigError, load_mariadb_restore_config
+
+    try:
+        config = load_mariadb_restore_config()
+    except MariaDbConfigError as exc:
+        return RestoreCredentialStatus(detail=str(exc))
+    status = RestoreCredentialStatus(
+        configured=True,
+        configured_user=config.user,
+        detail=f"Configured · {config.user}",
+    )
+    if not probe:
+        return status
+    try:
+        observed = run_client_query(
+            config, "SELECT CURRENT_USER(), USER(), COALESCE(CURRENT_ROLE(), 'NONE')"
+        ).strip().split("\t")
+        if len(observed) != 3:
+            raise ValueError("restore identity query returned an unexpected result")
+    except Exception:
+        return status.model_copy(update={"detail": "authentication failed"})
+    current_user, _authenticated_user, _role = observed
+    if current_user.split("@", 1)[0] != config.user:
+        return status.model_copy(update={
+            "observed_identity": current_user,
+            "detail": "unexpected restore identity",
+        })
+    return status.model_copy(update={
+        "healthy": True,
+        "observed_identity": current_user,
+        "detail": f"Configured · {current_user}",
+    })
+
+
 def _load_backup_created_at(backup_dir) -> str | None:
     manifest_path = backup_dir / MANIFEST_FILENAME
     if not manifest_path.is_file():
@@ -81,6 +128,7 @@ class SyncReadinessReport(BaseModel):
     entries: list[SyncReadinessEntry] = Field(default_factory=list)
     ready_count: int = 0
     blocked_count: int = 0
+    restore_credentials: RestoreCredentialStatus = Field(default_factory=RestoreCredentialStatus)
 
 
 def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
@@ -193,6 +241,7 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
         entries=entries,
         ready_count=ready_count,
         blocked_count=blocked_count,
+        restore_credentials=assess_restore_credentials(probe=mode == "live"),
     )
     from mercury.logging.events import log_sync_readiness
 

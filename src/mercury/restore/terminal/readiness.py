@@ -61,12 +61,12 @@ def print_target_completeness_entry(
     if entry.backup_view_count is not None:
         output.field("backup_views", entry.backup_view_count)
     if entry.backup_object_count is not None:
-        output.field("backup_objects", entry.backup_object_count)
+        output.field("backup_tables_views", entry.backup_object_count)
 
     if entry.live_exists:
         output.field("live_tables", entry.live_table_count)
         output.field("live_views", entry.live_view_count)
-        output.field("live_objects", entry.live_object_count)
+        output.field("live_tables_views", entry.live_object_count)
 
     if entry.missing_critical_tables:
         output.heading("Missing critical tables")
@@ -115,7 +115,7 @@ def print_target_completeness_report(
             )
         display_screen.write_blank()
         display_screen.write_compact_table(
-            ["DATABASE", "STATUS", "OBJECTS live/backup"],
+            ["DATABASE", "STATUS", "TABLES+VIEWS live/backup"],
             rows,
             min_col_widths=[28, 12, 18],
             max_col_widths=[36, 16, 24],

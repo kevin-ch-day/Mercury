@@ -90,13 +90,13 @@ def print_restore_check_plan(plan: RestoreCheckPlan, *, compact: bool = False) -
         output.field("dump_file", plan.dump_file)
 
     if plan.target_completeness is not None:
-        output.heading("Target completeness (schema/objects; not data freshness)")
+        output.heading("Target completeness (tables/views; not data freshness)")
         completeness = plan.target_completeness
         output.field("status", completeness.completeness_status)
         output.field("ready_for_restore_planning", completeness.ready_for_restore_planning)
         if completeness.live_object_count is not None and completeness.backup_object_count is not None:
             output.field(
-                "live_vs_backup_objects",
+                "live_vs_backup_tables_views",
                 f"{completeness.live_object_count} live / {completeness.backup_object_count} backup baseline",
             )
         if completeness.missing_critical_tables:

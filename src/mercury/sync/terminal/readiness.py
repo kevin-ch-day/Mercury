@@ -82,8 +82,12 @@ def sync_menu_context_fields(report: SyncReadinessReport, *, live_allowed: bool)
         "Backup root": report.backup_root,
         "Scope": f"verified prod operator backups into dev only ({projects})",
         "Pairs": f"{report.ready_count} eligible · {report.blocked_count} blocked · {len(report.entries)} total",
+        "Restore credentials": report.restore_credentials.detail,
     }
-    fields["Execution"] = "live sync allowed" if live_allowed else "preview only (enable live actions in config)"
+    if not report.restore_credentials.healthy:
+        fields["Execution"] = "blocked: restore credentials unavailable"
+    else:
+        fields["Execution"] = "live sync allowed" if live_allowed else "preview only (enable live actions in config)"
     return fields
 
 
@@ -169,7 +173,10 @@ def _print_sync_readiness_menu(report: SyncReadinessReport, *, live_allowed: boo
 
 
 def _print_sync_readiness_compact_table(report: SyncReadinessReport) -> None:
-    display_screen.write_fields({"Backup root": report.backup_root})
+    display_screen.write_fields({
+        "Backup root": report.backup_root,
+        "Restore credentials": report.restore_credentials.detail,
+    })
     rows = sync_menu_table_rows(report)
     display_screen.write_blank()
     table = Table.from_headers(
@@ -201,6 +208,7 @@ def print_sync_readiness_report(
     output.field("backup_root", report.backup_root)
     output.field("ready", report.ready_count)
     output.field("blocked", report.blocked_count)
+    output.field("restore_credentials", report.restore_credentials.detail)
 
     for entry in report.entries:
         output.write()

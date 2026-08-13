@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from mercury.sync.readiness import SyncReadinessEntry, SyncReadinessReport
+from mercury.sync.readiness import (
+    RestoreCredentialStatus,
+    SyncReadinessEntry,
+    SyncReadinessReport,
+    assess_restore_credentials,
+)
 from mercury.sync.terminal.readiness import (
     print_sync_readiness_report,
     sync_menu_next_step,
@@ -48,6 +53,13 @@ def _sample_report(*, ready: bool = True) -> SyncReadinessReport:
         ],
         ready_count=2 if ready else 0,
         blocked_count=0 if ready else 2,
+        restore_credentials=RestoreCredentialStatus(
+            configured=True,
+            healthy=True,
+            configured_user="mercury_dev_restore",
+            observed_identity="mercury_dev_restore@localhost",
+            detail="Configured · mercury_dev_restore@localhost",
+        ),
     )
 
 
@@ -60,6 +72,8 @@ def test_menu_readiness_shows_table_with_backup_age(capsys: pytest.CaptureFixtur
     assert "restore preflight runs before any dev replacement" in out
     assert "Sync All Ready Databases" in out
     assert "…" not in out
+    assert "Restore credentials:" in out
+    assert "Configured · mercury_dev_restore@localhost" in out
 
 
 def test_menu_readiness_shows_actionable_blocker_text(capsys: pytest.CaptureFixture[str]) -> None:
@@ -106,3 +120,48 @@ def test_sync_verification_labels_tables_and_views_not_all_objects(
     out = capsys.readouterr().out
     assert "TABLES+VIEWS dev/backup" in out
     assert "OBJECTS dev/backup" not in out
+
+
+def test_restore_credentials_status_is_readonly_and_identity_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mercury.database.mariadb.config import MariaDbConnectionConfig
+
+    config = MariaDbConnectionConfig(host="localhost", user="mercury_dev_restore")
+    monkeypatch.setattr(
+        "mercury.database.mariadb.config.load_mariadb_restore_config", lambda: config
+    )
+    monkeypatch.setattr(
+        "mercury.database.mariadb.client.run_client_query",
+        lambda _config, sql: "mercury_dev_restore@localhost\tmercury_dev_restore@localhost\tNONE",
+    )
+    status = assess_restore_credentials(probe=True)
+    assert status.healthy is True
+    assert status.detail == "Configured · mercury_dev_restore@localhost"
+
+    monkeypatch.setattr(
+        "mercury.database.mariadb.client.run_client_query",
+        lambda _config, sql: "other@localhost\tother@localhost\tNONE",
+    )
+    assert assess_restore_credentials(probe=True).detail == "unexpected restore identity"
+
+
+def test_restore_credentials_auth_failure_does_not_change_backup_readiness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mercury.database.mariadb.config import MariaDbConnectionConfig
+
+    monkeypatch.setattr(
+        "mercury.database.mariadb.config.load_mariadb_restore_config",
+        lambda: MariaDbConnectionConfig(host="localhost", user="mercury_dev_restore"),
+    )
+    monkeypatch.setattr(
+        "mercury.database.mariadb.client.run_client_query",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("auth failed")),
+    )
+    status = assess_restore_credentials(probe=True)
+    report = _sample_report(ready=True).model_copy(update={"restore_credentials": status})
+    assert report.ready_count == 2
+    assert report.entries[0].backup_verified is True
+    assert report.restore_credentials.healthy is False
+    assert report.restore_credentials.detail == "authentication failed"
