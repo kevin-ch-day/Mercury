@@ -28,6 +28,12 @@ when the dump contains `DROP PROCEDURE`) is refused before `DROP DATABASE`.
 Preflight receipts are private operator-storage evidence under
 `.mercury_control/restore_preflights/`; receipt-write failure also blocks live sync.
 
+Ordinary live prod→dev replacement uses the dedicated `[mariadb_restore]`
+credential lane, not the general `[mariadb]` source/operator identity. It should
+be restricted to the approved development schemas and have no production write
+authority. Missing, invalid, or authentication-failing restore credentials block
+the reset; Mercury never falls back to `[mariadb]`.
+
 ## Prohibitions
 
 - Never drop or overwrite `*_prod` as part of a dev sync.

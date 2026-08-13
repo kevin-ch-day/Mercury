@@ -37,6 +37,8 @@ Preserve these rules in every change. Do not weaken them.
 3. **Never drop, overwrite, or restore into `*_prod`** by default.
 4. **Always backup and verify prod** before any prod→dev sync.
 5. **Require explicit default-no (`[y/N]`) confirmation** before any future dev sync execution.
+   Ordinary live prod→dev resets must use `[mariadb_restore]`; missing or invalid
+   restore credentials must fail closed and must never fall back to `[mariadb]`.
 6. **`_restorecheck_*` databases** are never backup sources.
 7. **Unknown-role databases** require manual review before action.
 8. A database is **not protected** until verification passes (manifest + checksum + size).

@@ -14,7 +14,12 @@ from pydantic import BaseModel, Field
 from mercury.backup.backup_runner import BackupExecutionError, assert_not_production_restore_target
 from mercury.database.core import DatabaseRole, classify_database
 from mercury.database.mariadb.client import run_client_query, run_client_sql, select_client_tool
-from mercury.database.mariadb.config import MariaDbConnectionConfig, load_mariadb_config
+from mercury.database.mariadb.config import (
+    MariaDbConfigError,
+    MariaDbConnectionConfig,
+    load_mariadb_config,
+    load_mariadb_restore_config,
+)
 from mercury.database.mariadb.errors import MariaDbLiveError
 from mercury.database.mariadb.session import try_load_mariadb_config
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
@@ -275,7 +280,12 @@ def execute_restore_into_database(
                 issues.append("preflight restore identity is missing")
             else:
                 try:
-                    identity_cfg = config or try_load_mariadb_config() or load_mariadb_config()
+                    identity_cfg = (
+                        config
+                        or (load_mariadb_restore_config() if ordinary_live_dev_reset else None)
+                        or try_load_mariadb_config()
+                        or load_mariadb_config()
+                    )
                     actual_identity = run_client_query(identity_cfg, "SELECT CURRENT_USER()").strip()
                     if actual_identity != expected_identity:
                         issues.append("preflight restore identity does not match import identity")
@@ -291,6 +301,40 @@ def execute_restore_into_database(
                 commands=commands,
                 cleanup_command=cleanup_command,
             )
+
+    # An ordinary reset is never allowed to substitute the general/source
+    # credential after a dedicated preflight.  Sync passes this same object
+    # explicitly; direct callers must resolve to the same dedicated lane.
+    if ordinary_live_dev_reset:
+        try:
+            dedicated_cfg = load_mariadb_restore_config()
+        except MariaDbConfigError as exc:
+            return RestoreExecutionResult(
+                source_database=source_database,
+                target_database=target_database,
+                dump_path=str(dump_path),
+                refused=True,
+                message=(
+                    "Restore refused before target modification: dedicated "
+                    f"[mariadb_restore] credentials are unavailable: {exc}"
+                ),
+                commands=commands,
+                cleanup_command=cleanup_command,
+            )
+        if config is not None and config != dedicated_cfg:
+            return RestoreExecutionResult(
+                source_database=source_database,
+                target_database=target_database,
+                dump_path=str(dump_path),
+                refused=True,
+                message=(
+                    "Restore refused before target modification: supplied credential "
+                    "does not match dedicated [mariadb_restore] configuration."
+                ),
+                commands=commands,
+                cleanup_command=cleanup_command,
+            )
+        config = dedicated_cfg
 
     if not (governed_destination_rehearsal or governed_production_cutover):
         from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled

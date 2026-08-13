@@ -20,7 +20,7 @@ from mercury.backup.content_contract import (
     RestoreRequirementsContract,
 )
 from mercury.database.mariadb.client import run_client_query
-from mercury.database.mariadb.session import try_load_mariadb_config
+from mercury.database.mariadb.config import MariaDbConfigError, load_mariadb_restore_config
 
 _GRANT_RE = re.compile(r"^GRANT\s+(.+?)\s+ON\s+(.+?)\s+TO\s+", re.IGNORECASE)
 _STATEMENT_CAPABILITIES = {
@@ -178,9 +178,13 @@ def evaluate_restore_privileges(
         result.inspection_issues.append(f"contract inspection failed: {exc}")
         return _persist(result, receipt_root, write_receipt)
 
-    cfg = config or try_load_mariadb_config()
-    if cfg is None:
-        result.inspection_issues.append("MariaDB restore identity is not configured.")
+    try:
+        cfg = config or load_mariadb_restore_config()
+    except MariaDbConfigError as exc:
+        result.inspection_issues.append(
+            "Dedicated [mariadb_restore] credentials are unavailable; "
+            f"development target will not be modified: {exc}"
+        )
         return _persist(result, receipt_root, write_receipt)
     try:
         identity = _query_scalar(query, cfg, "SELECT VERSION(), CURRENT_USER(), USER(), COALESCE(CURRENT_ROLE(), 'NONE')").split("\t")

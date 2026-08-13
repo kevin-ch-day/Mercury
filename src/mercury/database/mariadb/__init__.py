@@ -5,6 +5,7 @@ from mercury.database.mariadb.config import (
     MariaDbConfigError,
     MariaDbConnectionConfig,
     load_mariadb_config,
+    load_mariadb_restore_config,
 )
 from mercury.database.mariadb.live import (
     READ_ONLY_SQL,
@@ -22,6 +23,7 @@ from mercury.database.mariadb.session import (
     readonly_scalars,
     resolve_mariadb_target,
     try_load_mariadb_config,
+    try_load_mariadb_restore_config,
 )
 
 # Backward-compatible alias
@@ -45,6 +47,7 @@ __all__ = [
     "MariaDbConfigError",
     "MariaDbConnectionConfig",
     "load_mariadb_config",
+    "load_mariadb_restore_config",
     "MariaDbLiveError",
     "MariaDbDriverMissingError",
     "discover_databases_live",
@@ -66,6 +69,7 @@ __all__ = [
     "probe_mariadb_server",
     "resolve_mariadb_target",
     "try_load_mariadb_config",
+    "try_load_mariadb_restore_config",
     "ReadOnlyDiscoveryPlan",
     "ToolingProbe",
     "build_readonly_discovery_plan",

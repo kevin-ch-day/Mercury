@@ -14,6 +14,7 @@ from mercury.database import (
     discover_databases_live,
     fetch_database_names,
     load_mariadb_config,
+    load_mariadb_restore_config,
     probe_client_tooling,
     probe_mariadb_server,
     resolve_mariadb_target,
@@ -123,6 +124,85 @@ def test_load_mariadb_config_missing_section(tmp_path: Path) -> None:
     local.write_text("[mercury]\nmode = 'seed'\n", encoding="utf-8")
     with pytest.raises(MariaDbConfigError, match="\\[mariadb\\]"):
         load_mariadb_config(local)
+
+
+def test_load_dedicated_restore_config_from_secure_password_file(tmp_path: Path) -> None:
+    secret = tmp_path / "restore.password"
+    secret.write_text("restore-secret\n", encoding="utf-8")
+    secret.chmod(0o600)
+    local = tmp_path / "local.toml"
+    local.write_text(
+        f'''[mariadb_restore]
+host = "localhost"
+user = "mercury_dev_restore"
+use_client = true
+unix_socket = "/tmp/mysql.sock"
+password_file = "{secret}"
+''',
+        encoding="utf-8",
+    )
+
+    cfg = load_mariadb_restore_config(local)
+
+    assert cfg.user == "mercury_dev_restore"
+    assert cfg.password == "restore-secret"
+    assert cfg.password_file == str(secret)
+    assert "restore-secret" not in repr(cfg)
+
+
+@pytest.mark.parametrize("mode", (0o640, 0o644))
+def test_restore_password_file_rejects_insecure_permissions(tmp_path: Path, mode: int) -> None:
+    secret = tmp_path / "restore.password"
+    secret.write_text("secret", encoding="utf-8")
+    secret.chmod(mode)
+    local = tmp_path / "local.toml"
+    local.write_text(
+        f'[mariadb_restore]\nuser="restore"\npassword_file="{secret}"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(MariaDbConfigError, match="insecure permissions") as exc:
+        load_mariadb_restore_config(local)
+    assert "secret" not in str(exc.value)
+
+
+def test_restore_password_file_missing_empty_and_ambiguous_sources_fail_closed(tmp_path: Path) -> None:
+    local = tmp_path / "local.toml"
+    local.write_text(
+        '[mariadb_restore]\nuser="restore"\npassword_file="/missing/secret"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(MariaDbConfigError, match="unavailable"):
+        load_mariadb_restore_config(local)
+
+    secret = tmp_path / "restore.password"
+    secret.write_text("", encoding="utf-8")
+    secret.chmod(0o600)
+    local.write_text(
+        f'[mariadb_restore]\nuser="restore"\npassword_file="{secret}"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(MariaDbConfigError, match="empty"):
+        load_mariadb_restore_config(local)
+
+    secret.write_text("secret", encoding="utf-8")
+    local.write_text(
+        f'[mariadb_restore]\nuser="restore"\npassword_file="{secret}"\npassword="other"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(MariaDbConfigError, match="ambiguous"):
+        load_mariadb_restore_config(local)
+
+
+def test_restore_config_missing_does_not_fall_back_to_general_config(tmp_path: Path) -> None:
+    local = tmp_path / "local.toml"
+    local.write_text(
+        '[mariadb]\nuser="general"\nuse_client=true\nunix_socket="/tmp/mysql.sock"\n',
+        encoding="utf-8",
+    )
+    assert load_mariadb_config(local).user == "general"
+    with pytest.raises(MariaDbConfigError, match="\\[mariadb_restore\\]"):
+        load_mariadb_restore_config(local)
 
 
 def test_live_and_demo_inventory_same_display_fields(
@@ -253,4 +333,3 @@ def test_readonly_plan_is_not_executed_in_seed() -> None:
         "ready_not_executed",
         "implemented",
     )
-

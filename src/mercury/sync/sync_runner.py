@@ -85,11 +85,27 @@ def run_sync_batch(
 
         if execute:
             from mercury.sync.restore_preflight import evaluate_restore_privileges
+            from mercury.database.mariadb.config import MariaDbConfigError, load_mariadb_restore_config
+
+            try:
+                restore_cfg = load_mariadb_restore_config()
+            except MariaDbConfigError as exc:
+                batch.results.append(SyncExecutionResult(
+                    source=entry.prod, target=entry.expected_dev, backup_dir=entry.latest_backup_dir,
+                    refused=True, verification_passed=None,
+                    message=(
+                        "Restore credentials refused before target modification: "
+                        f"{exc}"
+                    ),
+                ))
+                batch.refused_count += 1
+                continue
 
             preflight = evaluate_restore_privileges(
                 source=entry.prod,
                 target=entry.expected_dev,
                 backup_dir=Path(entry.latest_backup_dir),
+                config=restore_cfg,
             )
             if not preflight.passed:
                 detail = ", ".join(preflight.missing_capabilities or preflight.unknown_requirements or preflight.inspection_issues)
@@ -107,6 +123,7 @@ def run_sync_batch(
             source_database=entry.prod,
             execute=execute,
             policy=policy,
+            config=restore_cfg if execute else None,
             recreate_target=True,
             import_runner=import_runner,
             restore_preflight=preflight if execute else None,

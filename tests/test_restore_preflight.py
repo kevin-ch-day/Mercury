@@ -6,8 +6,11 @@ import gzip
 import json
 from pathlib import Path
 
+import pytest
+
 from mercury.backup.checksum import sha256_file
 from mercury.backup.content_contract import extract_restore_requirements
+from mercury.database.mariadb.config import MariaDbConfigError
 from mercury.sync.restore_preflight import evaluate_restore_privileges
 
 
@@ -123,3 +126,22 @@ def test_function_with_untrusted_binary_logging_is_not_guessed(tmp_path: Path) -
     )
     assert result.passed is False
     assert any("binary-log" in item for item in result.unknown_requirements)
+
+
+def test_missing_dedicated_restore_config_fails_closed_without_general_fallback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        "mercury.sync.restore_preflight.load_mariadb_restore_config",
+        lambda: (_ for _ in ()).throw(MariaDbConfigError("restore config missing")),
+    )
+    result = evaluate_restore_privileges(
+        source=SOURCE,
+        target=TARGET,
+        backup_dir=_backup(tmp_path, "CREATE TABLE `t` (id int);\n"),
+        query_fn=lambda *_args: (_ for _ in ()).throw(AssertionError("must not query general config")),
+        receipt_root=tmp_path / "receipts",
+    )
+    assert result.passed is False
+    assert result.target_untouched is True
+    assert any("mariadb_restore" in issue for issue in result.inspection_issues)

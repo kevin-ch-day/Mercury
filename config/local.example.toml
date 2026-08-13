@@ -81,3 +81,15 @@ use_client = true
 unix_socket = "/var/lib/mysql/mysql.sock"
 connect_timeout = 10
 ssl_disabled = true
+
+# Dedicated least-privilege credential for ordinary approved prod→dev resets.
+# Keep this separate from [mariadb]; it must have no production write authority.
+[mariadb_restore]
+host = "localhost"
+port = 3306
+user = "mercury_dev_restore"
+use_client = true
+unix_socket = "/var/lib/mysql/mysql.sock"
+connect_timeout = 10
+ssl_disabled = true
+password_file = "~/.config/mercury/mercury_dev_restore.password"

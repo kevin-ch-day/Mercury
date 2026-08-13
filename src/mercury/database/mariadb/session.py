@@ -17,6 +17,7 @@ from mercury.database.mariadb.config import (
     MariaDbConfigError,
     MariaDbConnectionConfig,
     load_mariadb_config,
+    load_mariadb_restore_config,
 )
 from mercury.database.mariadb.errors import MariaDbDriverMissingError, MariaDbLiveError
 from mercury.core.paths import resolve_local_config
@@ -70,6 +71,14 @@ def try_load_mariadb_config(path: Path | None = None) -> MariaDbConnectionConfig
     """Load MariaDB config when present; return None if not configured."""
     try:
         return load_mariadb_config(path)
+    except MariaDbConfigError:
+        return None
+
+
+def try_load_mariadb_restore_config(path: Path | None = None) -> MariaDbConnectionConfig | None:
+    """Load the dedicated dev-reset credential when it is configured."""
+    try:
+        return load_mariadb_restore_config(path)
     except MariaDbConfigError:
         return None
 

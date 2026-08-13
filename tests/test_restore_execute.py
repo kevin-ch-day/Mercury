@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -122,6 +124,60 @@ def test_execute_restore_live_dev_without_preflight_refuses_before_runner(tmp_pa
     assert result.executed is False
     assert result.refused is True
     assert "preflight" in result.message
+    assert calls == []
+
+
+def test_execute_restore_rejects_general_config_after_dedicated_preflight(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mercury.database.mariadb.config import MariaDbConnectionConfig
+
+    dump = tmp_path / "erebus.sql.gz"
+    dump.write_bytes(b"verified")
+    digest = hashlib.sha256(dump.read_bytes()).hexdigest()
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"backup_id": "backup-1", "sha256": digest}), encoding="utf-8"
+    )
+    policy = ExecutionPolicy(
+        dry_run=False, live_actions_enabled=True, backup_root=tmp_path,
+        config_path=tmp_path / "local.toml", allow_unsafe_backup_root=True,
+    )
+    general = MariaDbConnectionConfig(host="localhost", user="systemadmin")
+    dedicated = MariaDbConnectionConfig(host="localhost", user="mercury_dev_restore")
+    monkeypatch.setattr(
+        "mercury.restore.restore_runner.load_mariadb_restore_config", lambda: dedicated
+    )
+    preflight = SimpleNamespace(
+        passed=True,
+        source_database="erebus_threat_intel_prod",
+        target_database="erebus_threat_intel_dev",
+        artifact_file=dump.name,
+        artifact_sha256=digest,
+        backup_id="backup-1",
+        evidence_written=True,
+        current_user="systemadmin@localhost",
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "mercury.restore.restore_runner._execute_client_sql", lambda _cfg, sql: calls.append(sql)
+    )
+    monkeypatch.setattr(
+        "mercury.restore.restore_runner.run_client_query", lambda _cfg, _sql: "systemadmin@localhost"
+    )
+
+    result = execute_restore_into_database(
+        target_database="erebus_threat_intel_dev",
+        dump_path=dump,
+        source_database="erebus_threat_intel_prod",
+        execute=True,
+        policy=policy,
+        config=general,
+        restore_preflight=preflight,
+        require_restore_preflight=True,
+    )
+
+    assert result.refused is True
+    assert "does not match dedicated" in result.message
     assert calls == []
 
 

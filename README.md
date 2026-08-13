@@ -146,6 +146,12 @@ Use `--dry-run` on `backup run`, `backup batch`, or `backup all` to preview with
 
 **Destructive actions** (prod→dev sync, deploy, restore-check cleanup) additionally require `[mercury] dry_run = false` and `live_actions_enabled = true` in `config/local.toml`, plus confirmation where applicable (default-no `[y/N]` for sync).
 
+Ordinary prod→dev replacement additionally requires `[mariadb_restore]`: a
+dedicated least-privilege identity scoped only to the approved development
+schemas. Mercury does not fall back to the general `[mariadb]` credential when
+that lane is missing or invalid. Use `password_env` or a private `password_file`
+for secrets; never commit either secret material or `config/local.toml`.
+
 Live backup execution also requires:
 - Fedora or Windows as the runtime host
 - a configured operator-storage root (this deployment: `/mnt/MERCURY_DATA_V2/mercury_backups`; use `[storage.*]`, `MERCURY_PRIMARY_MOUNT`, or `MERCURY_LEGACY_MOUNT` for other layouts)
