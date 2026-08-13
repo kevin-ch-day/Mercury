@@ -9,6 +9,7 @@ from mercury.backup.content_contract import (
     BackupObjectInventory,
     build_backup_content_contract,
     extract_dump_object_inventory,
+    extract_restore_requirements,
     fetch_live_object_inventory,
 )
 from mercury.backup.dump_planner import build_dump_argv, build_planned_dump_command
@@ -22,6 +23,95 @@ def test_full_dump_explicitly_includes_recoverability_object_flags() -> None:
     for flag in ("--routines", "--triggers", "--events"):
         assert flag in argv
         assert flag in command
+
+
+def test_restore_requirements_detects_versioned_routine_drop(tmp_path: Path) -> None:
+    dump = tmp_path / "erebus.sql.gz"
+    with gzip.open(dump, "wt", encoding="utf-8") as handle:
+        handle.write("-- DROP PROCEDURE is only a comment here\n")
+        handle.write("/*!50003 DROP PROCEDURE IF EXISTS `p_demo` */;\n")
+        handle.write("CREATE DEFINER=`root`@`localhost` PROCEDURE `p_demo`() SELECT 1;\n")
+        handle.write("INSERT INTO notes VALUES ('DROP PROCEDURE');\n")
+
+    contract = extract_restore_requirements(dump)
+
+    assert contract.verified is True
+    assert contract.artifact_file == "erebus.sql.gz"
+    assert contract.statement_classes == ["CREATE PROCEDURE", "DROP PROCEDURE", "INSERT"]
+
+
+def test_restore_requirements_fail_closed_for_unknown_top_level_ddl(tmp_path: Path) -> None:
+    dump = tmp_path / "unknown.sql.gz"
+    with gzip.open(dump, "wt", encoding="utf-8") as handle:
+        handle.write("CREATE SEQUENCE `future_sequence`;\n")
+        handle.write("INSERT INTO notes VALUES ('CREATE SEQUENCE');\n")
+
+    contract = extract_restore_requirements(dump)
+
+    assert contract.statement_classes == ["INSERT"]
+    assert contract.unknown_privileged_statements == ["CREATE SEQUENCE `future_sequence`;"]
+
+
+def test_restore_requirements_detects_all_object_statement_families(tmp_path: Path) -> None:
+    dump = tmp_path / "objects.sql.gz"
+    lines = [
+        "CREATE OR REPLACE VIEW `v` AS SELECT 1;",
+        "DROP TRIGGER IF EXISTS `tr`;",
+        "CREATE TRIGGER `tr` BEFORE INSERT ON `t` FOR EACH ROW SET @x = 1;",
+        "CREATE FUNCTION `f`() RETURNS INT RETURN 1;",
+        "ALTER FUNCTION `f` COMMENT 'x';",
+        "CREATE EVENT `e` ON SCHEDULE EVERY 1 DAY DO SELECT 1;",
+        "DROP EVENT IF EXISTS `e`;",
+        "LOCK TABLES `t` WRITE;",
+        "UNLOCK TABLES;",
+    ]
+    with gzip.open(dump, "wt", encoding="utf-8") as handle:
+        handle.write("\n".join(lines))
+
+    contract = extract_restore_requirements(dump)
+
+    assert contract.statement_classes == [
+        "ALTER FUNCTION", "CREATE EVENT", "CREATE FUNCTION", "CREATE TRIGGER",
+        "CREATE VIEW", "DROP EVENT", "DROP TRIGGER", "LOCK TABLES", "UNLOCK TABLES",
+    ]
+
+
+def test_restore_requirements_recognizes_mariadb_view_prefixes(tmp_path: Path) -> None:
+    dump = tmp_path / "view.sql.gz"
+    with gzip.open(dump, "wt", encoding="utf-8") as handle:
+        handle.write(
+            "/*!50001 CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` "
+            "SQL SECURITY DEFINER VIEW `v` AS SELECT 1 */;\n"
+        )
+
+    contract = extract_restore_requirements(dump)
+
+    assert contract.statement_classes == ["CREATE VIEW"]
+    assert contract.unknown_privileged_statements == []
+
+
+def test_restore_requirements_recognizes_split_mariadb_view_prefixes(tmp_path: Path) -> None:
+    """MariaDB dumps final view DDL across separate executable comments."""
+    dump = tmp_path / "split-view.sql.gz"
+    with gzip.open(dump, "wt", encoding="utf-8") as handle:
+        handle.write("/*!50001 CREATE ALGORITHM=UNDEFINED */;\n")
+        handle.write("/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */;\n")
+        handle.write("/*!50001 VIEW `v` AS SELECT 1 */;\n")
+
+    contract = extract_restore_requirements(dump)
+
+    assert contract.statement_classes == ["CREATE VIEW"]
+    assert contract.unknown_privileged_statements == []
+
+
+def test_restore_requirements_rejects_unfinished_mariadb_view_prefix(tmp_path: Path) -> None:
+    dump = tmp_path / "unfinished-view.sql.gz"
+    with gzip.open(dump, "wt", encoding="utf-8") as handle:
+        handle.write("/*!50001 CREATE ALGORITHM=UNDEFINED */;\n")
+
+    contract = extract_restore_requirements(dump)
+
+    assert contract.unknown_privileged_statements == ["CREATE ALGORITHM=UNDEFINED"]
 
 
 def test_dump_inventory_parses_all_recovery_object_classes(tmp_path: Path) -> None:

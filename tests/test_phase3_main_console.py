@@ -190,7 +190,7 @@ def test_startup_invalid_choice_reprompts(monkeypatch, host_path: Path) -> None:
 
 
 def test_backup_sync_hub_opens_backup_operations_directly(monkeypatch) -> None:
-    """Main [1] / hub opens Backup Operations; Guided Backup stays Ops [1]."""
+    """Main [1] / hub opens the simplified Backup Operations home."""
     called: list[str] = []
     monkeypatch.setattr(
         "mercury.backup.interactive_menu.run_backup_menu",
@@ -202,13 +202,13 @@ def test_backup_sync_hub_opens_backup_operations_directly(monkeypatch) -> None:
     guided = [
         key for key, _label, action, _h in BACKUP_MENU_OPTIONS if action == ACTION_BACKUP_SYNC_SESSION
     ]
-    assert guided == ["1"]
+    assert guided == []
     run_backup_sync_hub()
     assert called == ["backup_ops"]
 
 
 def test_backup_sync_hub_routes_to_full_backup_operations(monkeypatch) -> None:
-    """Prod/dev backup flows remain under full Backup Operations (not a separate Advanced door)."""
+    """Production stays primary; development preservation is an Advanced capability."""
     called: list[str] = []
     monkeypatch.setattr(
         "mercury.backup.interactive_menu.run_backup_menu",
@@ -229,7 +229,7 @@ def test_backup_sync_hub_routes_to_full_backup_operations(monkeypatch) -> None:
     assert callable(run_development_backup_flow)
     labels = " ".join(label for _k, label, _a, _h in BACKUP_MENU_OPTIONS).lower()
     assert "production" in labels
-    assert "development" in labels
+    assert "advanced" in labels
 
     run_backup_sync_hub()
     assert called == ["backup_ops"]

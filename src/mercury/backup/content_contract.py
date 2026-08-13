@@ -14,6 +14,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from mercury.backup.checksum import sha256_file
+
 from mercury.database.mariadb.config import MariaDbConnectionConfig
 from mercury.database.mariadb.session import readonly_scalars
 
@@ -27,6 +29,35 @@ _CREATE_OBJECT_RE = re.compile(
     r"\s+(TABLE|VIEW|TRIGGER|PROCEDURE|FUNCTION|EVENT)\b",
     re.IGNORECASE,
 )
+_RESTORE_OBJECT_STATEMENT_RE = re.compile(
+    r"^\s*(DROP|CREATE|ALTER|LOCK|UNLOCK)\s+"
+    r"(?:OR\s+REPLACE\s+)?(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:TEMPORARY\s+)?"
+    r"(?:ALGORITHM\s*=\s*\w+\s+)?"
+    r"(?:DEFINER\s*=\s*(?:`[^`]+`@`[^`]+`|\S+)\s+)?"
+    r"(?:SQL\s+SECURITY\s+(?:DEFINER|INVOKER)\s+)?"
+    r"(DATABASE|TABLE|VIEW|TRIGGER|PROCEDURE|FUNCTION|EVENT|INDEX|TABLES)\b",
+    re.IGNORECASE,
+)
+_RESTORE_DATA_STATEMENT_RE = re.compile(r"^\s*(INSERT|REPLACE)\s+(?:INTO\s+)?", re.IGNORECASE)
+_MARIADB_VIEW_ALGORITHM_PREFIX_RE = re.compile(
+    r"^CREATE\s+ALGORITHM\s*=\s*\w+$", re.IGNORECASE
+)
+_MARIADB_VIEW_SECURITY_PREFIX_RE = re.compile(
+    r"^(?:DEFINER\s*=\s*(?:`[^`]+`@`[^`]+`|\S+)\s+)?"
+    r"SQL\s+SECURITY\s+(?:DEFINER|INVOKER)$",
+    re.IGNORECASE,
+)
+_MARIADB_VIEW_BODY_RE = re.compile(r"^VIEW\b", re.IGNORECASE)
+_UNKNOWN_OBJECT_DDL_RE = re.compile(r"^\s*(DROP|CREATE|ALTER)\b", re.IGNORECASE)
+_PRIVILEGED_TOP_LEVEL_RE = re.compile(
+    r"^\s*(GRANT|REVOKE|INSTALL|UNINSTALL|FLUSH|SHUTDOWN|KILL|"
+    r"(?:CREATE|ALTER|DROP)\s+(?:USER|ROLE|SERVER)|SET\s+(?:GLOBAL|PERSIST)|"
+    r"LOAD\s+(?:DATA|XML|FILE)|LOCK\s+INSTANCE)\b",
+    re.IGNORECASE,
+)
+RESTORE_REQUIREMENTS_CONTRACT_VERSION = 1
+IMPORT_TRANSFORM_VERSION = "2"
+RESTORE_REQUIREMENTS_SCANNER_VERSION = "4"
 
 
 class BackupObjectInventory(BaseModel):
@@ -56,6 +87,20 @@ class BackupContentContract(BaseModel):
     live: BackupObjectInventory
     dump: BackupObjectInventory
     schema_dump: BackupObjectInventory | None = None
+    verified: bool = False
+    issues: list[str] = Field(default_factory=list)
+
+
+class RestoreRequirementsContract(BaseModel):
+    """Executable statement families required by one exact logical artifact."""
+
+    contract_version: int = RESTORE_REQUIREMENTS_CONTRACT_VERSION
+    scanner_version: str = RESTORE_REQUIREMENTS_SCANNER_VERSION
+    import_transform_version: str = IMPORT_TRANSFORM_VERSION
+    artifact_file: str
+    artifact_sha256: str
+    statement_classes: list[str] = Field(default_factory=list)
+    unknown_privileged_statements: list[str] = Field(default_factory=list)
     verified: bool = False
     issues: list[str] = Field(default_factory=list)
 
@@ -155,6 +200,67 @@ def extract_dump_object_inventory(path: Path) -> BackupObjectInventory:
             if name:
                 found[key].add(name)
     return BackupObjectInventory(**{key: sorted(values) for key, values in found.items()})
+
+
+def extract_restore_requirements(path: Path) -> RestoreRequirementsContract:
+    """Stream an exact dump and record executable restore statement families.
+
+    MariaDB dumps put top-level DDL/DML on their own lines, including versioned
+    executable comments.  We deliberately only fail closed for unknown DDL or
+    privileged/destructive statements; routine bodies and ordinary data values
+    are not independently scanned as operations.
+    """
+    statements: set[str] = set()
+    unknown: set[str] = set()
+    pending_view_algorithm: str | None = None
+    with gzip.open(path, "rt", encoding="utf-8", errors="replace") as handle:
+        for raw_line in handle:
+            line = _decomment(raw_line).strip()
+            if not line or line.startswith("--") or line.startswith("#"):
+                continue
+            # A conditional comment is commonly followed by the statement
+            # terminator (``*/;``); it is irrelevant to classification but
+            # retain the original text for fail-closed diagnostic evidence.
+            sql_line = line.rstrip(";").rstrip()
+            # mariadb-dump writes final view definitions as three executable
+            # comments: CREATE ALGORITHM, DEFINER/SQL SECURITY, then VIEW.
+            # Treat that exact sequence as one CREATE VIEW statement.  Do not
+            # suppress a standalone/unfinished CREATE ALGORITHM declaration.
+            if pending_view_algorithm is not None:
+                if _MARIADB_VIEW_SECURITY_PREFIX_RE.match(sql_line):
+                    continue
+                if _MARIADB_VIEW_BODY_RE.match(sql_line):
+                    statements.add("CREATE VIEW")
+                    pending_view_algorithm = None
+                    continue
+                unknown.add(pending_view_algorithm)
+                pending_view_algorithm = None
+            if _MARIADB_VIEW_ALGORITHM_PREFIX_RE.match(sql_line):
+                pending_view_algorithm = sql_line
+                continue
+            match = _RESTORE_OBJECT_STATEMENT_RE.match(sql_line)
+            if match:
+                statements.add(f"{match.group(1).upper()} {match.group(2).upper()}")
+                continue
+            data_match = _RESTORE_DATA_STATEMENT_RE.match(sql_line)
+            if data_match:
+                statements.add(data_match.group(1).upper())
+                continue
+            # Unknown CREATE/DROP/ALTER forms can change the required
+            # privileges.  They must not be silently authorized for a live
+            # destructive reset.  Explicitly privileged server statements are
+            # likewise not part of Mercury's ordinary dev restore contract.
+            if _UNKNOWN_OBJECT_DDL_RE.match(sql_line) or _PRIVILEGED_TOP_LEVEL_RE.match(sql_line):
+                unknown.add(re.sub(r"\s+", " ", line[:240]))
+    if pending_view_algorithm is not None:
+        unknown.add(pending_view_algorithm)
+    return RestoreRequirementsContract(
+        artifact_file=path.name,
+        artifact_sha256=sha256_file(path),
+        statement_classes=sorted(statements),
+        unknown_privileged_statements=sorted(unknown),
+        verified=True,
+    )
 
 
 def compare_object_inventories(

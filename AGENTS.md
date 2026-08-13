@@ -36,7 +36,7 @@ Preserve these rules in every change. Do not weaken them.
 2. **Never back up `*_dev` by default** — dev DBs are disposable sync targets.
 3. **Never drop, overwrite, or restore into `*_prod`** by default.
 4. **Always backup and verify prod** before any prod→dev sync.
-5. **Require typing `SYNC DEV`** before any future dev sync execution.
+5. **Require explicit default-no (`[y/N]`) confirmation** before any future dev sync execution.
 6. **`_restorecheck_*` databases** are never backup sources.
 7. **Unknown-role databases** require manual review before action.
 8. A database is **not protected** until verification passes (manifest + checksum + size).
@@ -51,7 +51,7 @@ Policy constants live in `src/mercury/core/safety.py`. Execution gates live in `
 - Planning, discovery, manifests, and reports are implemented.
 - Live **read-only** server access works (`db ping`, `db discover`, `db inspect`, `db access`).
 - **Backup writes** run when the backup environment is safe (Fedora/Windows, primary HDD-backed `backup_root`, config present). They do **not** require `dry_run=false` or `live_actions_enabled=true`.
-- Prod→dev **sync**, **deploy**, and destructive restore-check cleanup require `dry_run=false`, `live_actions_enabled=true`, and confirmation (`SYNC DEV` for sync).
+- Prod→dev **sync**, **deploy**, and destructive restore-check cleanup require `dry_run=false`, `live_actions_enabled=true`, and confirmation (default-no `[y/N]` for sync).
 - Menu and CLI default backup execution when the environment is ready; use `--dry-run` or **Preview backup plan** for dry-run.
 - Live execution is supported on **Fedora and Windows**; other Linux hosts remain seed/status only.
 - Legacy USB is phased out of normal Doctor/dashboard validation; archive inspection uses `storage archive-status` / `archive-receipt` / `archive-remount-ro` only.
@@ -295,5 +295,5 @@ Full test file index: [docs/ai_extension_points.md](docs/ai_extension_points.md#
 
 ## What to build next (typical milestones)
 
-- Prod→dev sync execution polish with `SYNC DEV` confirmation.
+- Prod→dev sync execution polish with default-no confirmation.
 - Development restore-check lane (Track A A-3-02).

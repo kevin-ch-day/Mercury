@@ -19,7 +19,6 @@ _CONDITIONAL_DEFINER_COMMENT_RE = re.compile(
     r"/\*!50017\s+DEFINER=`[^`]+`@`[^`]+`\s*\*/",
     re.IGNORECASE,
 )
-_SQL_SECURITY_DEFINER_RE = re.compile(r"SQL SECURITY DEFINER", re.IGNORECASE)
 _CREATE_DATABASE_RE = re.compile(r"^\s*CREATE\s+DATABASE\b", re.IGNORECASE)
 _USE_DATABASE_RE = re.compile(r"^\s*USE\s+[`'\"]?[\w$-]+[`'\"]?\s*;", re.IGNORECASE)
 _INSERT_OR_REPLACE_RE = re.compile(r"^\s*(INSERT|REPLACE)\b", re.IGNORECASE)
@@ -169,7 +168,6 @@ def _transform_sql_line(
     if strip_definer and not is_insert:
         text = _CONDITIONAL_DEFINER_COMMENT_RE.sub("", text)
         text = _DEFINER_RE.sub("", text)
-        text = _SQL_SECURITY_DEFINER_RE.sub("SQL SECURITY INVOKER", text)
 
     sources = rewrite_sources
     if not sources:
@@ -291,8 +289,10 @@ def run_compressed_sql_import(
     """
     Stream a dump into ``mariadb target`` with safe SQL rewrites.
 
-    Strips DEFINER clauses by default so unix_socket operators without SET USER
-    can import mysqldump artifacts from other hosts.
+    Strips literal DEFINER clauses by default so unix_socket operators without
+    SET USER can import mysqldump artifacts from other hosts. The receiving
+    account becomes the routine definer, while SQL SECURITY semantics are
+    preserved; changing DEFINER to INVOKER would alter application behavior.
     Strips ``CREATE DATABASE`` / ``USE`` statements by default so targeted
     restore/sync imports land in the requested dev or restore-check database
     instead of switching back to the original production database name.

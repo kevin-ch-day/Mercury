@@ -7,7 +7,7 @@ from mercury.backup.dump_planner import build_planned_dump
 from mercury.database.policy import validate_config_policy
 from mercury.backup.schema_plan import build_schema_backup_plan_demo
 from mercury.sync.sync_plan import build_sync_plan_demo
-from mercury.core.safety import BACKUP_KIND_SCHEMA_ONLY, SYNC_DEV_CONFIRMATION_PHRASE
+from mercury.core.safety import BACKUP_KIND_SCHEMA_ONLY
 
 
 def test_schema_plan_sources_only_backup_sources() -> None:
@@ -16,12 +16,12 @@ def test_schema_plan_sources_only_backup_sources() -> None:
     assert "erebus_threat_intel_dev" not in plan.sources
 
 
-def test_sync_plan_requires_confirmation_phrase() -> None:
+def test_sync_plan_requires_explicit_confirmation() -> None:
     plan = build_sync_plan_demo()
     assert plan.enabled is False
-    assert plan.confirmation_phrase == SYNC_DEV_CONFIRMATION_PHRASE
     assert any(e.source == "erebus_threat_intel_prod" for e in plan.entries)
     assert any("Sync execution remains gated" in note for note in plan.notes)
+    assert any("[y/N]" in note for note in plan.notes)
 
 
 def test_sync_plan_all_catalog_pairs_have_dev() -> None:

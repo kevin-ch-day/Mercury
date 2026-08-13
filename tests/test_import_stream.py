@@ -22,6 +22,7 @@ def test_import_stream_strips_source_database_directives_and_definers(tmp_path: 
             "CREATE DATABASE `erebus_threat_intel_prod`;",
             "USE `erebus_threat_intel_prod`;",
             "CREATE DEFINER=`root`@`localhost` VIEW `v_demo` AS SELECT 1;",
+            "CREATE DEFINER=`root`@`localhost` PROCEDURE `p_demo`() SQL SECURITY DEFINER SELECT 1;",
             "CREATE TABLE `demo` (`id` int);",
             "",
         ]
@@ -48,7 +49,7 @@ exit 0
     written = capture.read_text(encoding="utf-8")
     assert "CREATE DATABASE" not in written
     assert "USE `erebus_threat_intel_prod`" not in written
-    assert "SQL SECURITY DEFINER" not in written
+    assert "SQL SECURITY DEFINER" in written
     assert "DEFINER=" not in written
     assert "CREATE TABLE `demo`" in written
     assert "SET SESSION unique_checks=0" in written

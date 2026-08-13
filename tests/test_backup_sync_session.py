@@ -682,11 +682,11 @@ def test_preview_and_menu_session_option() -> None:
         backup_menu_render_options,
     )
 
-    assert backup_menu_hint(ACTION_BACKUP_SYNC_SESSION).endswith("[1]")
-    assert backup_menu_hint(ACTION_FULL_BACKUP).endswith("[2]")
+    assert backup_menu_hint(ACTION_BACKUP_SYNC_SESSION).endswith("[4]")
+    assert backup_menu_hint(ACTION_FULL_BACKUP).endswith("[1]")
     options = dict(backup_menu_render_options(writes_allowed=False))
-    assert "Guided backup session" in options["1"]
-    assert "unavailable" not in options["1"]
+    assert "Back up and verify production" in options["1"]
+    assert "unavailable" in options["1"]
     assert "unavailable" in options["2"]
 
 
@@ -1289,10 +1289,10 @@ def test_expert_database_only_menu_path_remains() -> None:
     )
 
     options = dict(backup_menu_render_options(writes_allowed=True))
-    assert "Run full database backup" in options["2"]
-    assert "Back up production databases" in options["3"]
-    assert backup_menu_hint(ACTION_FULL_BACKUP).endswith("[2]")
-    assert backup_menu_hint(ACTION_PRODUCTION_BACKUP).endswith("[3]")
+    assert "Back up and verify production" in options["1"]
+    assert "Advanced backup operations" in options["4"]
+    assert backup_menu_hint(ACTION_FULL_BACKUP).endswith("[1]")
+    assert backup_menu_hint(ACTION_PRODUCTION_BACKUP).endswith("[4]")
 
 
 def test_cli_noninteractive_execute_no_prompts(monkeypatch, capsys) -> None:

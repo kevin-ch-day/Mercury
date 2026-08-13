@@ -10,7 +10,7 @@ from mercury.backup.batch_runner import run_backup_batch, verify_written_backup_
 from mercury.backup.terminal.batch import print_backup_batch_result
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.runtime import should_probe_database_status
-from mercury.core.safety import BACKUP_KIND_FULL, SYNC_DEV_CONFIRMATION_PHRASE
+from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.database import MariaDbConfigError, MariaDbLiveError, try_load_mariadb_config
 from mercury.menu.subscreen import pause_and_redraw, read_submenu_choice, render_submenu
 from mercury.sync.sync_runner import run_sync_batch
@@ -146,10 +146,10 @@ def _run_sync_for_ready(report: SyncReadinessReport) -> None:
             ]
         )
         display_screen.write_blank()
-        if not menu_prompts.ask_confirmation_phrase(
-            SYNC_DEV_CONFIRMATION_PHRASE,
-            action="sync into dev",
-        ):
+        if menu_prompts.ask_yes_no(
+            "Replace the listed development database(s)?",
+            default=False,
+        ) is not True:
             display_screen.write_summary("Sync cancelled.")
             return
 

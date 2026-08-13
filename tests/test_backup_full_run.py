@@ -70,11 +70,11 @@ def _executed(database: str, backup_id: str, directory: Path, *, size: int = 100
 
 
 def test_menu_hints_stay_synchronized_with_option_numbers() -> None:
-    assert backup_menu_hint(ACTION_VERIFY) == "Verify source backups [5]"
+    assert backup_menu_hint(ACTION_VERIFY) == "Verify and update backup records [2]"
     assert backup_menu_hint(ACTION_RESTORE_CHECK) == "Restore and disaster recovery [5]"
     assert backup_menu_hint(ACTION_BUNDLE) == "Deployment and handoff [7]"
     keys = {key for key, _label, action, _help in BACKUP_MENU_OPTIONS}
-    assert keys == {"1", "2", "3", "4", "5", "6"}
+    assert keys == {"1", "2", "3", "4"}
     assert " [4]" not in backup_menu_hint(ACTION_VERIFY)
 
 
@@ -375,12 +375,12 @@ def test_print_batch_suggest_verify_defaults_off(
     )
     print_backup_batch_result(batch, compact=True, menu=True)
     out = capsys.readouterr().out
-    assert "Next: Verify source backups [5]" not in out
+    assert "Next: Verify and update backup records [2]" not in out
     assert "Complete backup IDs" not in out
 
     print_backup_batch_result(batch, compact=True, menu=True, suggest_verify=True)
     out = capsys.readouterr().out
-    assert "Next: Verify source backups [5]" in out
+    assert "Next: Verify and update backup records [2]" in out
 
 
 def test_print_full_backup_run_result_is_dense(capsys: pytest.CaptureFixture[str]) -> None:

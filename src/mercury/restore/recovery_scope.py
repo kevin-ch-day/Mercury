@@ -1,43 +1,33 @@
-"""Required recovery database scope (seven-schema platform)."""
+"""Current production recovery, development rebuild, and snapshot scopes."""
 
 from __future__ import annotations
 
-from mercury.database.core.scope import (
-    ACTIVE_BACKUP_SOURCE_DATABASES,
-    ACTIVE_DEV_RECOVERY_DATABASES,
-)
+from mercury.database.core.scope import ACTIVE_BACKUP_SOURCE_DATABASES, ACTIVE_DEV_RECOVERY_DATABASES
+from mercury.database.prod_dev_pairs import build_prod_dev_pairs
 
-# Operator-facing order for the Restore and Disaster Recovery dashboard.
-REQUIRED_RECOVERY_DATABASES: tuple[str, ...] = (
-    "android_permission_intel",
-    "erebus_threat_intel_prod",
-    "obsidiandroid_core_prod",
-    "scytaledroid_core_prod",
-    "android_permission_intel_dev",
-    "erebus_threat_intel_dev",
-    "scytaledroid_core_dev",
-)
+# Only authoritative production/shared sources define routine DR readiness.
+PRODUCTION_RECOVERY_DATABASES: tuple[str, ...] = tuple(sorted(ACTIVE_BACKUP_SOURCE_DATABASES))
 
-REQUIRED_RECOVERY_PRODUCTION: tuple[str, ...] = tuple(
-    name
-    for name in REQUIRED_RECOVERY_DATABASES
-    if name in ACTIVE_BACKUP_SOURCE_DATABASES
-)
-REQUIRED_RECOVERY_DEVELOPMENT: tuple[str, ...] = tuple(
-    name
-    for name in REQUIRED_RECOVERY_DATABASES
-    if name in ACTIVE_DEV_RECOVERY_DATABASES
-)
+# Explicit optional captures.  Their absence is a normal state.
+DEVELOPMENT_SNAPSHOT_DATABASES: tuple[str, ...] = tuple(sorted(ACTIVE_DEV_RECOVERY_DATABASES))
 
-assert len(REQUIRED_RECOVERY_DATABASES) == 7
-assert set(REQUIRED_RECOVERY_PRODUCTION) | set(REQUIRED_RECOVERY_DEVELOPMENT) == set(
-    REQUIRED_RECOVERY_DATABASES
-)
+
+def development_rebuild_pairs():
+    """Approved pairs only; never infer a source from a name suffix."""
+    names = list(PRODUCTION_RECOVERY_DATABASES) + list(DEVELOPMENT_SNAPSHOT_DATABASES)
+    return tuple(build_prod_dev_pairs(names))
+
+
+# Compatibility exports for callers that previously used the historical seven-
+# schema workstation acceptance list. They are no longer DR authority.
+REQUIRED_RECOVERY_DATABASES = PRODUCTION_RECOVERY_DATABASES
+REQUIRED_RECOVERY_PRODUCTION = PRODUCTION_RECOVERY_DATABASES
+REQUIRED_RECOVERY_DEVELOPMENT: tuple[str, ...] = ()
 
 
 def is_required_recovery_database(name: str) -> bool:
-    return name in REQUIRED_RECOVERY_DATABASES
+    return name in PRODUCTION_RECOVERY_DATABASES
 
 
 def is_required_recovery_production(name: str) -> bool:
-    return name in REQUIRED_RECOVERY_PRODUCTION
+    return name in PRODUCTION_RECOVERY_DATABASES

@@ -208,7 +208,7 @@ def test_run_sync_menu_non_interactive(
     run_sync_menu(interactive=False)
     out = capsys.readouterr().out
     assert "Backup root:" in out
-    assert "erebus_threat_intel → erebus_threat_intel" in out
+    assert "erebus_threat_intel_prod → erebus_threat_intel_dev" in out
     assert "Pairs:" in out
     assert "PROD → DEV" in out
     assert "backup stale" in out or "missing backup" in out or "Run full backup" in out
@@ -243,14 +243,16 @@ def test_run_sync_ready_shows_compact_confirmation(
         ),
     )
     monkeypatch.setattr(
-        "mercury.sync.interactive_menu.menu_prompts.ask_confirmation_phrase",
+        "mercury.sync.interactive_menu.menu_prompts.ask_yes_no",
         lambda *args, **kwargs: False,
     )
 
     _run_sync_for_ready(_sample_report(ready=2, blocked=0))
     out = capsys.readouterr().out
     assert "Prod→dev sync will overwrite these development databases" in out
-    assert "erebus_threat_intel → erebus_threat_intel" in out
+    assert "erebus_threat_intel_prod → erebus_threat_intel_dev" in out
+    assert "Production databases are never modified." in out
+    assert "Each dev target is dropped and recreated" in out
     assert "Sync cancelled." in out
 
 

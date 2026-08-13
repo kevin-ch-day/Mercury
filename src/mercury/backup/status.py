@@ -411,7 +411,11 @@ def build_recovery_scope_status_report(
     live: bool = False,
     policy: ExecutionPolicy | None = None,
 ) -> BackupStatusReport:
-    """Status for the seven required recovery databases (prod + recovery.devs)."""
+    """Historical compatibility view for optional development snapshots.
+
+    Routine Production Recovery uses ``build_backup_status_report`` and the
+    four authoritative sources only.
+    """
     from mercury.restore.recovery_scope import REQUIRED_RECOVERY_DATABASES
 
     return build_backup_status_report(

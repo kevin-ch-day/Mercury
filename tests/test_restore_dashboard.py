@@ -38,14 +38,14 @@ def _entry(
     )
 
 
-def test_required_recovery_scope_is_seven() -> None:
-    assert len(REQUIRED_RECOVERY_DATABASES) == 7
+def test_required_recovery_scope_is_authoritative_production_only() -> None:
+    assert len(REQUIRED_RECOVERY_DATABASES) == 4
     assert len(REQUIRED_RECOVERY_PRODUCTION) == 4
-    assert len(REQUIRED_RECOVERY_DEVELOPMENT) == 3
-    assert "android_permission_intel_dev" in REQUIRED_RECOVERY_DEVELOPMENT
+    assert len(REQUIRED_RECOVERY_DEVELOPMENT) == 0
+    assert "android_permission_intel_dev" not in REQUIRED_RECOVERY_DEVELOPMENT
 
 
-def test_dashboard_lists_all_seven_and_readiness(
+def test_dashboard_lists_authoritative_sources_and_readiness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from mercury.backup.status import BackupStatusReport
@@ -103,7 +103,7 @@ def test_dashboard_lists_all_seven_and_readiness(
     dash = build_recovery_dashboard(live=False)
     assert [row.database for row in dash.rows] == list(REQUIRED_RECOVERY_DATABASES)
     assert dash.production_backed_up == 4
-    assert dash.development_backed_up == 3
+    assert dash.development_backed_up == 0
     assert dash.restore_checks_pending == 2
     assert "NOT READY" in dash.readiness
     assert "2 production restore-checks pending" in dash.readiness
@@ -116,8 +116,8 @@ def test_dashboard_lists_all_seven_and_readiness(
     assert dash.deferred_dev_names == []
     assert dash.temp_restore_schemas == []
     assert "dev RC deferred" not in dash.scope_summary
-    assert dash.development_summary.startswith("3/3 backed up")
-    assert "RC deferred" in dash.development_summary
+    assert dash.development_summary.endswith("optional")
+    assert "snapshot" in dash.development_summary
 
 
 def test_pending_plans_only_runnable(
@@ -178,17 +178,15 @@ def test_pending_plans_only_runnable(
         "obsidiandroid_core_prod",
         "scytaledroid_core_prod",
     ]
-    assert "scytaledroid_core_dev" in dash.deferred_dev_names
+    assert dash.deferred_dev_names == []
     assert "scytaledroid_core_dev" not in dash.pending_names
     assert "scytaledroid_core_dev" not in dash.runnable_pending
     assert dash.restore_checks_pending == 2
     assert "2 production restore-checks pending" in dash.readiness
     assert "dev RC deferred" not in dash.scope_summary
-    assert dash.development_summary.startswith("3/3 backed up")
-    assert "RC deferred" in dash.development_summary
-    assert "scytaledroid_core_dev" in dash.deferred_dev_names
-    dev_row = next(row for row in dash.rows if row.database == "scytaledroid_core_dev")
-    assert dev_row.restore_check == "Deferred"
+    assert dash.development_summary.endswith("optional")
+    assert "snapshot" in dash.development_summary
+    assert all(row.role == "prod" for row in dash.rows)
 
 
 def test_dashboard_render_and_back_is_readonly(
@@ -267,7 +265,7 @@ def test_dashboard_render_and_back_is_readonly(
     out = capsys.readouterr().out
     assert "Restore and Disaster Recovery" in out
     assert "NOT READY · 2 production restore-checks pending" in out
-    assert "7/7 backed up" in out
+    assert "Production Recovery" in out
     assert "Clean up restore-check databases" not in out
     assert "Temporary restore schemas" not in out
     assert "Production" in out
@@ -408,7 +406,7 @@ def test_dev_unknown_freshness_renders_ok(monkeypatch: pytest.MonkeyPatch) -> No
         if row.role == "dev":
             assert row.freshness == "OK"
             assert row.restore_check == "Deferred"
-    assert len(dash.deferred_dev_names) == 3
+    assert dash.deferred_dev_names == []
 
 
 def test_dashboard_live_mode_hint_when_gated(

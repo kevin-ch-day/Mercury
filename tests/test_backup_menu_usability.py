@@ -82,7 +82,7 @@ def test_main_one_routes_directly_to_backup_operations(
     assert menu_actions()["1"].action_id == MAIN_BACKUP
 
 
-def test_no_duplicate_guided_backup_route() -> None:
+def test_guided_session_is_not_a_primary_backup_route() -> None:
     from mercury.backup.menu_options import ACTION_BACKUP_SYNC_SESSION, BACKUP_MENU_OPTIONS
 
     guided = [
@@ -90,7 +90,7 @@ def test_no_duplicate_guided_backup_route() -> None:
         for key, label, action, _help in BACKUP_MENU_OPTIONS
         if action == ACTION_BACKUP_SYNC_SESSION
     ]
-    assert guided == [("1", "Guided backup session")]
+    assert guided == []
 
 
 def test_restore_check_column_label(
@@ -135,8 +135,8 @@ def test_restore_check_column_label(
     out = capsys.readouterr().out
     assert "RC" in out
     assert " VERIFY" not in out
-    assert out.count("\n[1] Guided backup session") == 1
-    assert "Next: Guided backup session [1]" in out
+    assert out.count("\n[1] Back up and verify production") == 1
+    assert "Next: Back up and verify production [1]" in out
 
 
 def test_recommendation_restore_check_when_fresh_pending(
@@ -380,16 +380,13 @@ def test_backup_screen_next_pending_restore_check(
     _render_backup_screen(plan, show_title=True)
     out = capsys.readouterr().out
     assert "RC" in out
-    assert "Next: Restore and disaster recovery [5] (2)" in out
-    assert "Pending: scytaledroid_core_prod, obsidiandroid_core_prod" in out
-    # Focus precedes storage fields for DEFCON glance.
-    assert out.index("Next: Restore and disaster recovery [5]") < out.index("Backup root")
-    assert "Back [0]" in out and "Main Menu [5]" in out
-    assert "Do not run another backup" in out
-    assert "Phase 3B package sealed — routine backups do not replace it." in out
+    assert "Next: Restore and disaster recovery [5]" not in out
+    assert "Pending: scytaledroid_core_prod" not in out
+    assert "Do not run another backup" not in out
+    assert "Phase 3B package sealed" not in out
     assert "Latest routine backups do not replace" not in out
     assert "[WARN] Restore-check required" not in out
-    assert "Guided backup session      recommended" not in out
+    assert "Back up and verify production      recommended" not in out
 
 
 def test_full_backup_warns_when_protection_already_complete(
@@ -512,5 +509,5 @@ def test_backup_screen_recommends_guided_when_stale(
     plan = build_backup_plan(["erebus_threat_intel_prod"])
     _render_backup_screen(plan, show_title=True)
     out = capsys.readouterr().out
-    assert "Next: Guided backup session [1]" in out
-    assert "Guided backup session      recommended" in out
+    assert "Next: Back up and verify production [1]" in out
+    assert "Back up and verify production      recommended" in out

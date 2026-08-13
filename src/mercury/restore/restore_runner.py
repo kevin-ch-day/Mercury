@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -12,11 +13,12 @@ from pydantic import BaseModel, Field
 
 from mercury.backup.backup_runner import BackupExecutionError, assert_not_production_restore_target
 from mercury.database.core import DatabaseRole, classify_database
-from mercury.database.mariadb.client import run_client_sql, select_client_tool
+from mercury.database.mariadb.client import run_client_query, run_client_sql, select_client_tool
 from mercury.database.mariadb.config import MariaDbConnectionConfig, load_mariadb_config
 from mercury.database.mariadb.errors import MariaDbLiveError
 from mercury.database.mariadb.session import try_load_mariadb_config
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
+from mercury.backup.checksum import sha256_file
 
 ImportRunner = Callable[
     [list[str], dict[str, str], Path, MariaDbConnectionConfig, str],
@@ -197,6 +199,8 @@ def execute_restore_into_database(
     inspect_row_fn=None,
     on_target_created: Callable[[str], None] | None = None,
     on_import_progress=None,
+    restore_preflight=None,
+    require_restore_preflight: bool = False,
 ) -> RestoreExecutionResult:
     """Plan or run ``gunzip -c dump | mariadb target`` for verified backups."""
     if governed_production_cutover:
@@ -229,6 +233,64 @@ def execute_restore_into_database(
             commands=commands,
             cleanup_command=cleanup_command,
         )
+
+    ordinary_live_dev_reset = (
+        execute
+        and recreate_target
+        and classify_database(target_database).role == DatabaseRole.DEVELOPMENT
+        and not (
+            governed_destination_rehearsal
+            or governed_production_cutover
+            or governed_destination_recovery
+        )
+    )
+    if require_restore_preflight or ordinary_live_dev_reset:
+        issues: list[str] = []
+        if restore_preflight is None or not getattr(restore_preflight, "passed", False):
+            issues.append("a passed restore privilege preflight is required")
+        else:
+            if restore_preflight.source_database != source_database:
+                issues.append("preflight source does not match restore source")
+            if restore_preflight.target_database != target_database:
+                issues.append("preflight target does not match restore target")
+            if restore_preflight.artifact_file != dump_path.name:
+                issues.append("preflight artifact does not match restore dump")
+            if restore_preflight.artifact_sha256 != sha256_file(dump_path):
+                issues.append("preflight artifact checksum does not match restore dump")
+            if not getattr(restore_preflight, "backup_id", ""):
+                issues.append("preflight backup identity is missing")
+            manifest_path = dump_path.parent / "manifest.json"
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                if restore_preflight.backup_id != manifest.get("backup_id"):
+                    issues.append("preflight backup ID does not match restore manifest")
+                if manifest.get("sha256") != restore_preflight.artifact_sha256:
+                    issues.append("preflight checksum does not match restore manifest")
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                issues.append(f"restore manifest cannot be bound to preflight: {exc}")
+            if not getattr(restore_preflight, "evidence_written", False):
+                issues.append("preflight evidence receipt was not written")
+            expected_identity = getattr(restore_preflight, "current_user", None)
+            if not expected_identity:
+                issues.append("preflight restore identity is missing")
+            else:
+                try:
+                    identity_cfg = config or try_load_mariadb_config() or load_mariadb_config()
+                    actual_identity = run_client_query(identity_cfg, "SELECT CURRENT_USER()").strip()
+                    if actual_identity != expected_identity:
+                        issues.append("preflight restore identity does not match import identity")
+                except Exception as exc:
+                    issues.append(f"restore identity cannot be verified before modification: {exc}")
+        if issues:
+            return RestoreExecutionResult(
+                source_database=source_database,
+                target_database=target_database,
+                dump_path=str(dump_path),
+                refused=True,
+                message="Restore refused before target modification: " + "; ".join(issues),
+                commands=commands,
+                cleanup_command=cleanup_command,
+            )
 
     if not (governed_destination_rehearsal or governed_production_cutover):
         from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled

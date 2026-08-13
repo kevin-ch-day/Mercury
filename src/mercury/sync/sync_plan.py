@@ -4,11 +4,10 @@ from pydantic import BaseModel, Field
 
 from mercury.database import discover_demo
 from mercury.database.prod_dev_pairs import ProdDevPair, build_prod_dev_pairs
-from mercury.core.safety import SYNC_DEV_CONFIRMATION_PHRASE
 
 SYNC_PLAN_NOTES = [
     "Sync execution remains gated until readiness passes and live confirmation is provided.",
-    f"Future dev sync will require typing: {SYNC_DEV_CONFIRMATION_PHRASE}",
+    "Future dev sync will require explicit [y/N] confirmation.",
     "Prerequisite: verified full backup of each production source before any sync.",
     "Never drop or overwrite *_prod; target is *_dev only.",
 ]
@@ -26,7 +25,6 @@ class SyncPlanEntry(BaseModel):
 class SyncPlanDryRun(BaseModel):
     mode: str = "dry-run"
     enabled: bool = False
-    confirmation_phrase: str = SYNC_DEV_CONFIRMATION_PHRASE
     entries: list[SyncPlanEntry] = Field(default_factory=list)
     skipped: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)

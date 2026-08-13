@@ -57,9 +57,9 @@ def _pair_heading(entry: SyncReadinessEntry) -> str:
 
 
 def _pair_route_label(entry: SyncReadinessEntry) -> str:
-    prod = _display_sync_database_name(entry.prod)
-    dev = _display_sync_database_name(entry.expected_dev)
-    return f"{prod} → {dev}"
+    # The role suffix is safety-critical at the destructive confirmation; do
+    # not make source and target look identical by trimming `_prod` / `_dev`.
+    return f"{entry.prod} → {entry.expected_dev}"
 
 
 def _freshness_label(entry: SyncReadinessEntry) -> str:
@@ -72,7 +72,7 @@ def _freshness_label(entry: SyncReadinessEntry) -> str:
 
 def _sync_status_label(entry: SyncReadinessEntry) -> str:
     if entry.ready_for_sync_planning:
-        return "Ready"
+        return "Preflight required"
     return _compact_readiness_status(ready=False, blockers=entry.blockers)
 
 
@@ -81,7 +81,7 @@ def sync_menu_context_fields(report: SyncReadinessReport, *, live_allowed: bool)
     fields = {
         "Backup root": report.backup_root,
         "Scope": f"verified prod operator backups into dev only ({projects})",
-        "Pairs": f"{report.ready_count} ready · {report.blocked_count} blocked · {len(report.entries)} total",
+        "Pairs": f"{report.ready_count} eligible · {report.blocked_count} blocked · {len(report.entries)} total",
     }
     fields["Execution"] = "live sync allowed" if live_allowed else "preview only (enable live actions in config)"
     return fields
@@ -100,7 +100,7 @@ def sync_menu_next_step(report: SyncReadinessReport, *, live_allowed: bool) -> t
         action_hint = sync_submenu_hint(
             ACTION_SYNC_ALL_READY, report, live_allowed=live_allowed
         )
-        return ("ok", f"All approved pairs are ready — choose {action_hint}.")
+        return ("warn", f"All approved pairs have verified artifacts — restore preflight runs before any dev replacement. Choose {action_hint}.")
     if report.ready_count and report.blocked_count:
         action_hint = sync_submenu_hint(
             ACTION_SYNC_ALL_READY, report, live_allowed=live_allowed

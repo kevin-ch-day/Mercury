@@ -46,6 +46,7 @@ class BackupManifest(BaseModel):
     # attach it only after the dump has been checked against live metadata.
     dump_options: list[str] = Field(default_factory=list)
     object_contract: dict[str, object] | None = None
+    restore_requirements: dict[str, object] | None = None
 
 
 def build_backup_manifest(
@@ -68,6 +69,7 @@ def build_backup_manifest(
     verified: bool = False,
     dump_options: list[str] | None = None,
     object_contract: dict[str, object] | None = None,
+    restore_requirements: dict[str, object] | None = None,
 ) -> BackupManifest:
     """Build a manifest record with stable field ordering via the model."""
     return BackupManifest(
@@ -89,6 +91,7 @@ def build_backup_manifest(
         notes=notes,
         dump_options=dump_options or [],
         object_contract=object_contract,
+        restore_requirements=restore_requirements,
     )
 
 

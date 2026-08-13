@@ -50,7 +50,7 @@ def print_sync_verification_report(report: SyncVerificationReport, *, compact: b
     ]
     display_screen.write_blank()
     table = Table.from_headers(
-        ["SOURCE", "TARGET", "STATUS", "OBJECTS dev/backup", "DETAIL"],
+        ["SOURCE", "TARGET", "STATUS", "TABLES+VIEWS dev/backup", "DETAIL"],
         rows,
         style=TableStyle(indent=0),
         min_col_widths=[24, 24, 12, 18, 24],

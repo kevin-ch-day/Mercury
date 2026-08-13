@@ -232,5 +232,4 @@ def test_print_backup_batch_result_menu_shows_result_table(capsys) -> None:
     assert "BACKUP ID" in out
     assert "android_permission_intel" in out
     assert "written" in out
-    assert "Next: Verify source backups [5]." in out
-
+    assert "Next: Verify and update backup records [2]." in out

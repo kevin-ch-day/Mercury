@@ -162,37 +162,18 @@ def _write_focus_callout(
     )
 
     if pending_rc and not needs_backup:
-        next_line = (
-            f"Next: Restore and disaster recovery [5] ({len(pending_rc)})"
-        )
-        pending_line = f"Pending: {', '.join(pending_rc)}"
-        if colors_enabled():
-            styles = active_styles()
-            output.write(f"{status_badge('warn')} {markup(next_line, styles.recommended)}")
-            output.write(markup(pending_line, styles.value))
-        else:
-            output.write(next_line)
-            output.write(pending_line)
-        output.write(
-            hint_text("Back [0] → Main Menu [5]. Do not run another backup.")
-        )
+        # The RC column already identifies these as restore-check gaps.  Their
+        # names and Phase 3B status belong on the recovery/reporting screens;
+        # repeating them here obscures Backup Operations itself.
         return
 
     if needs_backup:
-        next_line = "Next: Guided backup session [1]"
+        next_line = "Next: Back up and verify production [1]"
         if colors_enabled():
             styles = active_styles()
             output.write(f"{status_badge('warn')} {markup(next_line, styles.recommended)}")
         else:
             output.write(next_line)
-        if pending_rc:
-            pending_line = (
-                f"Pending: restore-check after backup · {', '.join(pending_rc)}"
-            )
-            if colors_enabled():
-                output.write(markup(pending_line, active_styles().value))
-            else:
-                output.write(pending_line)
         return
 
     ready = "Next: Production backups look ready on this screen"
@@ -221,17 +202,17 @@ def _storage_usage_fields(policy) -> dict[str, str]:
 
     if not root.exists():
         if state == "missing path":
-            fields["Status"] = "path missing — mount operator storage first"
+            fields["Backup writer"] += " [PATH MISSING]"
         elif state == "operator mount not mounted":
-            fields["Status"] = "operator storage not mounted"
+            fields["Backup writer"] += " [NOT MOUNTED]"
         else:
-            fields["Status"] = state.replace("-", " ")
+            fields["Backup writer"] += f" [{state.replace('-', ' ').upper()}]"
         return fields
 
     try:
         usage = shutil.disk_usage(root)
     except OSError:
-        fields["Status"] = "unavailable"
+        fields["Backup writer"] += " [UNAVAILABLE]"
         return fields
 
     used_percent = 0.0 if usage.total == 0 else (usage.used / usage.total) * 100.0
@@ -244,11 +225,9 @@ def _storage_usage_fields(policy) -> dict[str, str]:
     else:
         status = state.replace("-", " ")
 
-    # One line: status + capacity (drops a header row on the DEFCON screen).
-    fields["Status"] = (
-        f"{status} · {format_bytes(usage.used)} used · "
-        f"{format_bytes(usage.free)} free ({used_percent:.0f}%)"
-    )
+    fields["Backup writer"] += f" [{status.upper()}]"
+    fields["Used"] = format_bytes(usage.used)
+    fields["Free"] = format_bytes(usage.free)
     return fields
 
 
@@ -400,7 +379,6 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
 
     # Focus first (DEFCON glance), then compact storage fields, then table.
     _write_focus_callout(needs_backup=needs_backup, pending_rc=pending_rc)
-    display_screen.write_blank()
     _write_backup_fields(_storage_usage_fields(policy))
     display_screen.write_blank()
 
@@ -463,10 +441,9 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
         display_screen.write_status("warn", "No databases in active backup scope.")
 
     for warning in getattr(status_report, "warnings", []) or []:
-        # Phase 3B separation is informational, not a repair-style warning.
-        if "Phase 3B" in warning:
-            body_notes.append(("hint", warning))
-        else:
+        # Phase/package history belongs in Reports and Recovery, not this
+        # operational backup menu. Keep only actionable backup-root warnings.
+        if "Phase 3B" not in warning:
             body_notes.append(("status_warn", warning))
 
     if body_notes:
@@ -698,8 +675,8 @@ def _run_development_backup(*, require_confirmation: bool = True):
         )
 
 
-def _run_full_backup(plan: BackupPlanDryRun):
-    """Full backup: production write+verify, optional development write+verify."""
+def _run_full_backup(plan: BackupPlanDryRun, *, allow_development_prompt: bool = False):
+    """Governed production backup; dev snapshots remain an advanced operation."""
     from mercury.storage.host_maintenance import mark_source_changed_since_package
     from mercury.storage.operation_availability import note_backup_after_transition
 
@@ -726,8 +703,8 @@ def _run_full_backup(plan: BackupPlanDryRun):
         display_screen.write_summary("Full backup cancelled.")
         return None
 
-    include_dev = menu_prompts.ask_yes_no(
-        "Also back up configured development databases for migration recovery?",
+    include_dev = allow_development_prompt and menu_prompts.ask_yes_no(
+        "Also snapshot configured development databases?",
         default=False,
     ) is True
     started = datetime.now(timezone.utc)
@@ -936,6 +913,50 @@ def run_development_backup_flow() -> None:
     _run_development_backup()
 
 
+def _run_advanced_backup_menu(plan: BackupPlanDryRun) -> None:
+    """Specialized backup capabilities; none define production DR readiness."""
+    while True:
+        display_screen.open_screen("Advanced Backup Operations")
+        display_screen.write_summary(
+            "Development snapshots are optional and do not determine production recovery readiness."
+        )
+        render_submenu(
+            [
+                ("1", "Snapshot development databases"),
+                ("2", "Production batch backup"),
+                ("3", "Coordinated recovery drill"),
+                ("4", "View governed backup receipts"),
+            ],
+            indent=0,
+        )
+        choice = read_backup_choice()
+        if choice is None or choice == "0":
+            return
+        if choice == "1":
+            display_screen.write_summary(
+                "Use before risky schema work, experiments, debugging, or destructive tests."
+            )
+            _run_development_backup()
+        elif choice == "2":
+            _run_backup(plan)
+        elif choice == "3":
+            from mercury.backup.session_wizard import run_backup_sync_wizard
+
+            run_backup_sync_wizard(interactive=True)
+        elif choice == "4":
+            from mercury.backup.full_backup_receipts import plan_quarantine_invalid_full_backup_receipts
+            from mercury.core.usb_mount import resolve_operator_mount
+
+            receipt_plan = plan_quarantine_invalid_full_backup_receipts(resolve_operator_mount())
+            display_screen.write_fields(
+                {"Governed": receipt_plan.governed_count, "Invalid": receipt_plan.invalid_count}
+            )
+        else:
+            output.write(menu_prompts.invalid_choice_message(choice))
+            continue
+        pause_and_redraw()
+
+
 def run_backup_menu(*, interactive: bool = True) -> None:
     plan = _load_plan()
     show_title = True
@@ -952,37 +973,28 @@ def run_backup_menu(*, interactive: bool = True) -> None:
             return
 
         if choice == "1":
-            from mercury.backup.session_wizard import run_backup_sync_wizard
-
-            run_backup_sync_wizard(interactive=True)
-            plan = _load_plan()
-            show_title = pause_and_redraw()
-            continue
-
-        if choice == "2":
             _run_full_backup(plan)
             plan = _load_plan()
             show_title = pause_and_redraw()
             continue
 
+        if choice == "2":
+            _run_verify_sources()
+            plan = _load_plan()
+            show_title = pause_and_redraw()
+            continue
+
         if choice == "3":
-            _run_backup(plan)
+            _preview_backup_plan(plan)
             plan = _load_plan()
             show_title = pause_and_redraw()
             continue
 
         if choice == "4":
-            _run_development_backup()
+            _run_advanced_backup_menu(plan)
             show_title = pause_and_redraw()
             continue
 
-        if choice == "5":
-            _run_verify_sources()
-            show_title = pause_and_redraw()
-            continue
-
-        if choice == "6":
-            _preview_backup_plan(plan)
             show_title = pause_and_redraw()
             continue
 

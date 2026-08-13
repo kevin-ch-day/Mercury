@@ -204,12 +204,10 @@ def test_existing_refused_receipt_not_governed_success() -> None:
 def test_menu_marks_write_actions_unavailable(detach_host: Path) -> None:
     options = dict(backup_menu_render_options(writes_allowed=False))
     assert DETACH_UNAVAILABLE_SUFFIX in options["2"]
-    assert DETACH_UNAVAILABLE_SUFFIX in options["3"]
-    assert DETACH_UNAVAILABLE_SUFFIX in options["4"]
-    assert DETACH_UNAVAILABLE_SUFFIX in options["5"]
-    assert DETACH_UNAVAILABLE_SUFFIX not in options["1"]
-    assert DETACH_UNAVAILABLE_SUFFIX not in options["6"]
-    assert set(options) == {"1", "2", "3", "4", "5", "6"}
+    assert DETACH_UNAVAILABLE_SUFFIX not in options["3"]
+    assert DETACH_UNAVAILABLE_SUFFIX not in options["4"]
+    assert DETACH_UNAVAILABLE_SUFFIX in options["1"]
+    assert set(options) == {"1", "2", "3", "4"}
 
 
 def test_menu_write_actions_available_after_restore(tmp_path: Path, monkeypatch) -> None:
@@ -226,7 +224,7 @@ def test_menu_write_actions_available_after_restore(tmp_path: Path, monkeypatch)
     )
     options = dict(backup_menu_render_options(writes_allowed=True))
     assert DETACH_UNAVAILABLE_SUFFIX not in options["2"]
-    assert options["2"] == "Run full database backup"
+    assert options["2"] == "Verify and update backup records"
     assert assess_backup_write_preflight().allowed is True
 
 
@@ -279,8 +277,8 @@ def test_backup_screen_shows_write_disabled_state(
     assert "Disabled" in out or "disabled" in out
     assert "unavailable" in out
     assert DETACH_UNAVAILABLE_SUFFIX in out
-    assert "Guided backup session" in out
-    assert "Preview backup plan" in out
+    assert "Back up and verify production" in out
+    assert "Preview production backup plan" in out
 
 
 def test_destination_package_never_includes_refused_run_receipts() -> None:

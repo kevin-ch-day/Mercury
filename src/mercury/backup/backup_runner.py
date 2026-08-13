@@ -34,6 +34,7 @@ from mercury.backup.content_contract import (
     BackupContentContract,
     build_backup_content_contract,
     extract_dump_object_inventory,
+    extract_restore_requirements,
     fetch_live_object_inventory,
 )
 from mercury.backup.live_inventory import (
@@ -509,6 +510,12 @@ def execute_backup(
                     f"{detail or 'unknown object mismatch'}"
                 )
 
+        restore_requirements = (
+            extract_restore_requirements(primary_path)
+            if live_inventory is not None and kind == BACKUP_KIND_FULL and primary_path is not None
+            else None
+        )
+
         checksum_path = backup_dir / CHECKSUM_FILENAME
         checksum_temp = backup_dir / f"{CHECKSUM_FILENAME}.tmp"
         write_checksum_file(backup_dir, checksum_targets, output_path=checksum_temp)
@@ -544,6 +551,11 @@ def execute_backup(
             object_contract=(
                 content_contract.model_dump(mode="json")
                 if content_contract is not None
+                else None
+            ),
+            restore_requirements=(
+                restore_requirements.model_dump(mode="json")
+                if restore_requirements is not None
                 else None
             ),
         )

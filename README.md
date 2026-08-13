@@ -34,7 +34,7 @@ Missing protected sources (e.g. `obsidiandroid_core_prod` not yet on MariaDB) ap
 - Backup **production / source-of-truth** only (`*_prod`, `android_permission_intel`).
 - **Never** back up `*_dev` by default — dev DBs are disposable refresh targets rebuilt from verified source backups when needed.
 - **Never** drop or overwrite `*_prod`; never restore into prod by default.
-- Back up and verify the source before any prod→dev sync; the point is to protect the source state before refreshing dev, and dev sync will require typing `SYNC DEV`.
+- Back up and verify the source before any prod→dev sync; the point is to protect the source state before refreshing dev, and dev sync requires explicit default-no `[y/N]` confirmation.
 - A database is not **protected** until backup verification passes (manifest + checksum).
 
 ## Quick start
@@ -144,7 +144,7 @@ mercury report preview --db <prod> --kind full|schema_only
 
 Use `--dry-run` on `backup run`, `backup batch`, or `backup all` to preview without writing files. The interactive menu uses **Run full backup now** for live writes and **Preview backup plan** for dry-run.
 
-**Destructive actions** (prod→dev sync, deploy, restore-check cleanup) additionally require `[mercury] dry_run = false` and `live_actions_enabled = true` in `config/local.toml`, plus confirmation where applicable (`SYNC DEV` for sync).
+**Destructive actions** (prod→dev sync, deploy, restore-check cleanup) additionally require `[mercury] dry_run = false` and `live_actions_enabled = true` in `config/local.toml`, plus confirmation where applicable (default-no `[y/N]` for sync).
 
 Live backup execution also requires:
 - Fedora or Windows as the runtime host
@@ -163,7 +163,7 @@ mercury sync run [--live] [--source <prod>] [--target <dev>] [--execute]
 mercury sync all [--live] [--execute]
 ```
 
-`sync run --execute` restores verified backups into disposable dev targets. With no filter it processes all ready pairs; `--source` or `--target` limits execution to one pair. `sync all` is the explicit batch alias. For the current milestone, sync readiness only applies to `erebus_threat_intel_prod -> erebus_threat_intel_dev` and `scytaledroid_core_prod -> scytaledroid_core_dev`. `android_permission_intel` and `obsidiandroid_core_prod` are backup-only and do not participate in sync pairing unless dev targets are explicitly configured. Requires live mode and typing `SYNC DEV`.
+`sync run --execute` restores verified backups into disposable dev targets. With no filter it processes all ready pairs; `--source` or `--target` limits execution to one pair. `sync all` is the explicit batch alias. For the current milestone, sync readiness only applies to `erebus_threat_intel_prod -> erebus_threat_intel_dev` and `scytaledroid_core_prod -> scytaledroid_core_dev`. `android_permission_intel` and `obsidiandroid_core_prod` are backup-only and do not participate in sync pairing unless dev targets are explicitly configured. Requires live mode and explicit default-no `[y/N]` confirmation.
 
 ### Repository transfer
 

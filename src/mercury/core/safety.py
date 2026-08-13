@@ -4,8 +4,6 @@ MODE_SEED = "seed"
 DRY_RUN_ONLY = True
 LIVE_ACTIONS_ENABLED = False
 
-# Future prod-to-dev sync confirmation (not used in seed)
-SYNC_DEV_CONFIRMATION_PHRASE = "SYNC DEV"
 # Storage migration copy confirmation (does not switch writers / cutover)
 MIGRATE_PRIMARY_CONFIRMATION_PHRASE = "MIGRATE PRIMARY"
 
@@ -17,14 +15,14 @@ Mercury safety policy:
 - Never drop or overwrite *_prod.
 - Never restore into *_prod by default.
 - Always backup and verify the source before syncing into dev.
-- Show source and target before destructive actions; require typing SYNC DEV for dev sync.
+- Show source and target before destructive actions; require explicit default-no confirmation for dev sync.
 - Seed/non-operator hosts: planning and discovery; no destructive sync/deploy/restore. Backup writes need a ready operator-storage environment.
 """.strip()
 
 SAFETY_NOTES = [
     "Backups write to operator storage when MariaDB, config, and backup root are valid.",
     "Production (*_prod) and shared authority DBs are backup sources.",
-    "Development (*_dev) DBs are excluded from routine backup; an explicit confirmed recovery capture is available only for configured dev targets.",
+    "Development (*_dev) DBs are excluded from routine backup; explicit configured dev snapshots are optional, non-authoritative preservation.",
     "Never drop or overwrite *_prod.",
     "Verify source backups before any prod-to-dev sync so dev refresh never runs without source protection.",
     "Restore-check temp DBs (_restorecheck_*) are never backup sources.",

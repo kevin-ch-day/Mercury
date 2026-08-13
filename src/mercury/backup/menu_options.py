@@ -14,49 +14,36 @@ ACTION_BUNDLE = "write_bundle"
 ACTION_PREVIEW = "preview_plan"
 ACTION_HANDOFF = "open_handoff"
 ACTION_DEV_BACKUP = "development_backup"
+ACTION_ADVANCED = "advanced_backup"
 # Backward-compatible alias (Refresh removed from primary slots in Phase 2).
 ACTION_REFRESH = "refresh"
 
-# Backup Ops is backup/verify only. Restore, bundle, and handoff live elsewhere.
+# Backup Ops has one routine production lane; specialized preservation and
+# multi-system recovery work lives in the Advanced submenu.
 BACKUP_MENU_OPTIONS: Final[list[tuple[str, str, str, str]]] = [
     (
         "1",
-        "Guided backup session",
-        ACTION_BACKUP_SYNC_SESSION,
-        "Guided production backup and verify; optional development backup. "
-        "Sync and Git lanes remain under their own Main Menu areas.",
+        "Back up and verify production",
+        ACTION_FULL_BACKUP,
+        "Back up and verify all authoritative production sources. Creates a governed run receipt.",
     ),
     (
         "2",
-        "Run full database backup",
-        ACTION_FULL_BACKUP,
-        "Back up all configured production databases, verify those newly written "
-        "backups, then optionally back up and verify development databases.",
+        "Verify and update backup records",
+        ACTION_VERIFY,
+        "Recheck existing production artifacts and update verification metadata; creates no backup.",
     ),
     (
         "3",
-        "Back up production databases",
-        ACTION_PRODUCTION_BACKUP,
-        "Production-only backup workflow (does not include development databases).",
+        "Preview production backup plan",
+        ACTION_PREVIEW,
+        "Dry-run production backup plan.",
     ),
     (
         "4",
-        "Back up development databases",
-        ACTION_DEV_BACKUP,
-        "Development databases required for platform recovery scope "
-        "(RC execute still deferred under Restore [5]; not the handoff package).",
-    ),
-    (
-        "5",
-        "Verify source backups",
-        ACTION_VERIFY,
-        "Verify on-disk production/shared backup artifacts and stamp manifests.",
-    ),
-    (
-        "6",
-        "Preview backup plan",
-        ACTION_PREVIEW,
-        "Dry-run production backup plan.",
+        "Advanced backup operations",
+        ACTION_ADVANCED,
+        "Development snapshots, expert production batch backup, coordinated recovery drill, and receipt review.",
     ),
 ]
 
@@ -65,6 +52,9 @@ CROSS_AREA_NEXT_HINTS: Final[dict[str, tuple[str, str]]] = {
     ACTION_RESTORE_CHECK: ("5", "Restore and disaster recovery"),
     ACTION_BUNDLE: ("7", "Deployment and handoff"),
     ACTION_HANDOFF: ("7", "Deployment and handoff"),
+    ACTION_BACKUP_SYNC_SESSION: ("4", "Advanced backup operations"),
+    ACTION_PRODUCTION_BACKUP: ("4", "Advanced backup operations"),
+    ACTION_DEV_BACKUP: ("4", "Advanced backup operations"),
 }
 
 # Actions that write under the Mercury HDD (or mutate manifests).
@@ -90,7 +80,7 @@ def backup_menu_render_options(
     options: list[tuple[str, str]] = []
     for key, label, action_id, _help in BACKUP_MENU_OPTIONS:
         display = label
-        if recommend_guided and action_id == ACTION_BACKUP_SYNC_SESSION:
+        if recommend_guided and action_id == ACTION_FULL_BACKUP:
             display = f"{label}      recommended"
         # Session remains selectable while writes are disabled so guided restore can run.
         if (

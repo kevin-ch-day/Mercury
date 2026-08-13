@@ -87,11 +87,11 @@ def test_cli_db_active() -> None:
     result = run_cli("db", "active")
     assert result.returncode == 0 or "local.toml" in (result.stdout + result.stderr).lower()
 
-def test_cli_sync_run_help_does_not_offer_yes_bypass() -> None:
+def test_cli_sync_run_help_describes_default_no_confirmation() -> None:
     result = run_cli("sync", "run", "--help")
     assert result.returncode == 0
     assert "--yes" not in result.stdout
-    assert "SYNC DEV" in result.stdout
+    assert "default-no" in result.stdout
 
 
 def test_cli_migration_readiness_commands_are_registered() -> None:

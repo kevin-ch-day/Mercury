@@ -7,7 +7,6 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from mercury.core.execution_policy import ExecutionPolicy
-from mercury.core.safety import SYNC_DEV_CONFIRMATION_PHRASE
 from mercury.restore.restore_runner import execute_restore_into_database
 from mercury.sync.readiness import SyncReadinessEntry
 
@@ -24,7 +23,6 @@ class SyncExecutionResult(BaseModel):
 
 
 class SyncBatchResult(BaseModel):
-    confirmation_phrase: str = SYNC_DEV_CONFIRMATION_PHRASE
     results: list[SyncExecutionResult] = Field(default_factory=list)
     executed_count: int = 0
     dry_run_count: int = 0
@@ -85,6 +83,24 @@ def run_sync_batch(
             batch.refused_count += 1
             continue
 
+        if execute:
+            from mercury.sync.restore_preflight import evaluate_restore_privileges
+
+            preflight = evaluate_restore_privileges(
+                source=entry.prod,
+                target=entry.expected_dev,
+                backup_dir=Path(entry.latest_backup_dir),
+            )
+            if not preflight.passed:
+                detail = ", ".join(preflight.missing_capabilities or preflight.unknown_requirements or preflight.inspection_issues)
+                batch.results.append(SyncExecutionResult(
+                    source=entry.prod, target=entry.expected_dev, backup_dir=entry.latest_backup_dir,
+                    refused=True, verification_passed=None,
+                    message=f"Restore privilege preflight refused before target modification: {detail}",
+                ))
+                batch.refused_count += 1
+                continue
+
         restore = execute_restore_into_database(
             target_database=entry.expected_dev,
             dump_path=dump_path,
@@ -93,6 +109,8 @@ def run_sync_batch(
             policy=policy,
             recreate_target=True,
             import_runner=import_runner,
+            restore_preflight=preflight if execute else None,
+            require_restore_preflight=execute,
         )
         batch.results.append(
             SyncExecutionResult(

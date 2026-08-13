@@ -123,12 +123,11 @@ def _render_dashboard(dashboard: RecoveryDashboard, *, show_title: bool) -> None
     display_screen.write_blank()
 
     fields = {
-        "Readiness": dashboard.readiness,
-        "Scope": (
-            f"{dashboard.scope_summary} · {dashboard.development_summary}"
-            if dashboard.development_summary
-            else dashboard.scope_summary
-        ),
+        "Production Recovery": dashboard.readiness,
+        "Development Rebuild": dashboard.development_rebuild_status,
+        "Development Snapshots": dashboard.development_snapshot_status,
+        "Production scope": dashboard.scope_summary,
+        "Snapshots": dashboard.development_summary,
         "Latest": dashboard.latest_backup_label,
         "Package": dashboard.package_line,
     }

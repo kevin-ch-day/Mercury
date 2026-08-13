@@ -20,6 +20,7 @@ from mercury.core.runtime import should_probe_database_status
 from mercury.core.usb_mount import resolve_operator_mount
 from mercury.restore.check_plan import RestoreCheckPlan, build_restore_check_plan
 from mercury.restore.recovery_scope import (
+    DEVELOPMENT_SNAPSHOT_DATABASES,
     REQUIRED_RECOVERY_DATABASES,
     REQUIRED_RECOVERY_DEVELOPMENT,
     REQUIRED_RECOVERY_PRODUCTION,
@@ -59,6 +60,8 @@ class RecoveryDashboard:
     deferred_dev_names: list[str]
     # Compact one-line status (no per-DB development table on the dashboard).
     development_summary: str
+    development_rebuild_status: str = field(default="CHECK REQUIRED", kw_only=True)
+    development_snapshot_status: str = field(default="OPTIONAL", kw_only=True)
     temp_restore_schemas: list[str]
     latest_backup_label: str
     package_line: str
@@ -116,20 +119,20 @@ def _development_summary(
     missing_names: list[str],
     latest_label: str,
 ) -> str:
-    """One-line development status — backups matter; RC execute is deferred."""
+    """Optional snapshot availability; never a production readiness condition."""
     if total == 0:
         return "none in scope"
     if backed >= total and not missing_names:
         latest = ""
         if latest_label and latest_label != "none":
             latest = f" · latest {latest_label}"
-        return f"{backed}/{total} backed up{latest} · RC deferred"
+        return f"{backed}/{total} verified snapshot(s){latest} · optional"
     missing = ", ".join(missing_names) if missing_names else f"{total - backed} missing"
-    return f"{backed}/{total} backed up · missing {missing} · RC deferred"
+    return f"{backed}/{total} verified snapshot(s) · none for {missing} · optional"
 
 
 def build_recovery_dashboard(*, live: bool | None = None) -> RecoveryDashboard:
-    """Observe-only recovery dashboard for the seven required databases."""
+    """Observe authoritative recovery separately from optional development state."""
     probe = should_probe_database_status() if live is None else live
     report = build_recovery_scope_status_report(live=probe)
     by_name = {entry.database: entry for entry in report.entries}
@@ -147,7 +150,7 @@ def build_recovery_dashboard(*, live: bool | None = None) -> RecoveryDashboard:
     deferred_dev_names: list[str] = []
     passed = 0
 
-    for name in REQUIRED_RECOVERY_DATABASES:
+    for name in REQUIRED_RECOVERY_PRODUCTION:
         entry = by_name.get(name)
         is_prod = is_required_recovery_production(name)
         rc_label, needs_rc = _restore_check_display(entry)
@@ -189,13 +192,16 @@ def build_recovery_dashboard(*, live: bool | None = None) -> RecoveryDashboard:
         for name in REQUIRED_RECOVERY_PRODUCTION
         if _backed_up(by_name.get(name))
     )
-    dev_backed = sum(
-        1
-        for name in REQUIRED_RECOVERY_DEVELOPMENT
-        if _backed_up(by_name.get(name))
+    from mercury.backup.status import build_backup_status_report
+
+    snapshot_report = build_backup_status_report(
+        live=probe,
+        sources_override=list(DEVELOPMENT_SNAPSHOT_DATABASES),
+        allow_development_backup=True,
     )
+    snapshot_by_name = {entry.database: entry for entry in snapshot_report.entries}
+    dev_backed = sum(1 for name in DEVELOPMENT_SNAPSHOT_DATABASES if _backed_up(snapshot_by_name.get(name)))
     pending_count = len(pending_names)
-    backed_total = prod_backed + dev_backed
     prod_rc_passed = sum(
         1
         for name in REQUIRED_RECOVERY_PRODUCTION
@@ -204,14 +210,14 @@ def build_recovery_dashboard(*, live: bool | None = None) -> RecoveryDashboard:
 
     if pending_count:
         readiness = f"NOT READY · {pending_count} production restore-checks pending"
-    elif backed_total < len(REQUIRED_RECOVERY_DATABASES):
-        missing = len(REQUIRED_RECOVERY_DATABASES) - backed_total
-        readiness = f"NOT READY · {missing} databases missing verified backups"
+    elif prod_backed < len(REQUIRED_RECOVERY_PRODUCTION):
+        missing = len(REQUIRED_RECOVERY_PRODUCTION) - prod_backed
+        readiness = f"NOT READY · {missing} authoritative source(s) missing verified backups"
     else:
         readiness = "READY · production restore-checks complete"
 
     scope_summary = (
-        f"{backed_total}/7 backed up · "
+        f"{prod_backed}/{len(REQUIRED_RECOVERY_PRODUCTION)} authoritative sources backed up · "
         f"prod RC {prod_rc_passed}/{len(REQUIRED_RECOVERY_PRODUCTION)}"
     )
 
@@ -229,13 +235,13 @@ def build_recovery_dashboard(*, live: bool | None = None) -> RecoveryDashboard:
 
     missing_dev = [
         name
-        for name in REQUIRED_RECOVERY_DEVELOPMENT
-        if not _backed_up(by_name.get(name))
+        for name in DEVELOPMENT_SNAPSHOT_DATABASES
+        if not _backed_up(snapshot_by_name.get(name))
     ]
     dev_timestamps = [
         entry.backup_created_at
-        for name in REQUIRED_RECOVERY_DEVELOPMENT
-        for entry in [by_name.get(name)]
+        for name in DEVELOPMENT_SNAPSHOT_DATABASES
+        for entry in [snapshot_by_name.get(name)]
         if entry is not None
         and entry.protection_status == "verified"
         and entry.backup_created_at
@@ -245,10 +251,27 @@ def build_recovery_dashboard(*, live: bool | None = None) -> RecoveryDashboard:
     )
     development_summary = _development_summary(
         backed=dev_backed,
-        total=len(REQUIRED_RECOVERY_DEVELOPMENT),
+        total=len(DEVELOPMENT_SNAPSHOT_DATABASES),
         missing_names=missing_dev,
         latest_label=dev_latest,
     )
+    # Sync readiness is artifact/config inspection only. It intentionally does
+    # not run the live privilege preflight during a dashboard render.
+    rebuild_status = "CHECK REQUIRED"
+    try:
+        from mercury.sync.readiness import build_sync_readiness_report
+
+        rebuild = build_sync_readiness_report(live=probe)
+        if rebuild.entries and all(entry.ready_for_sync_planning for entry in rebuild.entries):
+            rebuild_status = "CHECK REQUIRED"
+        elif any("restore-requirements" in blocker for entry in rebuild.entries for blocker in entry.blockers):
+            rebuild_status = "NO COMPATIBLE CONTRACT"
+        elif rebuild.entries:
+            rebuild_status = "NO VERIFIED SOURCE"
+    except Exception:
+        # A dashboard must remain observational when local sync discovery is
+        # unavailable; it must not imply destructive readiness.
+        rebuild_status = "CHECK REQUIRED"
 
     return RecoveryDashboard(
         report=report,
@@ -257,13 +280,15 @@ def build_recovery_dashboard(*, live: bool | None = None) -> RecoveryDashboard:
         production_backed_up=prod_backed,
         production_total=len(REQUIRED_RECOVERY_PRODUCTION),
         development_backed_up=dev_backed,
-        development_total=len(REQUIRED_RECOVERY_DEVELOPMENT),
+        development_total=len(DEVELOPMENT_SNAPSHOT_DATABASES),
         restore_checks_passed=passed,
         restore_checks_pending=pending_count,
         pending_names=pending_names,
         runnable_pending=runnable_pending,
         deferred_dev_names=deferred_dev_names,
         development_summary=development_summary,
+        development_rebuild_status=rebuild_status,
+        development_snapshot_status="OPTIONAL",
         temp_restore_schemas=temp_schemas,
         latest_backup_label=_latest_backup_label(report),
         package_line=package,

@@ -89,8 +89,6 @@ def print_sync_plan(plan: SyncPlanDryRun, *, compact: bool = False) -> None:
 
     output.heading("Production sync plan (dry-run)")
     output.field("enabled", plan.enabled)
-    output.field("confirmation_phrase", plan.confirmation_phrase)
-
     output.heading("Planned sync pairs")
     if not plan.entries:
         output.item("(none)")

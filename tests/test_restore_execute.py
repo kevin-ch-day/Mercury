@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
@@ -54,7 +55,24 @@ def test_execute_restore_refused_when_dry_run_policy(tmp_path: Path) -> None:
     assert result.executed is False
 
 
-def test_execute_restore_live_uses_runner(tmp_path: Path) -> None:
+def test_execute_restore_preflight_refusal_happens_before_database_calls(tmp_path: Path) -> None:
+    dump = tmp_path / "erebus.sql.gz"
+    dump.write_bytes(b"fake")
+    policy = ExecutionPolicy(dry_run=False, live_actions_enabled=True, backup_root=tmp_path)
+    result = execute_restore_into_database(
+        target_database="erebus_threat_intel_dev",
+        dump_path=dump,
+        source_database="erebus_threat_intel_prod",
+        execute=True,
+        policy=policy,
+        require_restore_preflight=True,
+        restore_preflight=SimpleNamespace(passed=False),
+    )
+    assert result.refused is True
+    assert "before target modification" in result.message
+
+
+def test_execute_restore_live_dev_without_preflight_refuses_before_runner(tmp_path: Path) -> None:
     dump = tmp_path / "erebus.sql.gz"
     dump.write_bytes(b"fake")
     policy = ExecutionPolicy(
@@ -101,8 +119,10 @@ def test_execute_restore_live_uses_runner(tmp_path: Path) -> None:
 
         restore_execute._execute_client_sql = original  # type: ignore[method-assign]
 
-    assert result.executed is True
-    assert calls
+    assert result.executed is False
+    assert result.refused is True
+    assert "preflight" in result.message
+    assert calls == []
 
 
 def test_restore_check_auto_drops_temp_database_on_success(tmp_path: Path) -> None:

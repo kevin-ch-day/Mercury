@@ -16,7 +16,17 @@ The reason Mercury requires verified source backups before sync is to protect th
 1. **Classify** — Confirm prod and dev pair names and roles.
 2. **Backup source** — Full backup of the `*_prod` source before any dev refresh.
 3. **Verify backup** — Confirm backup integrity before any sync.
-4. **Sync to dev** — Restore verified backup into `*_dev` only after steps 2–3 succeed.
+4. **Restore preflight** — Bind the verified dump to its restore-requirements
+   contract, inspect the actual restore identity and effective target-scoped
+   capabilities, and write private preflight evidence.
+5. **Sync to dev** — Restore into `*_dev` only after steps 2–4 succeed.
+
+The preflight is fail-closed. Historical artifacts can remain integrity-verified,
+but Mercury will not replace a development target from one that predates the
+restore-requirements contract. A missing capability (for example `ALTER ROUTINE`
+when the dump contains `DROP PROCEDURE`) is refused before `DROP DATABASE`.
+Preflight receipts are private operator-storage evidence under
+`.mercury_control/restore_preflights/`; receipt-write failure also blocks live sync.
 
 ## Prohibitions
 
@@ -37,9 +47,9 @@ CLI:
 
 ```bash
 mercury sync readiness --live
-mercury sync run --live --execute         # requires typing SYNC DEV
+mercury sync run --live --execute         # requires default-no [y/N] confirmation
 ```
 
-Menu: **Sync Production -> Development** → Prepare → Sync ready pairs (requires typing `SYNC DEV`).
+Menu: **Sync Production -> Development** → Prepare → Sync ready pairs (requires default-no `[y/N]` confirmation).
 
 Out-of-scope databases (for example legacy `gecko_research_database_*`, Komodo/market-event `droid_threat_intel_db_*`, and `proofpoint_cti_db_dev`) do not participate in sync planning for this milestone. Live discovery may still show them for operator awareness, but they are not treated as backup or sync blockers. `obsidiandroid_core_prod` is a protected backup source but is backup-only unless `obsidiandroid_core_dev` is explicitly added to sync scope.

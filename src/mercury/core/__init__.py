@@ -22,7 +22,6 @@ from mercury.core.safety import (
     MODE_SEED,
     POLICY_SUMMARY,
     SAFETY_NOTES,
-    SYNC_DEV_CONFIRMATION_PHRASE,
 )
 
 __all__ = [
@@ -43,7 +42,6 @@ __all__ = [
     "PROTECTION_REPORT_FILE",
     "REPO_ROOT",
     "SAFETY_NOTES",
-    "SYNC_DEV_CONFIRMATION_PHRASE",
     "bullet",
     "field",
     "heading",

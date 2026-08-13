@@ -10,6 +10,8 @@ from mercury.sync.terminal.readiness import (
     sync_menu_next_step,
     sync_menu_table_rows,
 )
+from mercury.sync.terminal.verification import print_sync_verification_report
+from mercury.sync.verification import SyncVerificationEntry, SyncVerificationReport
 
 
 def _sample_report(*, ready: bool = True) -> SyncReadinessReport:
@@ -53,9 +55,9 @@ def test_menu_readiness_shows_table_with_backup_age(capsys: pytest.CaptureFixtur
     print_sync_readiness_report(_sample_report(ready=True), compact=True, menu=True)
     out = capsys.readouterr().out
     assert "PROJECT" in out and "PROD → DEV" in out and "BACKUP" in out
-    assert "erebus_threat_intel → erebus_threat_intel" in out
+    assert "erebus_threat_intel_prod → erebus_threat_intel_dev" in out
     assert "12m ago" in out
-    assert "All approved pairs are ready" in out
+    assert "restore preflight runs before any dev replacement" in out
     assert "Sync All Ready Databases" in out
     assert "…" not in out
 
@@ -65,17 +67,42 @@ def test_menu_readiness_shows_actionable_blocker_text(capsys: pytest.CaptureFixt
     out = capsys.readouterr().out
     assert "backup stale" in out or "Ready" not in out.split("SYNC")[-1]
     assert "Run full backup" in out
-    assert "0 ready · 2 blocked" in out
+    assert "0 eligible · 2 blocked" in out
 
 
-def test_sync_menu_table_rows_use_short_route_labels() -> None:
+def test_sync_menu_table_rows_show_exact_source_and_target_labels() -> None:
     rows = sync_menu_table_rows(_sample_report(ready=True))
-    assert rows[0][1] == "erebus_threat_intel → erebus_threat_intel"
+    assert rows[0][1] == "erebus_threat_intel_prod → erebus_threat_intel_dev"
     assert rows[0][2] == "12m ago"
-    assert rows[0][4] == "Ready"
+    assert rows[0][4] == "Preflight required"
 
 
 def test_sync_menu_next_step_when_all_ready() -> None:
     tag, message = sync_menu_next_step(_sample_report(ready=True), live_allowed=True)
-    assert tag == "ok"
+    assert tag == "warn"
     assert "Sync All Ready Databases" in message
+
+
+def test_sync_verification_labels_tables_and_views_not_all_objects(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    report = SyncVerificationReport(
+        mode="live",
+        complete_count=1,
+        entries=[
+            SyncVerificationEntry(
+                source="erebus_threat_intel_prod",
+                target="erebus_threat_intel_dev",
+                status="complete",
+                ready=True,
+                live_objects=205,
+                backup_objects=205,
+            )
+        ],
+    )
+
+    print_sync_verification_report(report, compact=True)
+
+    out = capsys.readouterr().out
+    assert "TABLES+VIEWS dev/backup" in out
+    assert "OBJECTS dev/backup" not in out

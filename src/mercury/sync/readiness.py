@@ -17,6 +17,12 @@ from mercury.backup.freshness import (
     parse_backup_timestamp,
 )
 from mercury.backup.layout import MANIFEST_FILENAME
+from mercury.backup.content_contract import (
+    IMPORT_TRANSFORM_VERSION,
+    RESTORE_REQUIREMENTS_CONTRACT_VERSION,
+    RESTORE_REQUIREMENTS_SCANNER_VERSION,
+    RestoreRequirementsContract,
+)
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.runtime import should_probe_database_status
@@ -50,6 +56,23 @@ def _load_backup_created_at(backup_dir) -> str | None:
         return None
     created_at = data.get("created_at")
     return str(created_at) if created_at else None
+
+
+def _restore_requirements_issue(backup_dir) -> str | None:
+    try:
+        data = json.loads((backup_dir / MANIFEST_FILENAME).read_text(encoding="utf-8"))
+        contract = RestoreRequirementsContract.model_validate(data.get("restore_requirements"))
+    except Exception:
+        return "Selected backup predates Mercury's verified restore-requirements contract; development target will not be modified."
+    if not contract.verified or contract.issues:
+        return "Selected backup restore-requirements contract is not verified."
+    if (contract.contract_version != RESTORE_REQUIREMENTS_CONTRACT_VERSION
+        or contract.import_transform_version != IMPORT_TRANSFORM_VERSION
+        or contract.scanner_version != RESTORE_REQUIREMENTS_SCANNER_VERSION):
+        return "Selected backup restore-requirements contract is unsupported by this Mercury importer."
+    if contract.artifact_file != data.get("dump_file") or contract.artifact_sha256 != data.get("sha256"):
+        return "Selected backup restore-requirements contract does not match the verified dump artifact."
+    return None
 
 
 class SyncReadinessReport(BaseModel):
@@ -118,6 +141,10 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
                 blockers.append(
                     f"Pinned backup '{backup_id}' is not artifact-verified (manifest/checksum/size/role)."
                 )
+            else:
+                contract_issue = _restore_requirements_issue(backup_dir)
+                if contract_issue:
+                    blockers.append(contract_issue)
             if verify.backup_kind != BACKUP_KIND_FULL:
                 blockers.append(f"Pinned backup '{backup_id}' is not a verified full backup.")
             elif backup_verified and live and should_probe_database_status():

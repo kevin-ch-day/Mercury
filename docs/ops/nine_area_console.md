@@ -61,12 +61,14 @@ under the homes above and via unchanged CLI groups.
   Long dumps print a heartbeat about every 20s so large databases do not look hung.
   Production/dev write paths auto-verify after dump; pigz is preferred for
   compress/decompress when installed.
-- **Backup Operations [1] Guided backup session** is backup-first: production
+- **Backup Operations [4] Advanced → Coordinated recovery drill** is the optional multi-lane workflow: production
   back up + verify by default; Git/sync/dev asked optionally and labeled with
   Main Menu homes. Full “recommended” multi-lane plan remains available to
   non-interactive / customize paths via `recommended_session_plan()`.
-- **Backup Operations** is backup/verify only (guided, full/prod/dev write,
-  verify, preview). Restore-check execution stays under Main **[5]**.
+- **Backup Operations** has one routine governed production backup route,
+  verification-record updates, and a read-only plan preview. Development
+  snapshots and coordinated drills are Advanced. Restore-check execution stays
+  under Main **[5]**.
 - **[2]** includes sync readiness, transfer status, transfer/handoff history, and
   write/receive command card (`transfer write` dry-run without `--execute`).
 - **[3]** shows offline HDD clone status on the same screen as update/check,
@@ -74,9 +76,10 @@ under the homes above and via unchanged CLI groups.
   is labeled with the pending count; **[2]** re-checks. Bundle execute stays
   `repo bundle --execute`.
 - **[5]** opens the consolidated **Restore and Disaster Recovery** dashboard
-  (seven required databases). Focus/next-action is first; the Production table
-  is actionable. Development is a one-line summary (backed up N/3 · RC deferred),
-  not a per-DB table. Pending production restore-checks drive readiness and
+  for the four authoritative production/shared sources. Development is reported
+  separately as rebuild readiness plus optional snapshot availability; it never
+  makes Production Recovery fail merely because no snapshot exists. Pending
+  production restore-checks drive readiness and
   **[1]**; cleanup **[3]** appears only when `_restorecheck_*` schemas exist.
   Separate status-only Restore-check Operations / Disaster Recovery screens are
   removed from the menu path.

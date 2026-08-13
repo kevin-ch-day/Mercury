@@ -81,19 +81,17 @@ def test_run_backup_menu_non_interactive(
     assert "excluded" not in out
     assert "Ignored databases:" not in out
     assert "Fresh full backup needed before workstation handoff" in out
-    assert "\n[1] Guided backup session" in out
-    assert "\n[2] Run full database backup" in out
-    assert "\n[3] Back up production databases" in out
-    assert "\n[4] Back up development databases" in out
-    assert "\n[5] Verify source backups" in out
-    assert "\n[6] Preview backup plan" in out
+    assert "\n[1] Back up and verify production" in out
+    assert "\n[2] Verify and update backup records" in out
+    assert "\n[3] Preview production backup plan" in out
+    assert "\n[4] Advanced backup operations" in out
     assert "Restore-check source backups" not in out
     assert "Write DB bundle and runbooks" not in out
     assert "Open workstation handoff" not in out
     assert "Verify on-disk backups" not in out
     from mercury.backup.menu_options import ACTION_VERIFY, backup_menu_hint
 
-    assert backup_menu_hint(ACTION_VERIFY) == "Verify source backups [5]"
+    assert backup_menu_hint(ACTION_VERIFY) == "Verify and update backup records [2]"
 
 
 def test_backup_menu_section_spacing_boundaries(
@@ -190,18 +188,11 @@ def test_backup_menu_section_spacing_boundaries(
         raise AssertionError(f"line not found for {predicate!r}\n{out}")
 
     title_i = index_of(lambda line: line.strip() == "Backup Operations")
-    next_i = index_of(lambda line: "Next: Restore and disaster recovery [5]" in line)
-    pending_i = index_of(lambda line: line.startswith("Pending: android_permission_intel"))
     status_i = index_of(lambda line: "Status" in line and "ok" in line)
     capacity_i = index_of(lambda line: "Capacity" in line)
     header_i = index_of(lambda line: line.startswith("DATABASE"))
-    assert next_i > title_i
-    assert pending_i == next_i + 1
-    hint_i = index_of(lambda line: "Back [0]" in line and "Main Menu [5]" in line)
-    assert hint_i == pending_i + 1
-    assert lines[hint_i + 1] == ""
     root_i = index_of(lambda line: "Backup root" in line)
-    assert root_i == hint_i + 2
+    assert root_i > title_i
     assert status_i > root_i
     assert capacity_i > status_i
     assert lines[capacity_i + 1] == ""
@@ -211,16 +202,13 @@ def test_backup_menu_section_spacing_boundaries(
     db_i = index_of(lambda line: line.startswith("android_permission_intel"))
     assert lines[db_i + 1] == ""
 
-    phase_i = index_of(
-        lambda line: "Phase 3B package sealed — routine backups do not replace it."
-        in line
-    )
-    assert phase_i == db_i + 2
+    assert "Next: Restore and disaster recovery [5]" not in out
+    assert "Pending: android_permission_intel" not in out
+    assert "Phase 3B package sealed" not in out
     assert "Latest routine backups" not in out
-    assert lines[phase_i + 1] == ""
 
-    menu_i = index_of(lambda line: line.startswith("[1] Guided backup session"))
-    assert menu_i == phase_i + 2
+    menu_i = index_of(lambda line: line.startswith("[1] Back up and verify production"))
+    assert menu_i > db_i
     assert "recommended" not in lines[menu_i].lower()
     back_i = index_of(lambda line: line.startswith("[0] Back"))
     assert back_i > menu_i
@@ -519,7 +507,9 @@ def test_full_backup_can_include_dev_recovery_copy(monkeypatch: pytest.MonkeyPat
         lambda _plan: False,
     )
 
-    result = _run_full_backup(build_backup_plan(["android_permission_intel"]))
+    result = _run_full_backup(
+        build_backup_plan(["android_permission_intel"]), allow_development_prompt=True
+    )
     assert calls == ["production", "dev"]
     assert result is not None
     assert result.development.requested is True

@@ -2775,7 +2775,7 @@ def sync_run_cmd(
     execute: bool = typer.Option(
         False,
         "--execute",
-        help="Restore verified backups into dev targets (requires live actions and typing SYNC DEV).",
+        help="Restore verified backups into dev targets (requires live actions and a default-no confirmation).",
     ),
     source: str | None = typer.Option(
         None,
@@ -2790,7 +2790,6 @@ def sync_run_cmd(
 ) -> None:
     """Plan or execute development refresh for ready production sync pairs."""
     from mercury.core.execution_policy import load_execution_policy
-    from mercury.core.safety import SYNC_DEV_CONFIRMATION_PHRASE
     from mercury.sync.sync_runner import run_sync_batch
     from mercury.sync.selection import select_sync_entries
     from mercury.sync.terminal.runner import print_sync_batch_result
@@ -2808,9 +2807,11 @@ def sync_run_cmd(
 
     policy = load_execution_policy()
     if execute and policy.live_execution_allowed():
-        typer.echo(f"Type {SYNC_DEV_CONFIRMATION_PHRASE!r} to sync into dev.")
-        typed = typer.prompt("Confirm")
-        if typed != SYNC_DEV_CONFIRMATION_PHRASE:
+        typer.echo("Production will NOT be modified.")
+        typer.echo("Development WILL be deleted and rebuilt from verified backups:")
+        for entry in ready:
+            typer.echo(f"  {entry.prod} -> {entry.expected_dev}")
+        if not typer.confirm("Replace the listed development database(s)?", default=False):
             typer.echo("Cancelled.")
             raise typer.Exit(1)
 
@@ -2826,7 +2827,7 @@ def sync_all_cmd(
     execute: bool = typer.Option(
         False,
         "--execute",
-        help="Restore all ready verified backups into dev targets (requires live actions and typing SYNC DEV).",
+        help="Restore all ready verified backups into dev targets (requires live actions and a default-no confirmation).",
     ),
 ) -> None:
     """Plan or execute sync for all ready production sync pairs."""
