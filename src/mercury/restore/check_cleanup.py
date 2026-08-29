@@ -11,6 +11,13 @@ from mercury.database.mariadb.config import MariaDbConnectionConfig, load_mariad
 from mercury.database.mariadb.errors import MariaDbLiveError
 from mercury.database.mariadb.session import try_load_mariadb_config
 
+# Phase 3B retained rehearsal copies. Generic cleanup must not drop them;
+# use mercury restore-check retire-phase3b-restorecheck.
+PHASE3B_RETAINED_RESTORECHECK = frozenset({
+    "_restorecheck_erebus_threat_intel_prod_20260722T055400Z_phase3b",
+    "_restorecheck_android_permission_intel_20260722T055400Z_phase3b",
+})
+
 
 class RestoreCheckCleanupResult(BaseModel):
     database: str
@@ -50,16 +57,32 @@ def drop_restorecheck_database(
     *,
     execute: bool = False,
     config: MariaDbConnectionConfig | None = None,
+    allow_phase3b: bool = False,
+    if_exists: bool = True,
 ) -> RestoreCheckCleanupResult:
     """Plan or run DROP DATABASE for a single _restorecheck_* database."""
     assert_restorecheck_database(database)
-    command = f"DROP DATABASE IF EXISTS `{database}`"
+    if database in PHASE3B_RETAINED_RESTORECHECK and not allow_phase3b:
+        return RestoreCheckCleanupResult(
+            database=database,
+            dry_run=not execute,
+            refused=True,
+            message=(
+                f"Refusing to drop retained Phase 3B rehearsal {database}. "
+                "Use: mercury restore-check retire-phase3b-restorecheck"
+            ),
+        )
+    command = (
+        f"DROP DATABASE IF EXISTS `{database}`"
+        if if_exists
+        else f"DROP DATABASE `{database}`"
+    )
 
     if not execute:
         return RestoreCheckCleanupResult(
             database=database,
             dry_run=True,
-            message=f"Would drop restore-check database {database}.",
+            message=f"Would drop restore-check database {database} with {command}.",
         )
 
     cfg = config or try_load_mariadb_config()

@@ -3664,10 +3664,14 @@ def restore_check_cleanup_cmd(
     execute: bool = typer.Option(
         False,
         "--execute",
-        help="Drop all _restorecheck_* databases (requires live actions).",
+        help="Drop ordinary leftover _restorecheck_* databases (requires live actions). Phase 3B retained copies are refused.",
     ),
 ) -> None:
-    """List or drop temporary restore-check databases on the server."""
+    """List leftover _restorecheck_* databases, or drop ordinary leftovers.
+
+    Retained Phase 3B rehearsal copies are refused here. Use
+    ``mercury restore-check retire-phase3b-restorecheck`` for those two schemas.
+    """
     from mercury.core.runtime import should_probe_database_status
     from mercury.database import MariaDbConfigError, MariaDbLiveError, discover
     from mercury.restore.check_cleanup import cleanup_restorecheck_databases
@@ -3687,6 +3691,143 @@ def restore_check_cleanup_cmd(
     batch = cleanup_restorecheck_databases(names, execute=execute)
     print_restorecheck_cleanup_batch(batch, compact=True)
     if execute and batch.databases and batch.dropped_count == 0:
+        raise typer.Exit(1)
+
+
+@restore_app.command("retire-phase3b-restorecheck")
+def restore_retire_phase3b_restorecheck_cmd(
+    apply: bool = typer.Option(
+        False,
+        "--apply",
+        help="Execute the exact two DROP DATABASE statements after a READY preview. Default is preview.",
+    ),
+    preview_artifact: Path | None = typer.Option(
+        None,
+        "--preview-artifact",
+        help="Exact preview JSON from a READY preview (required with --apply).",
+    ),
+    preview_sha256: str | None = typer.Option(
+        None,
+        "--preview-sha256",
+        help="Required with --apply. SHA-256 of the exact preview artifact.",
+    ),
+    confirm: str | None = typer.Option(
+        None,
+        "--confirm",
+        help="Required with --apply. Phrase: DROP RESTORECHECK SCHEMAS 20260722T055400Z_PHASE3B",
+    ),
+    receipt_root: Path | None = typer.Option(
+        None,
+        "--receipt-root",
+        help="Directory for preview/apply receipts (mode 0700).",
+    ),
+    phase3b_root: Path | None = typer.Option(
+        None,
+        "--phase3b-root",
+        help="Directory containing PHASE3B_REPORT.md and phase3b_summary.json.",
+    ),
+    backup_root: Path | None = typer.Option(
+        None,
+        "--backup-root",
+        help="Mercury backup root used to prove later Erebus/PI coverage.",
+    ),
+) -> None:
+    """Preview or apply governed DROP of the two Phase 3B restore-check schemas."""
+    from mercury.restore.phase3b_restorecheck_retire import (
+        CONFIRMATION,
+        DEFAULT_BACKUP_ROOT,
+        DEFAULT_PHASE3B_ROOT,
+        DEFAULT_RECEIPT_ROOT,
+        DROP_ORDER,
+        apply_phase3b_restorecheck_retirement,
+        default_drop_fn,
+        live_facts_from_config,
+        preview_phase3b_restorecheck_retirement,
+    )
+    from mercury.core.paths import REPO_ROOT
+    from mercury.database.mariadb.errors import MariaDbLiveError
+    from mercury.database.mariadb.session import try_load_mariadb_config
+
+    receipts = receipt_root or DEFAULT_RECEIPT_ROOT
+    phase_root = phase3b_root or DEFAULT_PHASE3B_ROOT
+    backups = backup_root or DEFAULT_BACKUP_ROOT
+
+    if not apply:
+        cfg = try_load_mariadb_config()
+        if cfg is None:
+            typer.echo("MariaDB is not configured — cannot inspect restore-check schemas.")
+            raise typer.Exit(1)
+        try:
+            facts = live_facts_from_config(cfg)
+            result = preview_phase3b_restorecheck_retirement(
+                facts=facts,
+                phase3b_root=phase_root,
+                backup_root=backups,
+                receipt_root=receipts,
+                mercury_repo=REPO_ROOT,
+            )
+        except (MariaDbLiveError, ValueError, OSError) as exc:
+            typer.echo(f"RESTORECHECK_RETIREMENT_BLOCKED: {exc}")
+            raise typer.Exit(1) from exc
+        typer.echo(result["classification"])
+        typer.echo(f"  preview: {result['path']}")
+        typer.echo(f"  preview_sha256: {result['preview_sha256']}")
+        typer.echo(f"  reclaim_bytes: {result['expected_reclaim_bytes']}")
+        if result["classification"] != "RESTORECHECK_RETIRE_READY":
+            for blocker in result.get("blockers") or []:
+                typer.echo(f"  blocker: {blocker}")
+            raise typer.Exit(1)
+        return
+
+    from mercury.core.execution_policy import load_execution_policy
+
+    policy = load_execution_policy()
+    if not policy.live_execution_allowed():
+        typer.echo(
+            "REFUSE BEFORE DROP: apply requires dry_run=false and live_actions_enabled=true."
+        )
+        raise typer.Exit(1)
+    if preview_artifact is None or confirm is None or not preview_sha256:
+        typer.echo(
+            "REFUSE BEFORE DROP: --apply requires --preview-artifact, "
+            "--preview-sha256, and --confirm."
+        )
+        raise typer.Exit(1)
+    if confirm != CONFIRMATION:
+        typer.echo("REFUSE BEFORE DROP: confirmation phrase does not match.")
+        raise typer.Exit(1)
+    import json as json_mod
+    try:
+        preview_payload = json_mod.loads(preview_artifact.read_text(encoding="utf-8"))
+    except (OSError, json_mod.JSONDecodeError) as exc:
+        typer.echo(f"REFUSE BEFORE DROP: unreadable preview artifact: {exc}")
+        raise typer.Exit(1) from exc
+    if preview_payload.get("drop_order") != list(DROP_ORDER):
+        typer.echo("REFUSE BEFORE DROP: preview drop_order is not the Phase 3B pair.")
+        raise typer.Exit(1)
+    cfg = try_load_mariadb_config()
+    if cfg is None:
+        typer.echo("MariaDB is not configured.")
+        raise typer.Exit(1)
+    try:
+        facts = live_facts_from_config(cfg)
+        result = apply_phase3b_restorecheck_retirement(
+            preview_path=preview_artifact,
+            confirmation=confirm,
+            facts=facts,
+            drop_fn=default_drop_fn(cfg),
+            receipt_root=receipts,
+            expected_preview_sha256=preview_sha256,
+        )
+    except (MariaDbLiveError, ValueError, OSError) as exc:
+        typer.echo(f"REFUSE BEFORE DROP: {exc}")
+        raise typer.Exit(1) from exc
+    typer.echo(result["final_classification"])
+    typer.echo(f"  receipt: {result['path']}")
+    if result["final_classification"] not in {
+        "RESTORECHECK_SCHEMAS_RETIRED",
+        "RESTORECHECK_ALREADY_RETIRED",
+    }:
         raise typer.Exit(1)
 
 

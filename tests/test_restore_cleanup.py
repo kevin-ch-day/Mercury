@@ -6,6 +6,7 @@ import pytest
 
 from mercury.backup.backup_runner import BackupExecutionError
 from mercury.restore.check_cleanup import (
+    PHASE3B_RETAINED_RESTORECHECK,
     assert_restorecheck_database,
     cleanup_restorecheck_databases,
     drop_restorecheck_database,
@@ -55,3 +56,20 @@ def test_cleanup_batch_dry_run() -> None:
     assert batch.mode == "dry-run"
     assert len(batch.databases) == 1
     assert batch.results[0].dry_run is True
+
+
+def test_generic_cleanup_refuses_retained_phase3b_schemas() -> None:
+    name = next(iter(PHASE3B_RETAINED_RESTORECHECK))
+    result = drop_restorecheck_database(name, execute=False)
+    assert result.refused is True
+    assert "retire-phase3b-restorecheck" in result.message
+
+
+def test_phase3b_drop_plan_omits_if_exists() -> None:
+    name = "_restorecheck_pi_fixture_aaaa"
+    result = drop_restorecheck_database(
+        name, execute=False, allow_phase3b=True, if_exists=False,
+    )
+    assert result.refused is False
+    assert "DROP DATABASE IF EXISTS" not in result.message
+    assert f"DROP DATABASE `{name}`" in result.message

@@ -144,7 +144,7 @@ mercury report preview --db <prod> --kind full|schema_only
 
 Use `--dry-run` on `backup run`, `backup batch`, or `backup all` to preview without writing files. The interactive menu uses **Run full backup now** for live writes and **Preview backup plan** for dry-run.
 
-**Destructive actions** (prod→dev sync, deploy, restore-check cleanup) additionally require `[mercury] dry_run = false` and `live_actions_enabled = true` in `config/local.toml`, plus confirmation where applicable (default-no `[y/N]` for sync).
+**Destructive actions** (prod→dev sync, deploy, restore-check cleanup, Phase 3B restore-check retirement apply) additionally require `[mercury] dry_run = false` and `live_actions_enabled = true` in `config/local.toml`, plus confirmation where applicable (default-no `[y/N]` for sync).
 
 Ordinary prod→dev replacement additionally requires `[mariadb_restore]`: a
 dedicated least-privilege identity scoped only to the approved development
@@ -206,7 +206,20 @@ mercury restore-check run --db <prod> [--execute]
 mercury restore-check cleanup [--execute]
 ```
 
-Restore-check runs into temporary `_restorecheck_*` databases only. Use `cleanup --execute` to drop them after validation.
+Restore-check runs into temporary `_restorecheck_*` databases only. Generic
+`cleanup --execute` drops ordinary restore-check leftovers. The retained
+Phase 3B rehearsal copies (`*_20260722T055400Z_phase3b`) are refused there.
+
+```bash
+mercury restore-check retire-phase3b-restorecheck
+mercury restore-check retire-phase3b-restorecheck --apply \
+  --preview-artifact <preview.json> \
+  --preview-sha256 <digest> \
+  --confirm 'DROP RESTORECHECK SCHEMAS 20260722T055400Z_PHASE3B'
+```
+
+Preview is read-only (plus a local receipt). Apply is DDL (`DROP DATABASE`)
+and is not transactional. Do not run apply without a READY preview.
 Successful restore-check runs now auto-drop the temporary `_restorecheck_*` database. If import or validation fails, Mercury preserves the temp database for debugging and prints the cleanup command.
 
 ### Recovery deployment

@@ -117,6 +117,12 @@ Prod→dev sync, deploy, restore-check cleanup, and similar destructive actions 
 - `[mercury] live_actions_enabled = true`
 - explicit confirmation where applicable (default-no `[y/N]` for sync)
 
+The two retained Phase 3B rehearsal schemas
+(`*_20260722T055400Z_phase3b`) are not ordinary leftover `_restorecheck_*`
+copies. Generic `mercury restore-check cleanup --execute` refuses them.
+Governed retirement is `mercury restore-check retire-phase3b-restorecheck`
+(preview first; apply is a separately confirmed `DROP DATABASE`).
+
 ## Retention
 
 - Database retention is intentionally conservative in v1.1.
