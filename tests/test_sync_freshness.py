@@ -118,3 +118,61 @@ def test_sync_readiness_uses_artifact_verified_blocker_wording(
     report = build_sync_readiness_report(live=True)
     entry = next(item for item in report.entries if item.prod == "erebus_threat_intel_prod")
     assert any("artifact-verified" in blocker for blocker in entry.blockers)
+
+
+def test_sync_readiness_blocks_undumpable_production_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mercury.backup.dump_preflight import DatabaseDumpability, SourcesDumpability
+    from mercury.backup.freshness import FRESHNESS_FRESH
+
+    _write_verified_backup(tmp_path, "scytaledroid_core_prod")
+    inventory = DatabaseInventory(
+        connection="connected",
+        entries=[
+            record_from_name("scytaledroid_core_prod", SOURCE_LIVE, connected=True),
+            record_from_name("scytaledroid_core_dev", SOURCE_LIVE, connected=True),
+        ],
+    )
+    monkeypatch.setattr(
+        "mercury.sync.readiness.load_execution_policy",
+        lambda: ExecutionPolicy(
+            dry_run=True,
+            live_actions_enabled=False,
+            backup_root=tmp_path,
+            allow_unsafe_backup_root=True,
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.sync.readiness.discover_for_planning",
+        lambda live=True: inventory,
+    )
+    monkeypatch.setattr("mercury.sync.readiness.should_probe_database_status", lambda: True)
+    monkeypatch.setattr(
+        "mercury.sync.readiness.assess_backup_freshness",
+        lambda database, backup_at, live=True, **kwargs: type(
+            "Freshness",
+            (),
+            {"freshness": FRESHNESS_FRESH},
+        )(),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.dump_preflight.try_assess_sources_dumpability",
+        lambda sources, **kwargs: SourcesDumpability(
+            entries=[
+                DatabaseDumpability(
+                    database="scytaledroid_core_prod",
+                    view_count=51,
+                    issues=["view `v_masvs_matrix` is not dumpable (collation mix a vs b)"],
+                )
+            ]
+        ),
+    )
+
+    report = build_sync_readiness_report(live=True)
+    entry = next(item for item in report.entries if item.prod == "scytaledroid_core_prod")
+    assert entry.ready_for_sync_planning is False
+    assert any("not dumpable" in blocker for blocker in entry.blockers)
+    assert any("ScytaleDroid" in blocker for blocker in entry.blockers)
+    assert report.ready_count == 0

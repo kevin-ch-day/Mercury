@@ -55,6 +55,7 @@ class RestorePrivilegePreflightResult(BaseModel):
     artifact_statement_classes: list[str] = Field(default_factory=list)
     execution_plan_operations: list[str] = Field(default_factory=lambda: list(_EXECUTION_PLAN))
     required_capabilities: list[str] = Field(default_factory=list)
+    external_schema_references: list[str] = Field(default_factory=list)
     effective_capabilities: list[str] = Field(default_factory=list)
     missing_capabilities: list[str] = Field(default_factory=list)
     unknown_requirements: list[str] = Field(default_factory=list)
@@ -214,9 +215,18 @@ def evaluate_restore_privileges(
     if "CREATE FUNCTION" in result.artifact_statement_classes and result.server_conditions.get("log_bin", "").upper() in {"1", "ON"} and result.server_conditions.get("log_bin_trust_function_creators", "").upper() not in {"1", "ON"}:
         result.unknown_requirements.append("CREATE FUNCTION requires server-level binary-log authorization")
     effective = _capabilities(grants, target)
+    external_schemas = sorted(set(contract.external_schema_references) - {source, target})
+    result.external_schema_references = external_schemas
+    external_missing = [
+        f"SELECT on `{schema}`.*"
+        for schema in external_schemas
+        if "ALL PRIVILEGES" not in _capabilities(grants, schema)
+        and "SELECT" not in _capabilities(grants, schema)
+    ]
     result.required_capabilities = sorted(required)
     result.effective_capabilities = sorted(effective)
-    result.missing_capabilities = [] if "ALL PRIVILEGES" in effective else sorted(required - effective)
+    target_missing = [] if "ALL PRIVILEGES" in effective else sorted(required - effective)
+    result.missing_capabilities = target_missing + external_missing
     result.passed = not result.inspection_issues and not result.missing_capabilities and not result.unknown_requirements
     return _persist(result, receipt_root, write_receipt)
 

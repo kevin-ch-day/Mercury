@@ -58,6 +58,7 @@ class FullBackupOutcome(str, Enum):
 class LaneResult(str, Enum):
     PASS = "PASS"
     FAIL = "FAIL"
+    PARTIAL = "PARTIAL"
     SKIPPED = "SKIPPED"
     PENDING = "PENDING"
     NOT_ATTEMPTED = "NOT_ATTEMPTED"
@@ -71,6 +72,8 @@ class BackupLaneSummary(BaseModel):
     written: int = 0
     verified: int = 0
     failed: int = 0
+    dump_failed: int = 0
+    verify_failed: int = 0
     refused: int = 0
     total_size_bytes: int = 0
     backup_ids: list[str] = Field(default_factory=list)
@@ -187,10 +190,23 @@ def run_backup_batch(
     )
     server_names = fetch_live_server_database_names() if live else None
     total = len(batch_sources)
+    skip_dump: dict[str, str] = {}
+    if execute and live:
+        from mercury.backup.dump_preflight import try_assess_sources_dumpability
+
+        dumpability = try_assess_sources_dumpability(batch_sources)
+        for entry in dumpability.blocked:
+            if entry.issues:
+                refusal = entry.refusal_text()
+                if refusal:
+                    skip_dump[entry.database] = refusal
 
     for index, database in enumerate(batch_sources, start=1):
         if on_database_start is not None:
             on_database_start(index, total, database)
+        if database in skip_dump:
+            batch.errors.append(f"{database}: {skip_dump[database]}")
+            continue
         try:
             result = execute_backup(
                 database,
@@ -318,7 +334,8 @@ def _lane_from_batch(
             if warning:
                 warnings.append(warning)
     verified = verification.verified if verification else 0
-    failed = verification.failed if verification else 0
+    verify_failed = verification.failed if verification else 0
+    dump_failed = len(batch.errors)
     issues = list(batch.errors)
     if verification:
         issues.extend(verification.issues)
@@ -327,7 +344,9 @@ def _lane_from_batch(
         selected=len(batch.sources),
         written=batch.executed_count,
         verified=verified,
-        failed=failed + len(batch.errors),
+        failed=verify_failed + dump_failed,
+        dump_failed=dump_failed,
+        verify_failed=verify_failed,
         refused=batch.refused_count,
         total_size_bytes=size,
         backup_ids=ids,
@@ -590,12 +609,23 @@ def build_full_backup_run_result(
         package_classification = "refused_no_artifacts"
     elif not production_ok:
         outcome = FullBackupOutcome.FAIL
-        artifacts = LaneResult.PASS if production.written > 0 else LaneResult.FAIL
-        verification = (
-            LaneResult.PASS
-            if production.verified == production.written and production.written > 0 and production.failed == 0
-            else LaneResult.FAIL
+        if production.written == production.selected and production.written > 0:
+            artifacts = LaneResult.PASS
+        elif production.written > 0:
+            artifacts = LaneResult.PARTIAL
+        else:
+            artifacts = LaneResult.FAIL
+        verify_ok = (
+            production.written > 0
+            and production.verified == production.written
+            and production.verify_failed == 0
         )
+        if verify_ok:
+            verification = LaneResult.PASS
+        elif production.written == 0:
+            verification = LaneResult.NOT_APPLICABLE
+        else:
+            verification = LaneResult.FAIL
         package_classification = "routine_only"
     elif development_requested and not development_ok:
         outcome = FullBackupOutcome.PARTIAL
@@ -625,6 +655,23 @@ def build_full_backup_run_result(
         package_classification = "verified_routine_partial_dev"
     elif outcome == FullBackupOutcome.REFUSED:
         next_actions = []
+    elif production_batch.errors:
+        databases = [
+            error.split(":", 1)[0].strip()
+            for error in production_batch.errors
+            if ":" in error
+        ]
+        from mercury.backup.dump_preflight import owning_project
+
+        projects = sorted({owning_project(name) or "" for name in databases} - {""})
+        if len(projects) == 1:
+            next_actions = [
+                f"Recreate undumpable {projects[0]} view(s), then rerun Backup and verification.",
+            ]
+        else:
+            next_actions = [
+                "Recreate undumpable source views, then rerun Backup and verification.",
+            ]
 
     phase3b_note = (
         "Routine verified backups remain separate from sealed Phase 3B rehearsal package "

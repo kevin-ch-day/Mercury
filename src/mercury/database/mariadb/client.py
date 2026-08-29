@@ -23,8 +23,17 @@ def select_client_tool() -> str:
 
 
 def build_client_argv(config: MariaDbConnectionConfig, sql: str) -> list[str]:
+    argv = build_script_argv(config)
+    argv.extend(["-e", sql])
+    return argv
+
+
+def build_script_argv(
+    config: MariaDbConnectionConfig, *extra_flags: str
+) -> list[str]:
+    """mariadb/mysql argv for stdin SQL (no ``-e``)."""
     tool = select_client_tool()
-    argv = [tool, "-N", "-B", "-u", config.user, "-e", sql]
+    argv = [tool, "-N", "-B", *extra_flags, "-u", config.user]
     if config.unix_socket:
         argv[1:1] = [f"--socket={config.unix_socket}", "--protocol=SOCKET"]
     else:
@@ -62,15 +71,41 @@ def run_client_script(
     if runner is not None:
         return runner(config, sql_script)
 
-    tool = select_client_tool()
-    argv = [tool, "-N", "-B", "-u", config.user]
-    if config.unix_socket:
-        argv[1:1] = [f"--socket={config.unix_socket}", "--protocol=SOCKET"]
-    else:
-        argv[1:1] = ["-h", config.host, "-P", str(config.port)]
-        if config.ssl_disabled:
-            argv[1:1] = ["--skip-ssl"]
+    argv = build_script_argv(config)
     return _run_client_argv(config, argv, input_text=sql_script)
+
+
+def run_client_force_script(
+    config: MariaDbConnectionConfig,
+    sql_script: str,
+    *,
+    timeout: int | None = None,
+) -> tuple[int, str, str]:
+    """Run a read-only script with ``--force``; do not raise on statement errors.
+
+    mariadb --force can exit 0 even when some statements fail, so callers must
+    inspect stderr. Used by dumpability SHOW CREATE probes.
+    """
+    argv = build_script_argv(config, "--force")
+    env = os.environ.copy()
+    if config.password:
+        env["MYSQL_PWD"] = config.password
+    wait = max(int(timeout or config.connect_timeout or 10), 60)
+    try:
+        result = subprocess.run(
+            argv,
+            input=sql_script,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=wait,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise MariaDbLiveError(
+            f"MariaDB CLI dumpability probe timed out after {wait}s"
+        ) from exc
+    return result.returncode, result.stdout or "", result.stderr or ""
 
 
 def _run_client_argv(

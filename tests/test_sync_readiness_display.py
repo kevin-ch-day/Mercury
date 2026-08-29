@@ -70,7 +70,7 @@ def test_menu_readiness_shows_table_with_backup_age(capsys: pytest.CaptureFixtur
     assert "erebus_threat_intel_prod → erebus_threat_intel_dev" in out
     assert "12m ago" in out
     assert "restore preflight runs before any dev replacement" in out
-    assert "Sync All Ready Databases" in out
+    assert "Choose Sync One Ready Pair [3]." in out
     assert "…" not in out
     assert "Restore credentials:" in out
     assert "Configured · mercury_dev_restore@localhost" in out
@@ -94,7 +94,7 @@ def test_sync_menu_table_rows_show_exact_source_and_target_labels() -> None:
 def test_sync_menu_next_step_when_all_ready() -> None:
     tag, message = sync_menu_next_step(_sample_report(ready=True), live_allowed=True)
     assert tag == "warn"
-    assert "Sync All Ready Databases" in message
+    assert "Sync One Ready Pair" in message
 
 
 def test_sync_verification_labels_tables_and_views_not_all_objects(

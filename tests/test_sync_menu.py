@@ -243,7 +243,7 @@ def test_run_sync_ready_shows_compact_confirmation(
         ),
     )
     monkeypatch.setattr(
-        "mercury.sync.interactive_menu.menu_prompts.ask_yes_no",
+        "mercury.sync.interactive_menu.menu_prompts.ask_confirmation_phrase",
         lambda *args, **kwargs: False,
     )
 
@@ -253,6 +253,7 @@ def test_run_sync_ready_shows_compact_confirmation(
     assert "erebus_threat_intel_prod → erebus_threat_intel_dev" in out
     assert "Production databases are never modified." in out
     assert "Each dev target is dropped and recreated" in out
+    assert "Type SYNC DEV" in out
     assert "Sync cancelled." in out
 
 

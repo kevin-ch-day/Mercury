@@ -674,3 +674,27 @@ def test_write_backup_bundle_cancelled(
     monkeypatch.setattr("mercury.backup.interactive_menu.write_database_bundle_plan", _fail_write)
     _write_backup_bundle()
     assert "cancelled" in capsys.readouterr().out.lower()
+
+
+def test_focus_callout_prefers_dumpability_fix(capsys: pytest.CaptureFixture[str]) -> None:
+    from mercury.backup.interactive_menu import _write_focus_callout
+
+    _write_focus_callout(
+        needs_backup=True, pending_rc=[], dumpability_blocked=True
+    )
+    out = capsys.readouterr().out
+    assert "Recreate undumpable source views" in out
+    assert "then back up [1]" in out
+
+
+def test_focus_callout_names_owning_project(capsys: pytest.CaptureFixture[str]) -> None:
+    from mercury.backup.interactive_menu import _write_focus_callout
+
+    _write_focus_callout(
+        needs_backup=True,
+        pending_rc=[],
+        dumpability_blocked={"scytaledroid_core_prod"},
+    )
+    out = capsys.readouterr().out
+    assert "Recreate ScytaleDroid view(s)" in out
+    assert "then back up [1]" in out

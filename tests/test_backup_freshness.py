@@ -167,6 +167,38 @@ def test_backup_screen_rows_never_use_current_label(
     assert "Stale" in flattened
 
 
+def test_backup_screen_rows_mark_undumpable_source_blocked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.build_prod_dev_pairs",
+        lambda names: [],
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.latest_records_by_database",
+        lambda listing: [],
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.build_on_disk_backup_list",
+        lambda _root: object(),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.build_backup_status_report",
+        lambda live=False: type("Report", (), {"entries": []})(),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.load_execution_policy",
+        lambda: type("Policy", (), {"backup_root": tmp_path / "backups"})(),
+    )
+    plan = build_backup_plan(["scytaledroid_core_prod"])
+    rows = _backup_screen_rows(
+        plan, dumpability_blocked={"scytaledroid_core_prod"}
+    )
+    scytale = next(row for row in rows if row[0] == "scytaledroid_core_prod")
+    assert scytale[1] == "Undumpable"
+
+
 def test_build_backup_status_report_includes_freshness_fields(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -262,6 +294,10 @@ def test_display_status_labels() -> None:
     )
     assert menu_handoff_problem_summary(["1 stale", "2 not restore-checked"]) == (
         "Before workstation handoff: 1 stale, 2 not restore-checked."
+    )
+    assert menu_handoff_problem_summary(["1 not dumpable"]) == (
+        "Source schema is not dumpable; recreate the broken view(s) "
+        "before backup can complete: 1 not dumpable."
     )
     assert menu_handoff_problem_summary(["2 OK* · no RC"]) == (
         "Manifest stamp / restore-check pending before workstation handoff: 2 OK* · no RC."

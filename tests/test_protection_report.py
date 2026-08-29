@@ -103,6 +103,51 @@ def test_live_report_ignores_out_of_scope_databases(monkeypatch) -> None:
     assert "gecko_research_database_prod" not in report.protected
 
 
+def test_live_report_includes_dumpability_issues(monkeypatch) -> None:
+    from mercury.backup.dump_preflight import DatabaseDumpability, SourcesDumpability
+    from mercury.database.core import DatabaseInventory, record_from_name
+    from mercury.database.core.sources import SOURCE_LIVE
+
+    inventory = DatabaseInventory(
+        connection="connected",
+        entries=[
+            record_from_name("erebus_threat_intel_prod", SOURCE_LIVE, connected=True),
+            record_from_name("scytaledroid_core_prod", SOURCE_LIVE, connected=True),
+        ],
+    )
+    monkeypatch.setattr("mercury.database.discovery.discover", lambda *args, **kwargs: inventory)
+    monkeypatch.setattr(
+        "mercury.backup.status._live_server_database_names",
+        lambda **kwargs: {"erebus_threat_intel_prod", "scytaledroid_core_prod"},
+    )
+    monkeypatch.setattr(
+        "mercury.backup.dump_preflight.try_assess_sources_dumpability",
+        lambda sources, **kwargs: SourcesDumpability(
+            entries=[
+                DatabaseDumpability(
+                    database="scytaledroid_core_prod",
+                    view_count=51,
+                    issues=[
+                        "view `v_masvs_matrix` is not dumpable "
+                        "(collation mix utf8mb4_uca1400_ai_ci vs utf8mb4_general_ci)"
+                    ],
+                )
+            ]
+        ),
+    )
+
+    report = build_protection_report(live=True)
+    assert report.dumpability_issues
+    assert "v_masvs_matrix" in report.dumpability_issues[0]
+    text = format_protection_report(report)
+    assert "DUMPABILITY" in text
+    assert "v_masvs_matrix" in text
+    compact = format_protection_report(report, compact=True)
+    assert "Dumpability:" in compact
+    assert "v_masvs_matrix" in compact
+    assert any("not dumpable" in item.lower() for item in report.action_items)
+
+
 def test_compact_report_does_not_truncate_shared_authority_source(capsys) -> None:
     from mercury.reporting.protection import print_protection_report
 

@@ -165,3 +165,9 @@ def print_backup_plan(
     output.heading("Safety notes")
     for note in plan.safety_notes:
         output.bullet(note)
+
+    if live:
+        from mercury.backup.dump_preflight import try_assess_sources_dumpability
+        from mercury.backup.terminal.dumpability import print_dumpability_report
+
+        print_dumpability_report(try_assess_sources_dumpability(plan.backup_sources))

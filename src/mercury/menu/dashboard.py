@@ -132,6 +132,8 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
             backup_line += f"; {len(stale_names)} stale"
         if unknown_names:
             backup_line += f"; {len(unknown_names)} unknown freshness"
+        if "not dumpable" in (sync_blocker or "").lower():
+            backup_line += "; source not dumpable"
         if status_error:
             backup_line = status_error
         sync_line = f"{ready} approved pairs ready"
@@ -609,7 +611,15 @@ def _sync_readiness_summary(
         for entry in report.entries:
             blocker_messages.extend(entry.blockers)
         if blocker_messages:
-            if any("freshness is stale" in msg for msg in blocker_messages):
+            dumpable_blocked = any(
+                "not dumpable" in msg.lower() for msg in blocker_messages
+            )
+            if dumpable_blocked:
+                blocker = (
+                    "Production source is not dumpable; recreate the broken view "
+                    "before backup and sync."
+                )
+            elif any("freshness is stale" in msg for msg in blocker_messages):
                 blocker = "Artifact-verified backups are stale; run full backup before sync."
             elif any("freshness is unknown" in msg for msg in blocker_messages):
                 blocker = "Backup freshness unknown; run full backup before sync."

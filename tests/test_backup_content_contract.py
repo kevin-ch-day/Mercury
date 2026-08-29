@@ -104,6 +104,20 @@ def test_restore_requirements_recognizes_split_mariadb_view_prefixes(tmp_path: P
     assert contract.unknown_privileged_statements == []
 
 
+def test_restore_requirements_records_external_schema_dependencies(tmp_path: Path) -> None:
+    dump = tmp_path / "erebus_threat_intel_prod_20260813_221746_435.sql.gz"
+    with gzip.open(dump, "wt", encoding="utf-8") as handle:
+        handle.write(
+            "CREATE VIEW `permission_unknown_metrics` AS SELECT * FROM "
+            "`android_permission_intel`.`android_permission_dict_unknown`;\n"
+        )
+        handle.write("INSERT INTO note VALUES ('android_permission_intel.not_an_identifier');\n")
+
+    contract = extract_restore_requirements(dump)
+
+    assert contract.external_schema_references == ["android_permission_intel"]
+
+
 def test_restore_requirements_rejects_unfinished_mariadb_view_prefix(tmp_path: Path) -> None:
     dump = tmp_path / "unfinished-view.sql.gz"
     with gzip.open(dump, "wt", encoding="utf-8") as handle:

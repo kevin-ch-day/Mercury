@@ -55,9 +55,16 @@ _PRIVILEGED_TOP_LEVEL_RE = re.compile(
     r"LOAD\s+(?:DATA|XML|FILE)|LOCK\s+INSTANCE)\b",
     re.IGNORECASE,
 )
+# Qualified column references (``alias`.`column``) are common in view SQL and
+# cannot be distinguished from schema references by punctuation alone.  Limit
+# extraction to FROM/JOIN relation positions, where MariaDB names a relation.
+_QUOTED_SCHEMA_REFERENCE_RE = re.compile(
+    r"\b(?:FROM|JOIN)\s+`([^`]+)`\s*\.\s*`[^`]+`", re.IGNORECASE
+)
+_SYSTEM_SCHEMAS = frozenset({"information_schema", "performance_schema", "mysql", "sys"})
 RESTORE_REQUIREMENTS_CONTRACT_VERSION = 1
 IMPORT_TRANSFORM_VERSION = "2"
-RESTORE_REQUIREMENTS_SCANNER_VERSION = "4"
+RESTORE_REQUIREMENTS_SCANNER_VERSION = "5"
 
 
 class BackupObjectInventory(BaseModel):
@@ -100,6 +107,10 @@ class RestoreRequirementsContract(BaseModel):
     artifact_file: str
     artifact_sha256: str
     statement_classes: list[str] = Field(default_factory=list)
+    # Schemas named by qualified identifiers other than the source schema.
+    # A restore identity needs an explicitly approved read capability for these
+    # dependencies when it creates views/routines in the dev target.
+    external_schema_references: list[str] = Field(default_factory=list)
     unknown_privileged_statements: list[str] = Field(default_factory=list)
     verified: bool = False
     issues: list[str] = Field(default_factory=list)
@@ -202,7 +213,9 @@ def extract_dump_object_inventory(path: Path) -> BackupObjectInventory:
     return BackupObjectInventory(**{key: sorted(values) for key, values in found.items()})
 
 
-def extract_restore_requirements(path: Path) -> RestoreRequirementsContract:
+def extract_restore_requirements(
+    path: Path, *, source_database: str | None = None
+) -> RestoreRequirementsContract:
     """Stream an exact dump and record executable restore statement families.
 
     MariaDB dumps put top-level DDL/DML on their own lines, including versioned
@@ -212,6 +225,10 @@ def extract_restore_requirements(path: Path) -> RestoreRequirementsContract:
     """
     statements: set[str] = set()
     unknown: set[str] = set()
+    external_schemas: set[str] = set()
+    source_schema = source_database or re.sub(
+        r"_\d{8}_\d{6}_\d+(?:\.schema)?\.sql\.gz$", "", path.name
+    )
     pending_view_algorithm: str | None = None
     with gzip.open(path, "rt", encoding="utf-8", errors="replace") as handle:
         for raw_line in handle:
@@ -222,6 +239,14 @@ def extract_restore_requirements(path: Path) -> RestoreRequirementsContract:
             # terminator (``*/;``); it is irrelevant to classification but
             # retain the original text for fail-closed diagnostic evidence.
             sql_line = line.rstrip(";").rstrip()
+            # Inspect only executable schema/object declarations.  This keeps
+            # application strings in bulk INSERT data out of the dependency
+            # contract while covering view/routine relation dependencies.
+            if re.match(r"^(?:CREATE|ALTER|DROP|VIEW)\b", sql_line, re.IGNORECASE):
+                for match in _QUOTED_SCHEMA_REFERENCE_RE.finditer(sql_line):
+                    schema = match.group(1)
+                    if schema and schema != source_schema and schema not in _SYSTEM_SCHEMAS:
+                        external_schemas.add(schema)
             # mariadb-dump writes final view definitions as three executable
             # comments: CREATE ALGORITHM, DEFINER/SQL SECURITY, then VIEW.
             # Treat that exact sequence as one CREATE VIEW statement.  Do not
@@ -258,6 +283,7 @@ def extract_restore_requirements(path: Path) -> RestoreRequirementsContract:
         artifact_file=path.name,
         artifact_sha256=sha256_file(path),
         statement_classes=sorted(statements),
+        external_schema_references=sorted(external_schemas),
         unknown_privileged_statements=sorted(unknown),
         verified=True,
     )

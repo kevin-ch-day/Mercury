@@ -62,14 +62,21 @@ def sync_submenu_options(
     if ready:
         sync_label = "Sync All Ready Databases" if allowed else "Preview All Ready Databases"
         sync_key = "2" if not blocked else "3"
-        suffix = " (recommended)" if report.ready_count and not report.blocked_count else ""
+        # A single-pair restore gives the operator a bounded recovery action
+        # and makes an import failure diagnosable before another dev target is
+        # replaced.  Keep batch sync available for routine maintenance.
+        suffix = (
+            " (recommended)"
+            if report.ready_count == 1 and not report.blocked_count
+            else ""
+        )
         if report.ready_count and report.blocked_count and allowed:
             suffix = " (ready pairs only)"
         options.append((sync_key, f"{sync_label}{suffix}", ACTION_SYNC_ALL_READY))
         if report.ready_count > 1:
             single_label = "Sync One Ready Pair" if allowed else "Preview One Ready Pair"
             single_key = "3" if not blocked else "4"
-            options.append((single_key, single_label, ACTION_SYNC_ONE))
+            options.append((single_key, f"{single_label} (recommended)", ACTION_SYNC_ONE))
     verify_key = "4" if not blocked else "5"
     options.append(
         (verify_key, "Verify Dev Targets Against Prod Backups", ACTION_VERIFY_DEV)

@@ -10,11 +10,73 @@ from mercury.terminal.theme import hint_text
 from mercury.core.execution_policy import backup_mode_label, load_execution_policy
 from mercury.backup.batch_runner import (
     BackupBatchResult,
+    BackupLaneSummary,
+    BatchVerificationSummary,
     FullBackupOutcome,
     FullBackupRunResult,
     small_production_backup_warning,
 )
 from mercury.backup.menu_options import ACTION_VERIFY, backup_menu_hint
+
+
+def format_lane_write_summary(
+    *,
+    label: str,
+    selected: int,
+    written: int,
+    verified: int = 0,
+    dump_failed: int = 0,
+    verify_failed: int = 0,
+    refused: int = 0,
+    size_bytes: int | None = None,
+    include_verified: bool = True,
+) -> str:
+    """Compact written/dump/verify counts for a backup lane."""
+    parts = [f"{label} {written}/{selected} written"]
+    if dump_failed:
+        parts.append(f"{dump_failed} dump failed")
+    if refused:
+        parts.append(f"{refused} refused")
+    if include_verified:
+        parts.append(f"{verified} verified")
+        if verify_failed:
+            parts.append(f"{verify_failed} verify failed")
+    if size_bytes is not None:
+        parts.append(format_bytes(size_bytes))
+    return " · ".join(parts)
+
+
+def format_batch_write_summary(
+    batch: BackupBatchResult,
+    verification: BatchVerificationSummary | None,
+    *,
+    label: str,
+) -> str:
+    """Menu progress line for one backup batch, including dump failures."""
+    return format_lane_write_summary(
+        label=label,
+        selected=len(batch.sources),
+        written=batch.executed_count,
+        verified=verification.verified if verification is not None else 0,
+        dump_failed=len(batch.errors),
+        verify_failed=verification.failed if verification is not None else 0,
+        refused=batch.refused_count,
+        include_verified=verification is not None,
+    )
+
+
+def format_run_lane_summary(label: str, lane: BackupLaneSummary) -> str:
+    return format_lane_write_summary(
+        label=label,
+        selected=lane.selected,
+        written=lane.written,
+        verified=lane.verified,
+        dump_failed=lane.dump_failed,
+        verify_failed=lane.verify_failed,
+        refused=lane.refused,
+        size_bytes=lane.total_size_bytes,
+        include_verified=True,
+    )
 
 
 def print_batch_small_backup_warnings(batch: BackupBatchResult) -> None:
@@ -239,20 +301,10 @@ def print_full_backup_run_result(
         f"Result  {result.outcome.value} · {result.run_id}"
     )
     if not lanes_already_shown:
-        prod = (
-            f"Prod    {result.production.written} written · "
-            f"{result.production.verified} verified · "
-            f"{result.production.failed} failed · "
-            f"{format_bytes(result.production.total_size_bytes)}"
-        )
+        prod = format_run_lane_summary("Prod   ", result.production)
         _write_dense_lines([prod])
         if result.development.requested:
-            dev = (
-                f"Dev     {result.development.written} written · "
-                f"{result.development.verified} verified · "
-                f"{result.development.failed} failed · "
-                f"{format_bytes(result.development.total_size_bytes)}"
-            )
+            dev = format_run_lane_summary("Dev    ", result.development)
             _write_dense_lines([dev])
     overall = (
         f"Status  artifacts {result.backup_artifacts_result.value} · "

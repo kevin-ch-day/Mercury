@@ -382,3 +382,40 @@ def test_sync_readiness_summary_reports_stale_blocker() -> None:
         readiness.build_sync_readiness_report = original
 
     assert blocker == "Artifact-verified backups are stale; run full backup before sync."
+
+
+def test_sync_readiness_summary_prefers_dumpability_blocker() -> None:
+    report = SimpleNamespace(
+        entries=[
+            SimpleNamespace(
+                prod="scytaledroid_core_prod",
+                blockers=[
+                    "Production source is not dumpable; Recreate the view(s) in ScytaleDroid "
+                    "so SHOW CREATE TABLE succeeds; Mercury will not skip views or accept a partial dump.",
+                    "Backup artifacts are artifact-verified but freshness is stale; "
+                    "run full backup before prod→dev sync.",
+                ],
+            ),
+        ],
+        ready_count=0,
+        blocked_count=1,
+    )
+
+    def fake_build_sync_readiness_report(*, live: bool):
+        return report
+
+    import mercury.sync.readiness as readiness
+
+    original = readiness.build_sync_readiness_report
+    readiness.build_sync_readiness_report = fake_build_sync_readiness_report
+    try:
+        _ready, _blocked, blocker = _sync_readiness_summary(
+            live=True,
+            verified_names={"scytaledroid_core_prod"},
+            source_names={"scytaledroid_core_prod"},
+        )
+    finally:
+        readiness.build_sync_readiness_report = original
+
+    assert "not dumpable" in blocker
+    assert "recreate the broken view" in blocker

@@ -301,10 +301,17 @@ def menu_handoff_problem_summary(problem_parts: list[str]) -> str:
             "verify failed",
             "missing manifest",
             "absent from server",
+            "not dumpable",
         )
     )
     empty_only = bool(lowered) and all("empty" in part for part in lowered)
+    dumpable_only = bool(lowered) and all("not dumpable" in part for part in lowered)
     # Unstamped + no RC is both a stamp and restore-check gap.
+    if dumpable_only:
+        return (
+            f"Source schema is not dumpable; recreate the broken view(s) "
+            f"before backup can complete: {joined}."
+        )
     if stamp_only and any("no rc" in part for part in lowered):
         return f"Manifest stamp / restore-check pending before workstation handoff: {joined}."
     if restore_only:

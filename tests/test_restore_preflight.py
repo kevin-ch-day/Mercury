@@ -85,6 +85,20 @@ def test_active_target_scoped_grants_satisfy_actual_requirements(tmp_path: Path)
     assert result.required_capabilities == ["CREATE", "DROP", "INSERT", "SELECT"]
 
 
+def test_external_view_dependency_requires_explicit_read_grant_before_reset(tmp_path: Path) -> None:
+    sql = (
+        "CREATE VIEW `v_dependency` AS SELECT * FROM "
+        "`android_permission_intel`.`android_permission_dict_unknown`;\n"
+    )
+    grants = f"GRANT ALL PRIVILEGES ON `{TARGET}`.* TO 'operator'@'localhost'"
+    result = _result(tmp_path, sql, grants)
+
+    assert result.passed is False
+    assert result.external_schema_references == ["android_permission_intel"]
+    assert result.missing_capabilities == ["SELECT on `android_permission_intel`.*"]
+    assert result.target_untouched is True
+
+
 def test_unknown_ddl_and_importer_contract_mismatch_fail_closed(tmp_path: Path) -> None:
     result = _result(
         tmp_path,

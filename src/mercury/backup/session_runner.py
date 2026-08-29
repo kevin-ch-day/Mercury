@@ -145,16 +145,22 @@ def _lane_from_batch(
             result=LaneResult.FAIL,
             message="lane not executed",
         )
+    dump_failed = len(list(getattr(batch, "errors", []) or []))
+    sources = list(getattr(batch, "sources", []) or [])
     results = list(getattr(batch, "results", []) or [])
     written = int(getattr(batch, "executed_count", 0) or 0)
-    failed = sum(
+    item_failed = sum(
         1
         for item in results
         if getattr(item, "refused", False) or getattr(item, "error", None)
     )
+    failed = dump_failed + item_failed
     verified = int(getattr(verification, "verified", 0) or 0) if verification else 0
     verify_failed = int(getattr(verification, "failed", 0) or 0) if verification else 0
-    if written == 0 and failed:
+    selected = len(sources) or (len(results) + dump_failed) or written
+    if dump_failed:
+        result = LaneResult.FAIL
+    elif written == 0 and failed:
         result = LaneResult.FAIL
     elif verify_failed or (verification is not None and verified < written):
         result = LaneResult.FAIL if written and verified == 0 else LaneResult.PARTIAL
@@ -167,7 +173,7 @@ def _lane_from_batch(
         required=required,
         attempted=True,
         result=result,
-        selected=len(results) or written,
+        selected=selected,
         written=written,
         verified=verified if verification is not None else 0,
         failed=failed + verify_failed,
@@ -851,7 +857,15 @@ def _default_sync() -> Any:
 
     report = build_sync_readiness_report(live=True)
     ready = [entry for entry in report.entries if entry.ready_for_sync_planning]
-    return run_sync_batch(ready, execute=True, policy=load_execution_policy())
+    from mercury.menu.prompts import ask_confirmation_phrase
+
+    confirmed = ask_confirmation_phrase("SYNC DEV", action="sync development")
+    return run_sync_batch(
+        ready,
+        execute=True,
+        policy=load_execution_policy(),
+        confirmation_phrase="SYNC DEV" if confirmed else None,
+    )
 
 
 def _default_restore_check(*, exact_backup_ids: list[str]) -> Any:

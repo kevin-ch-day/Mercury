@@ -308,6 +308,51 @@ def test_failed_live_backup_cleans_up_temporary_files(tmp_path: Path) -> None:
     assert not list((tmp_path / "backups").rglob("*.tmp"))
 
 
+def test_live_backup_refuses_undumpable_view_before_dump(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mercury.backup.content_contract import BackupObjectInventory
+
+    policy = _live_policy(tmp_path)
+    monkeypatch.setattr(
+        "mercury.backup.backup_runner.fetch_live_object_inventory",
+        lambda *_a, **_k: BackupObjectInventory(views=["v_masvs_matrix"]),
+    )
+    monkeypatch.setattr(
+        "mercury.backup.backup_runner.view_dumpability_error",
+        lambda *_a, **_k: (
+            "view `v_masvs_matrix` is not dumpable "
+            "(collation mix utf8mb4_uca1400_ai_ci vs utf8mb4_general_ci). "
+            "Recreate the view(s) in the source schema so SHOW CREATE TABLE succeeds; "
+            "Mercury will not skip views or accept a partial dump."
+        ),
+    )
+    called: list[str] = []
+
+    def runner(argv, env, output_path, _config):
+        called.append("dump")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"should-not-write\n")
+
+    with pytest.raises(BackupExecutionError, match="v_masvs_matrix"):
+        execute_backup(
+            "scytaledroid_core_prod",
+            BACKUP_KIND_FULL,
+            execute=True,
+            live=True,
+            server_names={"scytaledroid_core_prod"},
+            policy=policy,
+            date=FIXED_DATE,
+            timestamp=FIXED_TS,
+            now=FIXED_NOW,
+            mariadb_config=_fake_mariadb_config(),
+            dump_runner=runner,
+        )
+    assert called == []
+    assert not list((tmp_path / "backups").rglob("*.sql.gz"))
+
+
+
 def test_dev_database_excluded_from_backup() -> None:
     with pytest.raises(BackupExecutionError, match="not a backup source"):
         assert_safe_backup_source("erebus_threat_intel_dev")

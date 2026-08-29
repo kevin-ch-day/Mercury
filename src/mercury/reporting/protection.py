@@ -49,6 +49,7 @@ class ProtectionReport(BaseModel):
     manual_review: list[str] = Field(default_factory=list)
     prod_dev_pairs: list[ProdDevPair] = Field(default_factory=list)
     orphan_dev: list[str] = Field(default_factory=list)
+    dumpability_issues: list[str] = Field(default_factory=list)
     action_items: list[str] = Field(default_factory=list)
 
 
@@ -115,6 +116,19 @@ def build_protection_report(*, live: bool = False, probe_database: bool = False)
     if backup_status.stale_count or backup_status.unknown_freshness_count:
         actions.insert(0, protection_handoff_action_item(include_sync=True))
 
+    dumpability_issues: list[str] = []
+    if live:
+        from mercury.backup.dump_preflight import try_assess_sources_dumpability
+
+        dumpability = try_assess_sources_dumpability(plan.backup_sources)
+        dumpability_issues = dumpability.issue_lines()
+        if dumpability_issues:
+            actions.insert(
+                0,
+                "Source schema is not dumpable; recreate the broken view(s), "
+                "then run: mercury backup dumpability",
+            )
+
     return ProtectionReport(
         generated_at=datetime.now(timezone.utc).isoformat(),
         mode="live" if live else MODE_SEED,
@@ -137,6 +151,7 @@ def build_protection_report(*, live: bool = False, probe_database: bool = False)
         manual_review=review,
         prod_dev_pairs=pairs,
         orphan_dev=orphans,
+        dumpability_issues=dumpability_issues,
         action_items=actions,
     )
 
@@ -204,6 +219,12 @@ def format_protection_report(report: ProtectionReport, *, compact: bool = False)
         for name in report.orphan_dev:
             lines.append(f"  - {name}")
 
+    if report.dumpability_issues:
+        lines.append("")
+        lines.append("DUMPABILITY")
+        for line in report.dumpability_issues:
+            lines.append(f"  - {line}")
+
     lines.append("")
     lines.append("ACTION ITEMS")
     for item in report.action_items:
@@ -252,6 +273,12 @@ def _format_protection_report_compact(report: ProtectionReport) -> str:
         for name in report.manual_review:
             lines.append(f"  - {name}")
 
+    if report.dumpability_issues:
+        lines.append("")
+        lines.append("Dumpability:")
+        for line in report.dumpability_issues:
+            lines.append(f"  - {line}")
+
     return "\n".join(lines)
 
 
@@ -299,3 +326,7 @@ def print_protection_report(report: ProtectionReport, *, compact: bool = False) 
         )
     else:
         display_screen.write_status("warn", "No protected backup sources yet")
+    if report.dumpability_issues:
+        display_screen.write_blank()
+        for line in report.dumpability_issues:
+            display_screen.write_status("warn", line)

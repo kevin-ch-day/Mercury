@@ -42,6 +42,7 @@ from mercury.backup.menu_options import (
     backup_menu_render_options,
 )
 from mercury.backup.terminal.batch import (
+    format_batch_write_summary,
     print_backup_batch_result,
     print_batch_small_backup_warnings,
     print_full_backup_run_result,
@@ -151,6 +152,7 @@ def _write_focus_callout(
     *,
     needs_backup: bool,
     pending_rc: list[str],
+    dumpability_blocked: set[str] | bool = False,
 ) -> None:
     """High-visibility operator focus block (DEFCON glance target)."""
     from mercury.terminal.theme import (
@@ -160,6 +162,33 @@ def _write_focus_callout(
         markup,
         status_badge,
     )
+
+    blocked_names: set[str] = (
+        set()
+        if dumpability_blocked is False
+        else set()
+        if dumpability_blocked is True
+        else set(dumpability_blocked)
+    )
+    if dumpability_blocked:
+        from mercury.backup.dump_preflight import owning_project
+
+        projects = sorted(
+            {
+                owning_project(name) or name
+                for name in blocked_names
+            }
+        )
+        if len(projects) == 1:
+            next_line = f"Next: Recreate {projects[0]} view(s), then back up [1]"
+        else:
+            next_line = "Next: Recreate undumpable source views, then back up [1]"
+        if colors_enabled():
+            styles = active_styles()
+            output.write(f"{status_badge('warn')} {markup(next_line, styles.recommended)}")
+        else:
+            output.write(next_line)
+        return
 
     if pending_rc and not needs_backup:
         # The RC column already identifies these as restore-check gaps.  Their
@@ -262,6 +291,7 @@ def _backup_screen_rows(
     plan: BackupPlanDryRun,
     *,
     status_entries: dict[str, BackupStatusEntry] | None = None,
+    dumpability_blocked: set[str] | None = None,
 ) -> list[list[str]]:
     in_scope_names = [entry.name for entry in plan.classifications]
     pairs = build_prod_dev_pairs(in_scope_names)
@@ -278,15 +308,17 @@ def _backup_screen_rows(
             for entry in build_backup_status_report(live=should_probe_database_status()).entries
         }
 
+    blocked = dumpability_blocked or set()
     rows: list[list[str]] = []
 
     def append_row(name: str) -> None:
         entry = status_entries.get(name)
         record = latest_records.get(name)
+        freshness = "Undumpable" if name in blocked else _freshness_label(entry)
         rows.append(
             [
                 name,
-                _freshness_label(entry),
+                freshness,
                 _verify_label(entry),
                 format_bytes(record.size_bytes) if record and record.size_bytes is not None else "-",
                 _format_last_backup(
@@ -336,7 +368,19 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
     policy = load_execution_policy()
     status_report = build_backup_status_report(live=should_probe_database_status())
     status_entries = {entry.database: entry for entry in status_report.entries}
-    rows = _backup_screen_rows(plan, status_entries=status_entries)
+    dumpability_blocked: set[str] = set()
+    dumpability_lines: list[str] = []
+    if should_probe_database_status():
+        from mercury.backup.dump_preflight import try_assess_sources_dumpability
+
+        dumpability = try_assess_sources_dumpability(plan.backup_sources)
+        dumpability_blocked = dumpability.blocked_names()
+        dumpability_lines = dumpability.issue_lines()
+    rows = _backup_screen_rows(
+        plan,
+        status_entries=status_entries,
+        dumpability_blocked=dumpability_blocked,
+    )
 
     body_notes: list[tuple[str, str]] = []  # ("warn"|"info"|"hint"|"summary", text)
     pending_rc = [
@@ -359,6 +403,7 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
             "Verify failed",
             "Missing manifest",
             "Absent",
+            "Undumpable",
             "RC passed · unstamped",
             "OK unstamped",
         )
@@ -378,7 +423,11 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
                 pending_rc.append(row[0])
 
     # Focus first (DEFCON glance), then compact storage fields, then table.
-    _write_focus_callout(needs_backup=needs_backup, pending_rc=pending_rc)
+    _write_focus_callout(
+        needs_backup=needs_backup,
+        pending_rc=pending_rc,
+        dumpability_blocked=dumpability_blocked,
+    )
     _write_backup_fields(_storage_usage_fields(policy))
     display_screen.write_blank()
 
@@ -401,6 +450,7 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
             "Verify failed",
             "Missing manifest",
             "Absent",
+            "Undumpable",
             "Restore-check failed",
             "Failed",
             "RC passed · unstamped",
@@ -424,6 +474,8 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
                     problem_parts.append(f"{count} not restore-checked")
                 elif label == "Failed":
                     problem_parts.append(f"{count} restore-check failed")
+                elif label == "Undumpable":
+                    problem_parts.append(f"{count} not dumpable")
                 else:
                     problem_parts.append(f"{count} {label.lower()}")
         # Restore-check-only gaps are already covered by the focus callout.
@@ -437,6 +489,8 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
                 else menu_handoff_problem_summary(problem_parts)
             )
             body_notes.append(("info" if only_absent else "warn", message))
+        for line in dumpability_lines:
+            body_notes.append(("warn", line))
     else:
         display_screen.write_status("warn", "No databases in active backup scope.")
 
@@ -483,6 +537,13 @@ def _preview_backup_plan(plan: BackupPlanDryRun) -> None:
         databases_label="Production databases selected",
         suggest_verify=False,
     )
+    if should_probe_database_status():
+        from mercury.backup.dump_preflight import try_assess_sources_dumpability
+        from mercury.backup.terminal.dumpability import print_dumpability_report
+
+        print_dumpability_report(
+            try_assess_sources_dumpability(plan.backup_sources), menu=True
+        )
 
 
 def _ensure_writes_then_continue():
@@ -584,8 +645,7 @@ def _run_backup(plan: BackupPlanDryRun) -> None:
         if batch.executed_count:
             verification = verify_written_backup_batch(batch)
             display_screen.write_summary(
-                f"Prod verify · {verification.verified} verified · "
-                f"{verification.failed} failed"
+                format_batch_write_summary(batch, verification, label="Prod ")
             )
             for issue in verification.issues:
                 display_screen.write_status("fail", issue)
@@ -661,7 +721,7 @@ def _run_development_backup(*, require_confirmation: bool = True):
         if batch.executed_count:
             verification = verify_written_backup_batch(batch, allow_development_backup=True)
             display_screen.write_summary(
-                f"Dev verify · {verification.verified} verified · {verification.failed} failed"
+                format_batch_write_summary(batch, verification, label="Dev  ")
             )
             for issue in verification.issues:
                 display_screen.write_status("fail", issue)
@@ -707,6 +767,17 @@ def _run_full_backup(plan: BackupPlanDryRun, *, allow_development_prompt: bool =
         "Also snapshot configured development databases?",
         default=False,
     ) is True
+    prod_sources = list(plan.backup_sources)
+    if should_probe_database_status():
+        from mercury.backup.dump_preflight import try_assess_sources_dumpability
+
+        dumpability = try_assess_sources_dumpability(prod_sources)
+        if dumpability.blocked:
+            for line in dumpability.issue_lines():
+                display_screen.write_status("warn", line)
+            display_screen.write_summary(
+                "Dump will continue for dumpable sources; blocked sources fail closed."
+            )
     started = datetime.now(timezone.utc)
     run_id = new_full_backup_run_id(now=started)
     policy = load_execution_policy()
@@ -744,13 +815,14 @@ def _run_full_backup(plan: BackupPlanDryRun, *, allow_development_prompt: bool =
         production_verification = None
         if production_batch.executed_count:
             production_verification = verify_written_backup_batch(production_batch)
-            display_screen.write_summary(
-                f"Prod  {production_batch.executed_count} written · "
-                f"{production_verification.verified} verified · "
-                f"{production_verification.failed} failed"
-            )
             for issue in production_verification.issues:
                 display_screen.write_status("fail", issue)
+        if production_batch.executed_count or production_batch.errors:
+            display_screen.write_summary(
+                format_batch_write_summary(
+                    production_batch, production_verification, label="Prod "
+                )
+            )
         elif production_batch.refused_count:
             print_backup_batch_result(
                 production_batch,
@@ -761,8 +833,9 @@ def _run_full_backup(plan: BackupPlanDryRun, *, allow_development_prompt: bool =
             )
         else:
             display_screen.write_summary(
-                f"Prod  {production_batch.executed_count} written · "
-                f"{production_batch.refused_count} refused"
+                format_batch_write_summary(
+                    production_batch, production_verification, label="Prod "
+                )
             )
 
         development_batch = None
@@ -792,13 +865,14 @@ def _run_full_backup(plan: BackupPlanDryRun, *, allow_development_prompt: bool =
                     development_verification = verify_written_backup_batch(
                         development_batch, allow_development_backup=True
                     )
-                    display_screen.write_summary(
-                        f"Dev   {development_batch.executed_count} written · "
-                        f"{development_verification.verified} verified · "
-                        f"{development_verification.failed} failed"
-                    )
                     for issue in development_verification.issues:
                         display_screen.write_status("fail", issue)
+                if development_batch.executed_count or development_batch.errors:
+                    display_screen.write_summary(
+                        format_batch_write_summary(
+                            development_batch, development_verification, label="Dev  "
+                        )
+                    )
                 elif development_batch.refused_count:
                     print_backup_batch_result(
                         development_batch,
@@ -809,8 +883,9 @@ def _run_full_backup(plan: BackupPlanDryRun, *, allow_development_prompt: bool =
                     )
                 else:
                     display_screen.write_summary(
-                        f"Dev   {development_batch.executed_count} written · "
-                        f"{development_batch.refused_count} refused"
+                        format_batch_write_summary(
+                            development_batch, development_verification, label="Dev  "
+                        )
                     )
 
         result = build_full_backup_run_result(

@@ -1472,6 +1472,45 @@ def backup_plan(
             output.item(str(path))
 
 
+@backup_app.command("dumpability")
+def backup_dumpability(
+    db: Optional[str] = typer.Option(
+        None,
+        "--db",
+        help="Limit to one active backup source. Default: all active sources.",
+    ),
+    demo: bool = typer.Option(
+        False,
+        "--demo",
+        help="Skip live SHOW CREATE probes (prints that dumpability was not checked).",
+    ),
+) -> None:
+    """Read-only: report views that mariadb-dump cannot SHOW CREATE TABLE."""
+    from mercury.backup.batch_runner import BackupSourceSelectionError, select_batch_sources
+    from mercury.backup.dump_preflight import try_assess_sources_dumpability
+    from mercury.backup.terminal.dumpability import print_dumpability_report
+    from mercury.database.mariadb.session import try_load_mariadb_config
+
+    if demo:
+        output.write("Dumpability not checked in --demo mode (requires live MariaDB).")
+        raise typer.Exit(0)
+
+    try:
+        sources = select_batch_sources(
+            selected=[db] if db else None, live=try_load_mariadb_config() is not None
+        )
+    except BackupSourceSelectionError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+
+    report = try_assess_sources_dumpability(sources)
+    print_dumpability_report(report)
+    if try_load_mariadb_config() is None:
+        raise typer.Exit(1)
+    if report.blocked:
+        raise typer.Exit(1)
+
+
 @backup_app.command("schema-plan")
 def backup_schema_plan(
     demo: bool = typer.Option(
@@ -2028,6 +2067,12 @@ def backup_batch_cmd(
     except BackupSourceSelectionError as exc:
         typer.echo(str(exc))
         raise typer.Exit(1) from exc
+
+    if not demo:
+        from mercury.backup.dump_preflight import try_assess_sources_dumpability
+        from mercury.backup.terminal.dumpability import print_dumpability_report
+
+        print_dumpability_report(try_assess_sources_dumpability(sources))
 
     if execute:
         from mercury.backup.write_preflight import assess_backup_write_preflight
@@ -2775,7 +2820,7 @@ def sync_run_cmd(
     execute: bool = typer.Option(
         False,
         "--execute",
-        help="Restore verified backups into dev targets (requires live actions and a default-no confirmation).",
+        help="Restore verified backups into dev targets (requires live actions and typed SYNC DEV confirmation).",
     ),
     source: str | None = typer.Option(
         None,
@@ -2811,11 +2856,16 @@ def sync_run_cmd(
         typer.echo("Development WILL be deleted and rebuilt from verified backups:")
         for entry in ready:
             typer.echo(f"  {entry.prod} -> {entry.expected_dev}")
-        if not typer.confirm("Replace the listed development database(s)?", default=False):
+        confirmation = typer.prompt("Type SYNC DEV to replace the listed development database(s)")
+        if confirmation != "SYNC DEV":
             typer.echo("Cancelled.")
             raise typer.Exit(1)
+    else:
+        confirmation = None
 
-    batch = run_sync_batch(ready, execute=execute, policy=policy)
+    batch = run_sync_batch(
+        ready, execute=execute, policy=policy, confirmation_phrase=confirmation
+    )
     print_sync_batch_result(batch, compact=True)
     if execute and batch.executed_count == 0:
         raise typer.Exit(1)
@@ -2827,7 +2877,7 @@ def sync_all_cmd(
     execute: bool = typer.Option(
         False,
         "--execute",
-        help="Restore all ready verified backups into dev targets (requires live actions and a default-no confirmation).",
+        help="Restore all ready verified backups into dev targets (requires live actions and typed SYNC DEV confirmation).",
     ),
 ) -> None:
     """Plan or execute sync for all ready production sync pairs."""

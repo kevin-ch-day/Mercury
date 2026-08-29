@@ -18,6 +18,7 @@ from mercury.sync.selection import select_sync_entries
 from mercury.sync.terminal.runner import print_sync_batch_result
 from mercury.sync.readiness import SyncReadinessReport, build_sync_readiness_report
 from mercury.sync.terminal.readiness import _pair_route_label, print_sync_readiness_report
+from mercury.terminal.format import format_bytes
 
 SYNC_SCREEN_TITLE = "Production sync readiness"
 SYNC_SCREEN_SUBTITLE = (
@@ -146,14 +147,32 @@ def _run_sync_for_ready(report: SyncReadinessReport) -> None:
             ]
         )
         display_screen.write_blank()
-        if menu_prompts.ask_yes_no(
-            "Replace the listed development database(s)?",
-            default=False,
-        ) is not True:
+        display_screen.write_summary("Type SYNC DEV to confirm this development-only replacement.")
+        if not menu_prompts.ask_confirmation_phrase("SYNC DEV", action="sync development"):
             display_screen.write_summary("Sync cancelled.")
             return
 
-    batch = run_sync_batch(ready, execute=execute, policy=policy)
+    last_heartbeat: dict[str, float] = {}
+
+    def _on_import_progress(entry, uncompressed: int, _compressed: int, elapsed: float) -> None:
+        """Show bounded progress during a long non-interactive import stream."""
+        last = last_heartbeat.get(entry.expected_dev, 0.0)
+        if elapsed - last < 20 and uncompressed > 0:
+            return
+        last_heartbeat[entry.expected_dev] = elapsed
+        minutes, seconds = divmod(int(elapsed), 60)
+        display_screen.write_summary(
+            f"  …{entry.prod} → {entry.expected_dev}: "
+            f"{format_bytes(uncompressed)} streamed ({minutes}m{seconds:02d}s)"
+        )
+
+    batch = run_sync_batch(
+        ready,
+        execute=execute,
+        policy=policy,
+        confirmation_phrase="SYNC DEV" if execute else None,
+        on_import_progress=_on_import_progress if execute else None,
+    )
     print_sync_batch_result(batch, compact=True)
 
 

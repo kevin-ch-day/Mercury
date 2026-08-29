@@ -97,12 +97,16 @@ def sync_menu_next_step(report: SyncReadinessReport, *, live_allowed: bool) -> t
     from mercury.sync.menu_options import (
         ACTION_RECHECK,
         ACTION_SYNC_ALL_READY,
+        ACTION_SYNC_ONE,
         sync_submenu_hint,
     )
 
     if report.ready_count and not report.blocked_count:
+        recommended_action = (
+            ACTION_SYNC_ONE if report.ready_count > 1 else ACTION_SYNC_ALL_READY
+        )
         action_hint = sync_submenu_hint(
-            ACTION_SYNC_ALL_READY, report, live_allowed=live_allowed
+            recommended_action, report, live_allowed=live_allowed
         )
         return ("warn", f"All approved pairs have verified artifacts — restore preflight runs before any dev replacement. Choose {action_hint}.")
     if report.ready_count and report.blocked_count:

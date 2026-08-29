@@ -10,6 +10,8 @@ from mercury.core.execution_policy import ExecutionPolicy
 from mercury.restore.restore_runner import execute_restore_into_database
 from mercury.sync.readiness import SyncReadinessEntry
 
+SYNC_CONFIRMATION_PHRASE = "SYNC DEV"
+
 
 class SyncExecutionResult(BaseModel):
     source: str
@@ -35,9 +37,25 @@ def run_sync_batch(
     execute: bool,
     policy: ExecutionPolicy,
     import_runner=None,
+    confirmation_phrase: str | None = None,
+    on_import_progress=None,
 ) -> SyncBatchResult:
     """Plan or execute prod→dev sync for ready pairs only."""
     batch = SyncBatchResult()
+    if execute and confirmation_phrase != SYNC_CONFIRMATION_PHRASE:
+        for entry in entries:
+            batch.results.append(
+                SyncExecutionResult(
+                    source=entry.prod,
+                    target=entry.expected_dev,
+                    backup_dir=entry.latest_backup_dir,
+                    refused=True,
+                    verification_passed=None,
+                    message="Sync refused before target modification: type SYNC DEV to confirm development replacement.",
+                )
+            )
+        batch.refused_count = len(entries)
+        return batch
     if execute and not policy.live_execution_allowed():
         reason = policy.refusal_reason() or "Live sync is not permitted."
         for entry in entries:
@@ -126,6 +144,14 @@ def run_sync_batch(
             config=restore_cfg if execute else None,
             recreate_target=True,
             import_runner=import_runner,
+            on_import_progress=(
+                (
+                    lambda uncompressed, compressed, elapsed, _entry=entry:
+                    on_import_progress(_entry, uncompressed, compressed, elapsed)
+                )
+                if on_import_progress is not None
+                else None
+            ),
             restore_preflight=preflight if execute else None,
             require_restore_preflight=execute,
         )

@@ -37,6 +37,7 @@ from mercury.backup.content_contract import (
     extract_restore_requirements,
     fetch_live_object_inventory,
 )
+from mercury.backup.dump_preflight import classify_dump_tool_error, view_dumpability_error
 from mercury.backup.live_inventory import (
     fetch_live_server_database_names,
     live_source_missing_reason,
@@ -123,6 +124,13 @@ def _compress_cli() -> str | None:
     return shutil.which("pigz") or shutil.which("gzip")
 
 
+def _database_from_dump_argv(argv: list[str]) -> str | None:
+    try:
+        return argv[argv.index("--databases") + 1]
+    except (ValueError, IndexError):
+        return None
+
+
 def _default_dump_runner(
     argv: list[str],
     env: dict[str, str],
@@ -131,6 +139,7 @@ def _default_dump_runner(
 ) -> None:
     """Run mariadb-dump, compressing with pigz/gzip CLI or Python gzip."""
     ensure_private_directory(output_path.parent)
+    database = _database_from_dump_argv(argv)
     compress = _compress_cli()
     if compress:
         compress_name = Path(compress).name
@@ -154,8 +163,10 @@ def _default_dump_runner(
             dump_stderr = dump_proc.communicate()[1]
             if dump_proc.returncode != 0:
                 detail = (dump_stderr or b"").decode("utf-8", errors="replace").strip()
+                diagnosed = classify_dump_tool_error(detail, database=database)
                 raise BackupExecutionError(
-                    f"mariadb-dump failed (exit {dump_proc.returncode}): {detail or 'unknown error'}"
+                    f"mariadb-dump failed (exit {dump_proc.returncode}): "
+                    f"{diagnosed or 'unknown error'}"
                 )
             if gzip_proc.returncode != 0:
                 detail = (gzip_stderr or b"").decode("utf-8", errors="replace").strip()
@@ -174,8 +185,10 @@ def _default_dump_runner(
     )
     if result.returncode != 0:
         detail = (result.stderr or b"").decode("utf-8", errors="replace").strip()
+        diagnosed = classify_dump_tool_error(detail, database=database)
         raise BackupExecutionError(
-            f"mariadb-dump failed (exit {result.returncode}): {detail or 'unknown error'}"
+            f"mariadb-dump failed (exit {result.returncode}): "
+            f"{diagnosed or 'unknown error'}"
         )
     with gzip.open(output_path, "wb") as handle:
         handle.write(result.stdout or b"")
@@ -449,6 +462,9 @@ def execute_backup(
                 "Could not establish the live backup object contract; "
                 "refusing to create an unverifiable backup."
             ) from exc
+        dumpability = view_dumpability_error(config, database, live_inventory.views)
+        if dumpability:
+            raise BackupExecutionError(dumpability)
 
     runner = dump_runner or _default_dump_runner
     env = os.environ.copy()
@@ -511,7 +527,7 @@ def execute_backup(
                 )
 
         restore_requirements = (
-            extract_restore_requirements(primary_path)
+            extract_restore_requirements(primary_path, source_database=database)
             if live_inventory is not None and kind == BACKUP_KIND_FULL and primary_path is not None
             else None
         )

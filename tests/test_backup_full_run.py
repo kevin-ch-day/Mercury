@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from mercury.backup.batch_runner import (
     BackupBatchResult,
     BatchVerificationSummary,
@@ -188,6 +190,78 @@ def test_full_backup_fail_when_production_verify_fails(tmp_path: Path) -> None:
     )
     assert result.outcome == FullBackupOutcome.FAIL
     assert result.next_actions == []
+
+
+def test_full_backup_dump_failure_is_partial_artifacts_not_verify_fail(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    directory = tmp_path / "android"
+    directory.mkdir()
+    batch = BackupBatchResult(
+        backup_kind="full",
+        execute=True,
+        sources=["android_permission_intel", "scytaledroid_core_prod"],
+        results=[
+            _executed(
+                "android_permission_intel",
+                "android_permission_intel-full-1",
+                directory,
+            )
+        ],
+        executed_count=1,
+        errors=[
+            "scytaledroid_core_prod: view `v_masvs_matrix` is not dumpable "
+            "(collation mix utf8mb4_uca1400_ai_ci vs utf8mb4_general_ci). "
+            "Recreate the view(s) in the source schema so SHOW CREATE TABLE succeeds; "
+            "Mercury will not skip views or accept a partial dump."
+        ],
+    )
+    verification = BatchVerificationSummary(
+        verified=1,
+        backup_ids=["android_permission_intel-full-1"],
+        evidence_paths=[str(directory / "manifest.json")],
+    )
+    result = build_full_backup_run_result(
+        run_id="20260828T235218Z_full_backup",
+        started_at_utc="2026-08-28T23:52:18Z",
+        production_batch=batch,
+        production_verification=verification,
+    )
+    assert result.outcome == FullBackupOutcome.FAIL
+    assert result.backup_artifacts_result == LaneResult.PARTIAL
+    assert result.verification_result == LaneResult.PASS
+    assert result.production.dump_failed == 1
+    assert result.production.verify_failed == 0
+    assert result.production.written == 1
+    assert result.production.selected == 2
+    assert result.next_actions
+    assert "undumpable" in result.next_actions[0]
+    assert "ScytaleDroid" in result.next_actions[0]
+    from mercury.backup.terminal.batch import print_full_backup_run_result
+
+    print_full_backup_run_result(result)
+    out = capsys.readouterr().out
+    assert "artifacts PARTIAL" in out
+    assert "verify PASS" in out
+    assert "1 dump failed" in out
+    assert "v_masvs_matrix" in out
+
+
+def test_format_batch_write_summary_counts_dump_failures() -> None:
+    from mercury.backup.terminal.batch import format_batch_write_summary
+
+    batch = BackupBatchResult(
+        backup_kind="full",
+        execute=True,
+        sources=["android_permission_intel", "scytaledroid_core_prod"],
+        executed_count=1,
+        errors=["scytaledroid_core_prod: view `v_masvs_matrix` is not dumpable"],
+    )
+    verification = BatchVerificationSummary(verified=1)
+    line = format_batch_write_summary(batch, verification, label="Prod ")
+    assert line == "Prod  1/2 written · 1 dump failed · 1 verified"
+
 
 
 def test_full_backup_refused_when_nothing_written() -> None:

@@ -35,6 +35,61 @@ def test_run_backup_batch_dry_run(tmp_path: Path) -> None:
     assert batch.executed_count == 0
 
 
+def test_run_backup_batch_skips_undumpable_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mercury.backup.backup_runner import BackupExecutionResult
+    from mercury.backup.dump_preflight import DatabaseDumpability, SourcesDumpability
+
+    policy = ExecutionPolicy(
+        dry_run=False,
+        live_actions_enabled=False,
+        backup_root=tmp_path,
+        allow_unsafe_backup_root=True,
+    )
+    monkeypatch.setattr(
+        "mercury.backup.batch_runner.fetch_live_server_database_names",
+        lambda: {"erebus_threat_intel_prod", "scytaledroid_core_prod"},
+    )
+    monkeypatch.setattr(
+        "mercury.backup.dump_preflight.try_assess_sources_dumpability",
+        lambda sources, **kwargs: SourcesDumpability(
+            entries=[
+                DatabaseDumpability(database="erebus_threat_intel_prod", view_count=1),
+                DatabaseDumpability(
+                    database="scytaledroid_core_prod",
+                    view_count=51,
+                    issues=["view `v_masvs_matrix` is not dumpable (collation mix a vs b)"],
+                ),
+            ]
+        ),
+    )
+    called: list[str] = []
+
+    def fake_execute(database, *args, **kwargs):
+        called.append(database)
+        return BackupExecutionResult(
+            database=database,
+            backup_kind=BACKUP_KIND_FULL,
+            dry_run=False,
+            executed=True,
+            backup_directory=str(tmp_path / database),
+        )
+
+    monkeypatch.setattr("mercury.backup.batch_runner.execute_backup", fake_execute)
+    batch = run_backup_batch(
+        BACKUP_KIND_FULL,
+        execute=True,
+        live=True,
+        policy=policy,
+        sources=["erebus_threat_intel_prod", "scytaledroid_core_prod"],
+    )
+    assert called == ["erebus_threat_intel_prod"]
+    assert batch.executed_count == 1
+    assert any("v_masvs_matrix" in error for error in batch.errors)
+    assert any("scytaledroid_core_prod" in error for error in batch.errors)
+
+
 def test_sync_readiness_report_demo() -> None:
     import mercury.sync.readiness as readiness
 

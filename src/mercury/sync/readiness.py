@@ -145,6 +145,16 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
     entries: list[SyncReadinessEntry] = []
     ready_count = 0
     blocked_count = 0
+    dumpability_blocked: dict[str, str] = {}
+    if live and should_probe_database_status():
+        from mercury.backup.dump_preflight import repair_hint, try_assess_sources_dumpability
+
+        prod_names = [
+            pair.prod for pair in pairs if is_in_scope(pair.expected_dev)
+        ]
+        dumpability = try_assess_sources_dumpability(prod_names)
+        for entry in dumpability.blocked:
+            dumpability_blocked[entry.database] = repair_hint(entry.database)
 
     for pair in pairs:
         if not is_in_scope(pair.expected_dev):
@@ -156,6 +166,11 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
             )
         if not pair.dev_listed:
             blockers.append(f"Dev target missing: {pair.expected_dev}")
+        if pair.prod in dumpability_blocked:
+            blockers.append(
+                "Production source is not dumpable; "
+                + dumpability_blocked[pair.prod]
+            )
 
         backup_dir = None
         try:
