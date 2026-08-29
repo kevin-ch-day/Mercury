@@ -338,3 +338,19 @@ def test_parse_force_show_create_errors_qualified() -> None:
     parsed = parse_force_show_create_errors_qualified(FORCE_STDERR)
     assert ("scytaledroid_core_prod", "v_masvs_matrix") in parsed
 
+
+def test_format_undumpable_next_action_names_the_view() -> None:
+    from mercury.backup.dump_preflight import format_undumpable_next_action
+
+    line = format_undumpable_next_action(
+        ["scytaledroid_core_prod"],
+        [
+            "scytaledroid_core_prod: view `v_masvs_matrix` is not dumpable "
+            "(collation mix utf8mb4_uca1400_ai_ci vs utf8mb4_general_ci)."
+        ],
+    )
+    assert line == (
+        "Recreate undumpable ScytaleDroid view `v_masvs_matrix`, "
+        "then rerun Backup and verification."
+    )
+

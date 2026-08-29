@@ -135,6 +135,40 @@ class SourcesDumpability(BaseModel):
         return _REPAIR_HINT
 
 
+_VIEW_BACKTICK_RE = re.compile(r"view `([^`]+)`")
+
+
+def undumpable_view_names(texts: Sequence[str]) -> list[str]:
+    """Unique view names mentioned in dumpability refusals, in first-seen order."""
+    names: list[str] = []
+    seen: set[str] = set()
+    for text in texts:
+        for match in _VIEW_BACKTICK_RE.finditer(text or ""):
+            name = match.group(1)
+            if name not in seen:
+                seen.add(name)
+                names.append(name)
+    return names
+
+
+def format_undumpable_next_action(
+    databases: Sequence[str], errors: Sequence[str]
+) -> str:
+    """One Next line after a production dump that failed closed on views."""
+    projects = sorted({owning_project(name) or "" for name in databases} - {""})
+    views = undumpable_view_names(errors)
+    if views:
+        quoted = ", ".join(f"`{name}`" for name in views)
+        view_label = f"view {quoted}" if len(views) == 1 else f"views {quoted}"
+    else:
+        view_label = "view(s)"
+    owner = projects[0] if len(projects) == 1 else "source"
+    return (
+        f"Recreate undumpable {owner} {view_label}, "
+        "then rerun Backup and verification."
+    )
+
+
 def quote_ident(name: str) -> str:
     if not _SAFE_IDENTIFIER.fullmatch(name):
         raise ValueError(f"Unsafe SQL identifier: {name!r}")

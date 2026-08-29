@@ -656,22 +656,16 @@ def build_full_backup_run_result(
     elif outcome == FullBackupOutcome.REFUSED:
         next_actions = []
     elif production_batch.errors:
+        from mercury.backup.dump_preflight import format_undumpable_next_action
+
         databases = [
             error.split(":", 1)[0].strip()
             for error in production_batch.errors
             if ":" in error
         ]
-        from mercury.backup.dump_preflight import owning_project
-
-        projects = sorted({owning_project(name) or "" for name in databases} - {""})
-        if len(projects) == 1:
-            next_actions = [
-                f"Recreate undumpable {projects[0]} view(s), then rerun Backup and verification.",
-            ]
-        else:
-            next_actions = [
-                "Recreate undumpable source views, then rerun Backup and verification.",
-            ]
+        next_actions = [
+            format_undumpable_next_action(databases, production_batch.errors),
+        ]
 
     phase3b_note = (
         "Routine verified backups remain separate from sealed Phase 3B rehearsal package "

@@ -238,6 +238,7 @@ def test_full_backup_dump_failure_is_partial_artifacts_not_verify_fail(
     assert result.next_actions
     assert "undumpable" in result.next_actions[0]
     assert "ScytaleDroid" in result.next_actions[0]
+    assert "`v_masvs_matrix`" in result.next_actions[0]
     from mercury.backup.terminal.batch import print_full_backup_run_result
 
     print_full_backup_run_result(result)
