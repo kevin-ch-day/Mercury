@@ -287,24 +287,23 @@ def test_display_status_labels() -> None:
     assert display_freshness_label(None) == "—"
     assert backup_entry_status_label(None) == "Missing"
     assert menu_handoff_problem_summary(["1 stale"]) == (
-        "Fresh full backup needed before workstation handoff: 1 stale."
+        "Fresh full backup needed: 1 stale."
     )
     assert menu_handoff_problem_summary(["4 not restore-checked"]) == (
-        "Restore-check required before workstation handoff: 4 not restore-checked."
+        "Restore-check required: 4 not restore-checked."
     )
     assert menu_handoff_problem_summary(["1 stale", "2 not restore-checked"]) == (
-        "Before workstation handoff: 1 stale, 2 not restore-checked."
+        "Production protection incomplete: 1 stale, 2 not restore-checked."
     )
     assert menu_handoff_problem_summary(["1 not dumpable"]) == (
         "Source schema is not dumpable; recreate the broken view(s) "
         "before backup can complete: 1 not dumpable."
     )
     assert menu_handoff_problem_summary(["2 OK* · no RC"]) == (
-        "Manifest stamp / restore-check pending before workstation handoff: 2 OK* · no RC."
+        "Manifest stamp / restore-check pending: 2 OK* · no RC."
     )
     assert menu_handoff_problem_summary(["1 empty"]) == (
-        "Empty source schema(s) on server — preserve with one verified backup "
-        "before workstation handoff: 1 empty."
+        "Empty source schema(s) on server — preserve with one verified backup: 1 empty."
     )
     assert "prod→dev sync" in protection_handoff_action_item(include_sync=True)
 
@@ -347,7 +346,7 @@ def test_print_backup_status_report_uses_display_labels(
     assert "Stale" in out
     assert "VERIFY" in out
     assert "Production databases" in out
-    assert "handoff should wait for fresh full backups" in out
+    assert "before treating protection as current" in out
     assert "Artifact verified means backup files pass checksum" in out
 
 

@@ -323,6 +323,6 @@ def test_print_transfer_bundle_stale_database_package_shows_warnings(
     assert "Database package: complete with warnings" in out
     assert "Handoff readiness: complete with warnings" in out
     assert "1 stale" in out
-    assert "handoff should wait for fresh full backups" in out
+    assert "before treating protection as current" in out
     assert "FRESH" in out
     assert "Stale" in out

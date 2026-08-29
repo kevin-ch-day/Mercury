@@ -8,14 +8,9 @@ from mercury.core.environment_status import (
     build_environment_status,
     config_dashboard_label,
     mariadb_dashboard_label,
-    recommended_next_step,
     resolve_dashboard_blocker,
 )
-from mercury.core.execution_policy import (
-    backup_root_state_is_ready,
-    destructive_ops_label,
-    load_execution_policy,
-)
+from mercury.core.execution_policy import backup_root_state_is_ready, load_execution_policy
 from mercury.core.platform import detect_platform
 from mercury.core.runtime import should_probe_database_status
 from mercury.core.storage_status import backup_root_free_space_label
@@ -42,7 +37,7 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
         except Exception as exc:
             return [
                 dashboard_row("Active writer", _backup_target_summary(policy, env)),
-                dashboard_row("Migration status", f"unavailable: {exc}"),
+                dashboard_row("Dashboard", f"unavailable: {exc}"),
             ]
 
     rows: list[str] = []
@@ -64,122 +59,13 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
     except OSError:
         pass
 
-    sync_blocker = "None."
-    stale_names: set[str] = set()
-    unknown_names: set[str] = set()
-    verified_names: set[str] = set()
-    source_names: set[str] = set()
-    missing_count = 0
-    failed_count = 0
-    unknown_only_count = 0
-    absent_count = 0
-    status_error: str | None = None
-    ready = 0
-    blocked = 0
-    if not config_initialized:
-        backup_line = "skipped until config initialized"
-        sync_line = "skipped until config initialized"
-        handoff_line = "skipped until config initialized"
-        blocker = resolve_dashboard_blocker(
-            setup_blocker=env.primary_setup_blocker,
-            verified_names=set(),
-            source_names=set(),
-            sync_blocker="No verified full backups exist yet.",
-            config_initialized=False,
-        )
-    else:
-        (
-            verified_names,
-            source_names,
-            stale_names,
-            unknown_names,
-            missing_count,
-            failed_count,
-            unknown_only_count,
-            absent_count,
-            status_error,
-        ) = _verified_source_summary(live=probe and env.mariadb.connection_works is True)
-        ready, blocked, sync_blocker = _sync_readiness_summary(
-            live=probe and env.mariadb.connection_works is True,
-            verified_names=verified_names,
-            source_names=source_names,
-        )
-        blocker = _resolve_environment_readiness(
-            setup_blocker=env.primary_setup_blocker,
-            config_initialized=True,
-            verified_names=verified_names,
-            source_names=source_names,
-            sync_blocker=sync_blocker,
-            # Deployment selection re-verifies every backup and is too costly
-            # for a menu redraw. Deployment screens own that detailed check.
-            deploy_complete=False,
-            stale_count=len(stale_names),
-            missing_count=missing_count,
-            failed_count=failed_count,
-            unknown_only_count=unknown_only_count,
-            absent_count=absent_count,
-            status_error=status_error,
-        )
-        present_on_server = max(0, len(source_names) - absent_count)
-        backup_line = f"{len(verified_names)} of {present_on_server} server sources verified"
-        if absent_count:
-            backup_line += f"; {absent_count} absent from server"
-        if missing_count:
-            backup_line += f"; {missing_count} without backup"
-        if failed_count:
-            backup_line += f"; {failed_count} failed"
-        if stale_names:
-            backup_line += f"; {len(stale_names)} stale"
-        if unknown_names:
-            backup_line += f"; {len(unknown_names)} unknown freshness"
-        if "not dumpable" in (sync_blocker or "").lower():
-            backup_line += "; source not dumpable"
-        if status_error:
-            backup_line = status_error
-        sync_line = f"{ready} approved pairs ready"
-        if blocked:
-            sync_line += f"; {blocked} blocked"
-        if status_error:
-            sync_line = "unavailable"
-            handoff_line = "status error — see Protection"
-        elif stale_names or missing_count or failed_count:
-            handoff_line = "partial — handoff checklist (or h)"
-        elif unknown_names or absent_count:
-            handoff_line = "warnings — handoff guided wizard (or h)"
-        elif verified_names and present_on_server and len(verified_names) == present_on_server:
-            handoff_line = "backup lane ok — handoff wizard (or h)"
-        else:
-            handoff_line = "incomplete"
-        latest_handoff_status: str | None = None
-        latest_transfer_at: str | None = None
-        try:
-            from mercury.state.summary import build_state_summary
-
-            state = build_state_summary()
-            latest_transfer_at = state.latest_transfer_at
-            latest_handoff_status = state.latest_handoff_status
-        except OSError:
-            state = None
-        from mercury.handoff.display import handoff_dashboard_line
-
-        handoff_line = handoff_dashboard_line(
-            verified_count=len(verified_names),
-            source_count=len(source_names),
-            stale_count=len(stale_names),
-            missing_count=missing_count,
-            failed_count=failed_count,
-            unknown_count=len(unknown_names),
-            absent_count=absent_count,
-            latest_handoff_status=latest_handoff_status,
-            latest_transfer_at=latest_transfer_at,
-        )
+    backup_line = "skipped until config initialized"
+    sync_line = "skipped until config initialized"
 
     rows.extend(
         [
             dashboard_row("Database backups", backup_line),
-            dashboard_row("Workstation handoff", handoff_line),
             dashboard_row("Sync readiness", sync_line),
-            dashboard_row("Cutover blockers", blocker),
         ]
     )
     if env.repairable_blockers or env.usb.repair_banner:
@@ -202,6 +88,8 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
                     f"Enter r at main menu or run {USB_REPAIR_COMMAND}",
                 )
             )
+    if env.primary_setup_blocker:
+        rows.append(dashboard_row("Setup", env.primary_setup_blocker))
     elif env.setup_hints:
         rows.append(dashboard_row("Setup", env.setup_hints[0]))
         for hint in env.setup_hints[1:]:
@@ -210,7 +98,7 @@ def dashboard_rows(*, probe_database: bool | None = None) -> list[str]:
 
 
 def _migration_dashboard_rows(report, policy) -> list[str]:
-    """Compact handoff dashboard — few dense rows, no filler status."""
+    """Compact operator home dashboard — few dense rows, no filler status."""
     unresolved = report.unresolved_checks
     try:
         from mercury.storage.hdd_menu_options import (
@@ -244,7 +132,7 @@ def _migration_dashboard_rows(report, policy) -> list[str]:
                 else "Not connected"
             )
             rows = [
-                dashboard_row("Mercury HDD", hdd_label),
+                dashboard_row("Backup storage", hdd_label),
                 dashboard_row("Writer", "Disabled"),
                 dashboard_row("Recommended", next_line),
                 dashboard_row(
@@ -268,19 +156,18 @@ def _migration_dashboard_rows(report, policy) -> list[str]:
             }
         ):
             return [
-                dashboard_row("Mercury HDD", hdd_line),
+                dashboard_row("Backup storage", hdd_line),
                 dashboard_row("Host role", "Destination rehearsal"),
                 dashboard_row("Last backup", last_backup),
-                dashboard_row("Git recovery", git_recovery),
+                dashboard_row("Repositories", git_recovery),
                 dashboard_row("Migration", migration_display),
                 dashboard_row("Recommended", next_line),
             ]
 
         rows = [
-            dashboard_row("Mercury HDD", hdd_line),
+            dashboard_row("Backup storage", hdd_line),
             dashboard_row("Last backup", last_backup),
-            dashboard_row("Git recovery", git_recovery),
-            dashboard_row("Migration", migration_display),
+            dashboard_row("Repositories", git_recovery),
             dashboard_row("Recommended", next_line),
         ]
         if delta_line:
@@ -291,17 +178,16 @@ def _migration_dashboard_rows(report, policy) -> list[str]:
         free = backup_root_free_space_label(policy)
         return [
             dashboard_row("Writer", _compact_writer_line(by_id["active_writer"].summary, free)),
-            dashboard_row("Mercury HDD", _compact_hdd_line()),
-            dashboard_row("Package", _compact_package_line()),
-            dashboard_row("Migration", _compact_phase_line(report.operator_phase, unresolved)),
-            dashboard_row("Recommended", "Open Mercury HDD and storage"),
+            dashboard_row("Backup storage", _compact_hdd_line()),
+            dashboard_row("Last backup", _compact_backup_and_git_lines()[0]),
+            dashboard_row("Recommended", "Open Backup storage"),
         ]
 
 
 def _compact_backup_and_git_lines() -> tuple[str, str]:
-    """Lightweight Last backup / Git recovery labels (no live writer or HDD mutation)."""
+    """Lightweight Last backup / repository-backup labels."""
     last_backup = "No recent verified backup"
-    git_recovery = "No recent Git capture"
+    git_recovery = "No recent repository backup"
     try:
         from mercury.state.summary import build_state_summary
 
@@ -316,7 +202,7 @@ def _compact_backup_and_git_lines() -> tuple[str, str]:
                 break
         verified = getattr(state, "verified_source_count", None)
         if last_backup.startswith("No recent") and verified:
-            last_backup = f"{verified} verified source(s)"
+            last_backup = f"{verified} of 4 production sources verified"
         for attr, fmt in (
             ("latest_repo_bundle_at", "Bundle · {}"),
             ("repo_bundle_rows", "{} repo bundle(s) on storage"),

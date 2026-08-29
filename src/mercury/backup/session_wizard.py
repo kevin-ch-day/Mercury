@@ -96,7 +96,7 @@ def _print_status_rows(host, *, availability_classification: str) -> None:
         else "No known changes after package"
     )
     rows = [
-        dashboard_row("Mercury HDD", hdd, label_width=16),
+        dashboard_row("Backup storage", hdd, label_width=16),
         dashboard_row("Backup writer", write_state, label_width=16),
         dashboard_row("Package", _package_status_label(host), label_width=16),
     ]
@@ -382,23 +382,23 @@ def offer_post_session_actions(session: BackupSyncSession) -> str | None:
         SessionResult.PARTIAL,
     }
     options: list[tuple[str, str, str]] = []
-    if allow_disconnect:
-        options.append(("safe_disconnect", "Safely disconnect Mercury HDD", "safe_disconnect"))
     if allow_disconnect and session.production_backup_result.result == LaneResult.PASS:
         options.append(
-            ("restore_check", "Restore-check newly written backups [5]", "restore_check")
+            ("restore_check", "Restore-check newly written backups [3]", "restore_check")
         )
         options.append(
-            ("deploy_handoff", "Open Deployment and handoff [7]", "deploy_handoff")
+            ("deploy_handoff", "Deploy backups onto this host [3]", "deploy_handoff")
         )
     if allow_disconnect and not session.requested_operations.sync_development:
         options.append(
-            ("open_sync", "Open Database sync and data movement [2]", "open_sync")
+            ("open_sync", "Open Prod-to-dev sync [5]", "open_sync")
         )
     if allow_disconnect and not session.requested_operations.git_recovery:
         options.append(
-            ("open_repo", "Open Git and repository recovery [3]", "open_repo")
+            ("open_repo", "Open Repository backups [2]", "open_repo")
         )
+    if allow_disconnect:
+        options.append(("safe_disconnect", "Safely disconnect backup storage", "safe_disconnect"))
     options.append(("review", "Review session details", "review"))
     options.append(("main_menu", "Return to main menu", "main_menu"))
     for index, (_key, label, _action) in enumerate(options, start=1):
@@ -511,9 +511,9 @@ def run_backup_sync_wizard(
 
         run_restore_menu()
     elif action == "deploy_handoff":
-        from mercury.menu.task_menus import run_deploy_handoff_hub
+        from mercury.deploy.interactive_menu import run_deploy_menu
 
-        run_deploy_handoff_hub()
+        run_deploy_menu()
     elif action == "open_sync":
         from mercury.menu.task_menus import run_sync_hub
 

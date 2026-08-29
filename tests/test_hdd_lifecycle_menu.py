@@ -103,11 +103,11 @@ def _option_labels(snapshot: StorageLifecycleSnapshot) -> list[str]:
     return [label for _key, label in hdd_menu_render_options(snapshot)]
 
 
-def test_main_menu_mercury_hdd_is_option_four() -> None:
+def test_main_menu_backup_storage_is_option_four() -> None:
     items = main_menu_items(writes_allowed=True)
-    assert items[0] == ("1", "Backup and verification")
-    assert items[3] == ("4", "Mercury HDD and storage")
-    assert main_menu_hint(ACTION_HDD_STORAGE) == "Mercury HDD and storage [4]"
+    assert items[0] == ("1", "Backup production")
+    assert items[3] == ("4", "Backup storage")
+    assert main_menu_hint(ACTION_HDD_STORAGE) == "Backup storage [4]"
     action = resolve_menu_action("4")
     assert action is not None
     assert action.action_id == ACTION_HDD_STORAGE
@@ -116,9 +116,9 @@ def test_main_menu_mercury_hdd_is_option_four() -> None:
 def test_main_menu_actions_shift_and_symbolic_hints_stay_synced() -> None:
     from mercury.menu.options import (
         MAIN_BACKUP,
-        MAIN_DEPLOY,
-        MAIN_MIGRATION,
+        MAIN_HEALTH,
         MAIN_RECOVERY,
+        MAIN_REPO,
         MAIN_STORAGE,
         MAIN_SYNC,
         main_menu_hint,
@@ -126,12 +126,12 @@ def test_main_menu_actions_shift_and_symbolic_hints_stay_synced() -> None:
 
     acts = menu_actions()
     assert acts["1"].action_id == MAIN_BACKUP
-    assert acts["2"].action_id == MAIN_SYNC
+    assert acts["2"].action_id == MAIN_REPO
     assert acts["4"].action_id == MAIN_STORAGE
-    assert acts["5"].action_id == MAIN_RECOVERY
-    assert acts["6"].action_id == MAIN_MIGRATION
-    assert acts["7"].action_id == MAIN_DEPLOY
-    assert len(acts) == 9
+    assert acts["3"].action_id == MAIN_RECOVERY
+    assert acts["5"].action_id == MAIN_SYNC
+    assert acts["7"].action_id == MAIN_HEALTH
+    assert len(acts) == 7
     assert main_menu_hint("workstation_handoff").endswith("[7]")
     assert "[11]" not in main_menu_hint("workstation_handoff")
     assert "[10]" not in main_menu_hint("workstation_handoff")
@@ -185,7 +185,7 @@ def test_recommended_action_ready_to_disconnect() -> None:
         recommended_next_action(
             StorageLifecycleState.READY_TO_DISCONNECT, package_verified=True
         )
-        == "Safe disconnect Mercury HDD"
+        == "Safe disconnect backup storage"
     )
 
 
@@ -197,9 +197,9 @@ def test_recommended_action_detached() -> None:
 @pytest.mark.parametrize(
     ("state", "writes", "pkg", "needle", "blocked"),
     [
-        (StorageLifecycleState.ATTACHED_WRITER_ENABLED, True, False, "Prepare HDD for safe disconnect", False),
-        (StorageLifecycleState.READY_TO_DISCONNECT, False, True, "Safe disconnect Mercury HDD", False),
-        (StorageLifecycleState.ATTACHED_WRITER_DISABLED, False, True, "Safe disconnect Mercury HDD", False),
+        (StorageLifecycleState.ATTACHED_WRITER_ENABLED, True, False, "Review backup storage", False),
+        (StorageLifecycleState.READY_TO_DISCONNECT, False, True, "Safe disconnect backup storage", False),
+        (StorageLifecycleState.ATTACHED_WRITER_DISABLED, False, True, "Safe disconnect backup storage", False),
         (StorageLifecycleState.PREPARING_TO_DISCONNECT, False, True, "Recheck disconnect blockers", False),
         (StorageLifecycleState.PREPARING_TO_DISCONNECT, False, True, "Recheck disconnect blockers", True),
         (StorageLifecycleState.DETACHED, False, True, "Reconnect or inspect", False),
@@ -245,7 +245,7 @@ def test_hdd_menu_safe_disconnect_ready_is_option_one() -> None:
         _snap(StorageLifecycleState.READY_TO_DISCONNECT, package_verified=True)
     )
     assert options[0][0] == "1"
-    assert "Safe disconnect Mercury HDD" in options[0][1]
+    assert "Safe disconnect backup storage" in options[0][1]
     assert "ready" in options[0][1]
 
 
@@ -292,7 +292,7 @@ def test_header_state_avoids_safe_disconnect_ready_duplication() -> None:
 
 def test_dashboard_next_action_short_for_ready() -> None:
     snap = _snap(StorageLifecycleState.READY_TO_DISCONNECT, package_verified=True)
-    assert dashboard_next_action_short(snap) == "Safely disconnect the Mercury HDD"
+    assert dashboard_next_action_short(snap) == "Safely disconnect backup storage"
     assert "writes disabled" in dashboard_hdd_status_line(snap).lower()
 
 
@@ -345,7 +345,7 @@ def test_assess_lifecycle_writes_disabled_ready(
     )
     snap = assess_storage_lifecycle(probe_disconnect=True)
     assert snap.state == StorageLifecycleState.READY_TO_DISCONNECT
-    assert snap.recommended == "Safe disconnect Mercury HDD"
+    assert snap.recommended == "Safe disconnect backup storage"
 
 
 def test_storage_menu_launches_from_main_menu_four(
@@ -421,9 +421,9 @@ def test_dashboard_ready_to_disconnect_wording(
         ),
     )
     rows = "\n".join(_migration_dashboard_rows(report, policy=SimpleNamespace()))
-    assert "Mercury HDD" in rows
+    assert "Backup storage" in rows
     assert "Recommended" in rows
-    assert "Safely disconnect the Mercury HDD" in rows
+    assert "Safely disconnect backup storage" in rows
     assert "Detaching · writes off" not in rows
     assert "detach mode" not in rows.lower()
     assert "Choose backup, disconnect, or rehearsal" not in rows
@@ -491,9 +491,9 @@ def test_menu_snapshot_writes_disabled_suffix(monkeypatch: pytest.MonkeyPatch) -
         ),
     )
     text = menu_display.render_main_menu(probe_database=False)
-    assert "Mercury HDD and storage" in text
-    assert "Backup and verification" in text
-    assert "[6] Workstation migration" in text
+    assert "Backup storage" in text
+    assert "Backup production" in text
+    assert "[7] System health" in text
     assert "[11]" not in text
 
 
@@ -516,7 +516,7 @@ def test_menu_snapshot_detached_mode(monkeypatch: pytest.MonkeyPatch) -> None:
         ),
     )
     text = menu_display.render_main_menu(probe_database=False)
-    assert "Reconnect or configure Mercury HDD" in text or "Mercury HDD and storage" in text
+    assert "Reconnect backup storage" in text or "Backup storage" in text
     assert "Reports" in text
     # Software-only console when detached: five primary actions max.
     assert "[6]" not in text

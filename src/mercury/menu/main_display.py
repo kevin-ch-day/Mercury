@@ -75,8 +75,8 @@ __all__ = [
     "write_table",
 ]
 
-MENU_TITLE = "MERCURY OPERATOR CONSOLE"
-MENU_SUBTITLE = "Database Backup, Sync, and Disaster Recovery Utility"
+MENU_TITLE = "MERCURY"
+MENU_SUBTITLE = "Backup and disaster recovery for this host"
 MENU_FOOTER = "[0] Exit"
 MENU_ITEM_INDENT = "      "
 MENU_EXIT_LABEL = "Exit"
@@ -251,22 +251,20 @@ def render_menu_help() -> str:
 
     rule = rule_line()
     keys = [item.key for item in iter_menu_items()]
-    key_label = f"{keys[0]}-{keys[-1]}" if keys else "1-9"
+    key_label = f"{keys[0]}-{keys[-1]}" if keys else "1-7"
     handoff = main_menu_hint(ACTION_HANDOFF)
     recovery = main_menu_hint(ACTION_RECOVERY)
     deploy = main_menu_hint(ACTION_DEPLOY)
     lines = [
         rule,
-        body_label("Operator console help"),
+        body_label("Mercury help"),
         help_line(f"Enter {key_label} for actions, 0 or q to exit."),
-        help_line(f"Shortcut: h opens {handoff}."),
+        help_line(f"Backup production [1] writes verified dumps; {recovery} proves they restore."),
         help_line(
-            f"Handoff: {handoff} · guided wizard / receiver guide · ./run.sh transfer receive"
+            f"Deploy onto this MariaDB host: {deploy}. "
+            f"Rare workstation-move tools: {handoff} (shortcut h)."
         ),
-        help_line(
-            f"Recovery: {recovery} for DR status; complete handoff media uses transfer receive "
-            f"on receiver ({deploy} for rebuild)."
-        ),
+        help_line("Transfer media: ./run.sh transfer receive"),
         "",
         help_line("For full detail, run the matching CLI command (e.g. ./run.sh db discover)."),
         rule,

@@ -974,10 +974,6 @@ def run_write_database_bundle() -> None:
     print_database_bundle_plan(plan, executed=True)
 
 
-# Compatibility alias for older call sites / tests.
-_write_backup_bundle = run_write_database_bundle
-
-
 def run_production_backup_flow() -> None:
     """Production-only expert backup entry (hub / programmatic)."""
     _run_backup(_load_plan())

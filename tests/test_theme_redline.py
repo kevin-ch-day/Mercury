@@ -147,7 +147,7 @@ def test_80_and_120_column_preview_render() -> None:
     for width in (80, 120):
         lines = render_theme_preview(THEME_REDLINE, width=width, force_color=False)
         assert any("MERCURY" in line for line in lines)
-        assert any("SYSTEM STATE" in line or "Mercury HDD" in line for line in lines)
+        assert any("SYSTEM STATE" in line or "Backup storage" in line for line in lines)
         joined = "\n".join(lines)
         assert "\\]" not in joined and "\\[" not in joined
         assert "[PASS]" in joined or "[WARN]" in joined
@@ -159,7 +159,7 @@ def test_80_and_120_column_preview_render() -> None:
         exit_idx = joined.index("[0] Exit")
         assert ops_idx < exit_idx < dest_idx
         assert "Connected · mounted · writes disabled" in joined
-        assert "VERIFIED · destination rehearsal" in joined
+        assert "Safely disconnect backup storage" in joined
 
 
 def test_warning_retains_text_labels() -> None:
@@ -269,7 +269,7 @@ def test_bracket_labels_never_leak_rich_escapes() -> None:
     clear_style_cache()
     try:
         badge = status_badge("ok")
-        item = menu_item_line("1", "Safely disconnect Mercury HDD", recommended=True)
+        item = menu_item_line("1", "Safely disconnect backup storage", recommended=True)
         tagged = tag("warn", "Source writes remain disabled")
         for sample in (badge, item, tagged):
             plain = strip_markup(sample)
@@ -329,7 +329,7 @@ def test_redline_header_and_recommended_marker() -> None:
     assert header[0] == "MERCURY // REDLINE"
     assert "BACKUP" in header[1]
     assert set(header[2]) <= {"━", "="}
-    item = menu_item_line("1", "Safely disconnect Mercury HDD", recommended=True)
+    item = menu_item_line("1", "Safely disconnect backup storage", recommended=True)
     assert "▸" in item
     assert "RECOMMENDED" in item
     from mercury.terminal.theme import section_title, strip_markup

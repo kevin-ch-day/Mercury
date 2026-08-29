@@ -248,8 +248,8 @@ def test_intentional_detach_differs_from_unexpected_absence(tmp_path: Path) -> N
     os.environ["MERCURY_HOST_MAINTENANCE_PATH"] = str(host_path)
     rec = build_main_menu_recommendation(host=intentional)
     assert rec.recommended_action == "physical_move"
-    assert "destination" in rec.explanation.lower()
-    assert rec.recommended_label == "Move HDD to destination workstation"
+    assert "another host" in rec.explanation.lower()
+    assert rec.recommended_label == "Move backup storage to another host"
 
     from mercury.menu.recommendation import main_menu_action_for_recommendation
 

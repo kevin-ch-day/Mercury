@@ -44,10 +44,6 @@ class BatchVerificationSummary(BaseModel):
     evidence_paths: list[str] = Field(default_factory=list)
 
 
-# Backward-compatible alias used by development-only helpers and CLI.
-DevelopmentBackupVerification = BatchVerificationSummary
-
-
 class FullBackupOutcome(str, Enum):
     PASS = "PASS"
     PARTIAL = "PARTIAL"

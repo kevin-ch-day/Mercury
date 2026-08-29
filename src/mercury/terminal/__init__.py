@@ -9,11 +9,10 @@ from mercury.terminal.format import (
     format_pair,
     format_plan_status,
     format_report_header,
-    format_table,
     format_yes_no,
     short_path,
 )
-from mercury.terminal.table import TableStyle, format_table as format_table_rows
+from mercury.terminal.table import TableStyle, format_table
 from mercury.terminal.theme import (
     body_label,
     colors_enabled,
@@ -45,7 +44,6 @@ __all__ = [
     "format_plan_status",
     "format_report_header",
     "format_table",
-    "format_table_rows",
     "format_yes_no",
     "get_theme",
     "menu_bottom_option",

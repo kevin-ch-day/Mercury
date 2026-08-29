@@ -657,11 +657,11 @@ def test_dashboard_intent_aware_next_action() -> None:
         state=StorageLifecycleState.READY_TO_DISCONNECT,
         host_role=MigrationHostRole.DESTINATION_REHEARSAL,
         label=LIFECYCLE_LABELS[StorageLifecycleState.READY_TO_DISCONNECT],
-        recommended="Safe disconnect Mercury HDD",
+        recommended="Safe disconnect backup storage",
         writes_allowed=False,
         package_status="DESTINATION_PACKAGE_VERIFIED",
     )
-    assert dashboard_next_action_short(snap) == "Safely disconnect the Mercury HDD"
+    assert dashboard_next_action_short(snap) == "Safely disconnect backup storage"
 
 
 def test_prepare_and_restore_round_trip(host_path: Path, monkeypatch) -> None:

@@ -91,9 +91,9 @@ def test_normalize_menu_choice_maps_quit_aliases() -> None:
 def test_is_valid_menu_choice() -> None:
     assert menu_prompts.is_valid_menu_choice("0")
     assert menu_prompts.is_valid_menu_choice("q")
-    assert menu_prompts.is_valid_menu_choice("6")
-    # Primary console is 1-9 after nine-area redesign.
-    assert menu_prompts.is_valid_menu_choice("9")
+    assert menu_prompts.is_valid_menu_choice("7")
+    # Primary console is 1-7 (backup/DR). Keys 8-9 were nine-area leftovers.
+    assert not menu_prompts.is_valid_menu_choice("9")
     assert not menu_prompts.is_valid_menu_choice("10")
     assert not menu_prompts.is_valid_menu_choice("")
     assert not menu_prompts.is_valid_menu_choice("99")

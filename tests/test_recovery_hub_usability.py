@@ -19,7 +19,7 @@ def test_recovery_hub_opens_dashboard(monkeypatch: pytest.MonkeyPatch) -> None:
     assert called == ["dash"]
 
 
-def test_main_five_still_recovery_hub() -> None:
+def test_main_three_is_recovery_hub() -> None:
     from mercury.menu.actions import menu_actions
 
-    assert menu_actions()["5"].action_id == MAIN_RECOVERY
+    assert menu_actions()["3"].action_id == MAIN_RECOVERY

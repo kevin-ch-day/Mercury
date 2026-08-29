@@ -289,7 +289,7 @@ def run_backup_sync_session(
         session.session_result = SessionResult.REFUSED
         session.failures.extend(availability.blockers)
         session.recommended_next_action = availability.next_action or (
-            "Mercury HDD and Storage → Reconnect or change storage mode"
+            "Backup storage [4] → Reconnect or change storage mode"
         )
         session.finished_at = _utc_now()
         _maybe_host_refusal(session, hooks)
@@ -786,12 +786,12 @@ def _record_development_change(
 
 def _recommend_next(session: BackupSyncSession) -> str:
     if session.session_result in {SessionResult.PASS, SessionResult.PARTIAL}:
-        return "Safely disconnect Mercury HDD"
+        return "Disaster recovery [3] — restore-check the new backups"
     if session.session_result == SessionResult.FAIL:
         return "Review session failures, then retry guided backup"
     if session.session_result == SessionResult.REFUSED:
         return session.storage_preflight.get("next_action") or (
-            "Mercury HDD and storage → Reconnect or change storage mode"
+            "Backup storage [4] → Reconnect or change storage mode"
         )
     return "Return to Backup Operations"
 

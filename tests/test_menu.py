@@ -89,7 +89,7 @@ def test_run_menu_invalid_choice_does_not_redisplay(monkeypatch: pytest.MonkeyPa
 
     run_menu(interactive=True)
     out = capsys.readouterr().out
-    assert out.count("MERCURY OPERATOR CONSOLE") == 1
+    assert out.count("MERCURY") == 1
     assert "Invalid choice" in out
 
 
@@ -158,13 +158,13 @@ def test_handle_sync_plan_returns_to_menu_without_footer(
     )
     monkeypatch.setattr("mercury.sync.interactive_menu._load_report", lambda: report)
     monkeypatch.setattr("mercury.sync.interactive_menu.read_sync_choice", lambda: "0")
-    # Sync lives under Database sync [2] → Production-to-development sync [1].
+    # Sync is main-menu [5] → Sync readiness [1].
     answers = iter(["1", "0"])
     monkeypatch.setattr(
         "mercury.menu.prompts.ask",
         lambda *_a, **_k: next(answers),
     )
-    assert handle_menu_choice("2") == "continue"
+    assert handle_menu_choice("5") == "continue"
     out = capsys.readouterr().out
     assert "ready" in out.lower() or "blocked" in out.lower() or "sync" in out.lower()
     assert "[0] Return" not in out
@@ -174,7 +174,7 @@ def test_handle_sync_plan_returns_to_menu_without_footer(
 def test_handle_help_choice(capsys: pytest.CaptureFixture[str]) -> None:
     assert handle_menu_choice("?") == "empty"
     out = capsys.readouterr().out
-    assert "Operator console help" in out
+    assert "Mercury help" in out
 
 
 def test_menu_renders_without_crashing(capsys: pytest.CaptureFixture[str]) -> None:
@@ -248,15 +248,15 @@ def test_render_main_menu_matches_simple_layout(monkeypatch: pytest.MonkeyPatch)
     subtitle_idx = lines.index(menu_display.MENU_SUBTITLE)
     assert lines[subtitle_idx + 1].startswith("─")
     assert len(lines[subtitle_idx + 1].strip()) >= 40
-    assert "      [1] Backup and verification" in text
-    assert "      [2] Database sync and data movement" in text
-    assert "      [3] Git and repository recovery" in text
-    assert "      [4] Mercury HDD and storage" in text
-    assert "      [5] Restore and disaster recovery" in text
-    assert "      [6] Workstation migration" in text
-    assert "      [7] Deployment and handoff" in text
-    assert "      [8] Reports, evidence, and history" in text
-    assert "      [9] System health and configuration" in text
+    assert "      [1] Backup production" in text
+    assert "      [2] Repository backups" in text
+    assert "      [3] Disaster recovery" in text
+    assert "      [4] Backup storage" in text
+    assert "      [5] Prod-to-dev sync" in text
+    assert "      [6] Reports and history" in text
+    assert "      [7] System health" in text
+    assert "Workstation migration" not in text
+    assert "Deployment and handoff" not in text
     assert "Advanced tools" not in text
     assert "      [0] Exit" in text
     assert "[11]" not in text
@@ -288,12 +288,12 @@ def test_render_main_menu_body_omits_title_block(monkeypatch: pytest.MonkeyPatch
     assert menu_display.MENU_TITLE not in body
     assert "Main Menu" in body
     assert "Active writer" in body
-    assert "      [1] Backup and verification" in body
+    assert "      [1] Backup production" in body
 
 def test_render_menu_help_lists_shortcuts() -> None:
     help_text = menu_display.render_menu_help()
-    assert "Operator console help" in help_text
+    assert "Mercury help" in help_text
     assert "0 or q to exit" in help_text
     assert "transfer receive" in help_text
-    assert "Workstation migration [6]" in help_text or "Deployment and handoff [7]" in help_text
+    assert "Disaster recovery" in help_text
     assert "[11]" not in help_text

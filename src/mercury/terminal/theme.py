@@ -4,7 +4,7 @@ Mercury terminal theme — Classic liquid-silver and Mercury Redline.
 Foreground styling for dark terminals. Disable with ``NO_COLOR``,
 ``MERCURY_NO_COLOR=1``, or non-TTY stdout. Force with ``MERCURY_FORCE_COLOR=1``
 (overrides ``NO_COLOR``). Select theme with ``MERCURY_THEME`` or host-local
-``theme.json`` (never on the Mercury HDD).
+``theme.json`` (never on backup storage).
 """
 
 from __future__ import annotations
@@ -253,7 +253,7 @@ def menu_title_line() -> str:
     if s.header_variant.startswith("redline"):
         title = "MERCURY // REDLINE"
     else:
-        title = "MERCURY OPERATOR CONSOLE"
+        title = "MERCURY"
     if not colors_enabled():
         return title
     return markup(title, s.title)
@@ -272,9 +272,9 @@ def menu_header_lines(subtitle: str, *, variant: str | None = None) -> list[str]
 
     if use.startswith("redline"):
         primary = "MERCURY // REDLINE"
-        secondary = "BACKUP · RECOVERY · MIGRATION"
+        secondary = "BACKUP · RECOVERY"
     else:
-        primary = "MERCURY OPERATOR CONSOLE"
+        primary = "MERCURY"
         secondary = subtitle
 
     if not colors_enabled():

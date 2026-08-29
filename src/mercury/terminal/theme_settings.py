@@ -1,4 +1,4 @@
-"""Host-local theme / appearance preference (never stored on the Mercury HDD)."""
+"""Host-local theme / appearance preference (never stored on backup storage)."""
 
 from __future__ import annotations
 
@@ -174,7 +174,7 @@ def save_theme_selection(
     path: Path | None = None,
     color_mode: str | None = None,
 ) -> Path:
-    """Persist theme (and optional color mode) on the local host — not the Mercury HDD."""
+    """Persist theme (and optional color mode) on the local host — not backup storage."""
     validated = validate_theme_id(theme_id)
     settings_path = path or default_theme_path()
     settings_path.parent.mkdir(parents=True, exist_ok=True)

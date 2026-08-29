@@ -12,8 +12,8 @@ from mercury import output
 app = typer.Typer(
     name="mercury",
     help=(
-        "Mercury — MariaDB backup, disaster recovery, and prod→dev sync "
-        "(Fedora/Windows; destructive actions stay gated)."
+        "Mercury — always-on MariaDB and Git backup agent and disaster recovery "
+        "for this host (Fedora/Windows; destructive actions stay gated)."
     ),
     no_args_is_help=True,
     invoke_without_command=True,
@@ -23,8 +23,8 @@ env_app = typer.Typer(help="Environment commands.")
 db_app = typer.Typer(help="Database commands.")
 database_app = typer.Typer(help="Database module (same commands as db).")
 backup_app = typer.Typer(help="Backup commands.")
-repo_app = typer.Typer(help="Repository protection and transfer commands.")
-transfer_app = typer.Typer(help="Combined database + repository transfer manifests and runbooks.")
+repo_app = typer.Typer(help="Repository backup copies, status, and Git bundles.")
+transfer_app = typer.Typer(help="Combined database + repository transfer manifests (rare host-move).")
 config_app = typer.Typer(help="Configuration commands.")
 sync_app = typer.Typer(help="Production sync-pair planning and execution.")
 restore_app = typer.Typer(help="Restore-check and DR execution.")
@@ -66,7 +66,7 @@ app.add_typer(migration_app, name="migration")
 migration_app.add_typer(erebus_capture_app, name="capture-erebus-source")
 repair_app = typer.Typer(help="Host repair helpers.")
 app.add_typer(repair_app, name="repair")
-theme_app = typer.Typer(help="Terminal appearance themes (host-local; no HDD required).")
+theme_app = typer.Typer(help="Terminal appearance themes (host-local; no backup storage required).")
 app.add_typer(theme_app, name="theme")
 
 

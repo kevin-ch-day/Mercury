@@ -20,7 +20,7 @@ def print_offline_clone_plan(
     *,
     executed: bool = False,
     with_title: bool = True,
-    title: str = "Sync Offline GitHub Repositories",
+    title: str = "Repository backups",
 ) -> None:
     if with_title:
         display_screen.open_screen(title)
@@ -33,7 +33,7 @@ def print_offline_clone_plan(
         f"{synced} synced · {current} current · {blocked} blocked" if executed else progress
     )
     fields: dict[str, object] = {
-        "HDD clone root": plan.root,
+        "Clone root": plan.root,
         "Mode": "EXECUTE" if executed else "PREVIEW",
         "Repositories": len(plan.entries),
         "Status": status,
@@ -64,7 +64,7 @@ def print_offline_clone_plan(
         )
     )
     notes = [
-        "Independent HDD worktrees; source repos are never modified.",
+        "Independent copies on backup storage; source repos are never modified.",
         "Only committed history is copied; dirty/untracked files stay on the source host.",
     ]
     if not executed:
@@ -76,7 +76,7 @@ def print_offline_clone_plan(
 
 def print_offline_sync_receipt(plan: OfflineClonePlan) -> None:
     """Show the latest saved offline-sync evidence without touching repositories."""
-    display_screen.open_screen("Offline GitHub Sync Receipt")
+    display_screen.open_screen("Repository backup receipt")
     receipt = load_offline_sync_receipt(plan.root)
     if not receipt:
         display_screen.write_status("info", "No sync receipt has been recorded yet.")

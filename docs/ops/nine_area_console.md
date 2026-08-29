@@ -1,113 +1,51 @@
-# Nine-area operator console
+# Mercury operator console
 
-Mercury’s interactive main menu is organized into **nine product areas**.
-This document records the old→new route map, deliberate shortcuts, and
-features that still need deeper product work.
+Mercury’s interactive main menu is organized around **backup and disaster
+recovery on this host**. Workstation-move and handoff tools still exist; they
+are nested under System health, not peer areas.
 
 ## Main console
 
 | Key | Area |
 |-----|------|
-| 1 | Backup and verification |
-| 2 | Database sync and data movement |
-| 3 | Git and repository recovery |
-| 4 | Mercury HDD and storage |
-| 5 | Restore and disaster recovery |
-| 6 | Workstation migration |
-| 7 | Deployment and handoff |
-| 8 | Reports, evidence, and history |
-| 9 | System health and configuration |
+| 1 | Backup production |
+| 2 | Repository backups |
+| 3 | Disaster recovery |
+| 4 | Backup storage |
+| 5 | Prod-to-dev sync |
+| 6 | Reports and history |
+| 7 | System health |
 | 0 | Exit |
 
-The former **Advanced tools** hub is obsolete routing only. Capabilities remain
-under the homes above and via unchanged CLI groups.
+Shortcut **h** still opens deploy/handoff packaging (rare host-move tools).
 
-## Old → new primary homes
+## What changed from the nine-area layout
 
-| Former route | New home |
-|--------------|----------|
-| Main 1 guided Backup and Sync / Backup Operations | **[1]** opens Backup Operations directly (Guided = Ops [1]) |
-| Main 1 / Advanced → prod→dev sync | **[2]** Database sync and data movement |
-| Main 1 / Advanced → offline Git | **[3]** Git and repository recovery |
-| Main 2 Mercury HDD and Storage | **[4]** Mercury HDD and storage |
-| Main 3 Restore and disaster recovery | **[5]** Restore and disaster recovery |
-| Main 5 migration + handoff + deploy (combined) | **[6]** migration capture/validate; **[7]** deploy/handoff |
-| Main 4 Reports | **[8]** Reports, evidence, and history |
-| Main 6 System health | **[9]** System health and configuration |
-| Advanced tools [7] (removed) | Split across [1]–[7] as above |
-| “Open Advanced restore tools” | Removed; **[5]** restore-check / cleanup |
-| Backup Ops restore-check / DB bundle / handoff slots | Moved: restore **[5]**; bundle+handoff **[7]** |
+| Former top-level | Now |
+|------------------|------|
+| Backup and verification **[1]** | **Backup production [1]** (same Backup Operations home) |
+| Git and repository recovery **[3]** | **Repository backups [2]** |
+| Restore and disaster recovery **[5]** | **Disaster recovery [3]** (restore-check + deploy onto this host) |
+| Mercury HDD and storage **[4]** | **Backup storage [4]** (same lifecycle; disconnect is no longer the healthy-state recommendation) |
+| Database sync and data movement **[2]** | **Prod-to-dev sync [5]** |
+| Reports **[8]** | **Reports and history [6]** |
+| System health **[9]** | **System health [7]** (includes Deploy onto this host and Workstation move) |
+| Workstation migration **[6]** | Health **[7] → [8]** Workstation move and handoff |
+| Deployment and handoff **[7]** | Disaster recovery **[3] → [5]** Deploy onto this host; remaining packaging via **h** / Health |
 
-## Duplicate routes removed
+## Hub UX notes
 
-- Advanced tools main-menu front door
-- Software-only Advanced slot
-- Recovery → Open Advanced restore tools
-- Recovery → Open Workstation migration cross-link
-- Migration hub owning handoff/deploy (moved to **[7]**)
-- Health → full storage lifecycle menu (observe-only status remains; lifecycle is **[4]**)
-- Backup Operations embedding restore-check, DB bundle write, and handoff open
-- Nested “Restore tools (same lane)” under **[5]** (flattened; pinned CLI card instead)
+- **[1]** opens Backup Operations directly.
+- **[3]** is restore-check of production backups into disposable `_restorecheck_*`
+  databases, plus deploy of verified artifacts onto this MariaDB host.
+  Never restores into `*_prod` from the dashboard.
+- **[4]** recommended action while backups are enabled is **Review backup storage**,
+  not prepare-to-disconnect. Disconnect remains under change-mode.
+- **[5]** is prod→dev refresh of disposable `*_dev` databases only.
+- **[7]** health holds doctor/config plus rare deploy/move tools.
 
-## Hub UX notes (current)
+## Software-only console (backup storage absent)
 
-- Hubs show a one-line **purpose** before choices.
-- **[1]** opens **Backup Operations** directly (no intermediate Backup hub).
-  Header is compact: backup root, writer, status+capacity on one status line.
-  Table column is **RC** (short Passed/Pending). Focus/next-action is
-  shown first. When backups are fresh but restore-check is pending, the screen
-  points to Main **[5]** (with pending count) instead of another backup.
-  Full backup warns before rewriting already fresh+restore-checked production.
-  Long dumps print a heartbeat about every 20s so large databases do not look hung.
-  Production/dev write paths auto-verify after dump; pigz is preferred for
-  compress/decompress when installed.
-- **Backup Operations [4] Advanced → Coordinated recovery drill** is the optional multi-lane workflow: production
-  back up + verify by default; Git/sync/dev asked optionally and labeled with
-  Main Menu homes. Full “recommended” multi-lane plan remains available to
-  non-interactive / customize paths via `recommended_session_plan()`.
-- **Backup Operations** has one routine governed production backup route,
-  verification-record updates, and a read-only plan preview. Development
-  snapshots and coordinated drills are Advanced. Restore-check execution stays
-  under Main **[5]**.
-- **[2]** includes sync readiness, transfer status, transfer/handoff history, and
-  write/receive command card (`transfer write` dry-run without `--execute`).
-- **[3]** shows offline HDD clone status on the same screen as update/check,
-  receipt, repo status, and bundle plan/actions. When copies need sync, **[1]**
-  is labeled with the pending count; **[2]** re-checks. Bundle execute stays
-  `repo bundle --execute`.
-- **[5]** opens the consolidated **Restore and Disaster Recovery** dashboard
-  for the four authoritative production/shared sources. Development is reported
-  separately as rebuild readiness plus optional snapshot availability; it never
-  makes Production Recovery fail merely because no snapshot exists. Pending
-  production restore-checks drive readiness and
-  **[1]**; cleanup **[3]** appears only when `_restorecheck_*` schemas exist.
-  Separate status-only Restore-check Operations / Disaster Recovery screens are
-  removed from the menu path.
-- **[7]** owns DB bundle write, handoff (including **Handoff packaging tools**),
-  deploy, and cutover CLI guidance with required exact IDs.
-- **[8]** includes full-backup receipt observation alongside history/protection.
-- **[9]** can show local configuration status (`config show`); never prints secrets.
-
-## Features still flagged
-
-These remain reachable, but the interactive surface is incomplete or spans
-multiple areas. Do **not** treat CLI coverage as a finished menu UX.
-
-1. **Pinned prod/dev restore & cross-schema restore** — CLI covers these; **[5]**
-   exposes a command card, not first-class interactive flows.
-2. **Transfer write/receive execute** — CLI-first under `transfer *`; menu **[2]**
-   shows status + command card only.
-3. **Repo bundle execute / dirty worktree capture** — CLI `repo bundle --execute`;
-   menu **[3]** status + plan preview + command card.
-4. **Production cutover execute / acceptance / rollback** — CLI
-   `production-cutover *`; menu **[7]** preview/command card only.
-5. **Local configuration editor** — `config show` / `config init` only; no
-   interactive TOML editor (by design for safety).
-6. **Storage USB→HDD migration vs workstation migration** — storage cutover stays
-   under **[4]**; workstation package/destination validation under **[6]**.
-
-## Software-only console (HDD absent)
-
-Reduced set: reconnect **[1]**, restore planning **[2]**, git planning **[3]**,
-reports **[4]**, health **[5]** (local numbering). Full nine-area layout returns
-when the Mercury HDD is attached.
+Reduced set: reconnect **[1]**, disaster recovery planning **[2]**, repository
+planning **[3]**, reports **[4]**, health **[5]**. Full seven-area layout
+returns when backup storage is attached.

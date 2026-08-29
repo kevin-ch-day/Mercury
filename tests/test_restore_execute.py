@@ -456,7 +456,7 @@ def test_run_restore_menu_non_interactive(
     )
     run_restore_menu(interactive=False)
     out = capsys.readouterr().out
-    assert "Restore and Disaster Recovery" in out
+    assert "Disaster Recovery" in out
     assert "3/3 backed up" in out
     assert "RC deferred" in out
     assert "android_permission_intel_dev" not in out

@@ -80,7 +80,7 @@ SOURCE_ACTIVITY_PROBES: dict[str, list[tuple[str, str]]] = {
 OPERATOR_FRESHNESS_GUIDANCE = (
     "Artifact verified means backup files pass checksum/manifest checks. "
     "Freshness compares the backup timestamp to latest read-only source DB activity. "
-    "Run full backup before workstation handoff when freshness is stale or unknown."
+    "Run full backup when freshness is stale or unknown."
 )
 
 
@@ -200,7 +200,7 @@ def backup_entry_status_label(entry) -> str:
 
 
 def backup_entry_needs_restore_check(entry) -> bool:
-    """True when the displayed backup still needs restore-check before handoff."""
+    """True when the displayed backup still needs restore-check."""
     label = backup_entry_verify_label(entry)
     return label in {
         "Not restore-checked",
@@ -270,7 +270,7 @@ def assess_operator_backup_next(*, live: bool = False) -> dict[str, object]:
 
 
 def menu_handoff_problem_summary(problem_parts: list[str]) -> str:
-    """Operator warning for Backup Operations gaps before handoff.
+    """Operator warning for Backup Operations gaps in production protection.
 
     Chooses the lead phrase from the actual gap types so a restore-check-only
     backlog is never described as needing another full backup.
@@ -313,36 +313,34 @@ def menu_handoff_problem_summary(problem_parts: list[str]) -> str:
             f"before backup can complete: {joined}."
         )
     if stamp_only and any("no rc" in part for part in lowered):
-        return f"Manifest stamp / restore-check pending before workstation handoff: {joined}."
+        return f"Manifest stamp / restore-check pending: {joined}."
     if restore_only:
-        return f"Restore-check required before workstation handoff: {joined}."
+        return f"Restore-check required: {joined}."
     if stamp_only:
-        return f"Manifest stamp pending before workstation handoff: {joined}."
+        return f"Manifest stamp pending: {joined}."
     if empty_only:
         return (
-            f"Empty source schema(s) on server — preserve with one verified backup "
-            f"before workstation handoff: {joined}."
+            f"Empty source schema(s) on server — preserve with one verified backup: {joined}."
         )
     if backup_gaps and any(
         "restore-check" in part or "not restore-checked" in part or "no rc" in part
         for part in lowered
     ):
-        return f"Before workstation handoff: {joined}."
+        return f"Production protection incomplete: {joined}."
     if any("empty" in part for part in lowered) and backup_gaps:
-        return f"Before workstation handoff: {joined}."
+        return f"Production protection incomplete: {joined}."
     if any("empty" in part for part in lowered):
         return (
-            f"Empty source schema(s) on server — preserve with one verified backup "
-            f"before workstation handoff: {joined}."
+            f"Empty source schema(s) on server — preserve with one verified backup: {joined}."
         )
     if backup_gaps:
-        return f"Fresh full backup needed before workstation handoff: {joined}."
-    return f"Before workstation handoff: {joined}."
+        return f"Fresh full backup needed: {joined}."
+    return f"Production protection incomplete: {joined}."
 
 
 def protection_handoff_action_item(*, include_sync: bool = True) -> str:
     message = (
-        "Run full backup for stale or unknown-freshness sources before workstation handoff"
+        "Run full backup for stale or unknown-freshness sources before treating protection as current"
     )
     if include_sync:
         return message + " or prod→dev sync."
@@ -470,8 +468,8 @@ def handoff_freshness_warning(*, stale_count: int = 0, unknown_count: int = 0) -
     if unknown_count:
         parts.append(f"{unknown_count} unknown freshness")
     return (
-        f"{' and '.join(parts)} source(s) require attention — bundle documents current "
-        "operator-storage state but handoff should wait for fresh full backups."
+        f"{' and '.join(parts)} source(s) require attention — run a fresh full backup "
+        "before treating protection as current."
     )
 
 

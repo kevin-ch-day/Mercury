@@ -25,38 +25,38 @@ from mercury.menu.options import (
 
 
 EXPECTED_TITLES = [
-    "Backup and verification",
-    "Database sync and data movement",
-    "Git and repository recovery",
-    "Mercury HDD and storage",
-    "Restore and disaster recovery",
-    "Workstation migration",
-    "Deployment and handoff",
-    "Reports, evidence, and history",
-    "System health and configuration",
+    "Backup production",
+    "Repository backups",
+    "Disaster recovery",
+    "Backup storage",
+    "Prod-to-dev sync",
+    "Reports and history",
+    "System health",
 ]
 
 
 def test_nine_area_main_menu_entries() -> None:
-    assert main_menu_max_primary_actions() == 9
+    assert main_menu_max_primary_actions() == 7
     items = main_menu_items(writes_allowed=True)
-    assert [k for k, _ in items] == [str(i) for i in range(1, 10)]
+    assert [k for k, _ in items] == [str(i) for i in range(1, 8)]
     titles = [t for _k, t in items]
     assert titles == EXPECTED_TITLES
     assert "Advanced tools" not in " ".join(titles)
+    assert "Workstation migration" not in titles
+    assert "Deployment and handoff" not in titles
 
 
 def test_legacy_aliases_map_to_new_homes() -> None:
     assert main_menu_option_by_action(MAIN_ADVANCED)[0] == "1"
-    assert main_menu_hint("sync_prod_dev").endswith("[2]")
-    assert main_menu_hint("offline_repos").endswith("[3]")
+    assert main_menu_hint("sync_prod_dev").endswith("[5]")
+    assert main_menu_hint("offline_repos").endswith("[2]")
     assert main_menu_hint(MAIN_STORAGE).endswith("[4]")
-    assert main_menu_hint(MAIN_RECOVERY).endswith("[5]")
-    assert main_menu_hint(MAIN_MIGRATION).endswith("[6]")
+    assert main_menu_hint(MAIN_RECOVERY).endswith("[3]")
+    assert main_menu_hint(MAIN_MIGRATION).endswith("[7]")
     assert main_menu_hint("workstation_handoff").endswith("[7]")
-    assert main_menu_hint("system_deployment").endswith("[7]")
-    assert main_menu_hint(MAIN_REPORTS).endswith("[8]")
-    assert main_menu_hint(MAIN_HEALTH).endswith("[9]")
+    assert main_menu_hint("system_deployment").endswith("[3]")
+    assert main_menu_hint(MAIN_REPORTS).endswith("[6]")
+    assert main_menu_hint(MAIN_HEALTH).endswith("[7]")
     assert main_menu_hint(MAIN_BACKUP).endswith("[1]")
 
 
@@ -120,9 +120,6 @@ def test_all_nine_hubs_reachable_and_non_destructive(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(
         "mercury.restore.interactive_dashboard.run_recovery_dashboard",
         mark("dashboard"),
-    )
-    monkeypatch.setattr(
-        "mercury.recovery.interactive_menu.run_recovery_menu", mark("recovery")
     )
     monkeypatch.setattr(
         "mercury.migration.erebus_capture.menu.run_erebus_source_capture_menu",
@@ -213,7 +210,7 @@ def test_all_nine_hubs_reachable_and_non_destructive(monkeypatch: pytest.MonkeyP
     # Back-only hub entries must not have launched expert menus above.
     for name in ("guided", "sync", "deploy", "handoff", "restore"):
         assert called.count(name) == 0
-    # Main [5] opens consolidated dashboard (mocked) once during back-only pass.
+    # Main [3] opens consolidated dashboard (mocked) once during back-only pass.
     assert called.count("dashboard") == 1
 
     called.clear()
@@ -222,11 +219,10 @@ def test_all_nine_hubs_reachable_and_non_destructive(monkeypatch: pytest.MonkeyP
     assert called == ["backup_ops"]
 
     called.clear()
-    answers = iter(["1", "2", "", "3", "", "4", "", "0"])
+    answers = iter(["1", "0"])
     monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
     task_menus.run_sync_hub()
-    assert "sync" in called and "transfer_status" in called
-    assert "transfer_history" in called
+    assert called == ["sync"]
 
     called.clear()
     answers = iter(["1", "", "2", "", "3", "", "4", "", "5", "", "0"])
@@ -277,15 +273,15 @@ def test_direct_cli_routes_unchanged() -> None:
 
 def test_menu_actions_wire_all_nine_keys() -> None:
     from mercury.menu.actions import menu_actions
+    from mercury.menu.main_display import refresh_menu_sections
 
+    refresh_menu_sections()
     acts = menu_actions()
-    assert set(acts) == {str(i) for i in range(1, 10)}
+    assert set(acts) == {str(i) for i in range(1, 8)}
     assert acts["1"].action_id == MAIN_BACKUP
-    assert acts["2"].action_id == MAIN_SYNC
-    assert acts["3"].action_id == MAIN_REPO
+    assert acts["2"].action_id == MAIN_REPO
+    assert acts["3"].action_id == MAIN_RECOVERY
     assert acts["4"].action_id == MAIN_STORAGE
-    assert acts["5"].action_id == MAIN_RECOVERY
-    assert acts["6"].action_id == MAIN_MIGRATION
-    assert acts["7"].action_id == MAIN_DEPLOY
-    assert acts["8"].action_id == MAIN_REPORTS
-    assert acts["9"].action_id == MAIN_HEALTH
+    assert acts["5"].action_id == MAIN_SYNC
+    assert acts["6"].action_id == MAIN_REPORTS
+    assert acts["7"].action_id == MAIN_HEALTH

@@ -20,7 +20,7 @@ from mercury.storage.terminal import (
 )
 from mercury.terminal import screen as display_screen
 
-STORAGE_SCREEN_TITLE = "Mercury HDD and storage"
+STORAGE_SCREEN_TITLE = "Backup storage"
 
 
 def _package_display(snap) -> str:
@@ -577,8 +577,8 @@ def _run_recommended_action() -> None:
     if state == StorageLifecycleState.ATTACHED_READ_ONLY or "destination inspection" in label.lower():
         _run_inspect_readonly(execute_mount=False)
         return
-    if state == StorageLifecycleState.ATTACHED_WRITER_ENABLED or "Prepare HDD" in label:
-        _run_change_mode_menu()
+    if state == StorageLifecycleState.ATTACHED_WRITER_ENABLED or "Review backup storage" in label:
+        _run_status_and_validation()
         return
     if "Safe disconnect" in label:
         _run_safe_disconnect_wizard()

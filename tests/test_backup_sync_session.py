@@ -969,12 +969,12 @@ def test_end_of_session_disconnect_offer() -> None:
         orig_ask = menu_prompts.ask
         menu_prompts.ask = lambda *_a, **_k: "1"  # type: ignore[assignment]
         try:
-            assert offer_post_session_actions(session) == "safe_disconnect"
+            assert offer_post_session_actions(session) == "restore_check"
         finally:
             menu_prompts.ask = orig_ask  # type: ignore[assignment]
     finally:
         wiz.output.write = orig_write  # type: ignore[method-assign]
-    assert any("Safely disconnect Mercury HDD" in line for line in printed)
+    assert any("Restore-check newly written backups" in line for line in printed)
 
 
 def test_post_session_actions_contiguous_when_no_disconnect() -> None:
@@ -1367,14 +1367,14 @@ def test_main_menu_routes_backup_to_session_when_writes_disabled(
     called: list[str] = []
 
     monkeypatch.setattr(
-        "mercury.menu.task_menus.run_backup_sync_hub",
+        "mercury.menu.task_menus.run_backup_hub",
         lambda: called.append("session"),
     )
     monkeypatch.setattr(
         "mercury.menu.loop.resolve_menu_action",
         lambda _c: MenuAction(
             key="1",
-            title="Backup and verification",
+            title="Backup production",
             action_id=MAIN_BACKUP,
             runner=lambda: called.append("session"),
         ),

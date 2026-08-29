@@ -38,38 +38,33 @@ def _dashboard(state: str) -> list[str]:
     """Title-case descriptive states; keep VERIFIED / DETACHED / READ-ONLY uppercase."""
     rows = {
         "write_enabled": [
-            ("Mercury HDD", "Connected · mounted · writes enabled"),
-            ("Package", "VERIFIED · destination rehearsal"),
-            ("Source", "No changes since package"),
-            ("Migration", "Destination validation pending"),
-            ("Recommended", "Guided backup"),
+            ("Backup storage", "Connected · mounted · backups enabled"),
+            ("Last backup", "Verified · recent"),
+            ("Repositories", "No recent repository backup"),
+            ("Recommended", "Backup production"),
         ],
         "write_disabled": [
-            ("Mercury HDD", "Connected · mounted · writes disabled"),
-            ("Package", "VERIFIED · destination rehearsal"),
-            ("Source", "No changes since package"),
-            ("Migration", "Destination validation pending"),
-            ("Recommended", "Safely disconnect Mercury HDD"),
+            ("Backup storage", "Connected · mounted · writes disabled"),
+            ("Last backup", "Verified · recent"),
+            ("Repositories", "Bundle · on storage"),
+            ("Recommended", "Safely disconnect backup storage"),
         ],
         "safe_disconnect": [
-            ("Mercury HDD", "Connected · mounted · writes disabled"),
-            ("Package", "VERIFIED"),
-            ("Source", "No changes since package"),
-            ("Migration", "Destination validation pending"),
-            ("Recommended", "Safely disconnect Mercury HDD"),
+            ("Backup storage", "Connected · mounted · writes disabled"),
+            ("Last backup", "Verified · recent"),
+            ("Repositories", "Bundle · on storage"),
+            ("Recommended", "Safely disconnect backup storage"),
         ],
         "detached": [
-            ("Mercury HDD", "DETACHED"),
-            ("Package", "VERIFIED · on media"),
-            ("Source", "Unknown while detached"),
-            ("Migration", "Destination validation pending"),
-            ("Recommended", "Attach HDD and reconnect"),
+            ("Backup storage", "DETACHED"),
+            ("Last backup", "Verified · on media"),
+            ("Repositories", "Unknown while detached"),
+            ("Recommended", "Attach storage and reconnect"),
         ],
         "readonly": [
-            ("Mercury HDD", "Connected · mounted · READ-ONLY"),
-            ("Package", "VERIFIED"),
-            ("Source", "Destination rehearsal host"),
-            ("Migration", "Validation active"),
+            ("Backup storage", "Connected · mounted · READ-ONLY"),
+            ("Last backup", "Verified · recent"),
+            ("Repositories", "Bundle · on storage"),
             ("Recommended", "Continue destination validation"),
         ],
     }[state]
@@ -137,7 +132,7 @@ def _print_theme_preview_body(*, theme_id: str, width: int) -> None:
     # Production header identity (single Redline identity — no alternate motifs).
     _write_block(
         "1. PRODUCT HEADER (production)",
-        menu_header_lines("BACKUP · RECOVERY · MIGRATION"),
+        menu_header_lines("BACKUP · RECOVERY"),
         level="major",
     )
     if tid != THEME_REDLINE:
@@ -160,9 +155,9 @@ def _print_theme_preview_body(*, theme_id: str, width: int) -> None:
     menu_lines = [
         menu_section_header("OPERATIONS", indent=0),
         rule_line(width=62, level="normal"),
-        menu_item_line("1", "Safely disconnect Mercury HDD", indent=2, recommended=True),
-        menu_item_line("2", "Guided backup again", indent=2),
-        menu_item_line("3", "Prepare destination move", indent=2),
+        menu_item_line("1", "Restore-check newly written backups", indent=2, recommended=True),
+        menu_item_line("2", "Back up production", indent=2),
+        menu_item_line("3", "Safely disconnect backup storage", indent=2),
         menu_item_line("4", "Browse all operations", indent=2),
         menu_item_line(
             "5",
@@ -263,7 +258,7 @@ def _print_theme_preview_body(*, theme_id: str, width: int) -> None:
     )
 
     narrow = [
-        menu_header_lines("BACKUP · RECOVERY · MIGRATION")[0],
+        menu_header_lines("BACKUP · RECOVERY")[0],
         rule_line(width=min(40, width), level="major"),
         dashboard_row("HDD", "Writes disabled", label_width=8),
         dashboard_row("Pkg", "VERIFIED", label_width=8),

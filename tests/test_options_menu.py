@@ -162,7 +162,8 @@ def test_theme_applies_on_next_render(tmp_path: Path) -> None:
     header = menu_header_lines("ignored")
     joined = "\n".join(strip_markup(line) for line in header)
     assert "MERCURY // REDLINE" in joined
-    assert "BACKUP · RECOVERY · MIGRATION" in joined
+    assert "BACKUP · RECOVERY" in joined
+    assert "MIGRATION" not in joined
 
 
 def test_preview_does_not_change_preference(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -241,8 +242,9 @@ def test_classic_and_redline_startup_snapshots() -> None:
     reload_appearance()
     set_color_enabled(False)
     clear_style_cache()
-    classic = "\n".join(menu_header_lines("Database Backup, Sync, and Disaster Recovery Utility"))
-    assert "MERCURY OPERATOR CONSOLE" in classic
+    classic = "\n".join(menu_header_lines("Backup and disaster recovery for this host"))
+    assert "MERCURY" in classic
+    assert "OPERATOR CONSOLE" not in classic
     save_theme_selection(THEME_REDLINE)
     reload_appearance()
     set_color_enabled(False)
@@ -251,7 +253,8 @@ def test_classic_and_redline_startup_snapshots() -> None:
         strip_markup(line) for line in menu_header_lines("ignored")
     )
     assert "MERCURY // REDLINE" in redline
-    assert "BACKUP · RECOVERY · MIGRATION" in redline
+    assert "BACKUP · RECOVERY" in redline
+    assert "· MIGRATION" not in redline
     opts = build_startup_intent_options()
     assert any(a == INTENT_OPTIONS for _k, _l, a in opts)
 
@@ -380,23 +383,6 @@ def test_color_mode_opens_from_options(
     from mercury.menu.options_menu import run_options_menu
 
     run_options_menu()
-    assert calls["color"] == 1
-
-
-def test_display_preferences_alias_opens_color_mode(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls = {"color": 0}
-    monkeypatch.setattr(
-        "mercury.menu.options_menu.run_color_mode_menu",
-        lambda: calls.__setitem__("color", calls["color"] + 1),
-    )
-
-    from mercury.menu.options_menu import run_display_preferences_menu
-
-    # Alias should call color mode directly (which we stubbed).
-    # Replace the function body path: alias invokes run_color_mode_menu.
-    run_display_preferences_menu()
     assert calls["color"] == 1
 
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from mercury.menu import main_display as menu_display
 
-# Re-export for tests and backward compatibility.
 MENU_TITLE = menu_display.MENU_TITLE
 MENU_SUBTITLE = menu_display.MENU_SUBTITLE
 MENU_FOOTER = menu_display.MENU_FOOTER
@@ -21,82 +20,10 @@ def render_status_block(*, probe_database: bool = False, compact: bool = False) 
     return menu_display.status_line(probe_database=probe_database)
 
 
-def run_discover_databases() -> None:
-    from mercury.database.discovery_menu import run_discover_menu
-
-    run_discover_menu()
-
-
-def run_verify_plan() -> None:
-    from mercury.verify.interactive_menu import run_verify_menu
-
-    run_verify_menu()
-
-
 def run_reports_and_history() -> None:
     from mercury.reporting.interactive_menu import run_reports_menu
 
     run_reports_menu()
-
-
-def run_sync_plan() -> None:
-    from mercury.sync.interactive_menu import run_sync_menu
-
-    run_sync_menu()
-
-
-def run_backup_batch_menu() -> None:
-    from mercury.backup.interactive_menu import run_backup_menu
-
-    run_backup_menu()
-
-
-def run_restore_check_menu() -> None:
-    from mercury.restore.interactive_menu import run_restore_menu
-
-    run_restore_menu()
-
-
-def run_environment_check() -> None:
-    from mercury.env.interactive_menu import run_env_menu
-
-    run_env_menu()
-
-
-def run_live_mode_guide() -> None:
-    from mercury.env.interactive_menu import run_live_mode_guide
-
-    run_live_mode_guide()
-
-
-def run_doctor_menu() -> None:
-    from mercury.env.interactive_menu import run_doctor_menu as _run_doctor_menu
-
-    _run_doctor_menu()
-
-
-def run_deploy_menu() -> None:
-    from mercury.deploy.interactive_menu import run_deploy_menu as _run_deploy_menu
-
-    _run_deploy_menu()
-
-
-def run_recovery_menu() -> None:
-    from mercury.recovery.interactive_menu import run_recovery_menu as _run_recovery_menu
-
-    _run_recovery_menu()
-
-
-def run_handoff_menu() -> None:
-    from mercury.handoff.interactive_menu import run_handoff_menu as _run_handoff_menu
-
-    _run_handoff_menu()
-
-
-def run_offline_repo_menu() -> None:
-    from mercury.repo.interactive_menu import run_offline_repo_menu as _run_offline_repo_menu
-
-    _run_offline_repo_menu()
 
 
 def run_storage_menu() -> None:
@@ -109,9 +36,6 @@ def run_backup_hub() -> None:
     from mercury.menu.task_menus import run_backup_hub as _run
 
     _run()
-
-
-run_backup_sync_hub = run_backup_hub
 
 
 def run_sync_hub() -> None:
@@ -164,7 +88,6 @@ __all__ = [
     "render_status_block",
     "run_menu",
     "run_backup_hub",
-    "run_backup_sync_hub",
     "run_sync_hub",
     "run_repo_hub",
     "run_deploy_handoff_hub",
@@ -172,4 +95,5 @@ __all__ = [
     "run_migration_hub",
     "run_recovery_hub",
     "run_storage_menu",
+    "run_reports_and_history",
 ]

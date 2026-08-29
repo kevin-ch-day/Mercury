@@ -1,4 +1,4 @@
-"""Host-local Options / Appearance menus (no Mercury HDD required)."""
+"""Host-local Options / Appearance menus (not written to backup storage)."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ APPEARANCE_PREVIEW_CLASSIC = "preview_classic"
 APPEARANCE_COMPARE = "compare"
 
 _HOST_LOCAL_FOOTER = (
-    "Settings are stored locally and never written to the Mercury HDD."
+    "Settings are stored locally and never written to backup storage."
 )
 _OPTIONS_LABEL_WIDTH = 16
 
@@ -306,19 +306,4 @@ def run_reset_options() -> None:
     )
     _print_host_local_footer()
     output.write("")
-    menu_prompts.wait_for_continue()
-
-
-# Backward-compatible alias (Health / older callers).
-def run_display_preferences_menu() -> None:
-    """Deprecated hub — color mode is now a first-class Options action."""
-    run_color_mode_menu()
-
-
-# Keep a thin preview-menu entry for any external callers.
-def run_theme_preview_menu() -> None:
-    """Synthetic compare flow (also inlined on Appearance)."""
-    print_theme_preview(theme_id=THEME_CLASSIC)
-    output.write("")
-    print_theme_preview(theme_id=THEME_REDLINE)
     menu_prompts.wait_for_continue()

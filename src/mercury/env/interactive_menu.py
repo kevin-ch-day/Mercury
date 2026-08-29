@@ -137,11 +137,6 @@ def run_env_menu(*, interactive: bool = True) -> None:
         output.write(menu_prompts.invalid_choice_message(choice))
 
 
-def run_live_mode_guide() -> None:
-    _print_live_mode_guide()
-    menu_prompts.wait_for_continue()
-
-
 def run_doctor_menu(*, interactive: bool = True) -> None:
     from mercury.env.doctor import run_doctor
     from mercury.env.terminal.doctor import print_doctor_report, print_repair_plan
@@ -157,7 +152,7 @@ def run_doctor_menu(*, interactive: bool = True) -> None:
         options: list[tuple[str, str]] = [
             ("1", "Show repair plan"),
             ("2", "Rescan"),
-            ("3", "Open Mercury HDD and storage"),
+            ("3", "Open Backup storage"),
         ]
         from mercury.repair.startup import usb_repair_needed
 

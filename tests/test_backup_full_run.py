@@ -73,8 +73,8 @@ def _executed(database: str, backup_id: str, directory: Path, *, size: int = 100
 
 def test_menu_hints_stay_synchronized_with_option_numbers() -> None:
     assert backup_menu_hint(ACTION_VERIFY) == "Verify and update backup records [2]"
-    assert backup_menu_hint(ACTION_RESTORE_CHECK) == "Restore and disaster recovery [5]"
-    assert backup_menu_hint(ACTION_BUNDLE) == "Deployment and handoff [7]"
+    assert backup_menu_hint(ACTION_RESTORE_CHECK) == "Disaster recovery [3]"
+    assert backup_menu_hint(ACTION_BUNDLE) == "System health [7]"
     keys = {key for key, _label, action, _help in BACKUP_MENU_OPTIONS}
     assert keys == {"1", "2", "3", "4"}
     assert " [4]" not in backup_menu_hint(ACTION_VERIFY)

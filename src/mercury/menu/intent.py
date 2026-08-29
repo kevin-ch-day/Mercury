@@ -102,7 +102,7 @@ def build_startup_intent_options(*, host=None) -> list[tuple[str, str, str]]:
 
     if detached:
         ordered = [
-            (INTENT_RECONNECT, "Reconnect or inspect Mercury HDD"),
+            (INTENT_RECONNECT, "Reconnect or inspect backup storage"),
             (INTENT_BROWSE, "Browse all operations"),
         ]
     elif not verified and (
@@ -110,33 +110,33 @@ def build_startup_intent_options(*, host=None) -> list[tuple[str, str, str]]:
     ):
         ordered = [
             (INTENT_VERIFY_PACKAGE, "Verify destination package"),
-            (INTENT_BACKUP_SYNC, "Backup and verification"),
+            (INTENT_BACKUP_SYNC, "Backup production"),
             (INTENT_BROWSE, "Browse all operations"),
         ]
     elif rehearsal_focus and verified:
         ordered = [
             (INTENT_DESTINATION_REHEARSAL, destination_move_action_label(host=state)),
-            (INTENT_BACKUP_SYNC, "Backup and verification again"),
-            (INTENT_SAFE_DISCONNECT, "Safely disconnect the Mercury HDD"),
+            (INTENT_BACKUP_SYNC, "Backup production again"),
+            (INTENT_SAFE_DISCONNECT, "Safely disconnect backup storage"),
             (INTENT_BROWSE, "Browse all operations"),
         ]
     elif verified and not writes:
         # Current live-like state: disconnect is the system-wide recommendation.
         ordered = [
-            (INTENT_SAFE_DISCONNECT, "Safely disconnect the Mercury HDD"),
-            (INTENT_BACKUP_SYNC, "Backup and verification again"),
+            (INTENT_SAFE_DISCONNECT, "Safely disconnect backup storage"),
+            (INTENT_BACKUP_SYNC, "Backup production again"),
             (INTENT_DESTINATION_REHEARSAL, destination_move_action_label(host=state)),
             (INTENT_BROWSE, "Browse all operations"),
         ]
     elif writes:
         ordered = [
-            (INTENT_BACKUP_SYNC, "Backup and verification"),
+            (INTENT_BACKUP_SYNC, "Backup production"),
             (INTENT_BROWSE, "Browse all operations"),
         ]
     else:
         ordered = [
-            (INTENT_BACKUP_SYNC, "Backup and verification"),
-            (INTENT_SAFE_DISCONNECT, "Safely disconnect the Mercury HDD"),
+            (INTENT_BACKUP_SYNC, "Backup production"),
+            (INTENT_SAFE_DISCONNECT, "Safely disconnect backup storage"),
             (INTENT_DESTINATION_REHEARSAL, destination_move_action_label(host=state)),
             (INTENT_BROWSE, "Browse all operations"),
         ]
@@ -193,19 +193,19 @@ def render_startup_intent_context(*, host=None) -> list[str]:
 
     recommended = recommended_startup_action(host=state)
     labels = {
-        INTENT_SAFE_DISCONNECT: "Safely disconnect the Mercury HDD",
+        INTENT_SAFE_DISCONNECT: "Safely disconnect backup storage",
         INTENT_BACKUP_SYNC: (
-            "Backup and verification again"
+            "Backup production again"
             if _package_verified(state)
-            else "Backup and verification"
+            else "Backup production"
         ),
         INTENT_DESTINATION_REHEARSAL: destination_move_action_label(host=state),
-        INTENT_RECONNECT: "Reconnect or inspect Mercury HDD",
+        INTENT_RECONNECT: "Reconnect or inspect backup storage",
         INTENT_VERIFY_PACKAGE: "Verify destination package",
         INTENT_BROWSE: "Browse all operations",
     }
     lines = [
-        dashboard_row("Mercury HDD", hdd, label_width=14),
+        dashboard_row("Backup storage", hdd, label_width=16),
         dashboard_row("Package", _package_label(state), label_width=14),
         dashboard_row("Source state", _source_state_label(state), label_width=14),
         dashboard_row("Recommended", labels.get(recommended, recommended), label_width=14),
@@ -285,7 +285,7 @@ def dispatch_startup_intent(intent: str) -> str | None:
         from mercury.storage.interactive_menu import run_storage_menu
 
         display_screen.write_summary(
-            "Open Mercury HDD and storage → Storage status and validation "
+            "Open Backup storage → Storage status and validation "
             "to review the destination package."
         )
         run_storage_menu()

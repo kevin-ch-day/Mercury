@@ -1,6 +1,5 @@
 """Tests for uniform table formatting."""
 
-from mercury.terminal import format as display_format
 from mercury.terminal import screen as display_screen
 from mercury.terminal import table as display_table
 
@@ -83,10 +82,6 @@ def test_write_structured_table_uses_table_builder(capsys) -> None:
     assert "android_permission_intel" in out
     assert "verified" in out
 
-
-def test_display_format_reexports_format_table() -> None:
-    lines = display_format.format_table(["X"], [["y"]])
-    assert "X" in lines[0]
 
 def test_write_status_tags(capsys) -> None:
     display_screen.write_status("ok", "verified")

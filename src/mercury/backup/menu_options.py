@@ -15,8 +15,6 @@ ACTION_PREVIEW = "preview_plan"
 ACTION_HANDOFF = "open_handoff"
 ACTION_DEV_BACKUP = "development_backup"
 ACTION_ADVANCED = "advanced_backup"
-# Backward-compatible alias (Refresh removed from primary slots in Phase 2).
-ACTION_REFRESH = "refresh"
 
 # Backup Ops has one routine production lane; specialized preservation and
 # multi-system recovery work lives in the Advanced submenu.
@@ -49,15 +47,15 @@ BACKUP_MENU_OPTIONS: Final[list[tuple[str, str, str, str]]] = [
 
 # Next-step hints that point at other Main Menu homes (not Backup Ops slots).
 CROSS_AREA_NEXT_HINTS: Final[dict[str, tuple[str, str]]] = {
-    ACTION_RESTORE_CHECK: ("5", "Restore and disaster recovery"),
-    ACTION_BUNDLE: ("7", "Deployment and handoff"),
-    ACTION_HANDOFF: ("7", "Deployment and handoff"),
+    ACTION_RESTORE_CHECK: ("3", "Disaster recovery"),
+    ACTION_BUNDLE: ("7", "System health"),
+    ACTION_HANDOFF: ("7", "System health"),
     ACTION_BACKUP_SYNC_SESSION: ("4", "Advanced backup operations"),
     ACTION_PRODUCTION_BACKUP: ("4", "Advanced backup operations"),
     ACTION_DEV_BACKUP: ("4", "Advanced backup operations"),
 }
 
-# Actions that write under the Mercury HDD (or mutate manifests).
+# Actions that write under backup storage (or mutate manifests).
 BACKUP_MENU_WRITE_ACTIONS: Final[frozenset[str]] = frozenset(
     {
         ACTION_BACKUP_SYNC_SESSION,

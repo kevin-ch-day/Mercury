@@ -34,20 +34,20 @@ def host_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return path
 
 
-def test_task_main_menu_has_nine_actions() -> None:
-    assert main_menu_max_primary_actions() == 9
+def test_task_main_menu_has_primary_actions() -> None:
+    assert main_menu_max_primary_actions() == 7
     items = main_menu_items(writes_allowed=True)
-    assert len(items) == 9
+    assert len(items) == 7
     titles = [t for _k, t in items]
-    assert titles[0].startswith("Backup and verification")
+    assert titles[0].startswith("Backup production")
     assert "Advanced tools" not in " ".join(titles)
-    assert titles[1].startswith("Database sync")
-    assert titles[2].startswith("Git and repository")
+    assert titles[1].startswith("Repository backups")
+    assert titles[2].startswith("Disaster recovery")
 
 
 def test_no_duplicate_backup_git_sync_top_level() -> None:
     titles = " ".join(t for _k, t in main_menu_items(writes_allowed=True)).lower()
-    assert titles.count("backup and verification") == 1
+    assert titles.count("backup production") == 1
     assert "offline github" not in titles
     assert "sync production" not in titles
 
@@ -55,10 +55,10 @@ def test_no_duplicate_backup_git_sync_top_level() -> None:
 def test_symbolic_numbering_and_no_stale_eleven() -> None:
     assert main_menu_hint(MAIN_BACKUP).endswith("[1]")
     assert main_menu_hint(MAIN_STORAGE).endswith("[4]")
-    assert main_menu_hint(MAIN_RECOVERY).endswith("[5]")
-    assert main_menu_hint(MAIN_REPORTS).endswith("[8]")
-    assert main_menu_hint(MAIN_MIGRATION).endswith("[6]")
-    assert main_menu_hint(MAIN_HEALTH).endswith("[9]")
+    assert main_menu_hint(MAIN_RECOVERY).endswith("[3]")
+    assert main_menu_hint(MAIN_REPORTS).endswith("[6]")
+    assert main_menu_hint(MAIN_MIGRATION).endswith("[7]")
+    assert main_menu_hint(MAIN_HEALTH).endswith("[7]")
     assert "[10]" not in main_menu_hint(MAIN_HEALTH)
     assert "[11]" not in main_menu_hint("workstation_handoff")
     assert "[10]" not in main_menu_hint("disaster_recovery")
@@ -76,7 +76,7 @@ def test_recommended_action_writer_enabled(host_path: Path) -> None:
     )
     rec = build_main_menu_recommendation()
     assert rec.recommended_action == MAIN_BACKUP
-    assert "Backup and verification" in rec.explanation
+    assert "Backup production" in rec.explanation
 
 
 def test_recommended_action_writes_disabled_intent(host_path: Path) -> None:
@@ -144,7 +144,7 @@ def test_startup_intent_recommends_safe_disconnect(host_path: Path, monkeypatch)
     assert run_startup_intent_chooser() == INTENT_SAFE_DISCONNECT
     text = "\n".join(printed)
     assert "CURRENT SESSION" in text
-    assert "Safely disconnect the Mercury HDD" in text
+    assert "Safely disconnect backup storage" in text
     assert "Recommended" in text
 
 
@@ -197,13 +197,13 @@ def test_backup_sync_hub_opens_backup_operations_directly(monkeypatch) -> None:
         lambda **_k: called.append("backup_ops"),
     )
     from mercury.backup.menu_options import ACTION_BACKUP_SYNC_SESSION, BACKUP_MENU_OPTIONS
-    from mercury.menu.task_menus import run_backup_sync_hub
+    from mercury.menu.task_menus import run_backup_hub
 
     guided = [
         key for key, _label, action, _h in BACKUP_MENU_OPTIONS if action == ACTION_BACKUP_SYNC_SESSION
     ]
     assert guided == []
-    run_backup_sync_hub()
+    run_backup_hub()
     assert called == ["backup_ops"]
 
 
@@ -223,7 +223,7 @@ def test_backup_sync_hub_routes_to_full_backup_operations(monkeypatch) -> None:
         run_production_backup_flow,
     )
     from mercury.backup.menu_options import BACKUP_MENU_OPTIONS
-    from mercury.menu.task_menus import run_backup_sync_hub
+    from mercury.menu.task_menus import run_backup_hub
 
     assert callable(run_production_backup_flow)
     assert callable(run_development_backup_flow)
@@ -231,7 +231,7 @@ def test_backup_sync_hub_routes_to_full_backup_operations(monkeypatch) -> None:
     assert "production" in labels
     assert "advanced" in labels
 
-    run_backup_sync_hub()
+    run_backup_hub()
     assert called == ["backup_ops"]
 
 
@@ -257,7 +257,7 @@ def test_backup_sync_hub_title_again_when_package_verified(
         "mercury.backup.interactive_menu.run_backup_menu",
         lambda **_k: called.append(BACKUP_SCREEN_TITLE),
     )
-    task_menus.run_backup_sync_hub()
+    task_menus.run_backup_hub()
     assert called == ["Backup Operations"]
 
 
@@ -315,24 +315,8 @@ def test_health_consolidates_environment_inventory_doctor(monkeypatch) -> None:
     assert called == ["env"]
 
 
-def test_backup_sync_hub_retains_expert_backup(monkeypatch) -> None:
-    called: list[str] = []
-    monkeypatch.setattr(
-        "mercury.backup.interactive_menu.run_backup_menu",
-        lambda **_k: called.append("backup"),
-    )
-    monkeypatch.setattr(
-        "mercury.storage.host_maintenance.load_host_maintenance",
-        lambda: __import__("types").SimpleNamespace(package_verification_status="Pending"),
-    )
-    from mercury.menu.task_menus import run_backup_sync_hub
-
-    run_backup_sync_hub()
-    assert called == ["backup"]
-
-
 def test_old_capabilities_remain_reachable_via_hints() -> None:
-    assert "deployment and handoff" in main_menu_hint("workstation_handoff").lower()
+    assert "system health" in main_menu_hint("workstation_handoff").lower()
     assert "recovery" in main_menu_hint("disaster_recovery").lower()
     assert "health" in main_menu_hint("system_doctor").lower()
     assert "sync" in main_menu_hint("sync_prod_dev").lower()
@@ -345,7 +329,7 @@ def test_menu_snapshot_does_not_depend_on_live_host(monkeypatch, tmp_path: Path)
 
     monkeypatch.setattr("mercury.menu.main_display.dashboard_rows", lambda **_k: ["  Recommended"])
     text = menu_display.render_main_menu(probe_database=False)
-    assert "Backup and verification" in text or "Reconnect" in text
+    assert "Backup production" in text or "Reconnect" in text
     assert "/mnt/MERCURY_DATA_V2" not in text
 
 

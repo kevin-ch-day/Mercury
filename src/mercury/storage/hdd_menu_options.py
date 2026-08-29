@@ -16,8 +16,6 @@ STORAGE_RECOMMENDED_ACTION = "storage_recommended_action"
 STORAGE_STATUS_VALIDATE = "storage_status_validate"
 STORAGE_CHANGE_MODE = "storage_change_mode"
 STORAGE_MAINTENANCE = "storage_maintenance"
-# Backward-compatible alias
-STORAGE_CLEANUP_ADVANCED = STORAGE_MAINTENANCE
 
 # Change-mode submenu IDs
 MODE_INSPECT_RO = "mode_inspect_readonly"
@@ -75,19 +73,19 @@ def recommended_primary_label(snapshot: StorageLifecycleSnapshot) -> tuple[str, 
         StorageLifecycleState.DETACHED,
         StorageLifecycleState.DEVICE_NOT_FOUND,
     }:
-        return "Reconnect or inspect Mercury HDD", ""
+        return "Reconnect or inspect backup storage", ""
     if state == StorageLifecycleState.ATTACHED_READ_ONLY:
         return "Continue destination validation", ""
     if state == StorageLifecycleState.ATTACHED_WRITER_ENABLED:
-        return "Prepare HDD for safe disconnect", ""
+        return "Review backup storage", ""
     if blocked or (
         state == StorageLifecycleState.PREPARING_TO_DISCONNECT and package_ok
     ):
         return "Recheck disconnect blockers", ""
     if state == StorageLifecycleState.READY_TO_DISCONNECT:
-        return "Safe disconnect Mercury HDD", "ready"
+        return "Safe disconnect backup storage", "ready"
     if package_ok and state == StorageLifecycleState.ATTACHED_WRITER_DISABLED:
-        return "Safe disconnect Mercury HDD", "ready"
+        return "Safe disconnect backup storage", "ready"
     if not package_ok and state in {
         StorageLifecycleState.ATTACHED_WRITER_DISABLED,
         StorageLifecycleState.ATTACHED_UNVALIDATED,
@@ -139,7 +137,7 @@ def host_role_header(snapshot: StorageLifecycleSnapshot) -> str:
 
 
 def dashboard_hdd_status_line(snapshot: StorageLifecycleSnapshot) -> str:
-    """Main-menu Mercury HDD row (status only; next step is separate)."""
+    """Main-menu backup-storage row (status only; next step is separate)."""
     return hdd_menu_header_state(snapshot)
 
 

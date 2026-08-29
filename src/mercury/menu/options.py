@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Final
 
-# Nine-area operator console action IDs.
+# Primary console action IDs (stable; menu numbers may change).
 MAIN_BACKUP = "main_backup"
 MAIN_SYNC = "main_sync"
 MAIN_REPO = "main_repo"
@@ -21,7 +21,6 @@ ACTION_HDD_STORAGE = MAIN_STORAGE
 ACTION_BACKUP = MAIN_BACKUP
 ACTION_BACKUP_LEGACY = "backup_sources"
 ACTION_SYNC = "sync_prod_dev"
-ACTION_REPORTS = MAIN_REPORTS
 ACTION_OFFLINE_REPOS = "offline_repos"
 ACTION_ENVIRONMENT = "environment_details"
 ACTION_INVENTORY = "database_inventory"
@@ -30,29 +29,37 @@ ACTION_DEPLOY = "system_deployment"
 ACTION_RECOVERY = MAIN_RECOVERY
 ACTION_RECOVERY_LEGACY = "disaster_recovery"
 ACTION_HANDOFF = "workstation_handoff"
-# Obsolete Advanced hub id — maps to Backup and verification.
+# Obsolete Advanced hub id — maps to Backup production.
 MAIN_ADVANCED = "main_advanced"
 
+# Operator-facing titles (always-on backup/DR agent on this host).
+TITLE_BACKUP = "Backup production"
+TITLE_REPO = "Repository backups"
+TITLE_RECOVERY = "Disaster recovery"
+TITLE_STORAGE = "Backup storage"
+TITLE_SYNC = "Prod-to-dev sync"
+TITLE_REPORTS = "Reports and history"
+TITLE_HEALTH = "System health"
+
 # (key, title, action_id, requires_hdd_writes)
+# Migration/handoff are not top-level: they live under Health (rare host-move tools).
 MAIN_MENU_OPTIONS: Final[list[tuple[str, str, str, bool]]] = [
-    ("1", "Backup and verification", MAIN_BACKUP, True),
-    ("2", "Database sync and data movement", MAIN_SYNC, False),
-    ("3", "Git and repository recovery", MAIN_REPO, False),
-    ("4", "Mercury HDD and storage", MAIN_STORAGE, False),
-    ("5", "Restore and disaster recovery", MAIN_RECOVERY, False),
-    ("6", "Workstation migration", MAIN_MIGRATION, False),
-    ("7", "Deployment and handoff", MAIN_DEPLOY, False),
-    ("8", "Reports, evidence, and history", MAIN_REPORTS, False),
-    ("9", "System health and configuration", MAIN_HEALTH, False),
+    ("1", TITLE_BACKUP, MAIN_BACKUP, True),
+    ("2", TITLE_REPO, MAIN_REPO, False),
+    ("3", TITLE_RECOVERY, MAIN_RECOVERY, False),
+    ("4", TITLE_STORAGE, MAIN_STORAGE, False),
+    ("5", TITLE_SYNC, MAIN_SYNC, False),
+    ("6", TITLE_REPORTS, MAIN_REPORTS, False),
+    ("7", TITLE_HEALTH, MAIN_HEALTH, False),
 ]
 
-# Software-only console when the Mercury HDD is absent (planning / reconnect).
+# Software-only console when backup storage is absent (planning / reconnect).
 SOFTWARE_ONLY_MENU_OPTIONS: Final[list[tuple[str, str, str, bool]]] = [
-    ("1", "Reconnect or configure Mercury HDD", MAIN_STORAGE, False),
-    ("2", "Restore and disaster recovery planning", MAIN_RECOVERY, False),
-    ("3", "Git and repository recovery (planning)", MAIN_REPO, False),
+    ("1", "Reconnect backup storage", MAIN_STORAGE, False),
+    ("2", "Disaster recovery (planning)", MAIN_RECOVERY, False),
+    ("3", "Repository backups (planning)", MAIN_REPO, False),
     ("4", "Reports available on this host", MAIN_REPORTS, False),
-    ("5", "System health and configuration", MAIN_HEALTH, False),
+    ("5", TITLE_HEALTH, MAIN_HEALTH, False),
 ]
 
 WRITES_DISABLED_SUFFIX = "unavailable · writes disabled"
@@ -67,7 +74,9 @@ def _active_menu_options(*, software_only: bool = False) -> list[tuple[str, str,
 def main_menu_option_by_action(
     action_id: str, *, software_only: bool = False
 ) -> tuple[str, str]:
-    # Map legacy expert action ids onto the nine-area console homes.
+    # Map legacy / nested action ids onto the seven-area console homes.
+    # Deploy onto this MariaDB host is Disaster recovery. Handoff and
+    # workstation-move tools live under System health (rare).
     legacy_aliases = {
         ACTION_BACKUP_LEGACY: MAIN_BACKUP,
         ACTION_SYNC: MAIN_SYNC,
@@ -75,14 +84,18 @@ def main_menu_option_by_action(
         ACTION_ENVIRONMENT: MAIN_HEALTH,
         ACTION_INVENTORY: MAIN_HEALTH,
         ACTION_DOCTOR: MAIN_HEALTH,
-        ACTION_DEPLOY: MAIN_DEPLOY,
+        ACTION_DEPLOY: MAIN_RECOVERY,
         ACTION_RECOVERY_LEGACY: MAIN_RECOVERY,
-        ACTION_HANDOFF: MAIN_DEPLOY,
+        ACTION_HANDOFF: MAIN_HEALTH,
         MAIN_ADVANCED: MAIN_BACKUP,
         MAIN_BACKUP_SYNC: MAIN_BACKUP,
+        MAIN_DEPLOY: MAIN_RECOVERY,
+        MAIN_MIGRATION: MAIN_HEALTH,
         "main_backup_sync": MAIN_BACKUP,
-        "system_deployment": MAIN_DEPLOY,
-        "workstation_handoff": MAIN_DEPLOY,
+        "main_deploy_handoff": MAIN_RECOVERY,
+        "main_migration": MAIN_HEALTH,
+        "system_deployment": MAIN_RECOVERY,
+        "workstation_handoff": MAIN_HEALTH,
         "disaster_recovery": MAIN_RECOVERY,
         "backup_sources": MAIN_BACKUP,
         "sync_prod_dev": MAIN_SYNC,

@@ -351,6 +351,6 @@ def test_format_undumpable_next_action_names_the_view() -> None:
     )
     assert line == (
         "Recreate undumpable ScytaleDroid view `v_masvs_matrix`, "
-        "then rerun Backup and verification."
+        "then rerun Backup production."
     )
 

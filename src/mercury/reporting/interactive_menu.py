@@ -15,7 +15,7 @@ from mercury.database import MariaDbConfigError, MariaDbLiveError
 from mercury.menu.subscreen import pause_and_redraw, read_submenu_choice, render_submenu
 from mercury.reporting.protection import ProtectionReport, build_protection_report, print_protection_report
 
-REPORTS_SCREEN_TITLE = "Reports, evidence, and history"
+REPORTS_SCREEN_TITLE = "Reports and history"
 
 
 def read_reports_choice() -> str | None:

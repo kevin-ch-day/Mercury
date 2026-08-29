@@ -14,7 +14,7 @@ from mercury.storage.host_maintenance import (
 
 @dataclass(frozen=True)
 class BackupWritePreflight:
-    """Whether any Mercury HDD-backed backup write may begin."""
+    """Whether any backup-storage-backed write may begin."""
 
     allowed: bool
     reason: str = ""
@@ -45,11 +45,11 @@ def assess_backup_write_preflight(
             destination_rehearsal_in_progress=state.destination_rehearsal_in_progress,
         )
 
-    reason = "Mercury HDD detach maintenance is active"
+    reason = "Backup storage writes are disabled (detach maintenance)"
     if state.storage_availability == "detached":
-        reason = "Mercury HDD is detached; writes remain disabled"
+        reason = "Backup storage is detached; writes remain disabled"
     elif state.storage_availability == "attached" and not state.writes_allowed:
-        reason = "Mercury HDD is attached but writes remain disabled pending reconnect restore"
+        reason = "Backup storage is attached but writes remain disabled pending reconnect"
 
     details = (
         f"Storage state:   {state.storage_availability}",
@@ -57,9 +57,9 @@ def assess_backup_write_preflight(
         f"Active writer:   {state.active_write_role or 'none'}",
     )
     next_steps = (
-        "Reconnect and validate the Mercury HDD",
+        "Reconnect and validate backup storage",
         "Restore Mercury writes through the guided reconnect workflow",
-        "Return to Backup Operations",
+        "Return to Backup production [1]",
     )
     return BackupWritePreflight(
         allowed=False,

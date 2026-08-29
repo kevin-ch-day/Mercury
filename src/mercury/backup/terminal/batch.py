@@ -152,7 +152,7 @@ def print_global_backup_refusal(
         for index, step in enumerate(next_steps, start=1):
             output.write(f"  {index}. {step}")
     display_screen.write_blank()
-    display_screen.write_summary("No backup files or HDD evidence were written.")
+    display_screen.write_summary("No backup files or backup evidence were written.")
 
 
 def print_backup_batch_result(
@@ -285,13 +285,13 @@ def print_full_backup_run_result(
                 "Production": "Not attempted",
                 "Development": "Not attempted",
                 "Verification": "Not applicable",
-                "HDD evidence": "Not written",
+                "Backup evidence": "Not written",
             }
         )
         if result.refusal_audit_result == "RECORDED_HOST_LOCAL":
             display_screen.write_blank()
             display_screen.write_summary(
-                "Host-local refusal audit recorded (not backup or handoff evidence)."
+                "Host-local refusal audit recorded (not backup evidence)."
             )
         display_screen.write_blank()
         display_screen.write_summary("No backup state changed.")
@@ -319,7 +319,7 @@ def print_full_backup_run_result(
         display_screen.write_summary("Next    " + "; ".join(result.next_actions))
     elif result.outcome != FullBackupOutcome.PASS:
         display_screen.write_summary(
-            "Next    resolve failures before restore-check or handoff"
+            "Next    resolve failures before restore-check"
         )
         if result.next_actions:
             _write_dense_lines(result.next_actions)

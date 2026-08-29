@@ -1,4 +1,4 @@
-"""Compact operator menu for HDD offline repository copies."""
+"""Compact operator menu for offline repository copies on backup storage."""
 
 from __future__ import annotations
 
@@ -15,20 +15,16 @@ def offline_clone_plan():
     return build_offline_clone_plan(inspect_repositories(load_repo_definitions()))
 
 
-# Compatibility alias used by older tests/call sites.
-_plan = offline_clone_plan
-
-
 def run_offline_sync_now() -> None:
-    """Confirm and sync offline HDD repository copies."""
+    """Confirm and copy repositories onto backup storage."""
     plan = offline_clone_plan()
     output.write(
         hint_text(
-            f"Sync offline HDD worktrees → {plan.root} "
+            f"Copy committed history to backup storage → {plan.root} "
             "(committed history only; source repos untouched; dirty offline copies blocked)"
         )
     )
-    if menu_prompts.ask_yes_no("Sync offline HDD repository copies now?", default=False) is not True:
+    if menu_prompts.ask_yes_no("Copy repository backups to backup storage now?", default=False) is not True:
         display_screen.write_status("warn", "Offline repository sync cancelled.")
         return
     print_offline_clone_plan(execute_offline_clone_plan(plan), executed=True)

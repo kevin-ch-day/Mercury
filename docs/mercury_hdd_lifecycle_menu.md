@@ -25,10 +25,10 @@ Invalid actions are hidden. Safe disconnect and reconnect are never buried under
 
 | State | Label |
 | --- | --- |
-| Writer enabled | Prepare HDD for safe disconnect |
-| Writes disabled, package verified / ready | Safe disconnect Mercury HDD |
+| Writer enabled | Review backup storage |
+| Writes disabled, package verified / ready | Safe disconnect backup storage |
 | Preparing or blocked | Recheck disconnect blockers |
-| Detached | Reconnect or inspect Mercury HDD |
+| Detached | Reconnect or inspect backup storage |
 | Read-only | Continue destination validation |
 | Package unverified | Verify destination package |
 | Identity mismatch | Diagnose attached storage |

@@ -211,23 +211,23 @@ def recommended_next_action(
         state in {StorageLifecycleState.ATTACHED_WRITER_DISABLED, StorageLifecycleState.PREPARING_TO_DISCONNECT}
         and package_verified
     ):
-        return "Safe disconnect Mercury HDD"
+        return "Safe disconnect backup storage"
     if state in {StorageLifecycleState.DETACHED, StorageLifecycleState.DEVICE_NOT_FOUND}:
-        return "Attach the WDC Mercury HDD, then choose Reconnect"
+        return "Attach backup storage, then choose Reconnect"
     if state == StorageLifecycleState.DEVICE_IDENTITY_MISMATCH:
-        return "Attach the correct Mercury HDD (UUID match), then choose Reconnect"
+        return "Attach the correct backup volume (UUID match), then choose Reconnect"
     if state == StorageLifecycleState.ATTACHED_READ_ONLY:
         return "Verify package and configure destination"
     if state == StorageLifecycleState.RECONNECT_VALIDATED:
         return "Enable Mercury writes (source) or continue destination inspection"
     if state == StorageLifecycleState.ATTACHED_UNVALIDATED:
-        return "Validate Mercury HDD"
+        return "Validate backup storage"
     if role == MigrationHostRole.DESTINATION_REHEARSAL and state != StorageLifecycleState.ATTACHED_WRITER_ENABLED:
-        return "Inspect Mercury HDD read-only"
+        return "Inspect backup storage read-only"
     if state == StorageLifecycleState.ATTACHED_WRITER_ENABLED:
         return "Run or verify backups"
     if state == StorageLifecycleState.ATTACHED_WRITER_DISABLED:
-        return "Safe disconnect Mercury HDD" if package_verified else "Enable Mercury writes or continue preparation"
+        return "Safe disconnect backup storage" if package_verified else "Enable Mercury writes or continue preparation"
     return f"Open {main_menu_hint(ACTION_HDD_STORAGE)}"
 
 

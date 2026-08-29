@@ -345,7 +345,7 @@ def build_backup_status_report(
         if freshness.recommend_full_backup and status == "verified" and not absent_on_server:
             issues.append(
                 "Backup artifacts are verified, but freshness is stale or unknown. "
-                "Run full backup before workstation handoff."
+                "Run full backup so protection stays current."
             )
 
         handoff_eligible = bool(

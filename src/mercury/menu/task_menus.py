@@ -1,4 +1,4 @@
-"""Nine-area task hubs beneath the main operator console."""
+"""Task hubs beneath the Mercury backup and disaster-recovery console."""
 
 from __future__ import annotations
 
@@ -99,7 +99,7 @@ def _show_full_backup_receipts() -> None:
     )
     display_screen.write_blank()
     display_screen.write_summary(
-        "Observe-only. Invalid maintenance receipts are not backup/handoff evidence. "
+        "Observe-only. Invalid maintenance receipts are not backup evidence. "
         f"Later quarantine target: {plan.quarantine_dir} "
         f"(class={INVALID_MAINTENANCE_CLASS})."
     )
@@ -127,30 +127,23 @@ def _show_repo_bundle_plan() -> None:
 
 
 def run_backup_hub() -> None:
-    """[1] Backup and verification — opens Backup Operations directly."""
+    """[1] Backup production — opens Backup Operations directly."""
     from mercury.backup.interactive_menu import run_backup_menu
 
     run_backup_menu()
 
 
-# Compatibility name used by older runners/tests.
-run_backup_sync_hub = run_backup_hub
-
-
 def run_sync_hub() -> None:
-    """[2] Database sync and data movement."""
+    """[5] Prod-to-dev sync."""
     while True:
         choice = _submenu(
-            "Database sync and data movement",
+            "Prod-to-dev sync",
             [
                 ("1", "Sync readiness and execution"),
-                ("2", "Transfer package status"),
-                ("3", "Transfer / handoff history"),
-                ("4", "How to write or receive a transfer package"),
             ],
             purpose=(
-                "Move data between databases and workstations. Sync plans are "
-                "policy-gated; transfer write/receive stay CLI-first."
+                "Refresh disposable *_dev databases from verified production backups. "
+                "Never writes *_prod."
             ),
         )
         if choice is None:
@@ -160,42 +153,11 @@ def run_sync_hub() -> None:
 
             run_sync_menu()
             continue
-        if choice == "2":
-            from mercury.core.runtime import should_probe_database_status
-            from mercury.transfer import build_transfer_bundle, print_transfer_bundle
-
-            print_transfer_bundle(
-                build_transfer_bundle(live=should_probe_database_status())
-            )
-            _pause()
-            continue
-        if choice == "3":
-            from mercury.handoff.history import build_handoff_history
-            from mercury.handoff.terminal import print_handoff_history
-
-            print_handoff_history(build_handoff_history())
-            _pause()
-            continue
-        if choice == "4":
-            _command_card(
-                "Transfer package commands",
-                [
-                    "Inspect:  ./run.sh transfer status",
-                    "History:  ./run.sh transfer history",
-                    "Write:    ./run.sh transfer write [--execute]",
-                    "Receive:  ./run.sh transfer receive",
-                    "",
-                    "Omit --execute on write for a dry-run plan. "
-                    "Handoff packaging also lives under Deployment and handoff [7].",
-                ],
-            )
-            _pause()
-            continue
         output.write(menu_prompts.invalid_choice_message(choice))
 
 
 def run_repo_hub(*, interactive: bool = True) -> None:
-    """[3] Git and repository recovery — offline status and actions on one screen."""
+    """[2] Repository backups — offline copies and bundle planning."""
     from mercury.repo.interactive_menu import (
         offline_clone_plan,
         run_offline_sync_now,
@@ -205,16 +167,16 @@ def run_repo_hub(*, interactive: bool = True) -> None:
     from mercury.terminal.theme import menu_bottom_option, menu_item_line
 
     while True:
-        display_screen.open_screen("Git and repository recovery")
+        display_screen.open_screen("Repository backups")
         display_screen.write_summary(
-            "Offline HDD clones, repository status, and Git bundle planning. "
-            "Bundle execute remains CLI-gated so dirty worktrees stay explicit."
+            "Keep Git history on backup storage (offline clones and bundle plans). "
+            "Source worktrees stay untouched. Bundle execute remains CLI-gated."
         )
         display_screen.write_blank()
         print_offline_clone_plan(offline_clone_plan(), with_title=False)
         display_screen.write_blank()
         options = [
-            ("1", "Sync offline GitHub repositories"),
+            ("1", "Update repository backups on storage"),
             ("2", "View last sync receipt"),
             ("3", "Repository status"),
             ("4", "Preview repository bundle plan"),
@@ -296,14 +258,14 @@ def run_restore_tools_hub() -> None:
 
 
 def run_recovery_hub() -> None:
-    """[5] Restore and Disaster Recovery — consolidated dashboard."""
+    """[3] Disaster recovery — restore-check and recover this host."""
     from mercury.restore.interactive_dashboard import run_recovery_dashboard
 
     run_recovery_dashboard()
 
 
 def run_migration_hub() -> None:
-    """[6] Workstation migration (capture / package / destination validation)."""
+    """Rare workstation-move tools (not part of routine backup/DR)."""
     while True:
         choice = _submenu(
             "Workstation migration",
@@ -313,9 +275,9 @@ def run_migration_hub() -> None:
                 ("3", "Migration readiness"),
             ],
             purpose=(
-                "Capture and validate workstation move packages. Handoff "
-                "packaging and deploy live under Deployment and handoff [7]; "
-                "storage cutover under Mercury HDD and storage [4]."
+                "Rare host-move capture and package validation. Routine backup and "
+                "restore live under Backup production [1] and Disaster recovery [3]. "
+                "Storage lifecycle is Backup storage [4]."
             ),
         )
         if choice is None:
@@ -341,21 +303,21 @@ def run_migration_hub() -> None:
 
 
 def run_deploy_handoff_hub() -> None:
-    """[7] Deployment and handoff."""
+    """Deploy onto this host and rare handoff packaging."""
     while True:
         choice = _submenu(
-            "Deployment and handoff",
+            "Deployment and packaging",
             [
-                ("1", "System deployment"),
-                ("2", "Workstation handoff status"),
+            ("1", "Deploy backups onto this host"),
+            ("2", "Handoff status"),
                 ("3", "Handoff packaging tools"),
                 ("4", "Write DB bundle and runbooks"),
                 ("5", "Production cutover commands"),
                 ("6", "Receiving workstation guide"),
             ],
             purpose=(
-                "Package evidence for the next host and deploy sealed "
-                "artifacts. Production cutover execute stays CLI-gated."
+                "Restore verified backups onto this MariaDB host, or package "
+                "evidence for another machine. Production cutover execute stays CLI-gated."
             ),
         )
         if choice is None:
@@ -400,7 +362,7 @@ def run_deploy_handoff_hub() -> None:
                     "  --confirm 'PROMOTE SEALED DESTINATION PACKAGE'",
                     "",
                     "Pinned destination recovery (non-prod schemas) is under "
-                    "Restore and disaster recovery [5].",
+                    "Disaster recovery [3].",
                 ],
             )
             _pause()
@@ -416,10 +378,10 @@ def run_deploy_handoff_hub() -> None:
 
 
 def run_health_hub() -> None:
-    """[9] System health and configuration."""
+    """[7] System health and configuration."""
     while True:
         choice = _submenu(
-            "System health and configuration",
+            "System health",
             [
                 ("1", "Environment details"),
                 ("2", "Database inventory"),
@@ -427,10 +389,12 @@ def run_health_hub() -> None:
                 ("4", "Storage status summary (observe-only)"),
                 ("5", "Appearance and theme"),
                 ("6", "Show local configuration"),
+                ("7", "Deploy backups onto this host"),
+                ("8", "Workstation move and handoff (rare)"),
             ],
             purpose=(
-                "Host readiness, inventory, and doctor. Storage lifecycle "
-                "belongs under Mercury HDD and storage [4]."
+                "Host readiness, inventory, and doctor. Backup storage lifecycle "
+                "is Backup storage [4]. Deploy/handoff here are uncommon on this always-on host."
             ),
         )
         if choice is None:
@@ -457,8 +421,7 @@ def run_health_hub() -> None:
             print_storage_status(build_storage_status_report())
             output.write("")
             output.write(
-                "Lifecycle, cleanup, and detach: Main Menu → "
-                "Mercury HDD and storage [4]."
+                "Lifecycle, cleanup, and detach: Main Menu → Backup storage [4]."
             )
             _pause()
             continue
@@ -471,14 +434,15 @@ def run_health_hub() -> None:
             _show_local_configuration()
             _pause()
             continue
+        if choice == "7":
+            from mercury.deploy.interactive_menu import run_deploy_menu
+
+            run_deploy_menu()
+            continue
+        if choice == "8":
+            run_migration_hub()
+            continue
         output.write(menu_prompts.invalid_choice_message(choice))
-
-
-def run_appearance_menu() -> None:
-    """Compatibility wrapper — shared Options appearance workflow."""
-    from mercury.menu.options_menu import run_appearance_menu as _run
-
-    _run()
 
 
 def run_destination_rehearsal_hub() -> None:

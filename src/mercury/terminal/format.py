@@ -206,13 +206,6 @@ def format_yes_no(value: bool) -> str:
     return "yes" if value else "no"
 
 
-def format_table(*args, **kwargs):  # noqa: ANN002, ANN003
-    """Backward-compatible alias — prefer ``mercury.terminal.table.format_table``."""
-    from mercury.terminal.table import format_table as _format_table
-
-    return _format_table(*args, **kwargs)
-
-
 def format_report_header(title: str, *, width: int | None = None) -> list[str]:
     """ALL-CAPS style report title with underline (verbose CLI reports)."""
     line_width = width if width is not None else max(len(title), 16)

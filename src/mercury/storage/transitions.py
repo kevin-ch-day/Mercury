@@ -58,18 +58,6 @@ class TransitionStatus(str, Enum):
     CONFIRMATION_REQUIRED = "CONFIRMATION_REQUIRED"
 
 
-# Backward-compatible alias used by older call sites / tests.
-class TransitionClassification(str, Enum):
-    RECOVERABLE_CONFIRMATION = "RECOVERABLE_CONFIRMATION"
-    STRONG_CONFIRMATION = "STRONG_CONFIRMATION"
-    HARD_BLOCK = "HARD_BLOCK"
-    ALREADY_SATISFIED = "ALREADY_SATISFIED"
-    SUCCESS = "SUCCESS"
-    CANCELLED = "CANCELLED"
-    FAILED = "FAILED"
-    ROLLED_BACK = "ROLLED_BACK"
-
-
 @dataclass(frozen=True)
 class TransitionCheck:
     name: str

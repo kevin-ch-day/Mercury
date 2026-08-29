@@ -789,7 +789,7 @@ def _collect_warnings(env, report: DoctorReport) -> list[str]:
                     f"{row['database']}: latest_written={written} is not restore-ready; "
                     f"latest_manifest_stamped={verified or 'none'}; "
                     f"latest_restore_checked={restore_checked or 'none'} "
-                    "(do not treat latest-written as handoff-ready)."
+                    "(do not treat latest-written as restore-proven)."
                 )
     except Exception:
         pass

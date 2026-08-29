@@ -1,4 +1,4 @@
-"""Main-menu recommendation service (nine-area console)."""
+"""Main-menu recommendation service (backup/DR console)."""
 
 from __future__ import annotations
 
@@ -44,19 +44,19 @@ class MainMenuRecommendation:
         ):
             return self.explanation
         labels = {
-            MAIN_BACKUP: "Backup and verification",
-            MAIN_SYNC: "Database sync and data movement",
-            MAIN_REPO: "Git and repository recovery",
-            MAIN_STORAGE: "Mercury HDD and storage",
-            MAIN_RECOVERY: "Restore and disaster recovery",
-            MAIN_MIGRATION: "Workstation migration",
-            MAIN_DEPLOY: "Deployment and handoff",
-            MAIN_REPORTS: "Reports, evidence, and history",
-            MAIN_HEALTH: "System health and configuration",
-            "safe_disconnect": "Safely disconnect the Mercury HDD",
-            "reconnect": "Reconnect and validate Mercury HDD",
-            "attach": "Attach HDD and choose Reconnect",
-            "physical_move": "Move HDD to destination workstation",
+            MAIN_BACKUP: "Backup production",
+            MAIN_SYNC: "Prod-to-dev sync",
+            MAIN_REPO: "Repository backups",
+            MAIN_STORAGE: "Backup storage",
+            MAIN_RECOVERY: "Disaster recovery",
+            MAIN_MIGRATION: "System health",
+            MAIN_DEPLOY: "Disaster recovery",
+            MAIN_REPORTS: "Reports and history",
+            MAIN_HEALTH: "System health",
+            "safe_disconnect": "Safely disconnect backup storage",
+            "reconnect": "Reconnect and validate backup storage",
+            "attach": "Attach backup storage and choose Reconnect",
+            "physical_move": "Move backup storage to another host",
             "diagnose": "Diagnose attached storage",
             "verify_package": "Verify destination package",
         }
@@ -64,7 +64,7 @@ class MainMenuRecommendation:
 
 
 def main_menu_action_for_recommendation(recommended_action: str) -> str | None:
-    """Map recommendation service actions onto nine-area main-menu action IDs."""
+    """Map recommendation service actions onto main-menu action IDs."""
     if recommended_action == "physical_move":
         # Destination-move detach: do not recommend Reconnect on the source host.
         return None
@@ -218,7 +218,7 @@ def build_main_menu_recommendation(
                 backup_state=backup_state,
                 package_state=package,
                 recommended_action="physical_move",
-                explanation="Move HDD to destination workstation",
+                explanation="Move backup storage to another host",
                 allowed_actions=(
                     MAIN_STORAGE,
                     MAIN_RECOVERY,
@@ -272,7 +272,7 @@ def build_main_menu_recommendation(
             backup_state=backup_state,
             package_state=package,
             recommended_action="reconnect",
-            explanation="Reconnect and validate Mercury HDD",
+            explanation="Reconnect and validate backup storage",
             allowed_actions=allowed,
             facts={"package_id": package_id},
         )
@@ -301,7 +301,7 @@ def build_main_menu_recommendation(
                 backup_state=backup_state,
                 package_state=package,
                 recommended_action="safe_disconnect",
-                explanation="Safely disconnect the Mercury HDD",
+                explanation="Safely disconnect backup storage",
                 allowed_actions=allowed,
                 intent_chooser_required=True,
                 facts={"package_id": package_id, "rehearsal": True},
@@ -328,7 +328,7 @@ def build_main_menu_recommendation(
             pending = list(next_action.get("pending_restore_check") or [])
             pending_note = ", ".join(pending) if pending else "restore-check pending"
             if not pending:
-                explanation = "Restore and disaster recovery"
+                explanation = "Disaster recovery"
             elif len(pending) <= 2:
                 explanation = f"Restore-check pending · {pending_note}"
             else:
@@ -359,7 +359,7 @@ def build_main_menu_recommendation(
             backup_state=backup_state,
             package_state=package,
             recommended_action=MAIN_BACKUP,
-            explanation="Backup and verification",
+            explanation="Backup production",
             allowed_actions=allowed,
             facts={"package_id": package_id, "writes_allowed": True},
         )
@@ -373,7 +373,7 @@ def build_main_menu_recommendation(
             backup_state=backup_state,
             package_state=package,
             recommended_action="safe_disconnect",
-            explanation="Safely disconnect the Mercury HDD",
+            explanation="Safely disconnect backup storage",
             allowed_actions=allowed,
             intent_chooser_required=True,
             facts={"package_id": package_id, "writes_allowed": False},

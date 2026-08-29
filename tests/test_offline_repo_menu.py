@@ -31,7 +31,7 @@ def test_offline_repo_sync_uses_a_yes_no_confirmation(monkeypatch) -> None:
 
     interactive_menu.run_offline_sync_now()
 
-    assert prompts_seen == [("Sync offline HDD repository copies now?", False)]
+    assert prompts_seen == [("Copy repository backups to backup storage now?", False)]
 
 
 def test_offline_repo_menu_opens_unified_git_hub(monkeypatch) -> None:

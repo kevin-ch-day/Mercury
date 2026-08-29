@@ -263,7 +263,7 @@ def test_dashboard_render_and_back_is_readonly(
     )
     run_recovery_dashboard(interactive=True)
     out = capsys.readouterr().out
-    assert "Restore and Disaster Recovery" in out
+    assert "Disaster Recovery" in out
     assert "NOT READY · 2 production restore-checks pending" in out
     assert "Production Recovery" in out
     assert "Clean up restore-check databases" not in out

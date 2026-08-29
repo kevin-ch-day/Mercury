@@ -1,10 +1,10 @@
 # Mercury
 
-**Mercury** is a **Fedora- and Windows-supported** operations utility for MariaDB backup, verification, restore-check, production-to-development sync, Git repository transfer bundles, transfer manifests/runbooks, and **recovery deployment** of Mercury-managed database and repository artifacts onto a prepared host.
+**Mercury** is the always-on **backup agent and disaster-recovery tool** for this host. It writes verified MariaDB dumps and Git captures to operator storage, proves those artifacts restore, and can deploy them back onto this MariaDB instance. Prod→dev sync, transfer packages, and rare workstation-move tools remain available but are not the daily path.
 
-For the current milestone, it protects the active source databases `android_permission_intel`, `erebus_threat_intel_prod`, `scytaledroid_core_prod`, and `obsidiandroid_core_prod`, manages the dev sync targets `erebus_threat_intel_dev` and `scytaledroid_core_dev` as disposable refresh targets, and can inventory configured Git repositories plus write explicit Git bundles to operator transfer media. It is not an AI tool, web app, or full workstation provisioning tool.
+It protects `android_permission_intel`, `erebus_threat_intel_prod`, `scytaledroid_core_prod`, and `obsidiandroid_core_prod`, refreshes disposable `erebus_threat_intel_dev` and `scytaledroid_core_dev` from verified production backups, and keeps configured Git repositories on backup storage. It is not an AI tool, web app, or full workstation provisioning tool.
 
-**Fedora** and **Windows** are supported for live Mercury operations when MariaDB tools, `config/local.toml`, and the active operator-storage layout (`mercury_backups` / `mercury_logs`) are configured. On this cut-over deployment, the canonical HDD is the writer and USB is recovery archive only. Non-Fedora Linux remains seed planning / development only.
+**Fedora** and **Windows** are supported for live operations when MariaDB tools, `config/local.toml`, and operator backup storage (`mercury_backups` / `mercury_logs`) are configured. USB is a recovery archive only. Non-Fedora Linux remains seed planning / development only.
 
 ## Current v1 status
 

@@ -80,7 +80,7 @@ def test_run_backup_menu_non_interactive(
     assert "android_permission_intel" in out
     assert "excluded" not in out
     assert "Ignored databases:" not in out
-    assert "Fresh full backup needed before workstation handoff" in out
+    assert "Fresh full backup needed" in out
     assert "\n[1] Back up and verify production" in out
     assert "\n[2] Verify and update backup records" in out
     assert "\n[3] Preview production backup plan" in out
@@ -320,7 +320,7 @@ def test_backup_menu_warning_summary_uses_visible_status_labels(
     plan = build_backup_plan(["android_permission_intel", "obsidiandroid_core_prod"])
     _render_backup_screen(plan, show_title=False)
     out = capsys.readouterr().out
-    assert "Fresh full backup needed before workstation handoff: 1 unknown, 1 missing." in out
+    assert "Fresh full backup needed: 1 unknown, 1 missing." in out
 
 
 def test_backup_menu_uses_human_last_backup_format(
@@ -641,7 +641,7 @@ def test_write_backup_bundle_cancelled(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     from mercury.backup.bundle import DatabaseBundlePlan
-    from mercury.backup.interactive_menu import _write_backup_bundle
+    from mercury.backup.interactive_menu import run_write_database_bundle
 
     plan = DatabaseBundlePlan(
         generated_at="2026-06-09T00:00:00+00:00",
@@ -672,7 +672,7 @@ def test_write_backup_bundle_cancelled(
         raise AssertionError("write should not run when cancelled")
 
     monkeypatch.setattr("mercury.backup.interactive_menu.write_database_bundle_plan", _fail_write)
-    _write_backup_bundle()
+    run_write_database_bundle()
     assert "cancelled" in capsys.readouterr().out.lower()
 
 

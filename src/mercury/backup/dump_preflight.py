@@ -165,7 +165,7 @@ def format_undumpable_next_action(
     owner = projects[0] if len(projects) == 1 else "source"
     return (
         f"Recreate undumpable {owner} {view_label}, "
-        "then rerun Backup and verification."
+        "then rerun Backup production."
     )
 
 

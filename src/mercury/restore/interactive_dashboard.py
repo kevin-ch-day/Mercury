@@ -23,7 +23,7 @@ from mercury.restore.terminal.runner import print_restore_execution_result
 from mercury.terminal import screen as display_screen
 from mercury.terminal.table import Table, TableStyle
 
-DASHBOARD_TITLE = "Restore and Disaster Recovery"
+DASHBOARD_TITLE = "Disaster Recovery"
 
 
 def _write_header_fields(fields: dict[str, str]) -> None:
@@ -159,8 +159,8 @@ def _render_dashboard(dashboard: RecoveryDashboard, *, show_title: bool) -> None
                 f"Clean up restore-check DBs ({len(dashboard.temp_restore_schemas)})",
             )
         )
-    options.append(("4", "Pinned / destination recovery"))
-    options.append(("5", "Receiving guide (Main [7])"))
+    options.append(("4", "Pinned / exact-id restore"))
+    options.append(("5", "Deploy backups onto this host"))
     options.append(("6", "Receipts / verification history"))
     render_submenu(options, indent=0)
 
@@ -364,18 +364,9 @@ def _pinned_recovery_card() -> None:
     )
     display_screen.write_blank()
     display_screen.write_summary(
-        "Production cutover preview/execute stays under Deployment and handoff [7]."
+        "Production cutover preview/execute: System health [7] → Deploy backups, "
+        "or ./run.sh production-cutover preview."
     )
-
-
-def _receiving_guide() -> None:
-    from mercury.handoff.receiver import build_receiver_handoff_guide
-    from mercury.handoff.terminal import print_receiver_handoff_guide
-
-    display_screen.write_summary(
-        "Primary home for receiving-workstation handoff is Deployment and handoff [7]."
-    )
-    print_receiver_handoff_guide(checklist=build_receiver_handoff_guide())
 
 
 def _receipts_history() -> None:
@@ -408,7 +399,7 @@ def _receipts_history() -> None:
 
 
 def run_recovery_dashboard(*, interactive: bool = True) -> None:
-    """Main Menu [5] — consolidated recovery dashboard (observe-only until execute)."""
+    """Main Menu [3] — disaster recovery dashboard (observe-only until execute)."""
     dashboard = build_recovery_dashboard()
     show_title = True
     while True:
@@ -442,7 +433,9 @@ def run_recovery_dashboard(*, interactive: bool = True) -> None:
             show_title = pause_and_redraw()
             continue
         if choice == "5":
-            _receiving_guide()
+            from mercury.deploy.interactive_menu import run_deploy_menu
+
+            run_deploy_menu()
             show_title = pause_and_redraw()
             continue
         if choice == "6":
