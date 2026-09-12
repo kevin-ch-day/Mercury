@@ -53,7 +53,8 @@ CLI parity:
 | `erebus_threat_intel_prod` | Production | Yes |
 | `scytaledroid_core_prod` | Production | Yes |
 | `obsidiandroid_core_prod` | Production (ObsidianDroid) | Yes (backup-only; no automatic sync) |
-| `android_permission_intel` | Shared authority | Yes |
+| `android_permission_intel` | Shared authority (production Permission Intel) | Yes (also the prod→dev source for `android_permission_intel_dev`) |
+| `android_permission_intel_dev` | Development (Permission Intel clone) | **No by default** — disposable; rebuild from verified `android_permission_intel` |
 | `erebus_threat_intel_dev` | Development | **No by default** — optional recovery via Backup Operations development-backup action / full-backup optional prompt only |
 | `scytaledroid_core_dev` | Development | **No by default** — optional recovery via Backup Operations development-backup action / full-backup optional prompt only |
 | `_restorecheck_*` | Restore-check temp | **No** |

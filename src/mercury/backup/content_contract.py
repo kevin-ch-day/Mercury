@@ -98,6 +98,15 @@ class BackupContentContract(BaseModel):
     issues: list[str] = Field(default_factory=list)
 
 
+class ExternalSchemaObjectReference(BaseModel):
+    """One dump object that names an external schema via a relation reference."""
+
+    schema_name: str
+    object_kind: str
+    object_name: str | None = None
+    statement_class: str = ""
+
+
 class RestoreRequirementsContract(BaseModel):
     """Executable statement families required by one exact logical artifact."""
 
@@ -111,6 +120,8 @@ class RestoreRequirementsContract(BaseModel):
     # A restore identity needs an explicitly approved read capability for these
     # dependencies when it creates views/routines in the dev target.
     external_schema_references: list[str] = Field(default_factory=list)
+    # Optional object-level evidence.  Older manifests omit this field.
+    external_schema_objects: list[ExternalSchemaObjectReference] = Field(default_factory=list)
     unknown_privileged_statements: list[str] = Field(default_factory=list)
     verified: bool = False
     issues: list[str] = Field(default_factory=list)
@@ -226,10 +237,14 @@ def extract_restore_requirements(
     statements: set[str] = set()
     unknown: set[str] = set()
     external_schemas: set[str] = set()
+    external_objects: list[ExternalSchemaObjectReference] = []
+    seen_objects: set[tuple[str, str, str | None, str]] = set()
     source_schema = source_database or re.sub(
         r"_\d{8}_\d{6}_\d+(?:\.schema)?\.sql\.gz$", "", path.name
     )
     pending_view_algorithm: str | None = None
+    current_kind = "other"
+    current_name: str | None = None
     with gzip.open(path, "rt", encoding="utf-8", errors="replace") as handle:
         for raw_line in handle:
             line = _decomment(raw_line).strip()
@@ -239,6 +254,13 @@ def extract_restore_requirements(
             # terminator (``*/;``); it is irrelevant to classification but
             # retain the original text for fail-closed diagnostic evidence.
             sql_line = line.rstrip(";").rstrip()
+            created = _CREATE_OBJECT_RE.match(sql_line)
+            if created:
+                current_kind = created.group(1).casefold()
+                current_name = _name_after(sql_line, current_kind)
+            elif _MARIADB_VIEW_BODY_RE.match(sql_line):
+                current_kind = "view"
+                current_name = _name_after(sql_line, "view") or current_name
             # Inspect only executable schema/object declarations.  This keeps
             # application strings in bulk INSERT data out of the dependency
             # contract while covering view/routine relation dependencies.
@@ -247,6 +269,22 @@ def extract_restore_requirements(
                     schema = match.group(1)
                     if schema and schema != source_schema and schema not in _SYSTEM_SCHEMAS:
                         external_schemas.add(schema)
+                        statement_class = (
+                            f"CREATE {current_kind.upper()}"
+                            if current_kind != "other"
+                            else "CREATE"
+                        )
+                        key = (schema, current_kind, current_name, statement_class)
+                        if key not in seen_objects:
+                            seen_objects.add(key)
+                            external_objects.append(
+                                ExternalSchemaObjectReference(
+                                    schema_name=schema,
+                                    object_kind=current_kind,
+                                    object_name=current_name,
+                                    statement_class=statement_class,
+                                )
+                            )
             # mariadb-dump writes final view definitions as three executable
             # comments: CREATE ALGORITHM, DEFINER/SQL SECURITY, then VIEW.
             # Treat that exact sequence as one CREATE VIEW statement.  Do not
@@ -284,6 +322,7 @@ def extract_restore_requirements(
         artifact_sha256=sha256_file(path),
         statement_classes=sorted(statements),
         external_schema_references=sorted(external_schemas),
+        external_schema_objects=external_objects,
         unknown_privileged_statements=sorted(unknown),
         verified=True,
     )

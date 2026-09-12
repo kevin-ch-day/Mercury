@@ -51,6 +51,21 @@ def _sample_report(*, ready: int = 0, blocked: int = 1) -> SyncReadinessReport:
     )
 
 
+def test_sync_submenu_omits_recommended_suffix_when_pairs_are_ready() -> None:
+    from mercury.sync.menu_options import sync_submenu_options
+
+    labels = [
+        label
+        for _key, label, _action in sync_submenu_options(
+            _sample_report(ready=2, blocked=0),
+            live_allowed=True,
+        )
+    ]
+    assert "Sync All Ready Databases" in labels
+    assert "Sync One Ready Pair" in labels
+    assert not any("recommended" in label.lower() for label in labels)
+
+
 def test_blocked_prod_sources_skips_missing_dev_targets() -> None:
     report = _sample_report()
     assert _blocked_prod_sources(report) == ["erebus_threat_intel_prod"]

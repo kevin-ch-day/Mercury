@@ -4,8 +4,15 @@
 
 For the current Fedora milestone, Mercury plans sync only for:
 
+- `android_permission_intel` -> `android_permission_intel_dev`
 - `erebus_threat_intel_prod` -> `erebus_threat_intel_dev`
 - `scytaledroid_core_prod` -> `scytaledroid_core_dev`
+
+in that explicit dependency order. Permission Intel's production name is
+`android_permission_intel` (there is no `android_permission_intel_prod`).
+Erebus and ScytaleDroid development clones depend on the disposable
+`android_permission_intel_dev` clone; if the Permission Intel refresh fails,
+dependent syncs are skipped before those targets are modified.
 
 Dev databases are **not** backup sources. For this milestone they are disposable refresh targets and may be rebuilt or overwritten during sync.
 
@@ -30,15 +37,20 @@ Preflight receipts are private operator-storage evidence under
 
 Ordinary live prod→dev replacement uses the dedicated `[mariadb_restore]`
 credential lane, not the general `[mariadb]` source/operator identity. It should
-be restricted to the approved development schemas and have no production write
-authority. Missing, invalid, or authentication-failing restore credentials block
-the reset; Mercury never falls back to `[mariadb]`.
+be restricted to the approved development schemas (`android_permission_intel_dev`,
+`erebus_threat_intel_dev`, `scytaledroid_core_dev`) plus `SELECT` on approved
+dev dependencies such as `android_permission_intel_dev`. It must have no
+production write authority and should not need production Permission Intel
+`SELECT` for ordinary rewritten dev sync. Missing, invalid, or
+authentication-failing restore credentials block the reset; Mercury never falls
+back to `[mariadb]`.
 
 ## Prohibitions
 
-- Never drop or overwrite `*_prod` as part of a dev sync.
+- Never drop or overwrite `*_prod` or production `android_permission_intel` as part of a dev sync.
 - Never skip source backup/verify before syncing into dev.
 - Never treat `*_dev` as a backup source or preservation target for this milestone.
+- Do not grant the dedicated restore identity write privilege on production schemas.
 
 ## Execution gates
 

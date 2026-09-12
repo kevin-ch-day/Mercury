@@ -70,17 +70,33 @@ def _freshness_label(entry: SyncReadinessEntry) -> str:
     return "—"
 
 
+def _dependency_suffix(entry: SyncReadinessEntry) -> str:
+    if not entry.depends_on_sources:
+        return ""
+    from mercury.database.prod_dev_pairs import APPROVED_SYNC_PAIR_BY_SOURCE
+
+    labels: list[str] = []
+    for source in entry.depends_on_sources:
+        spec = APPROVED_SYNC_PAIR_BY_SOURCE.get(source)
+        labels.append(f"{spec.project} dev" if spec else f"{source} clone")
+    return " · depends on " + ", ".join(labels)
+
+
 def _sync_status_label(entry: SyncReadinessEntry) -> str:
     if entry.ready_for_sync_planning:
-        return "Preflight required"
-    return _compact_readiness_status(ready=False, blockers=entry.blockers)
+        return "Ready" + _dependency_suffix(entry)
+    return _compact_readiness_status(ready=False, blockers=entry.blockers) + _dependency_suffix(entry)
 
 
 def sync_menu_context_fields(report: SyncReadinessReport, *, live_allowed: bool) -> dict[str, str]:
-    projects = ", ".join(sorted({entry.project for entry in report.entries if entry.project})) or "approved prod→dev pairs"
+    projects: list[str] = []
+    for entry in report.entries:
+        if entry.project and entry.project not in projects:
+            projects.append(entry.project)
+    scope = ", ".join(projects) or "approved prod→dev pairs"
     fields = {
         "Backup root": report.backup_root,
-        "Scope": f"verified prod operator backups into dev only ({projects})",
+        "Scope": f"verified prod operator backups into dev only ({scope})",
         "Pairs": f"{report.ready_count} eligible · {report.blocked_count} blocked · {len(report.entries)} total",
         "Restore credentials": report.restore_credentials.detail,
     }
@@ -97,18 +113,18 @@ def sync_menu_next_step(report: SyncReadinessReport, *, live_allowed: bool) -> t
     from mercury.sync.menu_options import (
         ACTION_RECHECK,
         ACTION_SYNC_ALL_READY,
-        ACTION_SYNC_ONE,
         sync_submenu_hint,
     )
 
     if report.ready_count and not report.blocked_count:
-        recommended_action = (
-            ACTION_SYNC_ONE if report.ready_count > 1 else ACTION_SYNC_ALL_READY
-        )
         action_hint = sync_submenu_hint(
-            recommended_action, report, live_allowed=live_allowed
+            ACTION_SYNC_ALL_READY, report, live_allowed=live_allowed
         )
-        return ("warn", f"All approved pairs have verified artifacts — restore preflight runs before any dev replacement. Choose {action_hint}.")
+        return (
+            "warn",
+            "All approved pairs have verified artifacts — restore preflight runs "
+            f"before any dev replacement. Choose {action_hint}.",
+        )
     if report.ready_count and report.blocked_count:
         action_hint = sync_submenu_hint(
             ACTION_SYNC_ALL_READY, report, live_allowed=live_allowed
@@ -219,6 +235,8 @@ def print_sync_readiness_report(
         project = f" [{entry.project}]" if entry.project else ""
         status = "READY" if entry.ready_for_sync_planning else "BLOCKED"
         output.write(f"- {entry.prod}{project} -> {entry.expected_dev} [{status}]")
+        if entry.depends_on_sources:
+            output.write(f"  depends_on: {', '.join(entry.depends_on_sources)}")
         if entry.latest_backup_dir:
             output.write(f"  latest_backup: {entry.latest_backup_dir}")
         if entry.backup_id:

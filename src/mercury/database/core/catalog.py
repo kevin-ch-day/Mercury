@@ -21,8 +21,13 @@ PLATFORM_CATALOG: list[CatalogEntry] = [
     ),
     CatalogEntry(
         name="android_permission_intel",
-        project="Platform",
-        description="Shared Android permission authority (Erebus, ScytaleDroid, ObsidianDroid, Iapetus).",
+        project="Permission Intel",
+        description="Production Android permission authority (Erebus, ScytaleDroid, ObsidianDroid, Iapetus).",
+    ),
+    CatalogEntry(
+        name="android_permission_intel_dev",
+        project="Permission Intel",
+        description="Disposable Permission Intel clone; sync from android_permission_intel after verified backup.",
     ),
     CatalogEntry(
         name="scytaledroid_core_prod",

@@ -96,6 +96,8 @@ def print_sync_plan(plan: SyncPlanDryRun, *, compact: bool = False) -> None:
         status = "ready (plan only)" if entry.target_present and not entry.blocked_reason else "blocked"
         project = f" [{entry.project}]" if entry.project else ""
         output.item(f"{entry.source} -> {entry.target}{project} [{status}]")
+        if entry.depends_on_sources:
+            output.item("depends on: " + ", ".join(entry.depends_on_sources), indent=4)
         for prereq in entry.prerequisites:
             output.item(f"prerequisite: {prereq}", indent=4)
         if entry.blocked_reason:

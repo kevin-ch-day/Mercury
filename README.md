@@ -2,7 +2,7 @@
 
 **Mercury** is the always-on **backup agent and disaster-recovery tool** for this host. It writes verified MariaDB dumps and Git captures to operator storage, proves those artifacts restore, and can deploy them back onto this MariaDB instance. Prod→dev sync, transfer packages, and rare workstation-move tools remain available but are not the daily path.
 
-It protects `android_permission_intel`, `erebus_threat_intel_prod`, `scytaledroid_core_prod`, and `obsidiandroid_core_prod`, refreshes disposable `erebus_threat_intel_dev` and `scytaledroid_core_dev` from verified production backups, and keeps configured Git repositories on backup storage. It is not an AI tool, web app, or full workstation provisioning tool.
+It protects `android_permission_intel`, `erebus_threat_intel_prod`, `scytaledroid_core_prod`, and `obsidiandroid_core_prod`, refreshes disposable `android_permission_intel_dev`, `erebus_threat_intel_dev`, and `scytaledroid_core_dev` from verified production backups, and keeps configured Git repositories on backup storage. It is not an AI tool, web app, or full workstation provisioning tool.
 
 **Fedora** and **Windows** are supported for live operations when MariaDB tools, `config/local.toml`, and operator backup storage (`mercury_backups` / `mercury_logs`) are configured. USB is a recovery archive only. Non-Fedora Linux remains seed planning / development only.
 
@@ -25,7 +25,7 @@ The main menu separates **configured scope**, **MariaDB presence**, **on-disk pr
 | **Backup mode** | Whether backup writes to operator storage are allowed (environment checks), not global dry-run |
 | **Operator backups** | Artifact-verified count vs configured protected sources; stale/unknown freshness called out separately |
 | **MariaDB targets** | Protected backup sources present on MariaDB vs `ACTIVE_BACKUP_SOURCE_DATABASES` (e.g. `3 of 4 protected sources on server; 1 missing`) |
-| **Sync pairs** | Ready/blocked prod→dev pairs only (Erebus + ScytaleDroid for this milestone) |
+| **Sync pairs** | Ready/blocked prod→dev pairs (Permission Intel, Erebus, ScytaleDroid) |
 
 Missing protected sources (e.g. `obsidiandroid_core_prod` not yet on MariaDB) appear in backup status/plan as **missing/refused**, not omitted from scope.
 
@@ -169,7 +169,7 @@ mercury sync run [--live] [--source <prod>] [--target <dev>] [--execute]
 mercury sync all [--live] [--execute]
 ```
 
-`sync run --execute` restores verified backups into disposable dev targets. With no filter it processes all ready pairs; `--source` or `--target` limits execution to one pair. `sync all` is the explicit batch alias. For the current milestone, sync readiness only applies to `erebus_threat_intel_prod -> erebus_threat_intel_dev` and `scytaledroid_core_prod -> scytaledroid_core_dev`. `android_permission_intel` and `obsidiandroid_core_prod` are backup-only and do not participate in sync pairing unless dev targets are explicitly configured. Requires live mode and explicit default-no `[y/N]` confirmation.
+`sync run --execute` restores verified backups into disposable dev targets. With no filter it processes all ready pairs in dependency order (Permission Intel, then Erebus, then ScytaleDroid); `--source` or `--target` limits execution to one pair. `sync all` is the explicit batch alias. Approved pairs are `android_permission_intel -> android_permission_intel_dev`, `erebus_threat_intel_prod -> erebus_threat_intel_dev`, and `scytaledroid_core_prod -> scytaledroid_core_dev`. `obsidiandroid_core_prod` remains backup-only. Requires live mode and explicit `SYNC DEV` confirmation.
 
 ### Repository transfer
 

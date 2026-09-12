@@ -17,7 +17,7 @@ from mercury.sync.sync_runner import run_sync_batch
 from mercury.sync.selection import select_sync_entries
 from mercury.sync.terminal.runner import print_sync_batch_result
 from mercury.sync.readiness import SyncReadinessReport, build_sync_readiness_report
-from mercury.sync.terminal.readiness import _pair_route_label, print_sync_readiness_report
+from mercury.sync.terminal.readiness import _dependency_suffix, _pair_route_label, print_sync_readiness_report
 from mercury.terminal.format import format_bytes
 
 SYNC_SCREEN_TITLE = "Production sync readiness"
@@ -135,11 +135,16 @@ def _run_sync_for_ready(report: SyncReadinessReport) -> None:
     execute = policy.live_execution_allowed()
     if execute:
         display_screen.write_blank()
-        display_screen.write_summary("Prod→dev sync will overwrite these development databases:")
-        for entry in ready:
+        display_screen.write_summary("Prod→dev sync will overwrite these development databases in order:")
+        from mercury.sync.selection import order_sync_entries
+
+        for entry in order_sync_entries(ready):
             age = f" · backup {entry.backup_age}" if entry.backup_age else ""
             fresh = f" · {entry.backup_freshness}" if entry.backup_freshness else ""
-            display_screen.write_status("warn", f"{_pair_route_label(entry)}{age}{fresh}")
+            display_screen.write_status(
+                "warn",
+                f"{_pair_route_label(entry)}{age}{fresh}{_dependency_suffix(entry)}",
+            )
         display_screen.write_bullets(
             [
                 "Production databases are never modified.",

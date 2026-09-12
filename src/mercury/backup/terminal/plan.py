@@ -64,7 +64,15 @@ def _print_backup_source(
     missing_reason = live_source_missing_reason(name, live=live, server_names=server_names)
     output.item(name)
     if shared_authority:
-        output.item("backup-only; sync not applicable by design", indent=2)
+        from mercury.database.core.scope import is_active_sync_source
+
+        if is_active_sync_source(name):
+            output.item(
+                "protected backup source; disposable android_permission_intel_dev is the sync target",
+                indent=2,
+            )
+        else:
+            output.item("backup-only; sync not applicable by design", indent=2)
     if missing_reason:
         output.item("status: missing on server; backup refused", indent=2)
         output.item(missing_reason, indent=4)

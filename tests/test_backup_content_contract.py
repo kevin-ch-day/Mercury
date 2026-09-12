@@ -116,6 +116,10 @@ def test_restore_requirements_records_external_schema_dependencies(tmp_path: Pat
     contract = extract_restore_requirements(dump)
 
     assert contract.external_schema_references == ["android_permission_intel"]
+    assert [item.object_name for item in contract.external_schema_objects] == [
+        "permission_unknown_metrics"
+    ]
+    assert contract.external_schema_objects[0].object_kind == "view"
 
 
 def test_restore_requirements_rejects_unfinished_mariadb_view_prefix(tmp_path: Path) -> None:

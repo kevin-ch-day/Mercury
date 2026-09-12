@@ -94,9 +94,50 @@ def test_external_view_dependency_requires_explicit_read_grant_before_reset(tmp_
     result = _result(tmp_path, sql, grants)
 
     assert result.passed is False
-    assert result.external_schema_references == ["android_permission_intel"]
-    assert result.missing_capabilities == ["SELECT on `android_permission_intel`.*"]
+    assert result.original_external_schema_references == ["android_permission_intel"]
+    assert result.external_schema_references == ["android_permission_intel_dev"]
+    assert result.missing_capabilities == ["SELECT on `android_permission_intel_dev`.*"]
     assert result.target_untouched is True
+
+
+def test_dev_select_on_rewritten_permission_intel_passes_without_production_grants(
+    tmp_path: Path,
+) -> None:
+    sql = (
+        "CREATE VIEW `v_dependency` AS SELECT * FROM "
+        "`android_permission_intel`.`android_permission_dict_unknown`;\n"
+    )
+    grants = "\n".join(
+        [
+            f"GRANT ALL PRIVILEGES ON `{TARGET}`.* TO 'mercury_dev_restore'@'localhost'",
+            "GRANT SELECT ON `android_permission_intel_dev`.* TO 'mercury_dev_restore'@'localhost'",
+        ]
+    )
+    result = _result(tmp_path, sql, grants)
+    assert result.passed is True
+    assert result.missing_capabilities == []
+    assert result.external_dependency_targets == ["android_permission_intel_dev"]
+    assert result.original_artifact_unmodified is True
+    assert "android_permission_intel" not in " ".join(result.missing_capabilities)
+
+
+def test_production_permission_intel_select_is_not_required_after_rewrite(
+    tmp_path: Path,
+) -> None:
+    sql = (
+        "CREATE VIEW `v_dependency` AS SELECT * FROM "
+        "`android_permission_intel`.`android_permission_dict_unknown`;\n"
+    )
+    grants = "\n".join(
+        [
+            f"GRANT ALL PRIVILEGES ON `{TARGET}`.* TO 'mercury_dev_restore'@'localhost'",
+            "GRANT SELECT, INSERT, UPDATE, DELETE ON `android_permission_intel`.* "
+            "TO 'mercury_dev_restore'@'localhost'",
+        ]
+    )
+    result = _result(tmp_path, sql, grants)
+    assert result.passed is False
+    assert result.missing_capabilities == ["SELECT on `android_permission_intel_dev`.*"]
 
 
 def test_unknown_ddl_and_importer_contract_mismatch_fail_closed(tmp_path: Path) -> None:

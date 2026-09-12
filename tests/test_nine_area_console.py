@@ -208,10 +208,12 @@ def test_all_nine_hubs_reachable_and_non_destructive(monkeypatch: pytest.MonkeyP
     assert "storage" in called
     assert "reports" in called
     # Back-only hub entries must not have launched expert menus above.
-    for name in ("guided", "sync", "deploy", "handoff", "restore"):
+    for name in ("guided", "deploy", "handoff", "restore"):
         assert called.count(name) == 0
     # Main [3] opens consolidated dashboard (mocked) once during back-only pass.
     assert called.count("dashboard") == 1
+    # Main [5] opens sync readiness directly (mocked once during back-only pass).
+    assert called.count("sync") == 1
 
     called.clear()
     # Main [1] opens Backup Operations directly (no intermediate hub choices).
@@ -219,8 +221,7 @@ def test_all_nine_hubs_reachable_and_non_destructive(monkeypatch: pytest.MonkeyP
     assert called == ["backup_ops"]
 
     called.clear()
-    answers = iter(["1", "0"])
-    monkeypatch.setattr("mercury.menu.prompts.ask", lambda *_a, **_k: next(answers))
+    # Main [5] opens sync readiness directly (no intermediate hub choices).
     task_menus.run_sync_hub()
     assert called == ["sync"]
 

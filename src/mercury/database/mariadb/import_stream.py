@@ -78,47 +78,112 @@ def _open_dump_lines(dump_path: Path) -> Iterator[Iterator[bytes]]:
             raise BackupExecutionError(detail or f"pigz -dc failed (exit {code})")
 
 
+def _rewrite_code_identifiers(segment: str, source: str, target: str) -> str:
+    # Only rewrite schema-qualified identifiers.  Do not replace arbitrary
+    # SQL string data that happens to contain a database name.
+    segment = re.sub(
+        rf"`{re.escape(source)}`(?=\s*\.)",
+        f"`{target}`",
+        segment,
+    )
+    return re.sub(rf"(?<![\w$]){re.escape(source)}(?=\.)", target, segment)
+
+
+def _next_quoted_span(text: str, start: int) -> int:
+    quote = text[start]
+    index = start + 1
+    while index < len(text):
+        if text[index] == "\\":
+            index += 2
+            continue
+        if text[index] == quote:
+            if index + 1 < len(text) and text[index + 1] == quote:
+                index += 2
+                continue
+            return index + 1
+        index += 1
+    return len(text)
+
+
+def collect_sql_code(text: str) -> str:
+    """Return SQL with string literals and ordinary comments removed.
+
+    Versioned MariaDB comments (/*!12345 ... */) remain because they execute.
+    """
+    parts: list[str] = []
+    index = 0
+    code_start = 0
+    length = len(text)
+    while index < length:
+        ch = text[index]
+        if ch in {"'", '"'}:
+            parts.append(text[code_start:index])
+            index = _next_quoted_span(text, index)
+            code_start = index
+            continue
+        if ch == "#" or (ch == "-" and index + 1 < length and text[index + 1] == "-"):
+            parts.append(text[code_start:index])
+            newline = text.find("\n", index)
+            index = length if newline < 0 else newline + 1
+            code_start = index
+            continue
+        if ch == "/" and index + 1 < length and text[index + 1] == "*":
+            versioned = index + 3 < length and text[index + 2] == "!" and text[index + 3].isdigit()
+            if versioned:
+                index += 1
+                continue
+            parts.append(text[code_start:index])
+            closer = text.find("*/", index + 2)
+            index = length if closer < 0 else closer + 2
+            code_start = index
+            continue
+        index += 1
+    parts.append(text[code_start:])
+    return "".join(parts)
+
+
 def _rewrite_database_name(text: str, source: str, target: str) -> str:
     if source == target:
         return text
 
-    def rewrite_code(segment: str) -> str:
-        # Only rewrite schema-qualified identifiers.  Do not replace arbitrary
-        # SQL string data that happens to contain a database name.
-        segment = re.sub(
-            rf"`{re.escape(source)}`(?=\s*\.)",
-            f"`{target}`",
-            segment,
-        )
-        return re.sub(rf"(?<![\w$]){re.escape(source)}(?=\.)", target, segment)
-
-    # mysqldump statements can contain data literals.  Rewrite code segments
-    # only; preserve single/double quoted literal bodies verbatim.
+    # Rewrite code segments only.  Preserve string literals and ordinary
+    # comments.  MariaDB versioned comments (/*!12345 ... */) are executable
+    # and must still be rewritten.
     parts: list[str] = []
     index = 0
     code_start = 0
-    while index < len(text):
-        if text[index] not in {"'", '"'}:
-            index += 1
+    length = len(text)
+    while index < length:
+        ch = text[index]
+        if ch in {"'", '"'}:
+            parts.append(_rewrite_code_identifiers(text[code_start:index], source, target))
+            end = _next_quoted_span(text, index)
+            parts.append(text[index:end])
+            index = end
+            code_start = index
             continue
-        parts.append(rewrite_code(text[code_start:index]))
-        quote = text[index]
-        literal_start = index
-        index += 1
-        while index < len(text):
-            if text[index] == "\\":
-                index += 2
-                continue
-            if text[index] == quote:
-                if index + 1 < len(text) and text[index + 1] == quote:
-                    index += 2
-                    continue
+        if ch == "#" or (ch == "-" and index + 1 < length and text[index + 1] == "-"):
+            parts.append(_rewrite_code_identifiers(text[code_start:index], source, target))
+            newline = text.find("\n", index)
+            end = length if newline < 0 else newline + 1
+            parts.append(text[index:end])
+            index = end
+            code_start = index
+            continue
+        if ch == "/" and index + 1 < length and text[index + 1] == "*":
+            versioned = index + 3 < length and text[index + 2] == "!" and text[index + 3].isdigit()
+            if versioned:
                 index += 1
-                break
-            index += 1
-        parts.append(text[literal_start:index])
-        code_start = index
-    parts.append(rewrite_code(text[code_start:]))
+                continue
+            parts.append(_rewrite_code_identifiers(text[code_start:index], source, target))
+            closer = text.find("*/", index + 2)
+            end = length if closer < 0 else closer + 2
+            parts.append(text[index:end])
+            index = end
+            code_start = index
+            continue
+        index += 1
+    parts.append(_rewrite_code_identifiers(text[code_start:], source, target))
     return "".join(parts)
 
 

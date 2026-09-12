@@ -124,6 +124,31 @@ def test_import_stream_rewrites_package_bound_cross_schema_identifiers(tmp_path:
     assert "'android_permission_intel.not_an_identifier'" in written
 
 
+def test_import_stream_does_not_rewrite_ordinary_comments(tmp_path: Path) -> None:
+    dump_path = tmp_path / "comments.sql.gz"
+    payload = (
+        "-- keep android_permission_intel.table in this comment\n"
+        "/* also keep android_permission_intel.table here */\n"
+        "CREATE VIEW `v` AS SELECT * FROM `android_permission_intel`.`android_permission_dict_unknown`;\n"
+    )
+    with gzip.open(dump_path, "wt", encoding="utf-8") as handle:
+        handle.write(payload)
+    capture = tmp_path / "captured.sql"
+    fake_client = tmp_path / "fake-mariadb.sh"
+    _write_executable(fake_client, f'#!/usr/bin/env bash\ncat > "{capture}"\n')
+
+    run_compressed_sql_import(
+        [str(fake_client)],
+        {},
+        dump_path,
+        rewrite_databases={"android_permission_intel": "android_permission_intel_dev"},
+    )
+    written = capture.read_text(encoding="utf-8")
+    assert "-- keep android_permission_intel.table in this comment" in written
+    assert "/* also keep android_permission_intel.table here */" in written
+    assert "`android_permission_intel_dev`.`android_permission_dict_unknown`" in written
+
+
 def test_import_stream_strips_conditional_definer_comments_from_triggers(tmp_path: Path) -> None:
     dump_path = tmp_path / "trigger.sql.gz"
     payload = (

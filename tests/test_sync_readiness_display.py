@@ -70,7 +70,7 @@ def test_menu_readiness_shows_table_with_backup_age(capsys: pytest.CaptureFixtur
     assert "erebus_threat_intel_prod → erebus_threat_intel_dev" in out
     assert "12m ago" in out
     assert "restore preflight runs before any dev replacement" in out
-    assert "Choose Sync One Ready Pair [3]." in out
+    assert "Choose Sync All Ready Databases [2]." in out
     assert "…" not in out
     assert "Restore credentials:" in out
     assert "Configured · mercury_dev_restore@localhost" in out
@@ -88,13 +88,33 @@ def test_sync_menu_table_rows_show_exact_source_and_target_labels() -> None:
     rows = sync_menu_table_rows(_sample_report(ready=True))
     assert rows[0][1] == "erebus_threat_intel_prod → erebus_threat_intel_dev"
     assert rows[0][2] == "12m ago"
-    assert rows[0][4] == "Preflight required"
+    assert rows[0][4] == "Ready"
+
+
+def test_sync_menu_scope_lists_projects_in_refresh_order() -> None:
+    from mercury.sync.terminal.readiness import sync_menu_context_fields
+
+    report = _sample_report(ready=True)
+    report.entries = [
+        SyncReadinessEntry(
+            prod="android_permission_intel",
+            expected_dev="android_permission_intel_dev",
+            dev_listed=True,
+            project="Permission Intel",
+            ready_for_sync_planning=True,
+            sync_order=1,
+        ),
+        *report.entries,
+    ]
+    fields = sync_menu_context_fields(report, live_allowed=True)
+    assert fields["Scope"].endswith("(Permission Intel, Erebus, ScytaleDroid)")
 
 
 def test_sync_menu_next_step_when_all_ready() -> None:
     tag, message = sync_menu_next_step(_sample_report(ready=True), live_allowed=True)
     assert tag == "warn"
-    assert "Sync One Ready Pair" in message
+    assert "Sync All Ready Databases" in message
+    assert "Sync One Ready Pair" not in message
 
 
 def test_sync_verification_labels_tables_and_views_not_all_objects(

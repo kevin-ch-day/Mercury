@@ -68,7 +68,7 @@ def test_catalog_entries_have_project() -> None:
     erebus = next(e for e in inventory.entries if e.name == "erebus_threat_intel_prod")
     assert erebus.project == "Erebus"
     perm = next(e for e in inventory.entries if e.name == "android_permission_intel")
-    assert perm.project == "Platform"
+    assert perm.project == "Permission Intel"
 
 
 def test_inventory_summary_counts_roles() -> None:
@@ -84,6 +84,7 @@ def test_demo_catalog_matches_real_platform_databases() -> None:
         "erebus_threat_intel_prod",
         "erebus_threat_intel_dev",
         "android_permission_intel",
+        "android_permission_intel_dev",
         "scytaledroid_core_prod",
         "scytaledroid_core_dev",
         "obsidiandroid_core_prod",

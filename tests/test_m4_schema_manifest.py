@@ -135,7 +135,7 @@ def test_manifest_preview_json_fields() -> None:
     )
     data = json.loads(format_manifest_preview_json(preview))
     assert data["database"] == "android_permission_intel"
-    assert data["project"] == "Platform"
+    assert data["project"] == "Permission Intel"
     assert data["backup_kind"] == "schema_only"
     assert data["manifest_file"].endswith("manifest.json")
     assert data["tool_family"] == "mariadb-dump/mysqldump logical backup"

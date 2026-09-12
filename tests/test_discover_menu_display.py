@@ -19,7 +19,7 @@ def test_build_discover_menu_fields_includes_roles() -> None:
     fields = build_discover_menu_fields(inventory)
     assert fields["Active scope"] == inventory.count
     assert fields["Backup sources"] == 4
-    assert fields["Sync targets"] == 2
+    assert fields["Sync targets"] == 3
 
 
 def test_build_discover_menu_fields_total_size() -> None:
@@ -41,14 +41,14 @@ def test_print_discover_menu_compact_table(capsys: pytest.CaptureFixture[str]) -
     assert "Backup sources:" in out
     assert "Sync targets:" in out
     assert "DATABASE                      ROLE      BACKUP    SYNC ROLE" in out
-    assert "android_permission_intel      SHARED    yes       backup-only" in out
+    assert "android_permission_intel      SHARED    yes       source+pair" in out
     assert "DATABASE" in out
     assert "ROLE" in out
     assert "BACKUP" in out
     assert "SYNC ROLE" in out
     assert "PROD" in out
     assert "android_permission_intel" in out
-    assert "backup-only" in out
+    assert "source+pair" in out
     assert "SIZE" not in out
     assert "PROJECT" not in out
     assert "on server" not in out
@@ -84,7 +84,7 @@ def test_out_of_scope_databases_are_excluded_from_primary_table(
     out = capsys.readouterr().out
     assert "Active scope: 2" in out
     assert "Backup sources: 1" in out
-    assert "Sync targets: 0" in out
+    assert "Sync targets: 1" in out
     assert "Out of scope: 3 ignored" in out
     assert "erebus_threat_intel_prod" in out
     assert "android_permission_intel_prod" in out
@@ -97,7 +97,7 @@ def test_out_of_scope_databases_are_excluded_from_primary_table(
 def test_discover_menu_explains_shared_authority_source(capsys: pytest.CaptureFixture[str]) -> None:
     print_discover_menu(discover_demo())
     out = capsys.readouterr().out
-    assert "Shared authority: android_permission_intel (backup-only)" in out
+    assert "Shared authority: android_permission_intel (backup source; syncs to android_permission_intel_dev)" in out
 
 
 def test_run_discover_menu_non_interactive(capsys: pytest.CaptureFixture[str]) -> None:

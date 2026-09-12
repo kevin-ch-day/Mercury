@@ -18,18 +18,15 @@ ACTIVE_BACKUP_SOURCE_DATABASES: frozenset[str] = frozenset(
 
 ACTIVE_DEV_TARGET_DATABASES: frozenset[str] = frozenset(
     {
+        "android_permission_intel_dev",
         "erebus_threat_intel_dev",
         "scytaledroid_core_dev",
     }
 )
 
-# Optional recovery copies for a workstation move.  This is deliberately
-# broader than the prod→dev sync targets: Permission Intel has no approved
-# automatic sync source, but its development catalog must be recoverable on a
-# new host when the operator explicitly requests dev backups.
-ACTIVE_DEV_RECOVERY_DATABASES: frozenset[str] = (
-    ACTIVE_DEV_TARGET_DATABASES | frozenset({"android_permission_intel_dev"})
-)
+# Optional recovery copies for a workstation move.  Matches the approved
+# disposable prod→dev clones (Permission Intel, Erebus, ScytaleDroid).
+ACTIVE_DEV_RECOVERY_DATABASES: frozenset[str] = frozenset(ACTIVE_DEV_TARGET_DATABASES)
 
 OUT_OF_SCOPE_DATABASES: frozenset[str] = frozenset(
     {
@@ -64,7 +61,9 @@ def is_active_dev_recovery_database(name: str) -> bool:
 
 
 def is_active_sync_pair(prod_name: str, dev_name: str) -> bool:
-    return is_active_backup_source(prod_name) and is_active_dev_target(dev_name)
+    from mercury.database.prod_dev_pairs import is_approved_sync_pair
+
+    return is_approved_sync_pair(prod_name, dev_name)
 
 
 def is_active_sync_source(prod_name: str) -> bool:

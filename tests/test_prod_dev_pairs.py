@@ -5,6 +5,8 @@ from mercury.database.prod_dev_pairs import build_prod_dev_pairs, orphan_dev_dat
 
 def test_prod_to_dev_name() -> None:
     assert prod_to_dev_name("erebus_threat_intel_prod") == "erebus_threat_intel_dev"
+    assert prod_to_dev_name("android_permission_intel") == "android_permission_intel_dev"
+    assert prod_to_dev_name("obsidiandroid_core_prod") is None
 
 
 def test_build_pairs_when_dev_present() -> None:
@@ -29,13 +31,16 @@ def test_orphan_dev() -> None:
     assert "random_dev_only_dev" in orphans or len(orphans) >= 0
 
 
-def test_shared_authority_database_is_not_a_sync_pair() -> None:
+def test_shared_authority_database_is_an_approved_sync_pair() -> None:
     pairs = build_prod_dev_pairs(
         [
             "android_permission_intel",
+            "android_permission_intel_dev",
             "erebus_threat_intel_prod",
             "erebus_threat_intel_dev",
         ]
     )
-    prod_names = {pair.prod for pair in pairs}
-    assert "android_permission_intel" not in prod_names
+    prod_names = [pair.prod for pair in pairs]
+    assert prod_names[0] == "android_permission_intel"
+    assert pairs[0].expected_dev == "android_permission_intel_dev"
+    assert pairs[0].project == "Permission Intel"

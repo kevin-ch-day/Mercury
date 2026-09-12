@@ -21,6 +21,7 @@ from mercury.backup.content_contract import (
 )
 from mercury.database.mariadb.client import run_client_query
 from mercury.database.mariadb.config import MariaDbConfigError, load_mariadb_restore_config
+from mercury.database.prod_dev_pairs import apply_schema_rewrites, schema_rewrites_for_pair
 
 _GRANT_RE = re.compile(r"^GRANT\s+(.+?)\s+ON\s+(.+?)\s+TO\s+", re.IGNORECASE)
 _STATEMENT_CAPABILITIES = {
@@ -61,6 +62,11 @@ class RestorePrivilegePreflightResult(BaseModel):
     unknown_requirements: list[str] = Field(default_factory=list)
     inspection_issues: list[str] = Field(default_factory=list)
     target_untouched: bool = True
+    import_transform_version: str = IMPORT_TRANSFORM_VERSION
+    schema_rewrite_map: dict[str, str] = Field(default_factory=dict)
+    original_external_schema_references: list[str] = Field(default_factory=list)
+    external_dependency_targets: list[str] = Field(default_factory=list)
+    original_artifact_unmodified: bool = True
     receipt_path: str | None = None
     receipt_sha256: str | None = None
     evidence_written: bool = False
@@ -109,7 +115,9 @@ def write_restore_preflight_receipt(
     root = receipt_root or _receipt_root()
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     identity = hashlib.sha256(
-        f"{result.source_database}|{result.target_database}|{result.backup_id}|{result.artifact_sha256}".encode()
+        f"{result.source_database}|{result.target_database}|{result.backup_id}|"
+        f"{result.artifact_sha256}|{result.import_transform_version}|"
+        f"{sorted(result.schema_rewrite_map.items())}".encode()
     ).hexdigest()[:16]
     path = root / f"{stamp}_{identity}.json"
     payload = result.model_dump(mode="json")
@@ -152,6 +160,7 @@ def evaluate_restore_privileges(
     config=None,
     receipt_root: Path | None = None,
     write_receipt: bool = True,
+    schema_rewrites: dict[str, str] | None = None,
 ) -> RestorePrivilegePreflightResult:
     """Inspect the actual configured MariaDB identity without modifying MariaDB.
 
@@ -159,7 +168,14 @@ def evaluate_restore_privileges(
     becomes eligible for execution only after its private receipt is written.
     """
     query = query_fn or run_client_query
-    result = RestorePrivilegePreflightResult(source_database=source, target_database=target)
+    rewrites = dict(schema_rewrites) if schema_rewrites is not None else schema_rewrites_for_pair(source, target)
+    result = RestorePrivilegePreflightResult(
+        source_database=source,
+        target_database=target,
+        schema_rewrite_map=rewrites,
+        import_transform_version=IMPORT_TRANSFORM_VERSION,
+        original_artifact_unmodified=True,
+    )
     try:
         manifest = json.loads((backup_dir / "manifest.json").read_text(encoding="utf-8"))
         dump_name = str(manifest.get("dump_file") or "")
@@ -215,11 +231,18 @@ def evaluate_restore_privileges(
     if "CREATE FUNCTION" in result.artifact_statement_classes and result.server_conditions.get("log_bin", "").upper() in {"1", "ON"} and result.server_conditions.get("log_bin_trust_function_creators", "").upper() not in {"1", "ON"}:
         result.unknown_requirements.append("CREATE FUNCTION requires server-level binary-log authorization")
     effective = _capabilities(grants, target)
-    external_schemas = sorted(set(contract.external_schema_references) - {source, target})
-    result.external_schema_references = external_schemas
+    original_external = sorted(set(contract.external_schema_references) - {source})
+    transformed_external = [
+        schema
+        for schema in apply_schema_rewrites(original_external, rewrites)
+        if schema not in {source, target}
+    ]
+    result.original_external_schema_references = original_external
+    result.external_schema_references = transformed_external
+    result.external_dependency_targets = transformed_external
     external_missing = [
         f"SELECT on `{schema}`.*"
-        for schema in external_schemas
+        for schema in transformed_external
         if "ALL PRIVILEGES" not in _capabilities(grants, schema)
         and "SELECT" not in _capabilities(grants, schema)
     ]

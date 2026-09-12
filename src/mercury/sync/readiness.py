@@ -44,6 +44,8 @@ class SyncReadinessEntry(BaseModel):
     backup_age: str | None = None
     ready_for_sync_planning: bool = False
     blockers: list[str] = Field(default_factory=list)
+    sync_order: int = 0
+    depends_on_sources: list[str] = Field(default_factory=list)
 
 
 class RestoreCredentialStatus(BaseModel):
@@ -247,6 +249,8 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
                 backup_age=backup_age,
                 ready_for_sync_planning=ready,
                 blockers=blockers,
+                sync_order=pair.sync_order,
+                depends_on_sources=list(pair.depends_on_sources),
             )
         )
 

@@ -33,8 +33,7 @@ def test_discover_demo_excludes_out_of_scope() -> None:
     inventory = discover_demo()
     names = set(inventory.names)
     assert "android_permission_intel_prod" not in names
-    # The demo catalog does not invent optional recovery-only databases.
-    assert "android_permission_intel_dev" not in names
+    assert "android_permission_intel_dev" in names
     assert "gecko_research_database_prod" not in names
     assert "gecko_research_database_dev" not in names
     assert "obsidiandroid_core_prod" in names
@@ -145,7 +144,7 @@ def test_fetch_active_scope_report_uses_one_query() -> None:
     assert report.present_count == 5
     assert report.missing_count == 1
     android = next(row for row in report.rows if row.name == "android_permission_intel")
-    assert android.sync_role == "backup-only"
+    assert android.sync_role == "source+pair"
     prod = next(row for row in report.rows if row.name == "erebus_threat_intel_prod")
     assert prod.sync_role == "source+pair"
     dev = next(row for row in report.rows if row.name == "erebus_threat_intel_dev")
@@ -173,6 +172,6 @@ def test_print_active_scope_report_compact(capsys: pytest.CaptureFixture[str]) -
     assert "STATUS" in out
     assert "SYNC ROLE" in out
     assert "android_permission_intel" in out
-    assert "backup-only" in out
     assert "source+pair" in out
+    assert "backup-only" in out
     assert "dev target" in out

@@ -190,9 +190,14 @@ def format_protection_report(report: ProtectionReport, *, compact: bool = False)
 
     lines.append("")
     lines.append("SHARED AUTHORITY SOURCES")
+    from mercury.database.core.scope import is_active_sync_source
+
     for name in report.shared_authority:
         lines.append(f"  * {name}")
-        lines.append("    backup-only; no dev sync pair by design")
+        if is_active_sync_source(name):
+            lines.append("    protected backup source; disposable _dev clone is the sync target")
+        else:
+            lines.append("    backup-only; no dev sync pair by design")
     if not report.shared_authority:
         lines.append("  (none)")
 
@@ -255,8 +260,13 @@ def _format_protection_report_compact(report: ProtectionReport) -> str:
 
     lines.append("")
     lines.append("Shared authority sources:")
+    from mercury.database.core.scope import is_active_sync_source as _is_sync_source
+
     for name in report.shared_authority:
-        lines.append(f"  * {name} (backup-only)")
+        if _is_sync_source(name):
+            lines.append(f"  * {name} (source+pair)")
+        else:
+            lines.append(f"  * {name} (backup-only)")
     if not report.shared_authority:
         lines.append("  (none)")
 

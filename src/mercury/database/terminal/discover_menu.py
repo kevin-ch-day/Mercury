@@ -76,7 +76,9 @@ def print_discover_menu(
     )
     display_screen.write_structured_table(table)
     display_screen.write_blank()
-    display_screen.write_summary("Shared authority: android_permission_intel (backup-only)")
+    display_screen.write_summary(
+        "Shared authority: android_permission_intel (backup source; syncs to android_permission_intel_dev)"
+    )
     if out_of_scope_names:
         display_screen.write_blank()
         display_screen.write_summary(

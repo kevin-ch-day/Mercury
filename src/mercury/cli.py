@@ -2853,9 +2853,19 @@ def sync_run_cmd(
     policy = load_execution_policy()
     if execute and policy.live_execution_allowed():
         typer.echo("Production will NOT be modified.")
-        typer.echo("Development WILL be deleted and rebuilt from verified backups:")
-        for entry in ready:
-            typer.echo(f"  {entry.prod} -> {entry.expected_dev}")
+        typer.echo("Development WILL be deleted and rebuilt from verified backups in this order:")
+        from mercury.sync.selection import order_sync_entries
+        from mercury.database.prod_dev_pairs import APPROVED_SYNC_PAIR_BY_SOURCE
+
+        for entry in order_sync_entries(ready):
+            deps = ""
+            if entry.depends_on_sources:
+                labels = []
+                for source in entry.depends_on_sources:
+                    spec = APPROVED_SYNC_PAIR_BY_SOURCE.get(source)
+                    labels.append(f"{spec.project} dev" if spec else source)
+                deps = "  (depends on " + ", ".join(labels) + ")"
+            typer.echo(f"  {entry.prod} -> {entry.expected_dev}{deps}")
         confirmation = typer.prompt("Type SYNC DEV to replace the listed development database(s)")
         if confirmation != "SYNC DEV":
             typer.echo("Cancelled.")

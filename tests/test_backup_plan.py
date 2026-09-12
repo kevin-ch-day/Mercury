@@ -96,7 +96,8 @@ def test_backup_plan_displays_resolved_root_and_warning(
     assert "Excluded development targets" in out
     assert "Out of scope" not in out
     assert "android_permission_intel" in out
-    assert "backup-only; sync not applicable by design" in out
+    assert "backup-only; sync not applicable by design" not in out
+    assert "disposable android_permission_intel_dev is the sync target" in out
     assert f"future: {backup_root}/" in out
 
 

@@ -105,7 +105,8 @@ def sync_role_label(name: str) -> str:
 
 def shared_authority_note() -> str:
     return (
-        "Shared authority databases are backup-only and do not appear in prod-to-dev sync pairs."
+        "Shared authority production android_permission_intel is a protected backup source; "
+        "android_permission_intel_dev is its disposable prod→dev clone and is not backed up by default."
     )
 
 

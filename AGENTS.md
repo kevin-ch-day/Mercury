@@ -113,8 +113,8 @@ Use the project venv (`.venv/bin/python`), not system Python, when validating CL
 
 | Project | Databases |
 |---------|-----------|
+| Permission Intel | `android_permission_intel` (production shared authority) / `android_permission_intel_dev` (disposable clone) |
 | Erebus | `erebus_threat_intel_prod` / `_dev` |
-| Platform | `android_permission_intel` (shared authority) |
 | ScytaleDroid | `scytaledroid_core_prod` / `_dev` |
 | ObsidianDroid | `obsidiandroid_core_prod` (backup-only; `_dev` not in sync scope unless configured) |
 
@@ -125,8 +125,9 @@ For the current Fedora milestone, Mercury actively protects only:
 - `scytaledroid_core_prod`
 - `obsidiandroid_core_prod`
 
-and plans prod→dev sync readiness only for:
+and plans prod→dev sync readiness for:
 
+- `android_permission_intel` -> `android_permission_intel_dev`
 - `erebus_threat_intel_prod` -> `erebus_threat_intel_dev`
 - `scytaledroid_core_prod` -> `scytaledroid_core_dev`
 

@@ -10,9 +10,15 @@ not modify production.
 Current approved pairs are:
 
 ```text
-erebus_threat_intel_prod → erebus_threat_intel_dev
-scytaledroid_core_prod   → scytaledroid_core_dev
+android_permission_intel     → android_permission_intel_dev
+erebus_threat_intel_prod     → erebus_threat_intel_dev
+scytaledroid_core_prod       → scytaledroid_core_dev
 ```
+
+Refresh Permission Intel first. Erebus and ScytaleDroid development clones
+depend on `android_permission_intel_dev`. Mercury rewrites approved
+`android_permission_intel` identifiers in those import streams to
+`android_permission_intel_dev`; the original verified backup is not modified.
 
 ## Normal workflow
 
@@ -47,6 +53,25 @@ password_file = "~/.config/mercury/mercury_dev_restore.password"
 The password file remains local, untracked, and owner-private (for example
 `0600`). The dedicated identity should be limited to the approved `_dev` schemas
 and have no production write authority.
+
+## Proposed `mercury_dev_restore` grants (do not apply automatically)
+
+Mercury does not apply DCL. A DBA should grant only what ordinary rewritten
+dev sync needs:
+
+```sql
+-- Recreate approved disposable clones (existing host already uses this pattern).
+GRANT ALL PRIVILEGES ON `android_permission_intel_dev`.* TO 'mercury_dev_restore'@'localhost';
+GRANT ALL PRIVILEGES ON `erebus_threat_intel_dev`.* TO 'mercury_dev_restore'@'localhost';
+GRANT ALL PRIVILEGES ON `scytaledroid_core_dev`.* TO 'mercury_dev_restore'@'localhost';
+
+-- Post-rewrite Erebus/Scytale views select from the disposable PI clone.
+GRANT SELECT ON `android_permission_intel_dev`.* TO 'mercury_dev_restore'@'localhost';
+```
+
+Do **not** grant `INSERT`/`UPDATE`/`DELETE`/`DROP`/`ALTER` on
+`android_permission_intel` or any `*_prod` schema. Ordinary rewritten sync
+should not require `SELECT` on production Permission Intel.
 
 ## Expected safety refusals
 

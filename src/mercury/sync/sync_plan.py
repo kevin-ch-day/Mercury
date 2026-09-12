@@ -9,7 +9,8 @@ SYNC_PLAN_NOTES = [
     "Sync execution remains gated until readiness passes and live confirmation is provided.",
     "Future dev sync will require explicit [y/N] confirmation.",
     "Prerequisite: verified full backup of each production source before any sync.",
-    "Never drop or overwrite *_prod; target is *_dev only.",
+    "Never drop or overwrite production; replace only the listed disposable _dev target.",
+    "Refresh order: Permission Intel, then Erebus, then ScytaleDroid.",
 ]
 
 
@@ -20,6 +21,8 @@ class SyncPlanEntry(BaseModel):
     project: str | None = None
     prerequisites: list[str] = Field(default_factory=list)
     blocked_reason: str | None = None
+    depends_on_sources: list[str] = Field(default_factory=list)
+    sync_order: int = 0
 
 
 class SyncPlanDryRun(BaseModel):
@@ -50,6 +53,10 @@ def build_sync_plan_from_inventory(inventory) -> SyncPlanDryRun:
             f"Verify backup manifest/checksum for {pair.prod}",
             "Run: mercury sync readiness --live",
         ]
+        if pair.depends_on_sources:
+            prereq.append(
+                "Refresh upstream first: " + ", ".join(pair.depends_on_sources)
+            )
         blocked = None
         if not pair.dev_listed:
             blocked = f"Dev target missing: {pair.expected_dev}"
@@ -61,6 +68,8 @@ def build_sync_plan_from_inventory(inventory) -> SyncPlanDryRun:
             project=pair.project,
             prerequisites=prereq,
             blocked_reason=blocked,
+            depends_on_sources=list(pair.depends_on_sources),
+            sync_order=pair.sync_order,
         )
         plan.entries.append(entry)
 

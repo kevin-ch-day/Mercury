@@ -96,10 +96,10 @@ def fetch_active_scope_report(
         view_count = int(row[3])
         total = int(row[4])
         classification = classify_database(name)
-        if classification.role == DatabaseRole.SHARED_AUTHORITY:
-            sync_role = "backup-only"
-        elif is_active_sync_source(name):
+        if is_active_sync_source(name):
             sync_role = "source+pair"
+        elif classification.role == DatabaseRole.SHARED_AUTHORITY:
+            sync_role = "backup-only"
         elif classification.backup_source and is_active_backup_source(name):
             sync_role = "backup-only"
         elif is_active_dev_target(name):

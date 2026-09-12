@@ -7,7 +7,7 @@ from mercury.reporting.protection import build_protection_report, format_protect
 
 def test_report_lists_protected_prod_databases() -> None:
     report = build_protection_report()
-    assert report.inventory_count == 6
+    assert report.inventory_count == 7
     assert report.ignored_out_of_scope_count == 0
     assert "erebus_threat_intel_prod" in report.protected
     assert "android_permission_intel" in report.protected
@@ -19,6 +19,7 @@ def test_report_includes_prod_dev_pairs() -> None:
     report = build_protection_report()
     prod_names = {p.prod for p in report.prod_dev_pairs}
     assert "erebus_threat_intel_prod" in prod_names
+    assert "android_permission_intel" in prod_names
     erebus = next(p for p in report.prod_dev_pairs if p.prod == "erebus_threat_intel_prod")
     assert erebus.dev_listed is True
 
@@ -35,14 +36,15 @@ def test_format_report_contains_sections() -> None:
     assert "SHARED AUTHORITY SOURCES" in text
     assert "EXCLUDED FROM BACKUP" in text
     assert "PRODUCTION SYNC PAIRS" in text
-    assert "backup-only; no dev sync pair by design" in text
+    assert "protected backup source; disposable _dev clone is the sync target" in text
     assert "prod sources" not in text
 
 
-def test_report_does_not_treat_shared_authority_as_sync_pair() -> None:
+def test_report_treats_shared_authority_as_sync_pair() -> None:
     text = format_protection_report(build_protection_report())
-    assert "android_permission_intel ->" not in text
-    assert "backup-only and do not appear in prod-to-dev sync pairs" in text
+    assert "android_permission_intel" in text
+    assert "android_permission_intel_dev" in text
+    assert "disposable prod→dev clone" in text
 
 
 def test_status_save_writes_file(tmp_path: Path, monkeypatch) -> None:

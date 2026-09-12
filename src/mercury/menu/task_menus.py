@@ -134,26 +134,10 @@ def run_backup_hub() -> None:
 
 
 def run_sync_hub() -> None:
-    """[5] Prod-to-dev sync."""
-    while True:
-        choice = _submenu(
-            "Prod-to-dev sync",
-            [
-                ("1", "Sync readiness and execution"),
-            ],
-            purpose=(
-                "Refresh disposable *_dev databases from verified production backups. "
-                "Never writes *_prod."
-            ),
-        )
-        if choice is None:
-            return
-        if choice == "1":
-            from mercury.sync.interactive_menu import run_sync_menu
+    """[5] Prod-to-dev sync — opens readiness and execution directly."""
+    from mercury.sync.interactive_menu import run_sync_menu
 
-            run_sync_menu()
-            continue
-        output.write(menu_prompts.invalid_choice_message(choice))
+    run_sync_menu()
 
 
 def run_repo_hub(*, interactive: bool = True) -> None:
