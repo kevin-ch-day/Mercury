@@ -11,7 +11,7 @@ Before any DB or backup change, read `src/mercury/core/safety.py` and `execution
 - Never drop, overwrite, or restore into `*_prod`.
 - `_restorecheck_*` and unknown-role DBs are not backup sources.
 - Dry-run is default. Live writes need `dry_run=false` AND `live_actions_enabled=true`.
-- Prod→dev sync (future) requires typing `SYNC DEV` after verified prod backup.
+- Prod→dev sync (future) requires typing `YES` after verified prod backup.
 - Live SQL must stay read-only (`SELECT`, `SHOW`, `information_schema`). No DDL/DML.
 - Never commit `config/local.toml` or passwords.
 

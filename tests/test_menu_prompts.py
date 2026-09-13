@@ -214,6 +214,31 @@ def test_ask_confirmation_phrase_exact_match() -> None:
     finally:
         menu_prompts.set_prompt_reader(None)
 
+
+def test_ask_confirmation_phrase_yes_no_hint() -> None:
+    seen: list[str] = []
+
+    def yes_reader(prompt: str) -> str:
+        seen.append(prompt)
+        return "YES"
+
+    menu_prompts.set_prompt_reader(yes_reader)
+    try:
+        assert menu_prompts.ask_confirmation_phrase(
+            "YES", action="sync development", hint="YES/NO"
+        ) is True
+    finally:
+        menu_prompts.set_prompt_reader(None)
+    assert seen == ["\nConfirmation (sync development) [YES/NO]: "]
+
+    menu_prompts.set_prompt_reader(lambda _prompt: "NO")
+    try:
+        assert menu_prompts.ask_confirmation_phrase(
+            "YES", action="sync development", hint="YES/NO"
+        ) is False
+    finally:
+        menu_prompts.set_prompt_reader(None)
+
 def test_read_submenu_choice_empty_reprompts(monkeypatch: pytest.MonkeyPatch) -> None:
     answers = iter(["", "1"])
     monkeypatch.setattr(

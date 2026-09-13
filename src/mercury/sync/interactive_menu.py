@@ -138,13 +138,14 @@ def _run_sync_for_ready(report: SyncReadinessReport) -> None:
         display_screen.write_summary("Prod→dev sync will overwrite these development databases in order:")
         from mercury.sync.selection import order_sync_entries
 
+        pair_lines: list[str] = []
         for entry in order_sync_entries(ready):
             age = f" · backup {entry.backup_age}" if entry.backup_age else ""
             fresh = f" · {entry.backup_freshness}" if entry.backup_freshness else ""
-            display_screen.write_status(
-                "warn",
-                f"{_pair_route_label(entry)}{age}{fresh}{_dependency_suffix(entry)}",
+            pair_lines.append(
+                f"{_pair_route_label(entry)}{age}{fresh}{_dependency_suffix(entry)}"
             )
+        display_screen.write_bullets(pair_lines)
         display_screen.write_bullets(
             [
                 "Production databases are never modified.",
@@ -152,8 +153,9 @@ def _run_sync_for_ready(report: SyncReadinessReport) -> None:
             ]
         )
         display_screen.write_blank()
-        display_screen.write_summary("Type SYNC DEV to confirm this development-only replacement.")
-        if not menu_prompts.ask_confirmation_phrase("SYNC DEV", action="sync development"):
+        if not menu_prompts.ask_confirmation_phrase(
+            "YES", action="sync development", hint="YES/NO"
+        ):
             display_screen.write_summary("Sync cancelled.")
             return
 

@@ -189,15 +189,23 @@ def ask_yes_no(prompt: str, *, default: bool | None = None) -> bool | None:
         output.write("Please enter y (yes) or n (no).")
 
 
-def ask_confirmation_phrase(expected: str, *, action: str = "continue") -> bool:
+def ask_confirmation_phrase(
+    expected: str,
+    *,
+    action: str = "continue",
+    hint: str | None = None,
+) -> bool:
     """
-    Require an exact confirmation phrase (e.g. ``SYNC DEV``).
+    Require an exact confirmation phrase (e.g. ``YES`` or ``BACKUP DEV DATABASES``).
+
+    ``hint`` is shown in the brackets when the typed phrase should differ from
+    the displayed choices (e.g. ``YES/NO`` while only ``YES`` confirms).
 
     Returns False on mismatch or interrupt.
     """
     if _reader is None and not is_interactive_terminal():
         return False
-    prompt = f"\nConfirmation ({action}) [{expected}]: "
+    prompt = f"\nConfirmation ({action}) [{hint or expected}]: "
     raw = ask_stripped(prompt)
     if raw is None:
         return False

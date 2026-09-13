@@ -91,7 +91,8 @@ def test_cli_sync_run_help_describes_typed_development_confirmation() -> None:
     result = run_cli("sync", "run", "--help")
     assert result.returncode == 0
     assert "--yes" not in result.stdout
-    assert "SYNC DEV" in result.stdout
+    assert "YES" in result.stdout
+    assert "SYNC DEV" not in result.stdout
 
 
 def test_cli_backup_dumpability_help() -> None:

@@ -510,11 +510,12 @@ def style_inline_value(text: str) -> str:
     return markup(text, s.value)
 
 def dashboard_row(label: str, value: str, *, label_width: int = 14) -> str:
+    width = max(label_width, len(label) + 1)
     if not colors_enabled():
-        return f"  {label.ljust(label_width)}{value}"
+        return f"  {label.ljust(width)}{value}"
     s = active_styles()
     styled_value = style_inline_value(value)
-    return f"  [{s.label}]{label.ljust(label_width)}[/]{styled_value}"
+    return f"  [{s.label}]{label.ljust(width)}[/]{styled_value}"
 
 
 def system_state_header() -> list[str]:

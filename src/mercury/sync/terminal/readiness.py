@@ -120,11 +120,7 @@ def sync_menu_next_step(report: SyncReadinessReport, *, live_allowed: bool) -> t
         action_hint = sync_submenu_hint(
             ACTION_SYNC_ALL_READY, report, live_allowed=live_allowed
         )
-        return (
-            "warn",
-            "All approved pairs have verified artifacts — restore preflight runs "
-            f"before any dev replacement. Choose {action_hint}.",
-        )
+        return ("warn", f"All pairs ready. Choose {action_hint}.")
     if report.ready_count and report.blocked_count:
         action_hint = sync_submenu_hint(
             ACTION_SYNC_ALL_READY, report, live_allowed=live_allowed

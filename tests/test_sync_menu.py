@@ -268,7 +268,8 @@ def test_run_sync_ready_shows_compact_confirmation(
     assert "erebus_threat_intel_prod → erebus_threat_intel_dev" in out
     assert "Production databases are never modified." in out
     assert "Each dev target is dropped and recreated" in out
-    assert "Type SYNC DEV" in out
+    assert "Type YES" not in out
+    assert "Type SYNC DEV" not in out
     assert "Sync cancelled." in out
 
 

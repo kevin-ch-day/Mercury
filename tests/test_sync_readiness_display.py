@@ -69,7 +69,6 @@ def test_menu_readiness_shows_table_with_backup_age(capsys: pytest.CaptureFixtur
     assert "PROJECT" in out and "PROD → DEV" in out and "BACKUP" in out
     assert "erebus_threat_intel_prod → erebus_threat_intel_dev" in out
     assert "12m ago" in out
-    assert "restore preflight runs before any dev replacement" in out
     assert "Choose Sync All Ready Databases [2]." in out
     assert "…" not in out
     assert "Restore credentials:" in out

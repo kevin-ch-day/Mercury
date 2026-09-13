@@ -859,7 +859,7 @@ def _default_sync() -> Any:
     ready = [entry for entry in report.entries if entry.ready_for_sync_planning]
     from mercury.menu.prompts import ask_confirmation_phrase
 
-    confirmed = ask_confirmation_phrase("SYNC DEV", action="sync development")
+    confirmed = ask_confirmation_phrase("YES", action="sync development", hint="YES/NO")
     return run_sync_batch(
         ready,
         execute=True,

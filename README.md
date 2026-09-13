@@ -169,7 +169,7 @@ mercury sync run [--live] [--source <prod>] [--target <dev>] [--execute]
 mercury sync all [--live] [--execute]
 ```
 
-`sync run --execute` restores verified backups into disposable dev targets. With no filter it processes all ready pairs in dependency order (Permission Intel, then Erebus, then ScytaleDroid); `--source` or `--target` limits execution to one pair. `sync all` is the explicit batch alias. Approved pairs are `android_permission_intel -> android_permission_intel_dev`, `erebus_threat_intel_prod -> erebus_threat_intel_dev`, and `scytaledroid_core_prod -> scytaledroid_core_dev`. `obsidiandroid_core_prod` remains backup-only. Requires live mode and explicit `SYNC DEV` confirmation.
+`sync run --execute` restores verified backups into disposable dev targets. With no filter it processes all ready pairs in dependency order (Permission Intel, then Erebus, then ScytaleDroid); `--source` or `--target` limits execution to one pair. `sync all` is the explicit batch alias. Approved pairs are `android_permission_intel -> android_permission_intel_dev`, `erebus_threat_intel_prod -> erebus_threat_intel_dev`, and `scytaledroid_core_prod -> scytaledroid_core_dev`. `obsidiandroid_core_prod` remains backup-only. Requires live mode and explicit `YES` confirmation.
 
 ### Repository transfer
 

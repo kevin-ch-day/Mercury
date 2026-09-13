@@ -2820,7 +2820,7 @@ def sync_run_cmd(
     execute: bool = typer.Option(
         False,
         "--execute",
-        help="Restore verified backups into dev targets (requires live actions and typed SYNC DEV confirmation).",
+        help="Restore verified backups into dev targets (requires live actions and typed YES confirmation).",
     ),
     source: str | None = typer.Option(
         None,
@@ -2866,10 +2866,11 @@ def sync_run_cmd(
                     labels.append(f"{spec.project} dev" if spec else source)
                 deps = "  (depends on " + ", ".join(labels) + ")"
             typer.echo(f"  {entry.prod} -> {entry.expected_dev}{deps}")
-        confirmation = typer.prompt("Type SYNC DEV to replace the listed development database(s)")
-        if confirmation != "SYNC DEV":
+        confirmation = typer.prompt("Confirmation (sync development) [YES/NO]")
+        if confirmation != "YES":
             typer.echo("Cancelled.")
             raise typer.Exit(1)
+        confirmation = "SYNC DEV"
     else:
         confirmation = None
 
@@ -2887,7 +2888,7 @@ def sync_all_cmd(
     execute: bool = typer.Option(
         False,
         "--execute",
-        help="Restore all ready verified backups into dev targets (requires live actions and typed SYNC DEV confirmation).",
+        help="Restore all ready verified backups into dev targets (requires live actions and typed YES confirmation).",
     ),
 ) -> None:
     """Plan or execute sync for all ready production sync pairs."""

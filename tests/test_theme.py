@@ -41,7 +41,14 @@ def test_menu_title_line_has_mercury_glyph_when_colored() -> None:
     set_color_enabled(None)
 
 
-def test_dashboard_panel_plain_mode() -> None:
+def test_dashboard_row_keeps_space_after_long_label() -> None:
+    from mercury.terminal.theme import dashboard_row, set_color_enabled
+
+    set_color_enabled(False)
+    row = dashboard_row("Backup storage", "Connected · mounted · backups enabled")
+    assert "Backup storageConnected" not in row
+    assert "Backup storage " in row
+    set_color_enabled(None)
     from mercury.terminal.theme import dashboard_panel, set_color_enabled
 
     set_color_enabled(False)

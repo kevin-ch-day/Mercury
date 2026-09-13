@@ -21,6 +21,12 @@ from mercury.backup.session_receipt import (
     write_session_receipt,
 )
 from mercury.backup.session_runner import SessionHooks, preview_session, run_backup_sync_session
+from mercury.core.storage_roles import (
+    DEFAULT_FILESYSTEM_TYPE,
+    DEFAULT_PRIMARY_LABEL,
+    DEFAULT_PRIMARY_MOUNT,
+    DEFAULT_PRIMARY_UUID,
+)
 from mercury.storage.host_maintenance import (
     HostMaintenanceState,
     load_host_maintenance,
@@ -50,6 +56,19 @@ def _enabled_host(path: Path) -> None:
             source_detach_preparation=False,
         ),
         path=path,
+    )
+
+
+def _connected_storage(**kwargs):
+    """Return hermetic facts for the approved, mounted Mercury device."""
+    return SimpleNamespace(
+        identity=SimpleNamespace(
+            uuid=kwargs.get("expected_uuid", DEFAULT_PRIMARY_UUID),
+            label=DEFAULT_PRIMARY_LABEL,
+            mountpoint=DEFAULT_PRIMARY_MOUNT,
+            fstype=DEFAULT_FILESYSTEM_TYPE,
+        ),
+        errors=[],
     )
 
 
@@ -139,6 +158,7 @@ def _hooks(
     restore_check=None,
     receipt=None,
     ensure=None,
+    resolve=None,
     mark_source_delta=None,
     calls: dict | None = None,
 ) -> SessionHooks:
@@ -189,6 +209,7 @@ def _hooks(
         ),
         mark_source_delta=mark_source_delta
         or (lambda **kwargs: load_host_maintenance()),
+        resolve_fn=resolve,
     )
 
 
@@ -798,6 +819,7 @@ def test_recoverable_writer_restoration_continues(host_path: Path, tmp_path: Pat
         accept_recoverable=True,
         hooks=_hooks(
             ensure=ensure,
+            resolve=_connected_storage,
             receipt=lambda s: write_session_receipt(
                 s, control_root=receipt_dir, require_active_operator_mount=False
             ),
@@ -867,6 +889,7 @@ def test_strong_confirmation_restoration_with_phrase(
         confirm_restore_phrase=RESTORE_SOURCE_WRITER_PHRASE,
         hooks=_hooks(
             ensure=ensure,
+            resolve=_connected_storage,
             receipt=lambda s: write_session_receipt(
                 s, control_root=receipt_dir, require_active_operator_mount=False
             ),
