@@ -500,7 +500,11 @@ def test_cli_retire_help_and_apply_refuses_without_live_policy() -> None:
     from mercury.cli import app
 
     runner = CliRunner()
-    help_result = runner.invoke(app, ["restore-check", "retire-phase3b-restorecheck", "--help"])
+    help_result = runner.invoke(
+        app,
+        ["restore-check", "retire-phase3b-restorecheck", "--help"],
+        terminal_width=240,
+    )
     assert help_result.exit_code == 0
     help_text = " ".join(help_result.stdout.split())
     assert "RESTORECHECK SCHEMAS" in help_text
