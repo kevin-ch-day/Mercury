@@ -8,6 +8,8 @@ from typing import Iterable
 
 from pydantic import BaseModel, Field
 
+from mercury.database.mariadb.identifiers import sql_schema_literal
+
 PRODUCTION_ISOLATION_SCHEMAS: tuple[str, ...] = (
     "android_permission_intel",
     "erebus_threat_intel_prod",
@@ -120,7 +122,7 @@ def inspect_restored_schema_isolation(
     """Read restored object bodies and fail closed on production schema identifiers."""
     fetch = query_fn or _default_rows
     statements: list[tuple[str, str | None, str]] = []
-    quoted = target.replace("'", "''")
+    quoted = sql_schema_literal(target, what="isolation target")
     view_rows = fetch(
         config,
         "SELECT TABLE_NAME, VIEW_DEFINITION FROM information_schema.VIEWS "

@@ -7,6 +7,7 @@ from typing import Iterator
 
 from mercury.database.mariadb.client import run_client_query, run_client_script
 from mercury.database.mariadb.config import MariaDbConnectionConfig
+from mercury.database.mariadb.readonly_sql import assert_live_readonly_sql
 from mercury.database.mariadb.session import (
     _filter_user_databases,
     _pymysql_fetch_scalar,
@@ -38,12 +39,15 @@ class _PymysqlReadonlySession:
         self._connection = connection
 
     def scalar(self, sql: str) -> str:
+        assert_live_readonly_sql(sql)
         return _pymysql_fetch_scalar(self._connection, sql)
 
     def scalars(self, sql: str) -> list[str]:
+        assert_live_readonly_sql(sql)
         return _pymysql_fetch_scalars(self._connection, sql)
 
     def row(self, sql: str) -> list[str]:
+        assert_live_readonly_sql(sql)
         with self._connection.cursor() as cursor:
             cursor.execute(sql)
             fetched = cursor.fetchone()
@@ -52,6 +56,7 @@ class _PymysqlReadonlySession:
         return [str(value) for value in fetched]
 
     def rows(self, sql: str) -> list[list[str]]:
+        assert_live_readonly_sql(sql)
         with self._connection.cursor() as cursor:
             cursor.execute(sql)
             fetched = cursor.fetchall()

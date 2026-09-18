@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
-import subprocess
+import shlex
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,7 +12,12 @@ from mercury.backup.backup_runner import BackupExecutionError
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
 from mercury.core.safety import BACKUP_KIND_FULL
-from mercury.database.mariadb.client import run_client_sql, select_client_tool
+from mercury.database.mariadb.client import (
+    client_process_credentials,
+    prepend_client_defaults,
+    run_client_sql,
+    select_client_tool,
+)
 from mercury.database.mariadb.config import MariaDbConnectionConfig, load_mariadb_config
 from mercury.database.mariadb.errors import MariaDbLiveError
 from mercury.database.mariadb.session import try_load_mariadb_config
@@ -30,13 +34,6 @@ from mercury.deploy.verification import verify_deployed_database
 from mercury.restore.restore_runner import ImportRunner, build_import_argv
 
 SqlRunner = Callable[[MariaDbConnectionConfig, str], None]
-
-
-def _client_env(config: MariaDbConnectionConfig) -> dict[str, str]:
-    env = os.environ.copy()
-    if config.password:
-        env["MYSQL_PWD"] = config.password
-    return env
 
 
 def _execute_client_sql(config: MariaDbConnectionConfig, sql: str) -> None:
@@ -90,6 +87,15 @@ def execute_deployment_for_candidate(
     )
     opts = options or DeployOptions()
     dump_path = Path(candidate.dump_path)
+    if dump_path.is_symlink():
+        return DeploymentExecutionResult(
+            source_database=candidate.source_database,
+            target_database=candidate.target_database,
+            refused=True,
+            message=f"Refusing symlink dump path: {dump_path}",
+            commands=[],
+        )
+    dump_path = dump_path.expanduser().resolve()
     action_plan = resolve_deploy_action(
         target_database=candidate.target_database,
         dump_path=str(dump_path),
@@ -191,7 +197,14 @@ def execute_deployment_for_candidate(
                 sql(cfg, command)
             elif command.startswith("CREATE DATABASE"):
                 sql(cfg, command)
-        runner(import_argv, _client_env(cfg), dump_path, cfg, candidate.target_database)
+        with client_process_credentials(cfg) as (env, extra):
+            runner(
+                prepend_client_defaults(import_argv, extra),
+                env,
+                dump_path,
+                cfg,
+                candidate.target_database,
+            )
     except BackupExecutionError as exc:
         return DeploymentExecutionResult(
             source_database=candidate.source_database,
@@ -296,6 +309,8 @@ def execute_deployment_batch(
 def build_import_shell_preview(target_database: str, dump_path: str) -> str:
     """Return the shell import fragment used in plans and tests."""
     tool = select_client_tool()
+    quoted_dump = shlex.quote(dump_path)
+    quoted_target = shlex.quote(target_database)
     if dump_path.endswith(".gz"):
-        return f"gunzip -c {dump_path} | {tool} {target_database}"
-    return f"{tool} {target_database} < {dump_path}"
+        return f"gunzip -c {quoted_dump} | {tool} {quoted_target}"
+    return f"{tool} {quoted_target} < {quoted_dump}"

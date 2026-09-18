@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from mercury.database.mariadb.config import MariaDbConnectionConfig
+from mercury.database.mariadb.identifiers import sql_schema_literal
 from mercury.database.mariadb.readonly_session import readonly_connection
 from mercury.database.mariadb.session import SYSTEM_DATABASES, MariaDbLiveError
 
@@ -24,7 +25,9 @@ class DatabaseStatsReport(BaseModel):
 
 
 def _stats_sql() -> str:
-    excluded = ", ".join(f"'{name}'" for name in sorted(SYSTEM_DATABASES))
+    excluded = ", ".join(
+        f"'{sql_schema_literal(name, what='system schema')}'" for name in sorted(SYSTEM_DATABASES)
+    )
     return (
         "SELECT table_schema, "
         "COALESCE(SUM(CASE WHEN table_type = 'BASE TABLE' THEN 1 ELSE 0 END), 0), "

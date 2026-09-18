@@ -69,7 +69,7 @@ log_dir = "/mnt/MERCURY_DATA_V2/mercury_logs"
 # user = "mercury_readonly"
 # password_env = "MERCURY_MARIADB_PASSWORD"
 # connect_timeout = 10
-# ssl_disabled = true
+# ssl_disabled = true   # loopback only; remote TCP requires ssl_disabled = false
 
 # --- Option B: Local Fedora socket via mariadb CLI (no password) ---
 # Uses mariadb/mysql on PATH with unix_socket auth (e.g. root@localhost).

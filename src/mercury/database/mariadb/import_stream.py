@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from mercury.backup.backup_runner import BackupExecutionError
+from mercury.database.mariadb.identifiers import assert_safe_identifier
 
 _DEFINER_RE = re.compile(r"DEFINER=`[^`]+`@`[^`]+`\s*", re.IGNORECASE)
 _CONDITIONAL_DEFINER_COMMENT_RE = re.compile(
@@ -271,8 +272,18 @@ def _is_insert_or_replace_bytes(raw: bytes) -> bool:
 
 def _is_database_directive_bytes(raw: bytes) -> bool:
     head = _lstrip_sql_bytes(raw).upper()
-    if head.startswith(b"CREATE DATABASE"):
-        return True
+    for keyword in (
+        b"CREATE DATABASE",
+        b"CREATE SCHEMA",
+        b"DROP DATABASE",
+        b"DROP SCHEMA",
+        b"ALTER DATABASE",
+        b"ALTER SCHEMA",
+    ):
+        if head.startswith(keyword) and (
+            len(head) == len(keyword) or head[len(keyword) : len(keyword) + 1] in b" \t`'\""
+        ):
+            return True
     if head.startswith(b"USE ") or head.startswith(b"USE`") or head.startswith(b"USE'") or head.startswith(
         b'USE"'
     ):
@@ -358,9 +369,10 @@ def run_compressed_sql_import(
     SET USER can import mysqldump artifacts from other hosts. The receiving
     account becomes the routine definer, while SQL SECURITY semantics are
     preserved; changing DEFINER to INVOKER would alter application behavior.
-    Strips ``CREATE DATABASE`` / ``USE`` statements by default so targeted
-    restore/sync imports land in the requested dev or restore-check database
-    instead of switching back to the original production database name.
+    Strips ``CREATE/DROP/ALTER DATABASE`` (and ``SCHEMA``) plus ``USE``
+    statements by default so targeted restore/sync imports cannot switch to or
+    drop another catalog and instead land in the requested dev or restore-check
+    database.
 
     Hot path: MariaDB dumps use multi-line ``INSERT`` statements (VALUES row
     per line). After the opening ``INSERT``/``REPLACE`` line is handled, all
@@ -368,12 +380,24 @@ def run_compressed_sql_import(
     ``;`` — this is the dominant path for multi‑GB restore-checks (ScytaleDroid
     has millions of continuation lines vs a few thousand INSERT headers).
     """
+    if dump_path.is_symlink():
+        raise BackupExecutionError(f"Refusing symlink dump path: {dump_path}")
     if not dump_path.is_file():
         raise BackupExecutionError(f"Dump file not found: {dump_path}")
 
     compressed_size = dump_path.stat().st_size
     started = time.monotonic()
     rewrite_sources = _build_rewrite_sources(rewrite_database, rewrite_databases)
+    try:
+        if rewrite_database is not None:
+            assert_safe_identifier(rewrite_database[0], what="schema rewrite source")
+            assert_safe_identifier(rewrite_database[1], what="schema rewrite target")
+        if rewrite_databases:
+            for source, target in rewrite_databases.items():
+                assert_safe_identifier(source, what="schema rewrite source")
+                assert_safe_identifier(target, what="schema rewrite target")
+    except ValueError as exc:
+        raise BackupExecutionError(str(exc)) from exc
     schema_markers = _build_schema_byte_markers(rewrite_sources)
 
     import_proc = subprocess.Popen(

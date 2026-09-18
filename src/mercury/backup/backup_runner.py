@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import gzip
 import json
-import os
 import shutil
 import subprocess
 from collections.abc import Callable
@@ -23,6 +22,8 @@ from mercury.backup.manifest import BackupKind, BackupManifest, build_backup_man
 from mercury.backup.checksum import sha256_file, write_checksum_file
 from mercury.database.core import DatabaseClassification, DatabaseRole, classify_database
 from mercury.database.mariadb.config import MariaDbConnectionConfig, load_mariadb_config
+from mercury.database.mariadb.client import client_process_credentials, prepend_client_defaults
+from mercury.database.mariadb.identifiers import assert_safe_identifier
 from mercury.database.mariadb.session import resolve_mariadb_target, try_load_mariadb_config
 from mercury.backup.dump_planner import (
     DumpKind,
@@ -84,6 +85,10 @@ def assert_safe_backup_source(
     database: str, *, allow_development_backup: bool = False
 ) -> DatabaseClassification:
     """Refuse backup when database is not an approved backup source."""
+    try:
+        assert_safe_identifier(database, what="backup source")
+    except ValueError as exc:
+        raise BackupExecutionError(str(exc)) from exc
     classification = classify_database(database)
     if (
         allow_development_backup
@@ -467,9 +472,6 @@ def execute_backup(
             raise BackupExecutionError(dumpability)
 
     runner = dump_runner or _default_dump_runner
-    env = os.environ.copy()
-    if config.password:
-        env["MYSQL_PWD"] = config.password
 
     ensure_private_directory(backup_dir)
     checksum_targets: list[str] = []
@@ -480,31 +482,36 @@ def execute_backup(
     content_contract: BackupContentContract | None = None
 
     try:
-        if kind == BACKUP_KIND_SCHEMA_ONLY:
-            assert schema_name is not None
-            schema_path = backup_dir / schema_name
-            schema_temp = _temp_artifact_path(schema_path)
-            runner(argv, env, schema_temp, config)
-            schema_temp.replace(schema_path)
-            created_paths.append(schema_path)
-            checksum_targets.append(schema_name)
-            primary_path = schema_path
-        else:
-            assert dump_name is not None
-            dump_path = backup_dir / dump_name
-            dump_temp = _temp_artifact_path(dump_path)
-            runner(argv, env, dump_temp, config)
-            dump_temp.replace(dump_path)
-            created_paths.append(dump_path)
-            checksum_targets.append(dump_name)
-            primary_path = dump_path
-            if schema_name and schema_argv:
+        with client_process_credentials(config) as (env, extra):
+            live_argv = prepend_client_defaults(argv, extra)
+            live_schema_argv = (
+                prepend_client_defaults(schema_argv, extra) if schema_argv else None
+            )
+            if kind == BACKUP_KIND_SCHEMA_ONLY:
+                assert schema_name is not None
                 schema_path = backup_dir / schema_name
                 schema_temp = _temp_artifact_path(schema_path)
-                runner(schema_argv, env, schema_temp, config)
+                runner(live_argv, env, schema_temp, config)
                 schema_temp.replace(schema_path)
                 created_paths.append(schema_path)
                 checksum_targets.append(schema_name)
+                primary_path = schema_path
+            else:
+                assert dump_name is not None
+                dump_path = backup_dir / dump_name
+                dump_temp = _temp_artifact_path(dump_path)
+                runner(live_argv, env, dump_temp, config)
+                dump_temp.replace(dump_path)
+                created_paths.append(dump_path)
+                checksum_targets.append(dump_name)
+                primary_path = dump_path
+                if schema_name and live_schema_argv:
+                    schema_path = backup_dir / schema_name
+                    schema_temp = _temp_artifact_path(schema_path)
+                    runner(live_schema_argv, env, schema_temp, config)
+                    schema_temp.replace(schema_path)
+                    created_paths.append(schema_path)
+                    checksum_targets.append(schema_name)
 
         if live_inventory is not None:
             assert primary_path is not None

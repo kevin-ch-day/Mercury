@@ -9,6 +9,7 @@ from mercury.database.core import DatabaseRole, classify_database
 from mercury.database.mariadb.client import run_client_sql
 from mercury.database.mariadb.config import MariaDbConnectionConfig, load_mariadb_config
 from mercury.database.mariadb.errors import MariaDbLiveError
+from mercury.database.mariadb.identifiers import quote_ident
 from mercury.database.mariadb.session import try_load_mariadb_config
 
 # Phase 3B retained rehearsal copies. Generic cleanup must not drop them;
@@ -62,6 +63,10 @@ def drop_restorecheck_database(
 ) -> RestoreCheckCleanupResult:
     """Plan or run DROP DATABASE for a single _restorecheck_* database."""
     assert_restorecheck_database(database)
+    try:
+        quoted = quote_ident(database, what="restore-check database")
+    except ValueError as exc:
+        raise BackupExecutionError(str(exc)) from exc
     if database in PHASE3B_RETAINED_RESTORECHECK and not allow_phase3b:
         return RestoreCheckCleanupResult(
             database=database,
@@ -73,9 +78,9 @@ def drop_restorecheck_database(
             ),
         )
     command = (
-        f"DROP DATABASE IF EXISTS `{database}`"
+        f"DROP DATABASE IF EXISTS {quoted}"
         if if_exists
-        else f"DROP DATABASE `{database}`"
+        else f"DROP DATABASE {quoted}"
     )
 
     if not execute:

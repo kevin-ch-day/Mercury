@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from mercury.database.mariadb.client import run_client_query
+from mercury.database.mariadb.identifiers import sql_schema_literal
 from mercury.database.mariadb.session import fetch_user_database_names, try_load_mariadb_config
 from mercury.restore.destination_rehearsal import (
     PackageRestoreArtifact,
@@ -101,8 +102,7 @@ def _expected_counts(package_root: Path) -> tuple[str, dict[str, int], dict[str,
 
 def schema_object_counts(config, schema: str) -> dict[str, int]:
     """Read-only object counts for one validated schema identifier."""
-    if not schema.replace("_", "").isalnum():
-        raise ValueError("Invalid schema identifier for recovery inspection.")
+    schema = sql_schema_literal(schema, what="recovery schema")
     sql = (
         "SELECT "
         "(SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='" + schema + "' AND table_type='BASE TABLE'),"

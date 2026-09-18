@@ -1,35 +1,72 @@
+# Byte-compiled / packaging
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+*.egg
 *.egg-info/
 .eggs/
 dist/
 build/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
+pip-wheel-metadata/
+.installed.cfg
+
+# Virtualenvs
 .venv/
 venv/
 /env/
 
-config/local.toml
-config/local.toml.pre_*
-config/databases.toml
-config/repos.toml
+# Test / type / lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+pytestdebug.log
+
+# Operator-local config (keep *.example.toml tracked)
+config/*.toml
+!config/*.example.toml
+config/local.toml.*
+config/*.bak
+config/*~
+
+# Secrets that must never be committed
+.env
+.env.*
+!.env.example
+*.password
+mercury-my-*.cnf
+
+# Mercury runtime artifacts (repo-local fallbacks only)
+backups/
+*.log
+logs/*
+!logs/.gitkeep
 output/*
 !output/.gitkeep
 !output/samples/
-
-backups/
-
-logs/*
-!logs/.gitkeep
-
+!output/samples/**
 data/*
 !data/README.md
 
-*.log
+# Accidental dumps / bundles at the repo root
+/*.sql
+/*.sql.gz
+/*.bundle
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini

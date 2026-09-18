@@ -18,6 +18,7 @@ from mercury.core.execution_policy import load_execution_policy
 from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.core.runtime import should_probe_database_status
 from mercury.database.core import classify_database
+from mercury.database.mariadb.identifiers import quote_ident
 from mercury.restore.readiness import TargetCompletenessEntry, build_target_completeness_entry
 
 
@@ -170,19 +171,20 @@ def build_restore_check_plan(
     commands: list[str] = []
     if dump_file and backup_dir is not None:
         artifact = backup_dir / dump_file
+        quoted_target = quote_ident(target, what="restore-check target")
         commands = [
             f"# Create temp restore-check database: {target}",
             f"# backup_id={resolved_id}",
             (
-                f"mariadb -e 'CREATE DATABASE `{target}`;'"
+                f"mariadb -e 'CREATE DATABASE {quoted_target};'"
                 if target_schema is not None
-                else f"mariadb -e 'CREATE DATABASE IF NOT EXISTS `{target}`;'"
+                else f"mariadb -e 'CREATE DATABASE IF NOT EXISTS {quoted_target};'"
             ),
             f"gunzip -c {artifact} | mariadb {target}",
             (
                 f"# Validate row counts / spot checks; retain `{target}` for destination comparison."
                 if target_schema is not None
-                else f"# Validate row counts / spot checks, then DROP DATABASE `{target}`;"
+                else f"# Validate row counts / spot checks, then DROP DATABASE {quoted_target};"
             ),
         ]
 

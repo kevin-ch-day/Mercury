@@ -6,11 +6,8 @@ from pydantic import BaseModel, Field
 
 from mercury.database.core import classify_database, exclusion_reason
 from mercury.database.mariadb.config import MariaDbConnectionConfig
+from mercury.database.mariadb.identifiers import sql_schema_literal
 from mercury.database.mariadb.session import MariaDbLiveError, readonly_row
-
-
-def _sql_escape_literal(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("'", "''")
 
 
 def _inspect_sql(schema: str) -> str:
@@ -65,8 +62,8 @@ def inspect_database_on_server(
 
     fetch_row = row_fn or readonly_row
 
-    escaped = _sql_escape_literal(name)
     try:
+        escaped = sql_schema_literal(name, what="inspect schema")
         inspect_row = fetch_row(config, _inspect_sql(escaped))
         if not inspect_row or len(inspect_row) < 4:
             raise ValueError("Unexpected inspect row")

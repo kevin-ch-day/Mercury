@@ -5,6 +5,8 @@ from typing import Literal
 from pydantic import BaseModel
 
 from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
+from mercury.database.mariadb.config import MariaDbConfigError, assert_tcp_tls_policy
+from mercury.database.mariadb.identifiers import assert_safe_identifier
 
 DumpKind = Literal["full", "schema_only"]
 
@@ -55,6 +57,7 @@ def build_planned_dump_command(
     tool: str = "mariadb-dump",
 ) -> str:
     """MariaDB logical dump command (plan/display only)."""
+    assert_safe_identifier(database, what="dump database")
     base = _connection_prefix(
         user=user, host=host, port=port, unix_socket=unix_socket, tool=tool
     )
@@ -97,7 +100,12 @@ def build_dump_argv(
     unix_socket: str | None = None,
     ssl_disabled: bool = True,
 ) -> list[str]:
-    """Build argv for subprocess (password supplied via MYSQL_PWD env)."""
+    """Build argv for subprocess (password via a private defaults-extra-file)."""
+    assert_safe_identifier(database, what="dump database")
+    try:
+        assert_tcp_tls_policy(host=host, unix_socket=unix_socket, ssl_disabled=ssl_disabled)
+    except MariaDbConfigError as exc:
+        raise ValueError(str(exc)) from exc
     argv = [tool, "-u", user]
     if unix_socket:
         argv[1:1] = [f"--socket={unix_socket}", "--protocol=SOCKET"]

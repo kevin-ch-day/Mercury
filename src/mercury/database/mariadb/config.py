@@ -1,6 +1,7 @@
 """MariaDB connection settings from config/local.toml and environment."""
 
 import os
+import re
 import stat
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from mercury.core.paths import LOCAL_EXAMPLE, resolve_local_config
 
 DEFAULT_PASSWORD_ENV = "MERCURY_MARIADB_PASSWORD"
 DEFAULT_UNIX_SOCKET = "/var/lib/mysql/mysql.sock"
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "localhost.localdomain"})
+_PASSWORD_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class MariaDbConfigError(Exception):
@@ -32,6 +35,38 @@ class MariaDbConnectionConfig(BaseModel):
     @property
     def uses_socket(self) -> bool:
         return bool(self.unix_socket)
+
+    @property
+    def uses_loopback_tcp(self) -> bool:
+        return not self.unix_socket and is_loopback_host(self.host)
+
+
+def is_loopback_host(host: str) -> bool:
+    return (host or "").strip().lower() in LOOPBACK_HOSTS
+
+
+def assert_tcp_tls_policy(
+    *,
+    host: str,
+    unix_socket: str | None,
+    ssl_disabled: bool,
+) -> None:
+    """Refuse cleartext MariaDB TCP to a non-loopback host."""
+    if unix_socket:
+        return
+    if ssl_disabled and not is_loopback_host(host):
+        raise MariaDbConfigError(
+            f"Remote MariaDB TCP ({host}) requires TLS. "
+            "Set ssl_disabled = false in config/local.toml."
+        )
+
+
+def assert_connection_tls(config: MariaDbConnectionConfig) -> None:
+    assert_tcp_tls_policy(
+        host=config.host,
+        unix_socket=config.unix_socket,
+        ssl_disabled=config.ssl_disabled,
+    )
 
 
 def _configured_secret_sources(section: dict[str, object]) -> list[str]:
@@ -87,6 +122,10 @@ def _resolve_password(section: dict[str, object], *, optional: bool = False) -> 
     source = sources[0]
     if source == "password_env":
         env_name = str(section["password_env"]).strip()
+        if not _PASSWORD_ENV_NAME.fullmatch(env_name):
+            raise MariaDbConfigError(
+                f"MariaDB password_env name is not a safe environment variable: {env_name!r}"
+            )
         value = os.environ.get(env_name)
         if not value:
             if optional:

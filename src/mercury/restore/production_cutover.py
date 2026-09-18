@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from mercury.database.mariadb.client import run_client_query, run_client_sql
+from mercury.database.mariadb.identifiers import quote_ident, sql_schema_literal
 from mercury.database.mariadb.session import fetch_user_database_names, try_load_mariadb_config
 from mercury.restore.destination_rehearsal import (
     PackageRestoreArtifact,
@@ -369,10 +370,11 @@ def _git_identity() -> dict[str, str]:
 
 
 def _metadata_reference_count(config, schema: str, needles: tuple[str, ...]) -> int:
-    if not schema.replace("_", "").isalnum():
-        raise ValueError("Unsafe schema identifier in metadata validation.")
+    schema = sql_schema_literal(schema, what="metadata schema")
+    safe_needles = [sql_schema_literal(needle, what="metadata needle") for needle in needles]
     quoted = " OR ".join(
-        f"definition_text LIKE '%`{needle}`.%' OR definition_text LIKE '%{needle}.%'" for needle in needles
+        f"definition_text LIKE '%`{needle}`.%' OR definition_text LIKE '%{needle}.%'"
+        for needle in safe_needles
     )
     sql = (
         "SELECT COUNT(*) FROM ("
@@ -607,7 +609,7 @@ def execute_production_cutover(
         for schema in reversed(created):
             event: dict[str, Any] = {
                 "schema": schema,
-                "command": f"DROP DATABASE IF EXISTS `{schema}`",
+                "command": f"DROP DATABASE IF EXISTS {quote_ident(schema, what='cutover rollback target')}",
                 "attempted": True,
                 "completed": False,
             }

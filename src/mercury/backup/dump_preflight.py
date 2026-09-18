@@ -19,8 +19,9 @@ from pydantic import BaseModel, Field
 
 from mercury.database.mariadb.config import MariaDbConnectionConfig
 from mercury.database.mariadb.errors import MariaDbLiveError
+from mercury.database.mariadb.identifiers import SAFE_IDENTIFIER as _SAFE_IDENTIFIER
+from mercury.database.mariadb.identifiers import quote_ident, sql_schema_literal
 
-_SAFE_IDENTIFIER = re.compile(r"^[A-Za-z0-9_$]+$")
 _SHOW_CREATE_NAME_RE = re.compile(
     r"show create (?:table|view)\s+(?:`[^`]+`\s*\.\s*)?`?([A-Za-z0-9_$]+)`?",
     re.IGNORECASE,
@@ -167,12 +168,6 @@ def format_undumpable_next_action(
         f"Recreate undumpable {owner} {view_label}, "
         "then rerun Backup production."
     )
-
-
-def quote_ident(name: str) -> str:
-    if not _SAFE_IDENTIFIER.fullmatch(name):
-        raise ValueError(f"Unsafe SQL identifier: {name!r}")
-    return f"`{name}`"
 
 
 def collation_mix_pair(detail: str) -> tuple[str, str] | None:
@@ -388,13 +383,12 @@ def fetch_live_view_names(
     scalars: Callable[[MariaDbConnectionConfig, str], list[str]] | None = None,
 ) -> list[str]:
     """Read-only view names for dumpability (information_schema only)."""
-    if not _SAFE_IDENTIFIER.fullmatch(database):
-        raise ValueError(f"Unsafe database identifier: {database!r}")
+    schema = sql_schema_literal(database, what="database identifier")
     from mercury.database.mariadb.session import readonly_scalars
 
     query = (
         "SELECT TABLE_NAME FROM information_schema.TABLES "
-        f"WHERE TABLE_SCHEMA = '{database}' AND TABLE_TYPE = 'VIEW'"
+        f"WHERE TABLE_SCHEMA = '{schema}' AND TABLE_TYPE = 'VIEW'"
     )
     runner = scalars or readonly_scalars
     return sorted(set(runner(config, query)))

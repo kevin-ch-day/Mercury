@@ -16,10 +16,12 @@ from mercury.database.mariadb.client import (
 from mercury.database.mariadb.config import (
     MariaDbConfigError,
     MariaDbConnectionConfig,
+    assert_connection_tls,
     load_mariadb_config,
     load_mariadb_restore_config,
 )
 from mercury.database.mariadb.errors import MariaDbDriverMissingError, MariaDbLiveError
+from mercury.database.mariadb.readonly_sql import assert_live_readonly_sql
 from mercury.core.paths import resolve_local_config
 
 SYSTEM_DATABASES = frozenset(
@@ -84,6 +86,10 @@ def try_load_mariadb_restore_config(path: Path | None = None) -> MariaDbConnecti
 
 
 def _connect_kwargs(config: MariaDbConnectionConfig) -> dict:
+    try:
+        assert_connection_tls(config)
+    except MariaDbConfigError as exc:
+        raise MariaDbLiveError(str(exc)) from exc
     kwargs: dict = {
         "user": config.user,
         "password": config.password,
@@ -139,6 +145,7 @@ def _pymysql_fetch_scalars(connection, sql: str) -> list[str]:
 
 def readonly_scalar(config: MariaDbConnectionConfig, sql: str) -> str:
     """Run a read-only scalar query via configured access mode."""
+    assert_live_readonly_sql(sql)
     if config.use_client:
         return client_fetch_scalar(config, sql)
     connection = connect_mariadb(config)
@@ -150,6 +157,7 @@ def readonly_scalar(config: MariaDbConnectionConfig, sql: str) -> str:
 
 def readonly_scalars(config: MariaDbConnectionConfig, sql: str) -> list[str]:
     """Run a read-only multi-row single-column query."""
+    assert_live_readonly_sql(sql)
     if config.use_client:
         return client_fetch_scalars(config, sql)
     connection = connect_mariadb(config)
@@ -161,6 +169,7 @@ def readonly_scalars(config: MariaDbConnectionConfig, sql: str) -> list[str]:
 
 def readonly_row(config: MariaDbConnectionConfig, sql: str) -> list[str]:
     """Run a read-only query and return the first row as string columns."""
+    assert_live_readonly_sql(sql)
     if config.use_client:
         from mercury.database.mariadb.client import run_client_query
 

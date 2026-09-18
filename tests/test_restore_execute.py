@@ -26,6 +26,25 @@ def test_assert_safe_restore_target_blocks_prod() -> None:
         assert_safe_restore_target("erebus_threat_intel_prod")
 
 
+def test_assert_safe_restore_target_blocks_identifier_injection() -> None:
+    with pytest.raises(BackupExecutionError, match="Unsafe SQL restore target"):
+        assert_safe_restore_target("evil_dev`; DROP DATABASE `android_permission_intel")
+
+
+def test_execute_restore_refuses_identifier_injection_before_sql(tmp_path: Path) -> None:
+    dump = tmp_path / "erebus.sql.gz"
+    dump.write_bytes(b"fake")
+    policy = ExecutionPolicy(dry_run=False, live_actions_enabled=True, backup_root=tmp_path)
+    with pytest.raises(BackupExecutionError, match="Unsafe SQL restore target"):
+        execute_restore_into_database(
+            target_database="evil_dev`; DROP DATABASE `erebus_threat_intel_prod",
+            dump_path=dump,
+            source_database="erebus_threat_intel_prod",
+            execute=False,
+            policy=policy,
+        )
+
+
 def test_execute_restore_dry_run(tmp_path: Path) -> None:
     dump = tmp_path / "erebus.sql.gz"
     dump.write_bytes(b"fake")

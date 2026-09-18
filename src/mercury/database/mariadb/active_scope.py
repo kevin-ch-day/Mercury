@@ -14,6 +14,7 @@ from mercury.database.core.scope import (
     is_active_sync_source,
 )
 from mercury.database.mariadb.config import MariaDbConnectionConfig
+from mercury.database.mariadb.identifiers import sql_schema_literal
 from mercury.database.mariadb.readonly_session import readonly_connection
 from mercury.terminal.format import format_bytes
 
@@ -51,13 +52,10 @@ def _active_scope_names() -> list[str]:
     return sorted(ACTIVE_BACKUP_SOURCE_DATABASES | ACTIVE_DEV_RECOVERY_DATABASES)
 
 
-def _sql_literal(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("'", "''")
-
-
 def _scope_sql() -> str:
     selects = " UNION ALL ".join(
-        f"SELECT '{_sql_literal(name)}' AS scope_name" for name in _active_scope_names()
+        f"SELECT '{sql_schema_literal(name, what='scope database')}' AS scope_name"
+        for name in _active_scope_names()
     )
     return (
         "SELECT scope.scope_name, "

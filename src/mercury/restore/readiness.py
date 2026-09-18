@@ -23,6 +23,7 @@ from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.core.runtime import should_probe_database_status
 from mercury.database.core import classify_database
 from mercury.database.mariadb.config import MariaDbConnectionConfig
+from mercury.database.mariadb.identifiers import sql_schema_literal
 from mercury.database.mariadb.inspect import inspect_database_on_server
 from mercury.database.mariadb.session import readonly_scalars, try_load_mariadb_config
 
@@ -108,10 +109,6 @@ def canonical_tables_for(database: str) -> tuple[str, ...]:
     return CANONICAL_TABLES_BY_DATABASE.get(database, ())
 
 
-def _sql_escape_literal(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("'", "''")
-
-
 def _open_text_artifact(path: Path):
     if path.suffix == ".gz" or path.name.endswith(".sql.gz"):
         return gzip.open(path, "rt", encoding="utf-8", errors="replace")
@@ -170,7 +167,7 @@ def fetch_live_base_table_names(
 ) -> list[str]:
     """Read-only list of base table names for a database."""
     fetch = scalars_fn or readonly_scalars
-    escaped = _sql_escape_literal(database)
+    escaped = sql_schema_literal(database, what="readiness schema")
     sql = (
         "SELECT table_name FROM information_schema.tables "
         f"WHERE table_schema = '{escaped}' AND table_type = 'BASE TABLE' "

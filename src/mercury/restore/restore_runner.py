@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import json
+import shlex
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -13,14 +13,22 @@ from pydantic import BaseModel, Field
 
 from mercury.backup.backup_runner import BackupExecutionError, assert_not_production_restore_target
 from mercury.database.core import DatabaseRole, classify_database
-from mercury.database.mariadb.client import run_client_query, run_client_sql, select_client_tool
+from mercury.database.mariadb.client import (
+    client_process_credentials,
+    prepend_client_defaults,
+    run_client_query,
+    run_client_sql,
+    select_client_tool,
+)
 from mercury.database.mariadb.config import (
     MariaDbConfigError,
     MariaDbConnectionConfig,
+    assert_connection_tls,
     load_mariadb_config,
     load_mariadb_restore_config,
 )
 from mercury.database.mariadb.errors import MariaDbLiveError
+from mercury.database.mariadb.identifiers import assert_safe_identifier, quote_ident
 from mercury.database.mariadb.session import try_load_mariadb_config
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
 from mercury.backup.checksum import sha256_file
@@ -49,8 +57,16 @@ class RestoreExecutionResult(BaseModel):
     receipt_path: str | None = None
 
 
+def _quote_restore_ident(name: str, *, what: str) -> str:
+    try:
+        return quote_ident(name, what=what)
+    except ValueError as exc:
+        raise BackupExecutionError(str(exc)) from exc
+
+
 def assert_safe_restore_target(database: str) -> None:
     """Only disposable dev targets and _restorecheck_* temp databases."""
+    _quote_restore_ident(database, what="restore target")
     assert_not_production_restore_target(database, operation="restore")
     role = classify_database(database).role
     if role in {DatabaseRole.DEVELOPMENT, DatabaseRole.RESTORE_CHECK_TEMP}:
@@ -68,6 +84,7 @@ def assert_governed_production_cutover_target(database: str) -> None:
     package, rehearsal evidence, a one-time preview receipt, and a rollback
     contract before it can call this executor.
     """
+    _quote_restore_ident(database, what="production cutover target")
     if database not in {"android_permission_intel", "erebus_threat_intel_prod"}:
         raise BackupExecutionError(
             f"Refusing governed production restore into unexpected target '{database}'."
@@ -76,6 +93,7 @@ def assert_governed_production_cutover_target(database: str) -> None:
 
 def assert_governed_destination_recovery_target(database: str) -> None:
     """Allow only the five explicitly approved missing destination schemas."""
+    _quote_restore_ident(database, what="destination recovery target")
     allowed = {
         "android_permission_intel_dev",
         "erebus_threat_intel_dev",
@@ -90,6 +108,11 @@ def assert_governed_destination_recovery_target(database: str) -> None:
 
 
 def build_import_argv(config: MariaDbConnectionConfig, database: str) -> list[str]:
+    try:
+        assert_safe_identifier(database, what="import target")
+        assert_connection_tls(config)
+    except (ValueError, MariaDbConfigError) as exc:
+        raise BackupExecutionError(str(exc)) from exc
     tool = select_client_tool()
     argv = [tool, "-u", config.user, "--max-allowed-packet=1G", database]
     if config.unix_socket:
@@ -101,11 +124,11 @@ def build_import_argv(config: MariaDbConnectionConfig, database: str) -> list[st
     return argv
 
 
-def _client_env(config: MariaDbConnectionConfig) -> dict[str, str]:
-    env = os.environ.copy()
-    if config.password:
-        env["MYSQL_PWD"] = config.password
-    return env
+def _assert_regular_dump_file(path: Path) -> None:
+    if path.is_symlink():
+        raise BackupExecutionError(f"Refusing symlink dump path: {path}")
+    if not path.is_file():
+        raise BackupExecutionError(f"Dump file not found: {path}")
 
 
 def _execute_client_sql(config: MariaDbConnectionConfig, sql: str) -> None:
@@ -214,19 +237,28 @@ def execute_restore_into_database(
         assert_governed_destination_recovery_target(target_database)
     else:
         assert_safe_restore_target(target_database)
+    quoted_target = _quote_restore_ident(target_database, what="restore target")
+    _quote_restore_ident(source_database, what="restore source")
+    if schema_rewrites:
+        for source, target in schema_rewrites.items():
+            _quote_restore_ident(source, what="schema rewrite source")
+            _quote_restore_ident(target, what="schema rewrite target")
     resolved = policy or load_execution_policy()
-    dump_path = dump_path.resolve()
+    given_dump = dump_path.expanduser()
+    if given_dump.is_symlink():
+        raise BackupExecutionError(f"Refusing symlink dump path: {given_dump}")
+    dump_path = given_dump.resolve()
     commands: list[str] = []
 
     if recreate_target:
-        commands.append(f"DROP DATABASE IF EXISTS `{target_database}`")
-        commands.append(f"CREATE DATABASE `{target_database}`")
+        commands.append(f"DROP DATABASE IF EXISTS {quoted_target}")
+        commands.append(f"CREATE DATABASE {quoted_target}")
     else:
-        commands.append(f"CREATE DATABASE `{target_database}`")
-    commands.append(f"gunzip -c {dump_path} | mariadb {target_database}")
+        commands.append(f"CREATE DATABASE {quoted_target}")
+    commands.append(f"gunzip -c {shlex.quote(str(dump_path))} | mariadb {target_database}")
     cleanup_command = None
     if cleanup_after_success and classify_database(target_database).role == DatabaseRole.RESTORE_CHECK_TEMP:
-        cleanup_command = f"DROP DATABASE IF EXISTS `{target_database}`"
+        cleanup_command = f"DROP DATABASE IF EXISTS {quoted_target}"
 
     if not execute:
         return RestoreExecutionResult(
@@ -402,22 +434,30 @@ def execute_restore_into_database(
 
     target_created = False
     try:
+        _assert_regular_dump_file(dump_path)
         if recreate_target:
-            _execute_client_sql(cfg, f"DROP DATABASE IF EXISTS `{target_database}`")
-        _execute_client_sql(cfg, f"CREATE DATABASE `{target_database}`")
+            _execute_client_sql(cfg, f"DROP DATABASE IF EXISTS {quoted_target}")
+        _execute_client_sql(cfg, f"CREATE DATABASE {quoted_target}")
         target_created = True
         # The production-cutover lane uses this callback to record rollback
         # ownership before the first dump statement is streamed.  A dump can
         # fail on its opening DROP TABLE after CREATE DATABASE succeeds.
         if on_target_created is not None:
             on_target_created(target_database)
-        runner(import_argv, _client_env(cfg), dump_path, cfg, target_database)
+        with client_process_credentials(cfg) as (env, extra):
+            runner(
+                prepend_client_defaults(import_argv, extra),
+                env,
+                dump_path,
+                cfg,
+                target_database,
+            )
     except BackupExecutionError as exc:
         rollback_note = ""
         cleanup_dropped = False
         if rollback_new_target_on_failure and target_created:
             try:
-                _execute_client_sql(cfg, f"DROP DATABASE `{target_database}`")
+                _execute_client_sql(cfg, f"DROP DATABASE {quoted_target}")
                 cleanup_dropped = True
                 rollback_note = " Newly created target was rolled back."
             except BackupExecutionError as rollback_exc:

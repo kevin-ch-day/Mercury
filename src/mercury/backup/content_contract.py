@@ -17,9 +17,9 @@ from pydantic import BaseModel, Field
 from mercury.backup.checksum import sha256_file
 
 from mercury.database.mariadb.config import MariaDbConnectionConfig
+from mercury.database.mariadb.identifiers import sql_schema_literal
 from mercury.database.mariadb.session import readonly_scalars
 
-_SAFE_IDENTIFIER = re.compile(r"^[A-Za-z0-9_$]+$")
 _VERSION_COMMENT = re.compile(r"/\*!\d{5}\s*")
 _CREATE_OBJECT_RE = re.compile(
     r"^\s*CREATE\b(?:\s+OR\s+REPLACE\b)?"
@@ -128,9 +128,7 @@ class RestoreRequirementsContract(BaseModel):
 
 
 def _quote_schema(database: str) -> str:
-    if not _SAFE_IDENTIFIER.fullmatch(database):
-        raise ValueError(f"Unsafe database identifier: {database!r}")
-    return database.replace("'", "''")
+    return sql_schema_literal(database, what="database identifier")
 
 
 def fetch_live_object_inventory(

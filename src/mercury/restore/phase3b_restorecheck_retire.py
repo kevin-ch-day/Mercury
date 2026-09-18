@@ -25,6 +25,7 @@ import subprocess
 from typing import Any, Callable, Protocol
 
 from mercury.core.storage_roles import CONTROL_DIRNAME, DEFAULT_PRIMARY_MOUNT
+from mercury.database.mariadb.identifiers import assert_safe_identifier, quote_ident
 from mercury.restore.check_cleanup import (
     RestoreCheckCleanupResult,
     assert_restorecheck_database,
@@ -59,7 +60,6 @@ DEFAULT_RECEIPT_ROOT = (
     Path(DEFAULT_PRIMARY_MOUNT) / CONTROL_DIRNAME / "restorecheck_retirement"
 )
 
-_SAFE_IDENT = re.compile(r"^[A-Za-z0-9_]+$")
 _GRANTEE_PRIV = re.compile(r"^('[^']+'@'[^']+')\s+(.+)$")
 PHASE3B_CUTOFF = datetime(2026, 7, 22, 6, 0, tzinfo=timezone.utc)
 
@@ -108,9 +108,7 @@ def _now() -> str:
 
 
 def _require_ident(name: str) -> str:
-    if not _SAFE_IDENT.fullmatch(name):
-        raise ValueError(f"Unsafe SQL identifier: {name!r}")
-    return name
+    return assert_safe_identifier(name)
 
 
 def _sha256_file(path: Path) -> str:
@@ -177,8 +175,8 @@ def proposed_drop_sql(pi_schema: str, erebus_schema: str) -> list[str]:
     for name in (pi_schema, erebus_schema):
         assert_not_protected(name)
     return [
-        f"DROP DATABASE `{pi_schema}`;",
-        f"DROP DATABASE `{erebus_schema}`;",
+        f"DROP DATABASE {quote_ident(pi_schema)};",
+        f"DROP DATABASE {quote_ident(erebus_schema)};",
     ]
 
 

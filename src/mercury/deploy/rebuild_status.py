@@ -54,6 +54,7 @@ def detect_leftover_databases(server_names: set[str]) -> list[tuple[str, str]]:
     """Return non-protected server databases with cleanup SQL suggestions."""
     from mercury.backup.batch_runner import resolve_batch_sources
     from mercury.database.core import classify_database
+    from mercury.database.mariadb.identifiers import SAFE_IDENTIFIER, quote_ident
 
     protected = set(resolve_batch_sources(live=True))
     system_names = {
@@ -69,12 +70,14 @@ def detect_leftover_databases(server_names: set[str]) -> list[tuple[str, str]]:
         classification = classify_database(name)
         if classification.role.value == "development":
             continue
+        if not SAFE_IDENTIFIER.fullmatch(name):
+            continue
         if not (classification.manual_review or name.endswith("_test") or "_test" in name):
             continue
         suggestions.append(
             (
                 name,
-                f"mariadb -e \"DROP DATABASE IF EXISTS `{name}`;\"  # non-protected leftover",
+                f"mariadb -e \"DROP DATABASE IF EXISTS {quote_ident(name)};\"  # non-protected leftover",
             )
         )
     return suggestions

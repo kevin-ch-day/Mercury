@@ -58,6 +58,14 @@ def test_cleanup_batch_dry_run() -> None:
     assert batch.results[0].dry_run is True
 
 
+def test_generic_cleanup_refuses_identifier_injection() -> None:
+    with pytest.raises(BackupExecutionError, match="Unsafe SQL restore-check database"):
+        drop_restorecheck_database(
+            "_restorecheck_x`; DROP DATABASE `erebus_threat_intel_prod",
+            execute=False,
+        )
+
+
 def test_generic_cleanup_refuses_retained_phase3b_schemas() -> None:
     name = next(iter(PHASE3B_RETAINED_RESTORECHECK))
     result = drop_restorecheck_database(name, execute=False)
