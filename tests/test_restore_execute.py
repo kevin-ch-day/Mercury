@@ -181,7 +181,35 @@ def test_execute_restore_rejects_general_config_after_dedicated_preflight(
     assert calls == []
 
 
-def test_restore_check_auto_drops_temp_database_on_success(tmp_path: Path) -> None:
+def test_restore_check_rejects_general_config_when_dedicated_lane_required(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mercury.database.mariadb.config import MariaDbConnectionConfig
+
+    dump = tmp_path / "erebus.sql.gz"
+    dump.write_bytes(b"fake")
+    policy = ExecutionPolicy(dry_run=False, live_actions_enabled=True, backup_root=tmp_path)
+    general = MariaDbConnectionConfig(host="localhost", user="systemadmin")
+    dedicated = MariaDbConnectionConfig(host="localhost", user="mercury_dev_restore")
+    monkeypatch.setattr(
+        "mercury.restore.restore_runner.load_mariadb_restore_config", lambda: dedicated
+    )
+
+    result = execute_restore_into_database(
+        target_database="_restorecheck_erebus_threat_intel_prod_20260608",
+        dump_path=dump,
+        source_database="erebus_threat_intel_prod",
+        execute=True,
+        policy=policy,
+        config=general,
+        cleanup_after_success=True,
+    )
+
+    assert result.refused is True
+    assert "does not match dedicated" in result.message
+
+
+def test_restore_check_auto_drops_temp_database_on_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     dump = tmp_path / "erebus.sql.gz"
     dump.write_bytes(b"fake")
     policy = ExecutionPolicy(
@@ -210,6 +238,9 @@ def test_restore_check_auto_drops_temp_database_on_success(tmp_path: Path) -> No
     def fake_sql(cfg, sql: str) -> None:
         calls.append(sql)
 
+    monkeypatch.setattr(
+        "mercury.restore.restore_runner.load_mariadb_restore_config", lambda: config
+    )
     import mercury.restore.restore_runner as restore_execute
 
     original = restore_execute._execute_client_sql
@@ -234,7 +265,7 @@ def test_restore_check_auto_drops_temp_database_on_success(tmp_path: Path) -> No
     assert any("DROP DATABASE IF EXISTS `_restorecheck_erebus_threat_intel_prod_20260608`" == call for call in calls)
 
 
-def test_restore_check_preserves_temp_database_on_failure(tmp_path: Path) -> None:
+def test_restore_check_preserves_temp_database_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     dump = tmp_path / "erebus.sql.gz"
     dump.write_bytes(b"fake")
     policy = ExecutionPolicy(
@@ -259,6 +290,10 @@ def test_restore_check_preserves_temp_database_on_failure(tmp_path: Path) -> Non
         unix_socket="/var/lib/mysql/mysql.sock",
     )
 
+    monkeypatch.setattr(
+        "mercury.restore.restore_runner.load_mariadb_restore_config", lambda: config
+    )
+
     result = execute_restore_into_database(
         target_database="_restorecheck_erebus_threat_intel_prod_20260608",
         dump_path=dump,
@@ -277,7 +312,7 @@ def test_restore_check_preserves_temp_database_on_failure(tmp_path: Path) -> Non
     assert "preserved for debugging" in result.message
 
 
-def test_execute_restore_marks_verification_failure_and_preserves_restorecheck_db(tmp_path: Path) -> None:
+def test_execute_restore_marks_verification_failure_and_preserves_restorecheck_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     dump = tmp_path / "erebus.sql.gz"
     dump.write_bytes(b"fake")
     (tmp_path / "manifest.json").write_text('{"database":"erebus_threat_intel_prod"}', encoding="utf-8")
@@ -319,6 +354,9 @@ def test_execute_restore_marks_verification_failure_and_preserves_restorecheck_d
             issues=["table count is zero"],
         )
 
+    monkeypatch.setattr(
+        "mercury.restore.restore_runner.load_mariadb_restore_config", lambda: config
+    )
     import mercury.restore.restore_runner as restore_execute
 
     original_sql = restore_execute._execute_client_sql

@@ -249,6 +249,14 @@ def execute_restore_into_database(
             or governed_destination_recovery
         )
     )
+    ordinary_restore_check = (
+        execute
+        and recreate_target
+        and cleanup_after_success
+        and classify_database(target_database).role == DatabaseRole.RESTORE_CHECK_TEMP
+        and not governed_destination_rehearsal
+    )
+    dedicated_restore_lane_required = ordinary_live_dev_reset or ordinary_restore_check
     if require_restore_preflight or ordinary_live_dev_reset:
         issues: list[str] = []
         if restore_preflight is None or not getattr(restore_preflight, "passed", False):
@@ -282,7 +290,7 @@ def execute_restore_into_database(
                 try:
                     identity_cfg = (
                         config
-                        or (load_mariadb_restore_config() if ordinary_live_dev_reset else None)
+                        or (load_mariadb_restore_config() if dedicated_restore_lane_required else None)
                         or try_load_mariadb_config()
                         or load_mariadb_config()
                     )
@@ -302,10 +310,10 @@ def execute_restore_into_database(
                 cleanup_command=cleanup_command,
             )
 
-    # An ordinary reset is never allowed to substitute the general/source
-    # credential after a dedicated preflight.  Sync passes this same object
-    # explicitly; direct callers must resolve to the same dedicated lane.
-    if ordinary_live_dev_reset:
+    # Ordinary dev resets and disposable restore-checks must never substitute
+    # the general/source credential. Direct callers must resolve to the same
+    # dedicated restore lane as the CLI and interactive workflows.
+    if dedicated_restore_lane_required:
         try:
             dedicated_cfg = load_mariadb_restore_config()
         except MariaDbConfigError as exc:
