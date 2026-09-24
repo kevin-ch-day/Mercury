@@ -7,10 +7,13 @@ from pydantic import BaseModel, Field
 from mercury.backup.backup_runner import BackupExecutionError
 from mercury.database.core import DatabaseRole, classify_database
 from mercury.database.mariadb.client import run_client_sql
-from mercury.database.mariadb.config import MariaDbConnectionConfig, load_mariadb_config
+from mercury.database.mariadb.config import (
+    MariaDbConnectionConfig,
+    load_mariadb_restore_config,
+)
 from mercury.database.mariadb.errors import MariaDbLiveError
 from mercury.database.mariadb.identifiers import quote_ident
-from mercury.database.mariadb.session import try_load_mariadb_config
+from mercury.database.mariadb.session import try_load_mariadb_restore_config
 
 # Phase 3B retained rehearsal copies. Generic cleanup must not drop them;
 # use mercury restore-check retire-phase3b-restorecheck.
@@ -90,9 +93,9 @@ def drop_restorecheck_database(
             message=f"Would drop restore-check database {database} with {command}.",
         )
 
-    cfg = config or try_load_mariadb_config()
+    cfg = config or try_load_mariadb_restore_config()
     if cfg is None:
-        cfg = load_mariadb_config()
+        cfg = load_mariadb_restore_config()
 
     try:
         run_client_sql(cfg, command)
@@ -139,6 +142,6 @@ def discover_restorecheck_names() -> list[str]:
         return []
     try:
         inventory = discover("live")
-    except Exception:
+    except Exception:  # noqa: BLE001 - optional dashboard discovery fails closed
         return []
     return list_restorecheck_databases([entry.name for entry in inventory.entries])

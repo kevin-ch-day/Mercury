@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from mercury.backup.backup_runner import BackupExecutionError
+from mercury.database.mariadb.config import MariaDbConnectionConfig
 from mercury.restore.check_cleanup import (
     PHASE3B_RETAINED_RESTORECHECK,
     assert_restorecheck_database,
@@ -56,6 +57,33 @@ def test_cleanup_batch_dry_run() -> None:
     assert batch.mode == "dry-run"
     assert len(batch.databases) == 1
     assert batch.results[0].dry_run is True
+
+
+def test_live_cleanup_defaults_to_dedicated_restore_account(monkeypatch) -> None:
+    config = MariaDbConnectionConfig(
+        host="localhost",
+        user="mercury_dev_restore",
+        unix_socket="/var/lib/mysql/mysql.sock",
+        use_client=True,
+    )
+    captured = {}
+    monkeypatch.setattr(
+        "mercury.restore.check_cleanup.try_load_mariadb_restore_config",
+        lambda: config,
+    )
+    monkeypatch.setattr(
+        "mercury.restore.check_cleanup.run_client_sql",
+        lambda actual, sql: captured.update(config=actual, sql=sql),
+    )
+
+    result = drop_restorecheck_database(
+        "_restorecheck_erebus_threat_intel_prod_20260530",
+        execute=True,
+    )
+
+    assert result.dropped is True
+    assert captured["config"] is config
+    assert captured["sql"].startswith("DROP DATABASE IF EXISTS")
 
 
 def test_generic_cleanup_refuses_identifier_injection() -> None:

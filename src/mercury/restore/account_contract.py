@@ -1,6 +1,6 @@
 """Read-only dedicated restore-account contract; all DCL remains DBA-owned.
 
-Run ``python -m mercury.restore.account_contract [--pi-read-window]``.
+Run ``python -m mercury.restore.account_contract [--pi-read-window] [--compact]``.
 Raw SHOW GRANTS (which may include authentication material) is never emitted.
 """
 
@@ -59,6 +59,31 @@ DEV_RIGHTS = frozenset(
         "DELETE HISTORY",
     }
 )
+
+
+def compact_status(result: dict) -> str:
+    """Render the contract result without the large expected-rights inventory."""
+    status = str(result.get("status") or "UNKNOWN")
+    principal = str(result.get("current_user") or "unavailable")
+    pi_window = "active" if result.get("pi_read_window") else "inactive"
+    missing = result.get("missing") if isinstance(result.get("missing"), dict) else {}
+    excess = result.get("excess") if isinstance(result.get("excess"), list) else []
+    lines = [
+        f"Restore account :: {status}",
+        f"Principal       :: {principal}",
+        f"PI read window  :: {pi_window}",
+        f"Missing scopes  :: {len(missing)}",
+        f"Excess findings :: {len(excess)}",
+    ]
+    for scope, rights in sorted(missing.items()):
+        values = ", ".join(str(value) for value in rights)
+        lines.append(f"Missing         :: {scope}: {values}")
+    for finding in excess:
+        lines.append(f"Excess          :: {finding}")
+    detail = result.get("detail")
+    if detail:
+        lines.append(f"Detail          :: {detail}")
+    return "\n".join(lines)
 
 
 def assess_account(
@@ -144,6 +169,11 @@ def main() -> int:
         action="store_true",
         help="Expect temporary PI SELECT during an explicitly approved rehearsal",
     )
+    parser.add_argument(
+        "--compact",
+        action="store_true",
+        help="Print a short operator status instead of the complete JSON contract",
+    )
     args = parser.parse_args()
     from mercury.database.mariadb.client import run_client_query
     from mercury.database.mariadb.config import load_mariadb_restore_config
@@ -166,16 +196,13 @@ def main() -> int:
         )
     except Exception:  # noqa: BLE001 - never print connector/config secrets
         # Exceptions from connectors/configuration may contain sensitive details.
-        print(
-            json.dumps(
-                {
-                    "status": "INSPECTION_FAILED",
-                    "detail": "Cannot inspect dedicated restore account; check private configuration and connectivity.",
-                }
-            )
-        )
+        failure = {
+            "status": "INSPECTION_FAILED",
+            "detail": "Cannot inspect dedicated restore account; check private configuration and connectivity.",
+        }
+        print(compact_status(failure) if args.compact else json.dumps(failure))
         return 2
-    print(json.dumps(result, indent=2, sort_keys=True))
+    print(compact_status(result) if args.compact else json.dumps(result, indent=2, sort_keys=True))
     return 0 if result["status"] == "EXACT" else 1
 
 

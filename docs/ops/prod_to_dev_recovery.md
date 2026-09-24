@@ -105,9 +105,9 @@ The authoritative machine-readable contract is
 output):
 
 ```bash
-.venv/bin/python -m mercury.restore.account_contract
+.venv/bin/python -m mercury.restore.account_contract --compact
 # During a separately approved exact-backup PI read window:
-.venv/bin/python -m mercury.restore.account_contract --pi-read-window
+.venv/bin/python -m mercury.restore.account_contract --pi-read-window --compact
 ```
 
 Status is EXACT, MISSING, BROADER, or INSPECTION_FAILED. Exit zero means EXACT.

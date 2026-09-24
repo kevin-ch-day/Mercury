@@ -6,6 +6,7 @@ from mercury.restore.account_contract import (
     TEMP_RIGHTS,
     TEMP_SCOPE,
     assess_account,
+    compact_status,
 )
 
 
@@ -37,6 +38,17 @@ def test_exact_and_temporary_read_window():
     assert assess(grants(), pi_read_window=True)["status"] == "MISSING"
     assert assess(grants(True))["status"] == "BROADER"
     assert "SECRET_VERIFIER" not in str(assess(grants()))
+
+
+def test_compact_status_omits_expected_rights_inventory():
+    result = assess(grants())
+
+    output = compact_status(result)
+
+    assert "Restore account :: EXACT" in output
+    assert "PI read window  :: inactive" in output
+    assert "Missing scopes  :: 0" in output
+    assert "CREATE ROUTINE" not in output
 
 
 def test_old_contract_missing_routines():
@@ -127,4 +139,6 @@ def test_help_never_loads_private_configuration(monkeypatch, capsys):
     with pytest.raises(SystemExit) as error:
         main()
     assert error.value.code == 0
-    assert "--pi-read-window" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "--pi-read-window" in output
+    assert "--compact" in output
