@@ -82,6 +82,7 @@ def test_demo_catalog_matches_real_platform_databases() -> None:
     names = set(PLATFORM_DATABASES)
     assert names == {
         "erebus_threat_intel_prod",
+        "erebus_provider_secrets_prod",
         "erebus_threat_intel_dev",
         "android_permission_intel",
         "android_permission_intel_dev",

@@ -4,6 +4,7 @@
 
 [databases]
 # Production (active backup sources for the current Mercury milestone)
+erebus_provider_secrets_prod = { host = "localhost", port = 3306 }
 erebus_threat_intel_prod = { host = "localhost", port = 3306 }
 scytaledroid_core_prod = { host = "localhost", port = 3306 }
 obsidiandroid_core_prod = { host = "localhost", port = 3306 }

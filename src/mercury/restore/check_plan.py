@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -39,7 +40,23 @@ class RestoreCheckPlan(BaseModel):
     target_completeness: TargetCompletenessEntry | None = None
 
 
-def planned_restore_check_name(prod_database: str, *, date: str | None = None) -> str:
+def planned_restore_check_name(
+    prod_database: str,
+    *,
+    date: str | None = None,
+    backup_id: str | None = None,
+) -> str:
+    """Return a deterministic disposable restore-check schema name.
+
+    Exact backup IDs use their YYYYMMDD_HHMMSS_mmm suffix so separate backups
+    on the same day never share a restore target. Legacy/date-only callers keep
+    the existing YYYYMMDD behavior.
+    """
+    if backup_id:
+        match = re.search(r"(\d{8}_\d{6}_\d{3})$", backup_id)
+        if match:
+            return f"_restorecheck_{prod_database}_{match.group(1)}"
+
     day = date or datetime.now(timezone.utc).strftime("%Y%m%d")
     return f"_restorecheck_{prod_database}_{day}"
 
@@ -65,7 +82,9 @@ def build_restore_check_plan(
     """
     classification = classify_database(prod_database)
     policy = load_execution_policy()
-    target = target_schema or planned_restore_check_name(prod_database)
+    target = target_schema or planned_restore_check_name(
+        prod_database, backup_id=backup_id
+    )
     blockers: list[str] = []
     safety = [
         "Restore-check targets _restorecheck_* temp databases only.",

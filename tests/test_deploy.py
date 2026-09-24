@@ -526,6 +526,46 @@ def test_verification_compares_row_counts_when_manifest_has_them(tmp_path: Path)
     assert not bad.verified
 
 
+def test_verification_fails_closed_when_manifest_trigger_is_missing(tmp_path: Path) -> None:
+    from mercury.backup.content_contract import BackupObjectInventory
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "database": "erebus_threat_intel_prod",
+                "object_contract": {
+                    "dump": {
+                        "tables": ["malware_processing_admission_identity"],
+                        "views": ["v_malware_processing_admission_effective"],
+                        "triggers": ["processing_identity_no_update"],
+                        "procedures": [], "functions": [], "events": [],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = MariaDbConnectionConfig(
+        host="127.0.0.1", port=3306, user="linuxadmin", password="",
+        use_client=True, unix_socket="/var/lib/mysql/mysql.sock",
+    )
+    result = verify_deployed_database(
+        "erebus_threat_intel_prod",
+        manifest_path=manifest,
+        config=config,
+        row_fn=lambda _cfg, _sql: (1, 1, 1, 4096),
+        inventory_fn=lambda _cfg, _database: BackupObjectInventory(
+            tables=["malware_processing_admission_identity"],
+            views=["v_malware_processing_admission_effective"],
+        ),
+    )
+    assert result.verified is False
+    assert result.issues == [
+        "object contract: triggers: dump missing processing_identity_no_update"
+    ]
+
+
 def test_no_drop_database_unless_explicit_overwrite() -> None:
     commands, _ = planned_import_commands(
         target_database="erebus_threat_intel_prod",

@@ -97,3 +97,78 @@ Preflight receipts bind the source/target, backup identity and checksum, restore
 identity, and required/effective capabilities while recording that the target was
 untouched. `sync_events.csv` records sync execution outcome and selected backup
 directory. Backup manifests and checksums remain alongside each backup artifact.
+
+## Restore-check account contract (v1)
+
+The authoritative machine-readable contract is
+`mercury.restore.account_contract`. Read-only status (no DCL or credentials in
+output):
+
+```bash
+.venv/bin/python -m mercury.restore.account_contract
+# During a separately approved exact-backup PI read window:
+.venv/bin/python -m mercury.restore.account_contract --pi-read-window
+```
+
+Status is EXACT, MISSING, BROADER, or INSPECTION_FAILED. Exit zero means EXACT.
+Repeat status is non-mutating. The ordinary managed-account artifact preflight
+also refuses excess privileges, active roles, unrecognized grants and overlapping
+unapproved schema rows. Missing *unrelated* development privileges in the account
+inventory do not replace the artifact-specific capability check. Existing
+disposable dev ALL grants remain approved; no global privileges or GRANT OPTION
+are allowed. Unknown accounts do not inherit this named principal's contract.
+
+The restore-check scope's explicit expected privileges are SELECT, INSERT,
+CREATE, DROP, REFERENCES, INDEX, ALTER, LOCK TABLES, CREATE VIEW, SHOW VIEW,
+TRIGGER, CREATE ROUTINE and ALTER ROUTINE. Extend the existing grant row rather
+than creating a more-specific row that shadows it:
+
+```sql
+-- DBA REVIEW ONLY. Existing account; never applied automatically by Mercury.
+GRANT CREATE ROUTINE, ALTER ROUTINE ON `_restorecheck\_%`.*
+  TO 'mercury_dev_restore'@'localhost';
+```
+
+Routine privileges are database-pattern scoped, not global or production scoped.
+MariaDB may automatically grant EXECUTE/ALTER ROUTINE on routines created in
+disposable schemas, and can retain those grants after database cleanup. The
+contract accepts only these two object-level routine privileges within the three
+approved dev schemas or literal `_restorecheck_`-prefixed schemas. It rejects
+such grants on production/PI schemas, extra privileges and grant option. It does
+not claim those records prove the provenance of automatic creation. DBA review
+may retire residual disposable routine grants; runtime does not mutate grants.
+
+### Temporary production PI read window
+
+Ordinary prod→dev sync rewrites PI to the dev clone and needs no production PI
+SELECT. Production-shaped restore-checks preserve the original external schema
+reference; their recreated views need SELECT on production PI. Use a temporary,
+DBA-owned read window, not a permanent enlargement of the ordinary sync role:
+
+```sql
+GRANT SELECT ON `android_permission_intel`.* TO 'mercury_dev_restore'@'localhost';
+-- Run account status --pi-read-window, exact artifact preflight and the approved
+-- restore-check. Revoke after BOTH success and failure, or aborted execution:
+REVOKE SELECT ON `android_permission_intel`.* FROM 'mercury_dev_restore'@'localhost';
+```
+
+No PI INSERT/UPDATE/DELETE/DDL/TRIGGER/EVENT/EXECUTE/routine/grant-option privileges.
+Do not overlap ordinary sync with the temporary window: its managed-account
+preflight conservatively refuses unexpected production read authority. The DBA
+must ensure revocation on interruption and verify normal status afterward;
+Mercury does not take an administrative credential or issue runtime GRANT/REVOKE.
+After a failed rehearsal, preserve the target and receipts, but revoke PI SELECT
+anyway. Dependent views may then become unreadable until a new approved diagnostic
+read window; that does not authorize permanent production access.
+
+Rollback of only the newly approved routine extension, if required:
+
+```sql
+REVOKE CREATE ROUTINE, ALTER ROUTINE ON `_restorecheck\_%`.*
+  FROM 'mercury_dev_restore'@'localhost';
+```
+
+Recheck safe privilege metadata and status before every change. Do not replay a
+revocation against permissions that were independently present before the change.
+This SQL does not provision passwords or create accounts; the existing local
+private-credential procedure remains unchanged.

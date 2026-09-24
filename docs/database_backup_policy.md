@@ -1,6 +1,6 @@
 # Database backup policy
 
-For the current Fedora milestone, Mercury protects the active source MariaDB databases `erebus_threat_intel_prod`, `scytaledroid_core_prod`, `obsidiandroid_core_prod`, and shared `android_permission_intel`.
+For the current Fedora milestone, Mercury protects the active source MariaDB databases `erebus_threat_intel_prod`, `erebus_provider_secrets_prod`, `scytaledroid_core_prod`, `obsidiandroid_core_prod`, and shared `android_permission_intel`.
 
 Preservation targets are the source databases above. The `_dev` databases are refresh targets: Mercury keeps them available for later prod-to-dev sync, but does not preserve them by default.
 
@@ -135,3 +135,10 @@ Repository retention is different:
 
 - Mercury keeps 1 current verified Git bundle set per configured repo.
 - Older repo bundle artifacts are pruned only after the replacement bundle is written and `git bundle verify` succeeds.
+
+### Encrypted provider credentials
+
+`erebus_provider_secrets_prod` is a backup-only production source; no development sync
+pair is defined. Its encrypted records require the separately protected external master
+key for recovery. Database verification does not establish master-key recovery. Never
+include key bytes in database backup manifests, audit outputs, or repository bundles.

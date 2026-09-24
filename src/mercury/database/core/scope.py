@@ -11,6 +11,7 @@ ACTIVE_BACKUP_SOURCE_DATABASES: frozenset[str] = frozenset(
     {
         "android_permission_intel",
         "erebus_threat_intel_prod",
+        "erebus_provider_secrets_prod",
         "scytaledroid_core_prod",
         OBSIDIANDROID_PROD_DATABASE,
     }

@@ -238,6 +238,8 @@ def test_restore_check_auto_drops_temp_database_on_success(monkeypatch: pytest.M
         config_path=tmp_path / "local.toml",
         allow_unsafe_backup_root=True,
     )
+    from mercury.deploy.models import DeploymentVerification
+    monkeypatch.setattr("mercury.restore.restore_runner._verify_restore_target", lambda *args, **kwargs: DeploymentVerification(database="_restorecheck_erebus_threat_intel_prod_20260608", exists_on_server=True, table_count=1, verified=True))
     calls: list[str] = []
 
     def fake_runner(argv, env, dump_path, config, target) -> None:
@@ -265,6 +267,7 @@ def test_restore_check_auto_drops_temp_database_on_success(monkeypatch: pytest.M
     original = restore_execute._execute_client_sql
     restore_execute._execute_client_sql = fake_sql  # type: ignore[method-assign]
     try:
+        _allow_restorecheck_preflight(monkeypatch, dump)
         result = execute_restore_into_database(
             target_database="_restorecheck_erebus_threat_intel_prod_20260608",
             dump_path=dump,
@@ -313,6 +316,7 @@ def test_restore_check_preserves_temp_database_on_failure(monkeypatch: pytest.Mo
         "mercury.restore.restore_runner.load_mariadb_restore_config", lambda: config
     )
 
+    _allow_restorecheck_preflight(monkeypatch, dump)
     result = execute_restore_into_database(
         target_database="_restorecheck_erebus_threat_intel_prod_20260608",
         dump_path=dump,
@@ -383,6 +387,7 @@ def test_execute_restore_marks_verification_failure_and_preserves_restorecheck_d
     restore_execute._execute_client_sql = fake_sql  # type: ignore[method-assign]
     restore_execute._verify_restore_target = fake_verify  # type: ignore[assignment]
     try:
+        _allow_restorecheck_preflight(monkeypatch, dump)
         result = execute_restore_into_database(
             target_database="_restorecheck_erebus_threat_intel_prod_20260608",
             dump_path=dump,
@@ -518,3 +523,32 @@ def test_run_restore_menu_non_interactive(
     assert "RC deferred" in out
     assert "android_permission_intel_dev" not in out
     assert "[0] Back" in out
+
+
+def _allow_restorecheck_preflight(monkeypatch, dump):
+    """Downstream lifecycle fixtures start after bound successful preflight."""
+    import json
+    from types import SimpleNamespace
+    from mercury.backup.checksum import sha256_file
+    path=dump.parent/"manifest.json"
+    manifest=json.loads(path.read_text()) if path.exists() else {}
+    manifest.update(backup_id="fixture",sha256=sha256_file(dump))
+    path.write_text(json.dumps(manifest))
+    def passed(**kwargs):
+        return SimpleNamespace(passed=True,source_database=kwargs["source"],target_database=kwargs["target"],artifact_file=dump.name,artifact_sha256=sha256_file(dump),backup_id="fixture",evidence_written=True,current_user="root@localhost")
+    monkeypatch.setattr("mercury.sync.restore_preflight.evaluate_restore_privileges",passed)
+    monkeypatch.setattr("mercury.restore.restore_runner.run_client_query",lambda *args:"root@localhost")
+
+
+def test_restorecheck_missing_routine_privilege_stops_before_any_ddl(monkeypatch,tmp_path):
+    from types import SimpleNamespace
+    from mercury.database.mariadb.config import MariaDbConnectionConfig
+    config=MariaDbConnectionConfig(host="localhost",user="mercury_dev_restore")
+    monkeypatch.setattr("mercury.restore.restore_runner.load_mariadb_restore_config",lambda:config)
+    monkeypatch.setattr("mercury.sync.restore_preflight.evaluate_restore_privileges",lambda **kwargs:SimpleNamespace(passed=False,missing_capabilities=["ALTER ROUTINE"],inspection_issues=[]))
+    calls=[]
+    monkeypatch.setattr("mercury.restore.restore_runner._execute_client_sql",lambda *args:calls.append(args))
+    dump=tmp_path/"dump.gz";dump.write_bytes(b"test")
+    result=execute_restore_into_database(source_database="erebus_threat_intel_prod",target_database="_restorecheck_erebus_threat_intel_prod_20260921",dump_path=dump,execute=True,cleanup_after_success=True,config=config,policy=ExecutionPolicy(dry_run=False,live_actions_enabled=True,backup_root=tmp_path,allow_unsafe_backup_root=True))
+    assert result.refused and "ALTER ROUTINE" in result.message
+    assert calls==[]

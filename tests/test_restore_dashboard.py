@@ -39,8 +39,8 @@ def _entry(
 
 
 def test_required_recovery_scope_is_authoritative_production_only() -> None:
-    assert len(REQUIRED_RECOVERY_DATABASES) == 4
-    assert len(REQUIRED_RECOVERY_PRODUCTION) == 4
+    assert len(REQUIRED_RECOVERY_DATABASES) == 5
+    assert len(REQUIRED_RECOVERY_PRODUCTION) == 5
     assert len(REQUIRED_RECOVERY_DEVELOPMENT) == 0
     assert "android_permission_intel_dev" not in REQUIRED_RECOVERY_DEVELOPMENT
 

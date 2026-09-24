@@ -72,18 +72,53 @@ class RestorePrivilegePreflightResult(BaseModel):
     evidence_written: bool = False
 
 
+def _schema_grant_matches(pattern: str, target: str) -> bool:
+    """Match MariaDB database-grant wildcards, including SHOW GRANTS escaping."""
+    pattern = pattern.replace("\\\\", "\\")
+    parts = []
+    escaped = False
+    for char in pattern:
+        if escaped:
+            parts.append(re.escape(char))
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == "%":
+            parts.append(".*")
+        elif char == "_":
+            parts.append(".")
+        else:
+            parts.append(re.escape(char))
+    if escaped:
+        parts.append(re.escape("\\"))
+    return re.fullmatch("".join(parts), target) is not None
+
+
 def _capabilities(grants: list[str], target: str) -> set[str]:
-    result: set[str] = set()
+    # MariaDB selects a database grant row; more-specific rows can shadow
+    # wildcard rows. Never union overlapping database grants into invented rights.
+    global_rights: set[str] = set()
+    exact: list[set[str]] = []
+    patterns: list[set[str]] = []
     for line in grants:
         match = _GRANT_RE.match(line.strip())
         if not match:
             continue
         privileges, scope = match.groups()
+        rights = {part.strip().upper() for part in privileges.split(",")}
         scope = scope.replace("`", "").strip()
-        if scope not in {"*.*", f"{target}.*"}:
-            continue
-        result.update(part.strip().upper() for part in privileges.split(","))
-    return result
+        if scope == "*.*":
+            global_rights.update(rights)
+        elif scope.endswith(".*") and _schema_grant_matches(scope[:-2], target):
+            pattern = scope[:-2].replace("\\\\", "\\")
+            unescaped = re.sub(r"\\.", "", pattern)
+            (patterns if "%" in unescaped or "_" in unescaped else exact).append(rights)
+    selected = exact or patterns
+    if selected:
+        # Ambiguous wildcard ordering is handled conservatively, not guessed.
+        finite = [rights for rights in selected if "ALL PRIVILEGES" not in rights]
+        global_rights.update(set.intersection(*finite) if finite else {"ALL PRIVILEGES"})
+    return global_rights
 
 
 def _query_scalar(query: Callable, config, sql: str) -> str:
@@ -246,6 +281,17 @@ def evaluate_restore_privileges(
         if "ALL PRIVILEGES" not in _capabilities(grants, schema)
         and "SELECT" not in _capabilities(grants, schema)
     ]
+    # Capability sufficiency does not establish least privilege. The managed
+    # dedicated principal must also reject excess authority before any import.
+    if result.current_user == "mercury_dev_restore@localhost":
+        from mercury.restore.account_contract import assess_account
+
+        account = assess_account(
+            grants, current_user=result.current_user, active_roles=result.active_roles,
+            pi_read_window=(target.startswith("_restorecheck_")
+                            and "android_permission_intel" in transformed_external),
+        )
+        result.inspection_issues.extend(account["excess"])
     result.required_capabilities = sorted(required)
     result.effective_capabilities = sorted(effective)
     target_missing = [] if "ALL PRIVILEGES" in effective else sorted(required - effective)

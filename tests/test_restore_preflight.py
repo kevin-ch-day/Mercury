@@ -200,3 +200,17 @@ def test_missing_dedicated_restore_config_fails_closed_without_general_fallback(
     assert result.passed is False
     assert result.target_untouched is True
     assert any("mariadb_restore" in issue for issue in result.inspection_issues)
+
+
+def test_restorecheck_schema_grant_patterns():
+    from mercury.sync.restore_preflight import _capabilities
+    grants = [r"GRANT SELECT, CREATE ON `_restorecheck\\_%`.* TO 'restore'@'localhost'"]
+    assert _capabilities(grants, "_restorecheck_erebus_20260921") == {"SELECT", "CREATE"}
+    assert _capabilities(grants, "erebus_threat_intel_prod") == set()
+    assert _capabilities(grants, "_restorecheckXerebus") == set()
+
+
+def test_exact_database_grant_does_not_inherit_shadowed_wildcard_rights():
+    from mercury.sync.restore_preflight import _capabilities
+    grants=[r"GRANT SELECT, DROP, CREATE ON `_restorecheck\\_%`.* TO 'r'@'localhost'",r"GRANT ALTER ROUTINE ON `\\_restorecheck\\_one`.* TO 'r'@'localhost'"]
+    assert _capabilities(grants,"_restorecheck_one")=={"ALTER ROUTINE"}

@@ -32,6 +32,12 @@ def test_backup_plan_includes_prod_databases() -> None:
         assert name in plan.backup_sources
 
 
+def test_secret_catalog_is_backup_only() -> None:
+    from mercury.database.prod_dev_pairs import approved_pair_for_source
+    assert "erebus_provider_secrets_prod" in build_demo_backup_plan().backup_sources
+    assert approved_pair_for_source("erebus_provider_secrets_prod") is None
+
+
 def test_backup_plan_includes_android_permission_intel() -> None:
     plan = build_demo_backup_plan()
     assert "android_permission_intel" in plan.backup_sources

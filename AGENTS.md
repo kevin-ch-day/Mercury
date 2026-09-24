@@ -122,6 +122,7 @@ For the current Fedora milestone, Mercury actively protects only:
 
 - `android_permission_intel`
 - `erebus_threat_intel_prod`
+- `erebus_provider_secrets_prod` (encrypted credentials; backup-only, external master key required)
 - `scytaledroid_core_prod`
 - `obsidiandroid_core_prod`
 

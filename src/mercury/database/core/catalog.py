@@ -10,6 +10,11 @@ class CatalogEntry(BaseModel):
 
 PLATFORM_CATALOG: list[CatalogEntry] = [
     CatalogEntry(
+        name="erebus_provider_secrets_prod",
+        project="Erebus",
+        description="Encrypted provider credentials; backup-only, external master key required for recovery.",
+    ),
+    CatalogEntry(
         name="erebus_threat_intel_prod",
         project="Erebus",
         description="VirusTotal enrichment, malware catalog, family/type authority (production).",

@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Iterator
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -16,6 +17,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
 CLI = [sys.executable, "-m", "mercury.cli"]
 ENV_STATE_ROOT = "MERCURY_STATE_ROOT"
+_SUBPROCESS_TEMP_DIRS = ExitStack()
+
+
+def pytest_sessionfinish() -> None:
+    """Remove fallback subprocess scratch directories even after failed tests."""
+    _SUBPROCESS_TEMP_DIRS.close()
+
 TEST_DATABASES_CONFIG = REPO_ROOT / "tests" / "fixtures" / "databases.toml"
 
 # The destination inventory is deliberately local and can legitimately differ
@@ -120,15 +128,18 @@ def subprocess_env(extra: dict[str, str] | None = None) -> dict[str, str]:
     src = str(SRC_ROOT)
     existing = merged.get("PYTHONPATH", "")
     merged["PYTHONPATH"] = src if not existing else f"{src}{os.pathsep}{existing}"
-    merged.setdefault(
-        ENV_STATE_ROOT,
-        tempfile.mkdtemp(prefix="mercury-pytest-state-"),
-    )
+    # setdefault evaluates its default even when fixtures already supply a path.
+    # Allocate lazily and retain ownership until subprocess tests have finished.
+    if ENV_STATE_ROOT not in merged:
+        merged[ENV_STATE_ROOT] = _SUBPROCESS_TEMP_DIRS.enter_context(
+            tempfile.TemporaryDirectory(prefix="mercury-pytest-state-")
+        )
     # Match GitHub Actions: no operator local.toml, stable help width, no color.
-    merged.setdefault(
-        "MERCURY_LOCAL_CONFIG",
-        str(Path(tempfile.mkdtemp(prefix="mercury-pytest-nocfg-")) / "local.toml"),
-    )
+    if "MERCURY_LOCAL_CONFIG" not in merged:
+        config_root = _SUBPROCESS_TEMP_DIRS.enter_context(
+            tempfile.TemporaryDirectory(prefix="mercury-pytest-nocfg-")
+        )
+        merged["MERCURY_LOCAL_CONFIG"] = str(Path(config_root) / "local.toml")
     merged.setdefault("MERCURY_DATABASES_CONFIG", str(TEST_DATABASES_CONFIG))
     merged.setdefault("MERCURY_NO_COLOR", "1")
     merged.setdefault("NO_COLOR", "1")

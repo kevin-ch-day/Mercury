@@ -289,10 +289,59 @@ def execute_restore_into_database(
         and not governed_destination_rehearsal
     )
     dedicated_restore_lane_required = ordinary_live_dev_reset or ordinary_restore_check
-    if require_restore_preflight or ordinary_live_dev_reset:
+    # Ordinary dev resets and disposable restore-checks must never substitute
+    # the general/source credential. Direct callers must resolve to the same
+    # dedicated restore lane as the CLI and interactive workflows.
+    if dedicated_restore_lane_required:
+        try:
+            dedicated_cfg = load_mariadb_restore_config()
+        except MariaDbConfigError as exc:
+            return RestoreExecutionResult(
+                source_database=source_database,
+                target_database=target_database,
+                dump_path=str(dump_path),
+                refused=True,
+                message=(
+                    "Restore preflight refused before target modification: dedicated "
+                    f"[mariadb_restore] credentials are unavailable: {exc}"
+                ),
+                commands=commands,
+                cleanup_command=cleanup_command,
+            )
+        if config is not None and config != dedicated_cfg:
+            return RestoreExecutionResult(
+                source_database=source_database,
+                target_database=target_database,
+                dump_path=str(dump_path),
+                refused=True,
+                message=(
+                    "Restore refused before target modification: supplied credential "
+                    "does not match dedicated [mariadb_restore] configuration."
+                ),
+                commands=commands,
+                cleanup_command=cleanup_command,
+            )
+        config = dedicated_cfg
+
+    if ordinary_restore_check and restore_preflight is None:
+        from mercury.sync.restore_preflight import evaluate_restore_privileges
+
+        restore_preflight = evaluate_restore_privileges(
+            source=source_database,
+            target=target_database,
+            backup_dir=dump_path.parent,
+            config=config,
+            receipt_root=receipt_root,
+            schema_rewrites=dict(schema_rewrites or {}),
+        )
+
+    if require_restore_preflight or ordinary_live_dev_reset or ordinary_restore_check:
         issues: list[str] = []
         if restore_preflight is None or not getattr(restore_preflight, "passed", False):
             issues.append("a passed restore privilege preflight is required")
+            if restore_preflight is not None:
+                issues.extend(getattr(restore_preflight, "missing_capabilities", []))
+                issues.extend(getattr(restore_preflight, "inspection_issues", []))
         else:
             if restore_preflight.source_database != source_database:
                 issues.append("preflight source does not match restore source")
@@ -341,40 +390,6 @@ def execute_restore_into_database(
                 commands=commands,
                 cleanup_command=cleanup_command,
             )
-
-    # Ordinary dev resets and disposable restore-checks must never substitute
-    # the general/source credential. Direct callers must resolve to the same
-    # dedicated restore lane as the CLI and interactive workflows.
-    if dedicated_restore_lane_required:
-        try:
-            dedicated_cfg = load_mariadb_restore_config()
-        except MariaDbConfigError as exc:
-            return RestoreExecutionResult(
-                source_database=source_database,
-                target_database=target_database,
-                dump_path=str(dump_path),
-                refused=True,
-                message=(
-                    "Restore refused before target modification: dedicated "
-                    f"[mariadb_restore] credentials are unavailable: {exc}"
-                ),
-                commands=commands,
-                cleanup_command=cleanup_command,
-            )
-        if config is not None and config != dedicated_cfg:
-            return RestoreExecutionResult(
-                source_database=source_database,
-                target_database=target_database,
-                dump_path=str(dump_path),
-                refused=True,
-                message=(
-                    "Restore refused before target modification: supplied credential "
-                    "does not match dedicated [mariadb_restore] configuration."
-                ),
-                commands=commands,
-                cleanup_command=cleanup_command,
-            )
-        config = dedicated_cfg
 
     if not (governed_destination_rehearsal or governed_production_cutover):
         from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled

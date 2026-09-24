@@ -7,7 +7,7 @@ from mercury.reporting.protection import build_protection_report, format_protect
 
 def test_report_lists_protected_prod_databases() -> None:
     report = build_protection_report()
-    assert report.inventory_count == 7
+    assert report.inventory_count == 8
     assert report.ignored_out_of_scope_count == 0
     assert "erebus_threat_intel_prod" in report.protected
     assert "android_permission_intel" in report.protected

@@ -153,6 +153,15 @@ def test_planned_restore_check_name_format() -> None:
     assert name == "_restorecheck_erebus_threat_intel_prod_20260530"
 
 
+def test_planned_restore_check_name_uses_exact_backup_identity() -> None:
+    name = planned_restore_check_name(
+        "erebus_threat_intel_prod",
+        backup_id="erebus_threat_intel_prod-full-20260921_190510_111",
+    )
+    assert name == "_restorecheck_erebus_threat_intel_prod_20260921_190510_111"
+    assert len(name) <= 64
+
+
 def test_cli_backup_batch_dry_run() -> None:
     result = run_cli("backup", "batch", "--demo", "--dry-run")
     assert result.returncode == 0, result.stdout + result.stderr
