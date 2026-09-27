@@ -21,12 +21,12 @@ mercury = "mercury.cli:main"
 
 [project.optional-dependencies]
 mariadb = [
-    "pymysql>=1.1",
+    "pymysql>=1.2.3",
 ]
 dev = [
     "pip-audit>=2.10,<3",
     "pytest>=8.0",
-    "pymysql>=1.1",
+    "pymysql>=1.2.3",
     "ruff>=0.16",
     "vulture>=2.14,<3",
 ]
