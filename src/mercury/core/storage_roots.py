@@ -128,9 +128,6 @@ class StorageConfig:
             return self.primary
         return self.legacy
 
-    def root_for_role(self, role: StorageWriteRole) -> StorageRootConfig:
-        return self.primary if role == StorageWriteRole.PRIMARY else self.legacy
-
     def derived_paths(self) -> dict[str, str]:
         """Flat path map matching historical [mercury] keys for the active writer."""
         root = self.active_write_root

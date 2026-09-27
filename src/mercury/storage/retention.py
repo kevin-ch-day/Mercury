@@ -92,9 +92,6 @@ class RetentionPolicy:
     def is_scytaledroid_root(self, name: str) -> bool:
         return name.strip() in set(DEFAULT_MANUAL_REVIEW_ROOTS)
 
-    def is_excluded_from_destination(self, name: str) -> bool:
-        return name.strip() in set(self.exclude_from_destination_by_default)
-
     def is_governed_root(self, name: str) -> bool:
         return name.strip() in set(self.governed_roots)
 
@@ -103,10 +100,6 @@ class RetentionPolicy:
 
     def protects_run_id(self, run_id: str) -> bool:
         return (run_id or "").strip() in set(self.protected_run_ids)
-
-    def protects_capture_id(self, capture_id: str) -> bool:
-        return (capture_id or "").strip() in set(self.protected_capture_ids)
-
 
 def _as_str_tuple(value: Any, *, default: tuple[str, ...]) -> tuple[str, ...]:
     if value is None:

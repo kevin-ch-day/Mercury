@@ -62,9 +62,6 @@ def submenu_option_prompt() -> str:
     return choice_prompt(leading_newline=True)
 
 
-MENU_RETURN_PROMPT = menu_option_prompt()
-
-
 def set_prompt_reader(reader: PromptReader | None) -> None:
     """Redirect input (for tests). Pass None to reset to built-in input()."""
     global _reader

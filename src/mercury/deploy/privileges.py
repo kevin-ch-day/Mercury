@@ -6,13 +6,6 @@ from mercury.database.mariadb.config import MariaDbConnectionConfig
 from mercury.database.mariadb.errors import MariaDbLiveError
 from mercury.database.mariadb.session import readonly_scalars
 
-DEPLOYMENT_GRANT_KEYWORDS = (
-    "ALL PRIVILEGES",
-    "CREATE",
-    "INSERT",
-)
-
-
 def fetch_current_grants_text(config: MariaDbConnectionConfig) -> str:
     rows = readonly_scalars(config, "SHOW GRANTS FOR CURRENT_USER()")
     return " ".join(rows)

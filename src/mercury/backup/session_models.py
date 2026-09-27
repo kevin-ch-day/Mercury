@@ -265,11 +265,6 @@ class BackupSyncSession(BaseModel):
     phase3b_separation_note: str = PHASE3B_SEPARATION_NOTE
     preview: bool = False
 
-    @property
-    def overall_pass(self) -> bool:
-        return self.session_result == SessionResult.PASS
-
-
 def new_session_id(*, now: str | None = None) -> str:
     from datetime import datetime, timezone
 

@@ -311,9 +311,3 @@ def _backup_target_summary(policy, env) -> str:
         if reason and "unsafe" not in base.lower() and reason not in base:
             return f"{base} · {reason}"
     return base
-
-
-def setup_hint_lines(*, probe_database: bool | None = None) -> list[str]:
-    probe = should_probe_database_status() if probe_database is None else probe_database
-    env = build_environment_status(probe_database=probe)
-    return list(env.setup_hints)

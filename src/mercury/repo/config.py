@@ -38,11 +38,6 @@ def _home_github_candidates() -> list[tuple[str, str, str]]:
     return found
 
 
-# Lazy callables preferred; module-level Paths remain for backward-compatible imports.
-DEFAULT_REPO_BACKUP_ROOT = default_repo_backup_root()
-DEFAULT_MANIFEST_DIR = default_manifest_dir()
-DEFAULT_RUNBOOK_DIR = default_runbook_dir()
-
 DEFAULT_LOCAL_REPO_CANDIDATES: list[tuple[str, str, str]] = [
     ("mercury", "Mercury", "{home}/GitHub/Mercury"),
     ("erebus_engine", "Erebus Engine", "{home}/GitHub/erebus-engine-fedora"),

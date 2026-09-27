@@ -74,9 +74,6 @@ class ExecutionPolicy:
         except ValueError:
             return False
 
-    def backup_root_is_default_fallback(self) -> bool:
-        return self.backup_root.resolve() == (REPO_ROOT / "backups").resolve()
-
     def backup_root_exists(self) -> bool:
         return self.backup_root.exists() and self.backup_root.is_dir()
 
@@ -95,10 +92,6 @@ class ExecutionPolicy:
         # Keep this compatibility call site patchable by established test and
         # integration hooks. The wrapper itself delegates to the generic helper.
         return usb_mount_is_active(self.operator_mount)
-
-    def required_mount_is_active(self) -> bool:
-        """Compatibility alias for :meth:`operator_mount_is_active`."""
-        return self.operator_mount_is_active()
 
     def backup_root_free_bytes(self) -> int | None:
         try:

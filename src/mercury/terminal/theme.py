@@ -416,9 +416,6 @@ def style_inline_value(text: str) -> str:
     if text in {"[ok]", "[--]", "[!!]", "[PASS]", "[WARN]", "[FAIL]", "[INFO]"}:
         return _styled_status_tag(text)
 
-    def _menu_ref(match: re.Match[str]) -> str:
-        return styled_bracket_label(match.group(1), s.menu_key)
-
     if _MENU_REF_RE.search(text):
         # Rebuild with Text so nested markup never double-escapes brackets.
         from rich.text import Text
@@ -644,9 +641,6 @@ class MercuryTheme:
     theme_id: str = THEME_CLASSIC
 
 
-DEFAULT_THEME = MercuryTheme()
-
-
 def body_label(text: str, *, indent: int = 2) -> str:
     prefix = " " * indent
     if not colors_enabled():
@@ -671,12 +665,6 @@ def count_summary_line(text: str) -> str:
     if not colors_enabled():
         return text
     return markup(text, active_styles().value)
-
-
-def submenu_intro() -> str:
-    if not colors_enabled():
-        return "  Actions"
-    return f"  {markup('Actions', active_styles().section)}"
 
 
 def submenu_empty_hint() -> str:

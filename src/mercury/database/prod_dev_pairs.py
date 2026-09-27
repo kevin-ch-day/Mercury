@@ -73,11 +73,6 @@ APPROVED_SYNC_PAIRS: tuple[ApprovedSyncPairSpec, ...] = (
 APPROVED_SYNC_PAIR_BY_SOURCE: dict[str, ApprovedSyncPairSpec] = {
     spec.source: spec for spec in APPROVED_SYNC_PAIRS
 }
-APPROVED_SYNC_PAIR_BY_TARGET: dict[str, ApprovedSyncPairSpec] = {
-    spec.target: spec for spec in APPROVED_SYNC_PAIRS
-}
-
-
 class ProdDevPair(BaseModel):
     prod: str
     expected_dev: str
@@ -92,10 +87,6 @@ class ProdDevPair(BaseModel):
 
 def approved_pair_for_source(source: str) -> ApprovedSyncPairSpec | None:
     return APPROVED_SYNC_PAIR_BY_SOURCE.get(source)
-
-
-def approved_pair_for_target(target: str) -> ApprovedSyncPairSpec | None:
-    return APPROVED_SYNC_PAIR_BY_TARGET.get(target)
 
 
 def is_approved_sync_pair(prod_name: str, dev_name: str) -> bool:

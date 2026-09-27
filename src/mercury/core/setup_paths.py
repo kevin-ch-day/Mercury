@@ -87,11 +87,3 @@ def assess_mercury_path_permissions(
         checks.append(check_path_permission(fallback, label="repo-local backup fallback"))
 
     return checks
-
-
-def permission_repair_blockers(checks: list[PathPermissionCheck]) -> list[str]:
-    blockers: list[str] = []
-    for check in checks:
-        if check.needs_repair:
-            blockers.append(f"{check.label} not usable — {check.detail} ({check.path})")
-    return blockers

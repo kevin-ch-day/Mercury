@@ -822,26 +822,6 @@ def record_backup_continuation(
     )
 
 
-def cancel_disconnect_preparation(
-    *,
-    confirm: str | None = None,
-    operator_intent: str = "cancel_disconnect_preparation",
-    path: Path | None = None,
-    require_strong_phrase: bool = False,
-    facts: StorageFacts | None = None,
-    resolve_fn: Callable[..., Any] | None = None,
-) -> TransitionResult:
-    """Alias path: cancel detach prep by restoring the source writer."""
-    return restore_source_writer(
-        confirm=confirm,
-        operator_intent=operator_intent,
-        path=path,
-        require_strong_phrase=require_strong_phrase,
-        facts=facts,
-        resolve_fn=resolve_fn,
-    )
-
-
 def disable_writes(
     *,
     operator_intent: str = "disable_writes",
@@ -949,53 +929,6 @@ def prepare_disconnect(
     return result
 
 
-def enter_read_only_inspection(
-    *,
-    operator_intent: str = "enter_read_only_inspection",
-    path: Path | None = None,
-) -> TransitionResult:
-    previous = load_host_maintenance(path)
-    prev_dict = _state_as_dict(previous)
-    proposed = HostMaintenanceState(
-        storage_availability="attached",
-        writes_allowed=False,
-        active_write_role="none",
-        source_detach_preparation=False,
-        destination_rehearsal_active=previous.destination_rehearsal_active,
-        destination_rehearsal_planned=previous.destination_rehearsal_planned,
-        destination_rehearsal_in_progress=previous.destination_rehearsal_active,
-        package_id=previous.package_id,
-        package_verification_status=previous.package_verification_status,
-        notes=f"Read-only inspection mode ({operator_intent}).",
-        **_package_delta_kwargs(previous),
-    )
-    save_host_maintenance(proposed, path=path)
-    current = load_host_maintenance(path)
-    result = TransitionResult(
-        transition=TransitionName.ENTER_READ_ONLY_INSPECTION.value,
-        previous_state=prev_dict,
-        resulting_state=_state_as_dict(current),
-        status=TransitionStatus.SUCCESS,
-        allowed=True,
-        continued_operation_allowed=False,
-        messages=["Entered read-only inspection; writes remain disabled."],
-        transition_id=new_transition_id(),
-        package_id=current.package_id,
-    )
-    append_transition_ledger(
-        {
-            "transition": result.transition,
-            "transition_id": result.transition_id,
-            "previous_state": prev_dict,
-            "resulting_state": result.resulting_state,
-            "result": result.status.value,
-            "operator_intent": operator_intent,
-            "package_id": current.package_id,
-        }
-    )
-    return result
-
-
 def enter_destination_rehearsal(
     *,
     operator_intent: str = "enter_destination_rehearsal",
@@ -1041,23 +974,3 @@ def enter_destination_rehearsal(
         }
     )
     return result
-
-
-def return_to_source_operation(
-    *,
-    confirm: str | None = None,
-    operator_intent: str = "return_to_source_operation",
-    path: Path | None = None,
-    require_strong_phrase: bool = True,
-    facts: StorageFacts | None = None,
-    resolve_fn: Callable[..., Any] | None = None,
-) -> TransitionResult:
-    return restore_source_writer(
-        confirm=confirm,
-        operator_intent=operator_intent,
-        path=path,
-        require_strong_phrase=require_strong_phrase,
-        facts=facts,
-        resolve_fn=resolve_fn,
-        confirmation_class="STRONG_CONFIRMATION",
-    )

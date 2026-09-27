@@ -69,7 +69,6 @@ def test_all_nine_hubs_reachable_and_non_destructive(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr("mercury.backup.session_wizard.run_backup_sync_wizard", mark("guided"))
     monkeypatch.setattr("mercury.backup.interactive_menu.run_backup_menu", mark("backup_ops"))
-    monkeypatch.setattr("mercury.verify.interactive_menu.run_verify_menu", mark("verify"))
     monkeypatch.setattr(
         "mercury.menu.task_menus._show_full_backup_receipts", mark("receipts")
     )

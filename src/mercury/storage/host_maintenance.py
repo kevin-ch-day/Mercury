@@ -442,25 +442,6 @@ def mark_development_state_changed_since_package(
     return state
 
 
-def mark_source_data_changed_since_package(
-    path: Path | None = None,
-    *,
-    operation: str = "",
-) -> HostMaintenanceState:
-    """Record that production/source data mutated after the package (not backups)."""
-    state = load_host_maintenance(path)
-    if not state.source_writes_resumed_after_package or not state.package_id:
-        return state
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    first = not state.source_data_changed_since_package
-    state.source_data_changed_since_package = True
-    if first:
-        state.source_data_first_change_at = now
-        state.source_data_first_change_operation = operation
-    save_host_maintenance(state, path=path)
-    return state
-
-
 def mark_source_changed_since_package(
     path: Path | None = None,
     *,

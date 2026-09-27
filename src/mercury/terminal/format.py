@@ -201,8 +201,3 @@ def format_menu_rule(*, width: int = 62) -> str:
 def format_menu_status_row(label: str, tag: str, detail: str, *, label_width: int = 10) -> str:
     """One aligned status row: ``  Mode       [--] dry-run only``."""
     return f"  {label:<{label_width}}{tag} {detail}"
-
-
-def format_menu_section_header(name: str, *, indent: int = 2) -> str:
-    """Section title for grouped menu options."""
-    return f"{' ' * indent}{name}"

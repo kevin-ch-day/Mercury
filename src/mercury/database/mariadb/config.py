@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field
 from mercury.core.paths import LOCAL_EXAMPLE, resolve_local_config
 
 DEFAULT_PASSWORD_ENV = "MERCURY_MARIADB_PASSWORD"
-DEFAULT_UNIX_SOCKET = "/var/lib/mysql/mysql.sock"
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "localhost.localdomain"})
 _PASSWORD_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 

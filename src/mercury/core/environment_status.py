@@ -13,7 +13,6 @@ from mercury.core.execution_policy import (
     load_execution_policy,
 )
 from mercury.core.usb_mount import (
-    DEFAULT_USB_MOUNT,
     mercury_layout_present,
     resolve_usb_mount,
     usb_mount_is_active,
@@ -24,7 +23,6 @@ from mercury.core.paths import DATABASES_LOCAL, REPOS_LOCAL, resolve_local_confi
 from mercury.core.storage_status import backup_root_summary_label
 from mercury.database.mariadb.probe import probe_client_tooling
 
-DEFAULT_USB_BACKUP_ROOT = DEFAULT_USB_MOUNT / "mercury_backups"
 MARIADB_SOCKET = Path("/var/lib/mysql/mysql.sock")
 
 
@@ -78,10 +76,6 @@ class MariaDbLayerStatus:
         return bool(self.mariadb_client)
 
     @property
-    def mysqldump_found(self) -> bool:
-        return bool(self.mysqldump_client)
-
-    @property
     def service_active(self) -> bool:
         return self.service_state == "active"
 
@@ -96,11 +90,6 @@ class EnvironmentStatus:
     setup_hints: tuple[str, ...] = ()
     primary_setup_blocker: str | None = None
     repairable_blockers: tuple[str, ...] = ()
-
-    @property
-    def has_repairable_blockers(self) -> bool:
-        return bool(self.repairable_blockers)
-
 
 def assess_config_setup() -> ConfigSetupStatus:
     return ConfigSetupStatus(
@@ -155,13 +144,6 @@ def _systemd_service_state(unit: str = "mariadb") -> str:
         return "unknown"
     state = proc.stdout.strip()
     return state or "unknown"
-
-
-def _configured_mariadb_user() -> str | None:
-    from mercury.database.mariadb.session import try_load_mariadb_config
-
-    cfg = try_load_mariadb_config()
-    return cfg.user if cfg else None
 
 
 def _probe_configured_connection() -> tuple[bool | None, str | None]:
@@ -299,25 +281,6 @@ def backup_target_dashboard_label(
             else f"temporary dev fallback — {target}"
         )
     return backup_root_summary_label(policy)
-
-
-def storage_status_dashboard_label(
-    policy: ExecutionPolicy,
-    *,
-    config: ConfigSetupStatus,
-    usb: UsbDiscovery,
-    permission_checks: tuple[PathPermissionCheck, ...],
-    styled: bool = True,
-) -> str:
-    if any(check.needs_repair for check in permission_checks):
-        return "[!!] not writable" if styled else "not writable"
-    if not config.local_toml_present:
-        return "[!!] setup required" if styled else "setup required"
-    if backup_root_state_is_ready(policy.backup_root_state()):
-        return "[ok] ready" if styled else "ready"
-    reason = backup_root_unsafe_reason(policy, config=config, usb=usb)
-    prefix = "[!!]" if styled else ""
-    return f"{prefix} {reason}" if prefix else reason
 
 
 def backup_root_unsafe_reason(

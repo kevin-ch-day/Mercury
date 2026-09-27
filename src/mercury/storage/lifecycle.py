@@ -246,11 +246,6 @@ def writes_disabled_redirect_message() -> str:
     )
 
 
-def dashboard_next_action_line(snapshot: StorageLifecycleSnapshot | None = None) -> str:
-    snap = snapshot or assess_storage_lifecycle(probe_disconnect=True)
-    return snap.recommended
-
-
 def software_only_startup_needed(host: HostMaintenanceState | None = None) -> bool:
     """True when no operator config / never configured storage (observe-only heuristic)."""
     from mercury.core.paths import resolve_local_config
