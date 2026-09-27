@@ -473,6 +473,37 @@ def test_cleanup_advanced_options_present() -> None:
     assert "troubleshooting" in labels
 
 
+def test_cleanup_advanced_status_uses_live_candidate_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mercury.storage import interactive_menu
+    from mercury.storage.retention import RetentionPolicy
+
+    monkeypatch.setattr(
+        "mercury.storage.host_maintenance.load_host_maintenance",
+        lambda: SimpleNamespace(package_verification_status="PENDING"),
+    )
+    monkeypatch.setattr(
+        "mercury.storage.retention.load_retention_policy",
+        lambda: RetentionPolicy(source_path=None),
+    )
+    monkeypatch.setattr(
+        "mercury.core.usb_mount.resolve_operator_mount",
+        lambda: tmp_path,
+    )
+    monkeypatch.setattr(interactive_menu, "read_submenu_choice", lambda: "1")
+
+    interactive_menu._run_cleanup_advanced_menu()
+
+    rendered = capsys.readouterr().out
+    assert "Safe candidates" in rendered
+    assert "0 · 0.00 GiB" in rendered
+    assert "Cleanup candidates" in rendered
+    assert "Approximately 6.5 GiB" not in rendered
+
+
 def test_menu_snapshot_writes_disabled_suffix(monkeypatch: pytest.MonkeyPatch) -> None:
     from mercury.menu import main_display as menu_display
 

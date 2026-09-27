@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Callable
+from collections.abc import Callable
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
@@ -22,57 +22,110 @@ ScalarFn = Callable[[MariaDbConnectionConfig, str], str]
 
 # Read-only activity probes: (signal label, SQL returning one timestamp).
 SOURCE_ACTIVITY_PROBES: dict[str, list[tuple[str, str]]] = {
+    "erebus_provider_secrets_prod": [
+        (
+            "provider_secret_version.created_at_utc",
+            (
+                "SELECT MAX(created_at_utc) FROM "
+                "erebus_provider_secrets_prod.provider_secret_version "
+                "WHERE created_at_utc IS NOT NULL"
+            ),
+        ),
+        (
+            "provider_secret_current.rotated_at_utc",
+            (
+                "SELECT MAX(rotated_at_utc) FROM "
+                "erebus_provider_secrets_prod.provider_secret_current "
+                "WHERE rotated_at_utc IS NOT NULL"
+            ),
+        ),
+        (
+            "provider_secret_current.last_success_at_utc",
+            (
+                "SELECT MAX(last_success_at_utc) FROM "
+                "erebus_provider_secrets_prod.provider_secret_current "
+                "WHERE last_success_at_utc IS NOT NULL"
+            ),
+        ),
+    ],
     "erebus_threat_intel_prod": [
         (
             "virustotal_run_ledger.finished_at_utc",
-            "SELECT MAX(finished_at_utc) FROM erebus_threat_intel_prod.virustotal_run_ledger "
-            "WHERE finished_at_utc IS NOT NULL",
+            (
+                "SELECT MAX(finished_at_utc) FROM "
+                "erebus_threat_intel_prod.virustotal_run_ledger "
+                "WHERE finished_at_utc IS NOT NULL"
+            ),
         ),
         (
             "virustotal_sample_state.record_updated_at_utc",
-            "SELECT MAX(record_updated_at_utc) FROM erebus_threat_intel_prod.virustotal_sample_state "
-            "WHERE record_updated_at_utc IS NOT NULL",
+            (
+                "SELECT MAX(record_updated_at_utc) FROM "
+                "erebus_threat_intel_prod.virustotal_sample_state "
+                "WHERE record_updated_at_utc IS NOT NULL"
+            ),
         ),
     ],
     "android_permission_intel": [
         (
             "android_permission_enrich_vt_event.ingested_at_utc",
-            "SELECT MAX(ingested_at_utc) FROM android_permission_intel.android_permission_enrich_vt_event "
-            "WHERE ingested_at_utc IS NOT NULL",
+            (
+                "SELECT MAX(ingested_at_utc) FROM "
+                "android_permission_intel.android_permission_enrich_vt_event "
+                "WHERE ingested_at_utc IS NOT NULL"
+            ),
         ),
         (
             "android_permission_enrich_vt_current.record_updated_at_utc",
-            "SELECT MAX(record_updated_at_utc) FROM android_permission_intel.android_permission_enrich_vt_current "
-            "WHERE record_updated_at_utc IS NOT NULL",
+            (
+                "SELECT MAX(record_updated_at_utc) FROM "
+                "android_permission_intel.android_permission_enrich_vt_current "
+                "WHERE record_updated_at_utc IS NOT NULL"
+            ),
         ),
     ],
     "scytaledroid_core_prod": [
         (
             "android_apk_repository.updated_at",
-            "SELECT MAX(updated_at) FROM scytaledroid_core_prod.android_apk_repository "
-            "WHERE updated_at IS NOT NULL",
+            (
+                "SELECT MAX(updated_at) FROM "
+                "scytaledroid_core_prod.android_apk_repository "
+                "WHERE updated_at IS NOT NULL"
+            ),
         ),
         (
             "analysis_derivation_receipts.finished_at_utc",
-            "SELECT MAX(finished_at_utc) FROM scytaledroid_core_prod.analysis_derivation_receipts "
-            "WHERE finished_at_utc IS NOT NULL",
+            (
+                "SELECT MAX(finished_at_utc) FROM "
+                "scytaledroid_core_prod.analysis_derivation_receipts "
+                "WHERE finished_at_utc IS NOT NULL"
+            ),
         ),
     ],
     "obsidiandroid_core_prod": [
         (
             "core_schema_migration.applied_at_utc",
-            "SELECT MAX(applied_at_utc) FROM obsidiandroid_core_prod.core_schema_migration "
-            "WHERE applied_at_utc IS NOT NULL",
+            (
+                "SELECT MAX(applied_at_utc) FROM "
+                "obsidiandroid_core_prod.core_schema_migration "
+                "WHERE applied_at_utc IS NOT NULL"
+            ),
         ),
         (
             "core_artifact.imported_at_utc",
-            "SELECT MAX(imported_at_utc) FROM obsidiandroid_core_prod.core_artifact "
-            "WHERE imported_at_utc IS NOT NULL",
+            (
+                "SELECT MAX(imported_at_utc) FROM "
+                "obsidiandroid_core_prod.core_artifact "
+                "WHERE imported_at_utc IS NOT NULL"
+            ),
         ),
         (
             "core_run.run_completed_at_utc",
-            "SELECT MAX(run_completed_at_utc) FROM obsidiandroid_core_prod.core_run "
-            "WHERE run_completed_at_utc IS NOT NULL",
+            (
+                "SELECT MAX(run_completed_at_utc) FROM "
+                "obsidiandroid_core_prod.core_run "
+                "WHERE run_completed_at_utc IS NOT NULL"
+            ),
         ),
     ],
 }
@@ -227,7 +280,7 @@ def backup_entry_needs_backup_work(entry) -> bool:
         "Missing manifest",
     }:
         return True
-    if verify in {
+    return verify in {
         "Missing",
         "Absent",
         "Unverified",
@@ -235,9 +288,7 @@ def backup_entry_needs_backup_work(entry) -> bool:
         "Missing manifest",
         "OK unstamped",
         "RC passed · unstamped",
-    }:
-        return True
-    return False
+    }
 
 
 def assess_operator_backup_next(*, live: bool = False) -> dict[str, object]:
@@ -251,7 +302,7 @@ def assess_operator_backup_next(*, live: bool = False) -> dict[str, object]:
 
     try:
         report = build_backup_status_report(live=live)
-    except Exception:
+    except Exception:  # noqa: BLE001 - operator routing must fail closed
         return {"recommend": "backup", "pending_restore_check": []}
 
     pending_rc: list[str] = []
@@ -363,7 +414,7 @@ def parse_db_timestamp(raw: str | None) -> datetime | None:
     if raw is None:
         return None
     text = str(raw).strip()
-    if not text or text.startswith("0000-00-00") or text.startswith("1970-01-01"):
+    if not text or text.startswith(("0000-00-00", "1970-01-01")):
         return None
 
     normalized = text.replace(" UTC", "+00:00").replace("Z", "+00:00")
@@ -372,10 +423,10 @@ def parse_db_timestamp(raw: str | None) -> datetime | None:
 
     for candidate in (normalized, text):
         try:
-            instant = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+            instant = datetime.fromisoformat(candidate)
             if instant.tzinfo is None:
-                instant = instant.replace(tzinfo=timezone.utc)
-            return instant.astimezone(timezone.utc)
+                instant = instant.replace(tzinfo=UTC)
+            return instant.astimezone(UTC)
         except ValueError:
             continue
     return None
@@ -387,16 +438,16 @@ def parse_backup_timestamp(value: str | datetime | None) -> datetime | None:
     if isinstance(value, datetime):
         instant = value
         if instant.tzinfo is None:
-            instant = instant.replace(tzinfo=timezone.utc)
-        return instant.astimezone(timezone.utc)
+            instant = instant.replace(tzinfo=UTC)
+        return instant.astimezone(UTC)
     return parse_db_timestamp(str(value))
 
 
 def format_backup_age(backup_at: datetime | None, *, now: datetime | None = None) -> str | None:
     if backup_at is None:
         return None
-    reference = now or datetime.now(timezone.utc)
-    delta = reference - backup_at.astimezone(timezone.utc)
+    reference = now or datetime.now(UTC)
+    delta = reference - backup_at.astimezone(UTC)
     seconds = int(delta.total_seconds())
     if seconds < 0:
         return "in the future"
@@ -576,8 +627,8 @@ def assess_backup_freshness(
         assessment.recommend_full_backup = True
         return assessment
 
-    backup_instant = backup_at.astimezone(timezone.utc)
-    activity_instant = activity_at.astimezone(timezone.utc)
+    backup_instant = backup_at.astimezone(UTC)
+    activity_instant = activity_at.astimezone(UTC)
     if activity_instant <= backup_instant:
         assessment.freshness = FRESHNESS_FRESH
         assessment.notes.append(

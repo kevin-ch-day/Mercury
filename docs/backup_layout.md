@@ -3,7 +3,7 @@
 Mercury uses a single layout helper (`mercury.backup.layout`) for all dry-run planning:
 
 ```
-backups/YYYY-MM-DD/<database>/
+backups/YYYY-MM-DD/<database>/<timestamp>/
   <database>_<timestamp>.sql.gz           # full logical (schema + data)
   <database>_<timestamp>.schema.sql.gz    # schema-only (structure only)
   manifest.json
@@ -19,10 +19,10 @@ do not count as production protection in live/operator mode. Legacy
 
 Current implementation note:
 
-- Timestamped dump files can accumulate inside the same database/day directory.
-- `manifest.json`, `checksum.sha256`, and `backup_report.md` describe the latest tracked backup in that directory.
-- Because of that shared-directory model, Mercury does not yet prune database backup history automatically.
-- A later layout migration to one unique backup-set directory per backup ID will make “keep last 2 verified full backups” safe to implement.
+- Every new backup has an immutable timestamped backup-set directory.
+- `manifest.json`, `checksum.sha256`, and `backup_report.md` describe only that exact set.
+- Legacy shared database/day directories remain manual-review-only because one manifest may describe several historical dump files.
+- `storage cleanup preview` models the production retention policy against exact manifest and restore-check identities. Cleanup execution remains disabled.
 
 ## Backup kinds
 

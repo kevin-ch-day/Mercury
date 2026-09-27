@@ -217,17 +217,16 @@ def _run_safe_disconnect_wizard() -> bool | str:
 
 
 def _run_safe_disconnect_wizard_impl() -> bool | str:
+    from mercury.storage.block_device import resolve_mercury_block_device
+    from mercury.storage.detach_presentation import (
+        print_privileged_detach_prompt,
+        print_safe_disconnect_intro,
+    )
     from mercury.storage.detach_wizard import (
         format_disconnect_complete,
         format_privileged_detach_report,
         format_wizard_report,
         run_detach_wizard,
-    )
-    from mercury.storage.block_device import resolve_mercury_block_device
-    from mercury.storage.detach_presentation import (
-        print_physical_move_ready,
-        print_privileged_detach_prompt,
-        print_safe_disconnect_intro,
     )
     from mercury.terminal.theme import colors_enabled, rule_line, section_title
 
@@ -376,7 +375,10 @@ def _print_reconnect_result(result) -> None:
 
 
 def _run_enable_writes() -> None:
-    from mercury.storage.lifecycle import StorageLifecycleState, assess_storage_lifecycle
+    from mercury.storage.lifecycle import (
+        StorageLifecycleState,
+        assess_storage_lifecycle,
+    )
     from mercury.storage.transitions import (
         RESTORE_SOURCE_WRITER_PHRASE,
         restore_source_writer,
@@ -439,7 +441,10 @@ def _run_inspect_readonly(*, execute_mount: bool = False) -> None:
 
 
 def _run_restore_source_writer(*, ask_mount: bool = True) -> None:
-    from mercury.storage.reconnect import run_reconnect_validate, restore_writes_after_reconnect
+    from mercury.storage.reconnect import (
+        restore_writes_after_reconnect,
+        run_reconnect_validate,
+    )
 
     do_mount = False
     if ask_mount:
@@ -553,7 +558,10 @@ def _run_change_mode_menu() -> None:
 def _run_recommended_action() -> None:
     """Launch the wizard that matches option [1] for the current lifecycle state."""
     from mercury.storage.hdd_menu_options import recommended_primary_label
-    from mercury.storage.lifecycle import StorageLifecycleState, assess_storage_lifecycle
+    from mercury.storage.lifecycle import (
+        StorageLifecycleState,
+        assess_storage_lifecycle,
+    )
 
     snap = assess_storage_lifecycle(probe_disconnect=True)
     label, _suffix = recommended_primary_label(snap)
@@ -590,6 +598,12 @@ def _run_recommended_action() -> None:
 
 
 def _run_cleanup_advanced_menu() -> None:
+    from mercury.core.usb_mount import resolve_operator_mount
+    from mercury.storage.cleanup import build_cleanup_preview, build_cleanup_status
+    from mercury.storage.cleanup_terminal import (
+        print_cleanup_preview,
+        print_cleanup_status,
+    )
     from mercury.storage.hdd_menu_options import (
         ADV_ARCHIVE_USB,
         ADV_CLEANUP_PREVIEW,
@@ -604,6 +618,9 @@ def _run_cleanup_advanced_menu() -> None:
 
     host = load_host_maintenance()
     policy = load_retention_policy()
+    mount_root = resolve_operator_mount()
+    cleanup_status = build_cleanup_status(mount_root, policy=policy)
+    candidate_gib = cleanup_status.safe_candidate_estimate_bytes / (1024**3)
     cleanup_locked = True
     if host.package_verification_status == "DESTINATION_PACKAGE_VERIFIED":
         # Destination validation pending / rehearsal — keep destructive cleanup locked.
@@ -619,7 +636,7 @@ def _run_cleanup_advanced_menu() -> None:
             ),
             (
                 "Safe candidates",
-                f"Approximately {policy.safe_candidate_estimate_gib:.1f} GiB",
+                f"{cleanup_status.safe_candidate_count} · {candidate_gib:.2f} GiB",
             ),
             (
                 "Manual review",
@@ -639,9 +656,10 @@ def _run_cleanup_advanced_menu() -> None:
         output.write(menu_prompts.invalid_choice_message(choice))
         return
     if action in {ADV_CLEANUP_STATUS, ADV_CLEANUP_PREVIEW}:
-        display_screen.write_summary(
-            f"Cleanup preview locked · ~{policy.safe_candidate_estimate_gib:.1f} GiB candidates"
-        )
+        if action == ADV_CLEANUP_STATUS:
+            print_cleanup_status(cleanup_status)
+        else:
+            print_cleanup_preview(build_cleanup_preview(mount_root, policy=policy))
         display_screen.write_hint(
             "Execution remains locked until destination cutover policy allows it."
         )

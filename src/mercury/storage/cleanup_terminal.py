@@ -15,7 +15,8 @@ def print_cleanup_status(report: CleanupStatusReport) -> int:
     output.field("Protected size", _fmt_gib(report.protected_size_bytes))
     output.field("Manual-review size", _fmt_gib(report.manual_review_size_bytes))
     output.field("Routine-retained size", _fmt_gib(report.routine_retained_size_bytes))
-    output.field("Safe-candidate estimate", _fmt_gib(report.safe_candidate_estimate_bytes))
+    output.field("Cleanup candidates", str(report.safe_candidate_count))
+    output.field("Candidate bytes", _fmt_gib(report.safe_candidate_estimate_bytes))
     output.field("ScytaleDroid excluded size", _fmt_gib(report.scytaledroid_excluded_size_bytes))
     output.field("Last audit timestamp", report.last_audit_timestamp)
     output.field(

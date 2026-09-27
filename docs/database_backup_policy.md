@@ -126,10 +126,10 @@ Governed retirement is `mercury restore-check retire-phase3b-restorecheck`
 
 ## Retention
 
-- Database retention is intentionally conservative in v1.1.
-- Mercury does not yet auto-prune database backup files because the current layout tracks one latest manifest/checksum/report set inside a shared database/day directory.
-- The accepted future policy is to keep the last 2 verified full backup sets per source database and prune only after a newer backup verifies successfully.
-- That database retention policy should be implemented after a layout migration to one unique backup-set directory per backup ID or timestamp.
+- Database retention is intentionally conservative.
+- New backups use one immutable directory per exact backup ID. Legacy shared database/day directories remain manual-review-only.
+- The read-only cleanup preview retains at least the latest 2 exact verified, restore-checked full backup sets per source database and honors the configured daily, weekly, and monthly windows.
+- A set is only shown as a cleanup candidate when its own exact restore-check passed and at least 2 newer exact restore-checked generations exist. Cleanup execution remains disabled.
 
 Repository retention is different:
 

@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-import json
 
 from mercury.core.storage_roles import CONTROL_DIRNAME
 from mercury.storage.retention import RetentionPolicy, load_retention_policy
+
 
 class CleanupClassification(StrEnum):
     PROTECTED = "PROTECTED"
@@ -42,6 +43,7 @@ class CleanupStatusReport:
     manual_review_size_bytes: int = 0
     routine_retained_size_bytes: int = 0
     safe_candidate_estimate_bytes: int = 0
+    safe_candidate_count: int = 0
     scytaledroid_excluded_size_bytes: int = 0
     last_audit_timestamp: str = DEFAULT_AUDIT_TIMESTAMP
     destination_validation_pending: bool = True
@@ -91,6 +93,190 @@ def _tree_size_bytes(path: Path) -> int:
             except OSError:
                 continue
     return total
+
+
+def _manifest_payload(path: Path) -> dict[str, object]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _created_at(payload: dict[str, object]) -> datetime | None:
+    raw = payload.get("created_at")
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(raw))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _calendar_retained_ids(
+    rows: list[tuple[Path, dict[str, object], datetime]],
+    *,
+    policy: RetentionPolicy,
+    now: datetime,
+) -> set[str]:
+    """Return exact IDs retained by configured daily/weekly/monthly windows."""
+    retained: set[str] = set()
+    seen_days: set[str] = set()
+    seen_weeks: set[str] = set()
+    seen_months: set[str] = set()
+    for _path, payload, created in rows:
+        backup_id = str(payload.get("backup_id") or "").strip()
+        age_days = max(0, (now.date() - created.date()).days)
+        day_key = created.date().isoformat()
+        iso_year, iso_week, _weekday = created.isocalendar()
+        week_key = f"{iso_year:04d}-W{iso_week:02d}"
+        month_key = created.strftime("%Y-%m")
+        if age_days < policy.production_keep_daily_days and day_key not in seen_days:
+            retained.add(backup_id)
+            seen_days.add(day_key)
+        if age_days < policy.production_keep_weekly_weeks * 7 and week_key not in seen_weeks:
+            retained.add(backup_id)
+            seen_weeks.add(week_key)
+        if age_days < policy.production_keep_monthly_months * 31 and month_key not in seen_months:
+            retained.add(backup_id)
+            seen_months.add(month_key)
+    return retained
+
+
+def _production_backup_preview_entries(
+    backup_root: Path,
+    *,
+    policy: RetentionPolicy,
+    protected_tokens: set[str],
+    now: datetime | None = None,
+) -> list[CleanupPreviewEntry]:
+    """Model production retention without deleting or re-verifying backup data."""
+    from mercury.backup.find_latest_backup import find_backup_directories
+    from mercury.backup.status import latest_restore_check_by_backup_id
+    from mercury.database.core.scope import ACTIVE_BACKUP_SOURCE_DATABASES
+
+    current = (now or datetime.now(UTC)).astimezone(UTC)
+    restore_records = latest_restore_check_by_backup_id()
+    entries: list[CleanupPreviewEntry] = []
+    floor = max(2, policy.production_min_valid_generations)
+
+    for database in sorted(ACTIVE_BACKUP_SOURCE_DATABASES):
+        parsed_rows: list[tuple[Path, dict[str, object], datetime]] = []
+        manual_rows: list[Path] = []
+        for path in find_backup_directories(backup_root, database):
+            payload = _manifest_payload(path / "manifest.json")
+            created = _created_at(payload)
+            # Shared database/day directories are legacy. One manifest may cover
+            # several dumps, so set-level pruning is unsafe there.
+            unique_set_layout = path.parent.name == database and path.name != database
+            if (
+                not unique_set_layout
+                or created is None
+                or str(payload.get("database") or "").strip() != database
+                or str(payload.get("backup_id") or "").strip() == ""
+            ):
+                manual_rows.append(path)
+                continue
+            parsed_rows.append((path, payload, created))
+
+        parsed_rows.sort(key=lambda item: item[2], reverse=True)
+        passed_rows: list[tuple[Path, dict[str, object], datetime]] = []
+        for row in parsed_rows:
+            _path, payload, _created = row
+            backup_id = str(payload.get("backup_id") or "").strip()
+            record = restore_records.get(backup_id)
+            if (
+                payload.get("backup_kind") == "full"
+                and payload.get("verified") is True
+                and record is not None
+                and record.database == database
+                and record.status == "passed"
+            ):
+                passed_rows.append(row)
+
+        retained_ids = {
+            str(payload.get("backup_id") or "").strip()
+            for _path, payload, _created in passed_rows[:floor]
+        }
+        retained_ids.update(
+            _calendar_retained_ids(passed_rows, policy=policy, now=current)
+        )
+        if policy.production_keep_latest_restore_checked and passed_rows:
+            retained_ids.add(str(passed_rows[0][1].get("backup_id") or "").strip())
+        if policy.production_keep_latest_verified:
+            for _path, payload, _created in parsed_rows:
+                if payload.get("backup_kind") == "full" and payload.get("verified") is True:
+                    retained_ids.add(str(payload.get("backup_id") or "").strip())
+                    break
+
+        for path in manual_rows:
+            entries.append(
+                CleanupPreviewEntry(
+                    path=str(path),
+                    classification=CleanupClassification.MANUAL_REVIEW_ONLY,
+                    size_bytes=0,
+                    reason="legacy or invalid production backup layout; set-level pruning unsafe",
+                    risk="high",
+                )
+            )
+
+        passed_ids = {
+            str(payload.get("backup_id") or "").strip()
+            for _path, payload, _created in passed_rows
+        }
+        for path, payload, created in parsed_rows:
+            backup_id = str(payload.get("backup_id") or "").strip()
+            references = (backup_id, database)
+            if backup_id in protected_tokens:
+                classification = CleanupClassification.PROTECTED
+                reason = "exact backup ID referenced by protected evidence"
+                risk = "critical"
+            elif backup_id in retained_ids:
+                classification = CleanupClassification.RETAIN
+                reason = "production retention floor or calendar window"
+                risk = "low"
+            elif backup_id not in passed_ids:
+                classification = CleanupClassification.MANUAL_REVIEW_ONLY
+                reason = "no exact verified restore-check PASS; automatic eligibility refused"
+                risk = "high"
+            else:
+                newer_passed = sum(
+                    1
+                    for _new_path, new_payload, new_created in passed_rows
+                    if new_created > created
+                    and str(new_payload.get("backup_id") or "").strip() != backup_id
+                )
+                if newer_passed < floor:
+                    classification = CleanupClassification.RETAIN
+                    reason = f"fewer than {floor} newer exact restore-checked generations"
+                    risk = "low"
+                else:
+                    classification = CleanupClassification.CLEANUP_CANDIDATE_AFTER_DESTINATION
+                    reason = (
+                        f"superseded exact restore-checked generation; {newer_passed} newer "
+                        "PASS generations; preview only"
+                    )
+                    risk = "medium"
+            entries.append(
+                CleanupPreviewEntry(
+                    path=str(path),
+                    classification=classification,
+                    size_bytes=_tree_size_bytes(path),
+                    reason=reason,
+                    references=references,
+                    canonical_replacement=(
+                        f"newest {floor} exact restore-checked full generations"
+                        if classification
+                        == CleanupClassification.CLEANUP_CANDIDATE_AFTER_DESTINATION
+                        else None
+                    ),
+                    risk=risk,
+                )
+            )
+    return entries
 
 
 def default_scytaledroid_receipts() -> list[ProjectAuditReceipt]:
@@ -265,8 +451,14 @@ def build_cleanup_status(
         else:
             routine += size
 
-    # Phase3B control evidence is already inside .mercury_control; keep estimate.
-    safe_estimate = int(policy.safe_candidate_estimate_gib * (1024**3))
+    preview = build_cleanup_preview(mount_root, policy=policy)
+    candidate_entries = [
+        entry
+        for entry in preview.entries
+        if entry.classification
+        == CleanupClassification.CLEANUP_CANDIDATE_AFTER_DESTINATION
+    ]
+    safe_estimate = sum(entry.size_bytes for entry in candidate_entries)
     execute_allowed = policy.cleanup_execute_allowed()
     return CleanupStatusReport(
         protected_size_bytes=protected,
@@ -275,6 +467,7 @@ def build_cleanup_status(
         ),
         routine_retained_size_bytes=routine,
         safe_candidate_estimate_bytes=safe_estimate,
+        safe_candidate_count=len(candidate_entries),
         scytaledroid_excluded_size_bytes=scytale_size,
         last_audit_timestamp=receipts[0].audit_timestamp if receipts else DEFAULT_AUDIT_TIMESTAMP,
         destination_validation_pending=policy.destination_validation_pending,
@@ -285,6 +478,7 @@ def build_cleanup_status(
         governed_roots=policy.governed_roots,
         notes=[
             "Cleanup execute is locked while destination_validation_pending=true.",
+            "Candidate count and bytes come from the live read-only retention preview.",
             "ScytaleDroid roots are never automatic cleanup candidates.",
             "78.5 GiB Scytale APK cross-tree extras are informational only.",
         ],
@@ -358,17 +552,14 @@ def build_cleanup_preview(
     # Governed Mercury candidates — only propose after destination validation.
     backups = mount_root / "mercury_backups"
     if backups.is_dir():
+        entries.extend(
+            _production_backup_preview_entries(
+                backups,
+                policy=policy,
+                protected_tokens=tokens,
+            )
+        )
         for database in ("erebus_threat_intel_dev", "scytaledroid_core_dev", "android_permission_intel_dev"):
-            # Count generations lightly via day dirs.
-            gens = 0
-            try:
-                for day in backups.iterdir():
-                    db_dir = day / database
-                    if db_dir.is_dir():
-                        gens += sum(1 for child in db_dir.iterdir() if child.is_dir() or (child / "manifest.json").is_file() or child.name.endswith(".sql.gz"))
-                        # better: use find_backup_directories
-            except OSError:
-                pass
             from mercury.backup.find_latest_backup import find_backup_directories
 
             paths = find_backup_directories(backups, database)
@@ -377,9 +568,9 @@ def build_cleanup_preview(
                 for path in sorted(paths, key=lambda p: p.name)[:-keep]:
                     backup_id = ""
                     try:
-                        payload = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
+                        payload = _manifest_payload(path / "manifest.json")
                         backup_id = str(payload.get("backup_id") or "")
-                    except (OSError, json.JSONDecodeError):
+                    except OSError:
                         backup_id = ""
                     if backup_id and backup_id in tokens:
                         entries.append(
@@ -456,7 +647,7 @@ def build_cleanup_preview(
         refuse = "execute still quarantine-only; use future execute command after review"
 
     report = CleanupPreviewReport(
-        generated_at=datetime.now(timezone.utc).isoformat(),
+        generated_at=datetime.now(UTC).isoformat(),
         mount_root=str(mount_root),
         entries=entries,
         execute_refused_reason=refuse

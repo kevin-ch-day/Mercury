@@ -114,6 +114,23 @@ def test_obsidiandroid_freshness_probes_match_the_current_core_schema() -> None:
     assert "schema_migrations " not in sql
 
 
+def test_provider_secret_freshness_probes_cover_version_rotation_and_use() -> None:
+    from mercury.backup.freshness import SOURCE_ACTIVITY_PROBES
+
+    probes = SOURCE_ACTIVITY_PROBES["erebus_provider_secrets_prod"]
+    labels = {label for label, _statement in probes}
+    sql = "\n".join(statement for _label, statement in probes)
+
+    assert labels == {
+        "provider_secret_version.created_at_utc",
+        "provider_secret_current.rotated_at_utc",
+        "provider_secret_current.last_success_at_utc",
+    }
+    assert "erebus_provider_secrets_prod.provider_secret_version" in sql
+    assert "erebus_provider_secrets_prod.provider_secret_current" in sql
+    assert "ciphertext" not in sql
+
+
 def test_backup_screen_rows_never_use_current_label(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

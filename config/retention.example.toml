@@ -50,7 +50,6 @@ scytaledroid_approved_paths = []
 destination_validation_pending = true
 allow_execute = false
 quarantine_only = true
-safe_candidate_estimate_gib = 6.5
 manual_review_project_estimate_gib = 266.0
 
 [cleanup.governed_roots]
@@ -73,7 +72,7 @@ keep_latest_verified = true
 keep_daily_days = 7
 keep_weekly_weeks = 4
 keep_monthly_months = 3
-min_valid_generations = 1
+min_valid_generations = 2
 
 [development_backups]
 keep_latest_verified = 2

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +11,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover
     import tomli as tomllib  # type: ignore
 
-from mercury.core.paths import CONFIG_DIR, REPO_ROOT
+from mercury.core.paths import CONFIG_DIR
 
 RETENTION_EXAMPLE = CONFIG_DIR / "retention.example.toml"
 RETENTION_LOCAL = CONFIG_DIR / "retention.toml"
@@ -66,9 +66,14 @@ class RetentionPolicy:
     destination_validation_pending: bool = True
     allow_execute: bool = False
     quarantine_only: bool = True
-    safe_candidate_estimate_gib: float = 6.5
     manual_review_project_estimate_gib: float = 266.0
     governed_roots: tuple[str, ...] = DEFAULT_GOVERNED_ROOTS
+    production_keep_latest_restore_checked: bool = True
+    production_keep_latest_verified: bool = True
+    production_keep_daily_days: int = 7
+    production_keep_weekly_weeks: int = 4
+    production_keep_monthly_months: int = 3
+    production_min_valid_generations: int = 2
     development_keep_latest_verified: int = 2
     development_include_in_destination: bool = False
     source_path: Path | None = None
@@ -147,6 +152,11 @@ def load_retention_policy(*, config_path: Path | None = None) -> RetentionPolicy
         if isinstance(data.get("development_backups"), dict)
         else {}
     )
+    production = (
+        data.get("production_backups")
+        if isinstance(data.get("production_backups"), dict)
+        else {}
+    )
 
     return RetentionPolicy(
         protected_run_ids=_as_str_tuple(
@@ -193,14 +203,30 @@ def load_retention_policy(*, config_path: Path | None = None) -> RetentionPolicy
         ),
         allow_execute=bool(cleanup.get("allow_execute", False)),
         quarantine_only=bool(cleanup.get("quarantine_only", True)),
-        safe_candidate_estimate_gib=float(
-            cleanup.get("safe_candidate_estimate_gib", 6.5)
-        ),
         manual_review_project_estimate_gib=float(
             cleanup.get("manual_review_project_estimate_gib", 266.0)
         ),
         governed_roots=_as_str_tuple(
             governed.get("names"), default=DEFAULT_GOVERNED_ROOTS
+        ),
+        production_keep_latest_restore_checked=bool(
+            production.get("keep_latest_restore_checked", True)
+        ),
+        production_keep_latest_verified=bool(
+            production.get("keep_latest_verified", True)
+        ),
+        production_keep_daily_days=max(
+            0, int(production.get("keep_daily_days", 7) or 0)
+        ),
+        production_keep_weekly_weeks=max(
+            0, int(production.get("keep_weekly_weeks", 4) or 0)
+        ),
+        production_keep_monthly_months=max(
+            0, int(production.get("keep_monthly_months", 3) or 0)
+        ),
+        # Two independently restorable generations is the fail-closed floor.
+        production_min_valid_generations=max(
+            2, int(production.get("min_valid_generations", 2) or 2)
         ),
         development_keep_latest_verified=int(
             development.get("keep_latest_verified", 2) or 2

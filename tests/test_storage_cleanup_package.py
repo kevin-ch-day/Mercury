@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -160,6 +161,8 @@ def test_cleanup_status_read_only(tmp_path: Path) -> None:
     after = {p.name for p in tmp_path.iterdir()} if tmp_path.exists() else set()
     assert before == after
     assert report.cleanup_execution_state == "refused"
+    assert report.safe_candidate_count == 0
+    assert report.safe_candidate_estimate_bytes == 0
 
 
 def test_preview_writes_plan_only_when_requested(tmp_path: Path) -> None:
@@ -202,6 +205,204 @@ def test_dev_backup_candidate_only_after_retention_minimum(tmp_path: Path) -> No
     ]
     assert candidates
     assert all("execute refused" in e.reason for e in candidates)
+
+
+def _write_production_backup(
+    root: Path,
+    *,
+    database: str,
+    stamp: str,
+    created_at: str,
+    verified: bool = True,
+) -> tuple[Path, str]:
+    path = root / "mercury_backups" / "2026-09-27" / database / stamp
+    path.mkdir(parents=True)
+    backup_id = f"{database}-full-{stamp}"
+    (path / "dump.sql.gz").write_bytes(b"backup")
+    (path / "manifest.json").write_text(
+        json.dumps(
+            {
+                "backup_id": backup_id,
+                "database": database,
+                "backup_kind": "full",
+                "created_at": created_at,
+                "dump_file": "dump.sql.gz",
+                "sha256": "a" * 64,
+                "verified": verified,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path, backup_id
+
+
+def test_production_preview_requires_two_newer_exact_restore_checked_sets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = "erebus_threat_intel_prod"
+    rows = [
+        _write_production_backup(
+            tmp_path,
+            database=database,
+            stamp=f"20260927_12000{index}_000",
+            created_at=f"2026-09-27T12:00:0{index}+00:00",
+        )
+        for index in range(3)
+    ]
+    records = {
+        backup_id: SimpleNamespace(database=database, status="passed")
+        for _path, backup_id in rows
+    }
+    monkeypatch.setattr(
+        "mercury.backup.status.latest_restore_check_by_backup_id",
+        lambda: records,
+    )
+    policy = _policy(
+        production_keep_daily_days=0,
+        production_keep_weekly_weeks=0,
+        production_keep_monthly_months=0,
+        production_min_valid_generations=2,
+    )
+
+    preview = build_cleanup_preview(tmp_path, policy=policy)
+    production = {
+        entry.references[0]: entry
+        for entry in preview.entries
+        if len(entry.references) == 2 and entry.references[1] == database
+    }
+
+    assert production[rows[0][1]].classification == (
+        CleanupClassification.CLEANUP_CANDIDATE_AFTER_DESTINATION
+    )
+    assert production[rows[0][1]].size_bytes > 0
+    assert production[rows[1][1]].classification == CleanupClassification.RETAIN
+    assert production[rows[2][1]].classification == CleanupClassification.RETAIN
+    assert "2 newer" in production[rows[0][1]].reason
+
+
+def test_production_preview_refuses_unchecked_set_as_cleanup_candidate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = "erebus_threat_intel_prod"
+    rows = [
+        _write_production_backup(
+            tmp_path,
+            database=database,
+            stamp=f"20260927_13000{index}_000",
+            created_at=f"2026-09-27T13:00:0{index}+00:00",
+        )
+        for index in range(3)
+    ]
+    records = {
+        backup_id: SimpleNamespace(database=database, status="passed")
+        for _path, backup_id in rows[1:]
+    }
+    monkeypatch.setattr(
+        "mercury.backup.status.latest_restore_check_by_backup_id",
+        lambda: records,
+    )
+    policy = _policy(
+        production_keep_daily_days=0,
+        production_keep_weekly_weeks=0,
+        production_keep_monthly_months=0,
+    )
+
+    preview = build_cleanup_preview(tmp_path, policy=policy)
+    oldest = next(
+        entry for entry in preview.entries if rows[0][1] in entry.references
+    )
+    assert oldest.classification == CleanupClassification.MANUAL_REVIEW_ONLY
+    assert "restore-check PASS" in oldest.reason
+
+
+def test_protected_production_backup_overrides_retention_candidate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = "erebus_threat_intel_prod"
+    rows = [
+        _write_production_backup(
+            tmp_path,
+            database=database,
+            stamp=f"20260927_14000{index}_000",
+            created_at=f"2026-09-27T14:00:0{index}+00:00",
+        )
+        for index in range(3)
+    ]
+    records = {
+        backup_id: SimpleNamespace(database=database, status="passed")
+        for _path, backup_id in rows
+    }
+    monkeypatch.setattr(
+        "mercury.backup.status.latest_restore_check_by_backup_id",
+        lambda: records,
+    )
+    policy = _policy(
+        protected_backup_ids=(rows[0][1],),
+        production_keep_daily_days=0,
+        production_keep_weekly_weeks=0,
+        production_keep_monthly_months=0,
+    )
+
+    preview = build_cleanup_preview(tmp_path, policy=policy)
+    oldest = next(
+        entry for entry in preview.entries if rows[0][1] in entry.references
+    )
+    assert oldest.classification == CleanupClassification.PROTECTED
+    assert oldest.risk == "critical"
+
+
+def test_legacy_shared_production_backup_directory_is_manual_review(
+    tmp_path: Path,
+) -> None:
+    database = "erebus_threat_intel_prod"
+    path = tmp_path / "mercury_backups" / "2026-09-27" / database
+    path.mkdir(parents=True)
+    (path / "manifest.json").write_text(
+        json.dumps(
+            {
+                "backup_id": f"{database}-full-legacy",
+                "database": database,
+                "backup_kind": "full",
+                "created_at": "2026-09-27T14:00:00+00:00",
+                "verified": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    preview = build_cleanup_preview(tmp_path, policy=_policy())
+    legacy = next(entry for entry in preview.entries if entry.path == str(path))
+    assert legacy.classification == CleanupClassification.MANUAL_REVIEW_ONLY
+    assert "legacy" in legacy.reason
+
+
+def test_production_retention_config_has_two_generation_safety_floor(
+    tmp_path: Path,
+) -> None:
+    config = tmp_path / "retention.toml"
+    config.write_text(
+        """
+[production_backups]
+keep_latest_restore_checked = false
+keep_latest_verified = false
+keep_daily_days = 3
+keep_weekly_weeks = 2
+keep_monthly_months = 1
+min_valid_generations = 1
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    policy = load_retention_policy(config_path=config)
+    assert policy.production_keep_latest_restore_checked is False
+    assert policy.production_keep_latest_verified is False
+    assert policy.production_keep_daily_days == 3
+    assert policy.production_keep_weekly_weeks == 2
+    assert policy.production_keep_monthly_months == 1
+    assert policy.production_min_valid_generations == 2
 
 
 def test_only_valid_production_backup_protected_by_policy() -> None:
