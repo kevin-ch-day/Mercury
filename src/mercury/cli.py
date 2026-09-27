@@ -406,22 +406,13 @@ def storage_smart_health_cmd(
     ),
 ) -> None:
     """Preview or record primary HDD SMART health evidence (never writes to USB)."""
-    from mercury.storage.smart_health import build_smart_health_plan, record_smart_health
+    from mercury.storage.smart_health import record_smart_health
 
     if not execute:
-        plan = build_smart_health_plan()
         output.heading("HDD SMART Health")
         output.field("Mode", "PREVIEW")
-        output.field("Mount", plan["mount_path"])
-        output.field("UUID", plan["filesystem_uuid"])
-        output.field("Block device", plan["block_device"] or "unknown")
-        output.field("smartctl", plan["smartctl"] or "not found")
-        output.field("Command", plan["command"])
-        output.field("Receipt", plan["receipt_path"])
-        existing = plan.get("existing")
-        if existing:
-            output.field("Existing recorded", existing.get("recorded_at_utc"))
-            output.field("Existing health passed", existing.get("overall_health_passed"))
+        output.field("Scope", "configured primary storage device")
+        output.field("Evidence", "private Mercury control directory")
         output.write("\nPreview only. Re-run with --execute (requires interactive sudo).")
         return
 

@@ -52,7 +52,9 @@ def _mariadb_config_status(cfg) -> str:
     if cfg.use_client and cfg.unix_socket:
         return f"ready (client/socket: {cfg.unix_socket})"
     if cfg.password_env:
-        return f"ready (password via {cfg.password_env})"
+        # Configuration status must not echo credential-related environment
+        # variable names into terminal transcripts or collected logs.
+        return "ready (password via environment variable)"
     return "ready"
 
 

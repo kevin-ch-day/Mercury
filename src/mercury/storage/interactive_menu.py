@@ -624,13 +624,8 @@ def _run_cleanup_advanced_menu() -> None:
         print_storage_status(build_storage_status_report())
         return
     if action == ADV_SMART:
-        from mercury.storage.smart_health import build_smart_health_plan
-
-        plan = build_smart_health_plan()
-        display_screen.write_summary(
-            f"Primary device: {plan['block_device'] or 'unknown'} · {plan['command']}"
-        )
-        display_screen.write_hint(f"Receipt: {plan['receipt_path']}")
+        display_screen.write_summary("SMART health check is available for primary storage.")
+        display_screen.write_hint("Use the CLI preview before recording private evidence.")
         return
     if action == ADV_ARCHIVE_USB:
         from mercury.storage.archive_remount import build_archive_remount_plan

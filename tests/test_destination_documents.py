@@ -13,9 +13,9 @@ from mercury.migration.destination_documents import (
     DOCUMENT_IDS,
     DOCUMENT_SCHEMA,
     UNRESOLVED,
-    _atomic_write_json,
-    _assert_no_secret_values,
     _assert_scope_safe,
+    _atomic_write_json,
+    _validate_document_payload_safety,
     classify_unresolved_fields,
     evaluate_package_create_preconditions,
     generate_destination_documents,
@@ -213,7 +213,7 @@ def test_secret_looking_values_rejected() -> None:
     payload = {
         "body": {"note": "password: hunter2hunter2"},
     }
-    assert _assert_no_secret_values(payload)
+    assert _validate_document_payload_safety(payload)
 
 
 def test_unresolved_operator_fields_remain_placeholders(tmp_path: Path, mount_ok) -> None:

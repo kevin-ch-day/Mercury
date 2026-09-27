@@ -316,7 +316,7 @@ def _count_unresolved(obj: Any) -> int:
     return 0
 
 
-def _assert_no_secret_values(payload: dict[str, Any]) -> list[str]:
+def _validate_document_payload_safety(payload: dict[str, Any]) -> list[str]:
     """Fail closed if payload appears to embed credential material."""
     errors: list[str] = []
     text = json.dumps(payload, sort_keys=True)
@@ -1265,10 +1265,13 @@ def generate_destination_documents(
         )
         payload["documents_run"] = stamp
         scope_errors = _assert_scope_safe(payload)
-        secret_errors = _assert_no_secret_values(payload)
-        if scope_errors or secret_errors:
+        payload_safety_errors = _validate_document_payload_safety(payload)
+        if scope_errors or payload_safety_errors:
             result.errors.extend(scope_errors)
-            result.errors.extend(secret_errors)
+            if payload_safety_errors:
+                # Do not copy scanner details derived from the rejected payload
+                # into durable indexes or operator-facing output.
+                result.errors.append("document payload failed safety validation")
             continue
         path = out_dir / DOCUMENT_FILENAMES[doc_id]
         digest = _atomic_write_json(path, payload)
@@ -1379,7 +1382,8 @@ def validate_documents_against_preview_pins(
             errors.append(f"{doc_id}: mercury_capture_id mismatch")
         if erebus_commit and payload.get("erebus_commit") != erebus_commit:
             errors.append(f"{doc_id}: erebus_commit mismatch")
-        errors.extend(_assert_no_secret_values(payload))
+        if _validate_document_payload_safety(payload):
+            errors.append(f"{doc_id}: document payload failed safety validation")
         errors.extend(_assert_scope_safe(payload))
         text = json.dumps(payload).lower()
         if re.search(r"\bunqualified latest\b", text) is None and re.search(
@@ -1504,4 +1508,3 @@ def evaluate_package_create_preconditions(
         for doc in documents.values():
             refusals.extend(verify_document_payload_checksum(doc.payload))
     return refusals
-
