@@ -93,6 +93,20 @@ def test_detect_leftover_test_database() -> None:
     assert "DROP DATABASE" in suggestions[0][1]
 
 
+def test_detect_leftover_excludes_unknown_application_database() -> None:
+    suggestions = detect_leftover_databases(
+        {"android_permission_intel", "market_portfolio_lab", "mysql"}
+    )
+    assert suggestions == []
+
+
+def test_detect_leftover_includes_timestamped_development_schema() -> None:
+    name = "android_permission_intel_pi0004_dev_20260927"
+    suggestions = detect_leftover_databases({"android_permission_intel", name})
+    assert [item[0] for item in suggestions] == [name]
+    assert "review first; requires DBA privileges" in suggestions[0][1]
+
+
 def test_sync_blocker_not_environment_blocker_when_deploy_complete() -> None:
     assert sync_blocker_is_rebuild_blocker("Dev target missing: erebus_threat_intel_dev", deploy_complete=True) is False
     blocker = resolve_dashboard_blocker(
@@ -129,6 +143,30 @@ def test_doctor_recommends_fresh_backup_when_rebuild_complete() -> None:
     report.rebuild_complete = _rebuild_is_complete(report)
     step = _recommended_next_step(SimpleNamespace(policy=report.policy), report)
     assert "backup all" in step
+
+
+def test_doctor_does_not_recommend_duplicate_backup_when_current() -> None:
+    report = DoctorReport(
+        repo_root=Path("/tmp"),
+        current_user="linuxadmin",
+        python_version="3.14",
+        platform_label="Fedora",
+        config=SimpleNamespace(),
+        usb=SimpleNamespace(),
+        mariadb=SimpleNamespace(connection_works=True),
+        policy=SimpleNamespace(backup_execution_allowed=lambda: True),
+        source_databases=[
+            SimpleNamespace(name="erebus_threat_intel_prod", present=True),
+        ],
+        verified_backup_count=1,
+        verified_backup_total=1,
+        backup_status_current=True,
+        blockers=[],
+    )
+    report.rebuild_complete = _rebuild_is_complete(report)
+    step = _recommended_next_step(SimpleNamespace(policy=report.policy), report)
+    assert step.startswith("./run.sh backup status")
+    assert "backup all" not in step
 
 
 def test_db_inventory_cli_alias_registered() -> None:

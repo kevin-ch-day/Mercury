@@ -66,7 +66,7 @@ def summarize_stale_repo_paths(repos: list[RepoDefinition]) -> str | None:
     suffix = " …" if len(stale) > 3 else ""
     return (
         f"Stale repository paths in repos.toml ({len(stale)} rewritten at plan time) — "
-        f"run ./run.sh repo init-config --force"
+        f"{'; '.join(stale[:3])}{suffix}; run ./run.sh repo init-config --force"
     )
 
 

@@ -93,7 +93,7 @@ def _source_identity(request: ErebusCaptureRequest) -> dict[str, object]:
         tracked = _git(repo, "ls-files", "--error-unmatch", relative) == relative
         ignored = subprocess.run(
             ["git", "-C", str(repo), "check-ignore", "-q", relative],
-            capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS,
+            check=False, capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS,
         ).returncode == 0
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         raise ValueError(f"SOURCE_MISMATCH: git preflight failed: {exc}") from exc
@@ -233,7 +233,7 @@ def preview_capture(request: ErebusCaptureRequest, *, identity_payloads: dict[st
             elif _git(repo, "ls-files", "--error-unmatch", str(maintenance.relative_to(repo))):
                 ignored_result = subprocess.run(
                     ["git", "-C", str(repo), "check-ignore", "-q", str(maintenance.relative_to(repo))],
-                    capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS,
+                    check=False, capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS,
                 )
                 if ignored_result.returncode not in (0, 1):
                     errors.append("unable to determine whether maintenance.py is ignored")
@@ -445,7 +445,6 @@ def load_preview(control_root: str | Path, preview_id: str) -> ErebusCaptureResu
             intake_identity.get("path") != str(request.get("intake_contract")) or
             not storage_identity.get("uuid")):
         return ErebusCaptureResult("REFUSED", False, ["PREVIEW_COMPONENT_MISMATCH"])
-    repo = Path(str(request.get("repository") or ""))
     try:
         _source_identity(ErebusCaptureRequest(**request))
         recovery = data.get("recovery_receipt")

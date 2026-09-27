@@ -135,8 +135,6 @@ class SyncReadinessReport(BaseModel):
 
 def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
     """Check prod→dev pairs against verified full backups on disk."""
-    from mercury.database.discovery import discover_for_planning
-
     policy = load_execution_policy()
     inventory = discover_for_planning(live=live)
     mode = "live" if live and inventory.mode == "mariadb_readonly" else "demo"

@@ -10,7 +10,6 @@ from mercury import output
 from mercury.terminal import format as display_format
 from mercury.terminal import screen as display_screen
 from mercury.backup.on_disk_index import DemoBackupList, OnDiskBackupList, latest_records_by_database
-from mercury.backup.verification import verify_backup_artifacts
 from mercury.database.core import shared_authority_note
 from mercury.backup.verification import (
     MANIFEST_VERIFIED_STAMP_NOTE,

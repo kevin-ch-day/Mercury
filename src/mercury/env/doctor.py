@@ -39,6 +39,7 @@ class DoctorReport:
     source_databases: list[SourceDatabaseCheck] = field(default_factory=list)
     verified_backup_count: int = 0
     verified_backup_total: int = 0
+    backup_status_current: bool | None = None
     blockers: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     cleanup_suggestions: list[str] = field(default_factory=list)
@@ -65,6 +66,9 @@ def run_doctor(*, probe_database: bool = True, self_heal: bool = False) -> Docto
     report.permission_checks = list(env.permission_checks)
     report.source_databases = _assess_source_databases(env.mariadb.connection_works is True)
     report.verified_backup_count, report.verified_backup_total = _count_verified_backups(env.policy)
+    report.backup_status_current = _backup_status_current(
+        live=env.mariadb.connection_works is True
+    )
     report.warnings = _collect_warnings(env, report)
     report.blockers = _collect_blockers(env, report)
     report.cleanup_suggestions = _collect_cleanup_suggestions(env)
@@ -110,6 +114,8 @@ def _recommended_next_step(env, report: DoctorReport) -> str:
             return USB_REPAIR_COMMAND
         return recommended_next_step(env)
     if report.rebuild_complete:
+        if report.backup_status_current is True:
+            return "./run.sh backup status  # protected backups verified and fresh"
         if env.policy.backup_execution_allowed():
             return "./run.sh backup all  # fresh backup of restored prod databases"
         return "./run.sh backup plan  # review backup plan once operator backup root is ready"
@@ -128,6 +134,26 @@ def _recommended_next_step(env, report: DoctorReport) -> str:
             return "./run.sh doctor --repair-plan"
         return "./run.sh deploy system --dry-run"
     return recommended_next_step(env)
+
+
+def _backup_status_current(*, live: bool) -> bool | None:
+    """Return whether every active source has a verified, fresh backup."""
+    try:
+        from mercury.backup.status import build_backup_status_report
+
+        status = build_backup_status_report(live=live)
+    except Exception:  # noqa: BLE001 - doctor reports unknown instead of crashing
+        return None
+    if status.source_count <= 0:
+        return None
+    return bool(
+        status.verified_count == status.source_count
+        and status.missing_count == 0
+        and status.failed_count == 0
+        and status.stale_count == 0
+        and status.unknown_freshness_count == 0
+        and status.absent_count == 0
+    )
 
 
 def _collect_cleanup_suggestions(env) -> list[str]:

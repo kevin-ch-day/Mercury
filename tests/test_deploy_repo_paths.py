@@ -66,3 +66,29 @@ def test_repo_path_missing_detail_skips_existing_effective_path(
         path=STALE_OPERATOR_REPO_PATH,
     )
     assert repo_path_missing_detail(repo) is None
+
+
+def test_stale_repo_summary_includes_bounded_path_examples(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mercury.repo.path_repair import summarize_stale_repo_paths
+
+    home = tmp_path / "systemadmin"
+    monkeypatch.setattr("mercury.repo.path_repair.Path.home", lambda: home)
+    repos = [
+        RepoDefinition(
+            key=f"repo_{index}",
+            display_name=f"Repo {index}",
+            path=Path(f"/home/secadmin/GitHub/repo-{index}"),
+        )
+        for index in range(4)
+    ]
+
+    summary = summarize_stale_repo_paths(repos)
+
+    assert summary is not None
+    assert "/home/secadmin/GitHub/repo-0" in summary
+    assert str(home / "GitHub/repo-0") in summary
+    assert "/home/secadmin/GitHub/repo-2" in summary
+    assert "/home/secadmin/GitHub/repo-3" not in summary
+    assert " …; run ./run.sh repo init-config --force" in summary

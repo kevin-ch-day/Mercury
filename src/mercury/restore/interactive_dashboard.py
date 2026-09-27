@@ -251,11 +251,12 @@ def _execute_plans(plans: list[RestoreCheckPlan]) -> None:
             elapsed: float,
             *,
             _name: str = plan.source_prod,
+            _last_beat: list[float] = last_beat,
         ) -> None:
             # Time-gated heartbeats — avoid a line every 16 MiB on huge dumps.
-            if elapsed - last_beat[0] < 20 and uncompressed > 0:
+            if elapsed - _last_beat[0] < 20 and uncompressed > 0:
                 return
-            last_beat[0] = elapsed
+            _last_beat[0] = elapsed
             mins = int(elapsed // 60)
             secs = int(elapsed % 60)
             display_screen.write_summary(

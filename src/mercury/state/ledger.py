@@ -7,12 +7,15 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
 from mercury.core.paths import DATA_DIR
 from mercury.core.usb_mount import usb_mount_is_active
 from mercury.core.handoff_status import database_bundle_package_status
+
+if TYPE_CHECKING:
+    from mercury.restore.restore_runner import RestoreExecutionResult
 
 STATE_DIRNAME = "mercury_state"
 OPERATIONS_JSONL = "operations.jsonl"

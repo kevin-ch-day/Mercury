@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 
 from mercury.core.execution_policy import load_execution_policy
 from mercury.deploy.snapshot import build_deployment_snapshot
@@ -51,7 +52,12 @@ def _is_sync_only_blocker(message: str) -> bool:
 
 
 def detect_leftover_databases(server_names: set[str]) -> list[tuple[str, str]]:
-    """Return non-protected server databases with cleanup SQL suggestions."""
+    """Return narrowly named disposable databases with review-first cleanup SQL.
+
+    Unknown application schemas are manual-review data, not leftovers. A database
+    is eligible here only when its name explicitly carries a test marker or a
+    timestamped development suffix.
+    """
     from mercury.backup.batch_runner import resolve_batch_sources
     from mercury.database.core import classify_database
     from mercury.database.mariadb.identifiers import SAFE_IDENTIFIER, quote_ident
@@ -72,12 +78,17 @@ def detect_leftover_databases(server_names: set[str]) -> list[tuple[str, str]]:
             continue
         if not SAFE_IDENTIFIER.fullmatch(name):
             continue
-        if not (classification.manual_review or name.endswith("_test") or "_test" in name):
+        explicitly_disposable = bool(
+            re.search(r"(?:^|_)test(?:_|$)", name)
+            or re.search(r"_dev_\d{8}(?:_\d+)?$", name)
+        )
+        if not explicitly_disposable:
             continue
         suggestions.append(
             (
                 name,
-                f"mariadb -e \"DROP DATABASE IF EXISTS {quote_ident(name)};\"  # non-protected leftover",
+                f"mariadb -e \"DROP DATABASE IF EXISTS {quote_ident(name)};\"  "
+                "# review first; requires DBA privileges",
             )
         )
     return suggestions

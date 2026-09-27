@@ -51,7 +51,7 @@ def write_table(
     max_col_widths: list[int] | None = None,
     align: list[str] | None = None,
 ) -> None:
-    from mercury.terminal.table import TableStyle, format_table
+    from mercury.terminal.table import TableStyle
     from mercury.terminal.theme import style_table_lines
 
     lines = format_table(

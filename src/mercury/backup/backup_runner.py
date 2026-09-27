@@ -560,7 +560,7 @@ def execute_backup(
             created_at=instant,
             source_role=classification.role.value,
             dump_file=manifest_dump_file,
-            dump_sha256=primary_sha if kind != BACKUP_KIND_FULL else primary_sha,
+            dump_sha256=primary_sha,
             dump_size_bytes=primary_size,
             schema_file=schema_name if kind == BACKUP_KIND_FULL else None,
             schema_sha256=schema_sha if kind == BACKUP_KIND_FULL else None,

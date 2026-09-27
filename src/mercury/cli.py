@@ -138,8 +138,6 @@ def env_probe(
     output.field("dry_run", policy.dry_run)
     output.field("live_actions", policy.live_actions_enabled)
 
-    from mercury.core.runtime import operator_status
-
     status = operator_status(probe_database=should_probe_database_status())
     output.field("database", status["database"])
     output.field("backup_root", status["backup_root"])
@@ -2214,8 +2212,6 @@ def backup_session_cmd(
       3  usage / parameter error (Typer BadParameter)
     """
     import json as json_lib
-    import sys
-
     from mercury.backup.session_models import SessionPlan, SessionResult
     from mercury.backup.session_runner import preview_session, run_backup_sync_session
     from mercury.backup.session_receipt import render_session_summary_text
@@ -3028,7 +3024,12 @@ def deploy_dev_cmd(
     allowed = set(resolve_development_backup_sources(live=False))
     selected = list(database) if database else None
     if selected and (invalid := sorted(set(selected) - allowed)):
-        typer.echo("Development deployment only permits configured targets: " + ", ".join(sorted(allowed)))
+        typer.echo(
+            "Development deployment refused unknown targets: "
+            + ", ".join(invalid)
+            + ". Configured targets: "
+            + (", ".join(sorted(allowed)) or "none")
+        )
         raise typer.Exit(1)
     if execute and confirm != "DEPLOY DEV BACKUPS":
         raise typer.BadParameter("--execute requires --confirm 'DEPLOY DEV BACKUPS'")

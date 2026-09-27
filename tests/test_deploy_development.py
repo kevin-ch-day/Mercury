@@ -61,3 +61,19 @@ def test_deploy_dev_execute_requires_typed_confirmation() -> None:
     result = CliRunner().invoke(app, ["deploy", "dev", "--execute"])
     assert result.exit_code != 0
     assert "DEPLOY DEV BACKUPS" in result.output
+
+
+def test_deploy_dev_rejection_names_invalid_and_configured_targets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "mercury.backup.batch_runner.resolve_development_backup_sources",
+        lambda *, live=False: ["erebus_threat_intel_dev"],
+    )
+    result = CliRunner().invoke(
+        app,
+        ["deploy", "dev", "--database", "unexpected_dev"],
+    )
+    assert result.exit_code == 1
+    assert "refused unknown targets: unexpected_dev" in result.output
+    assert "Configured targets: erebus_threat_intel_dev" in result.output

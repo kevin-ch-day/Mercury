@@ -13,7 +13,7 @@ from mercury.core.paths import (
     PROTECTION_REPORT_FILE,
     REPO_ROOT,
 )
-from mercury.core.runtime import operator_status, should_probe_database_status, should_probe_database_status
+from mercury.core.runtime import operator_status, should_probe_database_status
 from mercury.core.safety import (
     BACKUP_KIND_FULL,
     BACKUP_KIND_SCHEMA_ONLY,

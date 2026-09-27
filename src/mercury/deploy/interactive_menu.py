@@ -175,10 +175,15 @@ def _render_db_menu(*, show_title: bool) -> None:
         menu_display.open_screen(DB_TITLE)
     _write_status_rows(database_deploy_status_rows())
     policy = load_execution_policy()
+    execute_label = (
+        "Deploy latest verified set"
+        if policy.live_execution_allowed()
+        else "Deploy latest verified set — live mode disabled"
+    )
     options = [
         ("1", "Show latest verified backup set"),
         ("2", "Dry-run deploy latest verified set"),
-        ("3", "Deploy latest verified set"),
+        ("3", execute_label),
         ("4", "Preflight checks"),
     ]
     render_submenu(options)

@@ -181,7 +181,8 @@ def _replace_or_add_storage_value(content: str, key: str, value: str) -> str:
 
 def apply_legacy_usb_runtime_policy(*, config: StorageConfig | None = None) -> bool:
     """Remove legacy USB from active runtime policy in local.toml. Returns True if edited."""
-    cfg = config or load_storage_config(warn_deprecated=False)
+    if config is None:
+        load_storage_config(warn_deprecated=False)
     path = resolve_local_config()
     if path is None or not path.is_file():
         raise ValueError("config/local.toml is required to apply legacy USB runtime policy.")

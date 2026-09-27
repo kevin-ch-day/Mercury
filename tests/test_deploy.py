@@ -99,8 +99,6 @@ def _seed_all_verified(policy: ExecutionPolicy) -> None:
 
 def test_deploy_lane_appears_in_menu() -> None:
     from mercury.menu.options import ACTION_DEPLOY, MAIN_RECOVERY, main_menu_option_by_action
-    from mercury.menu import main_display as menu_display
-    from mercury.menu.actions import menu_actions
 
     menu_display.refresh_menu_sections()
     key, title = main_menu_option_by_action(ACTION_DEPLOY)
@@ -109,6 +107,23 @@ def test_deploy_lane_appears_in_menu() -> None:
     assert key == "3"
     assert menu_actions()[key].action_id == MAIN_RECOVERY
     assert "disaster recovery" in title.lower()
+
+
+def test_database_deploy_menu_labels_disabled_live_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from mercury.deploy import interactive_menu
+
+    policy = _usb_policy(tmp_path)
+    captured: list[tuple[str, str]] = []
+    monkeypatch.setattr(interactive_menu, "load_execution_policy", lambda: policy)
+    monkeypatch.setattr(interactive_menu, "database_deploy_status_rows", lambda: [])
+    monkeypatch.setattr(interactive_menu, "render_submenu", lambda options: captured.extend(options))
+
+    interactive_menu._render_db_menu(show_title=False)
+
+    assert ("3", "Deploy latest verified set — live mode disabled") in captured
 
 
 def test_database_deploy_status_rows_describe_missing_databases(
@@ -760,8 +775,6 @@ def test_deploy_plan_blocks_stale_backup_on_live_execute(
 
 
 def test_handoff_lane_appears_in_menu() -> None:
-    from mercury.menu import main_display as menu_display
-    from mercury.menu.actions import menu_actions
     from mercury.menu.options import MAIN_BACKUP, MAIN_HEALTH, MAIN_REPORTS, MAIN_STORAGE
 
     menu_display.refresh_menu_sections()

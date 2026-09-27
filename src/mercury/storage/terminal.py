@@ -182,11 +182,6 @@ def print_storage_audit(report: StorageAuditReport) -> int:
         return 2
     display_screen.write_summary("Audit found durable differences or verification blockers — do not cut over.")
     return 2
-    display_screen.write_status(
-        "fail",
-        f"Active write root failed validation: {active.validation.blocker}",
-    )
-    return 1
 
 
 def print_migration_plan(report: MigrationPlanReport, *, report_path: str | None = None) -> int:
