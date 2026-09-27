@@ -6,14 +6,13 @@ import json
 import os
 from pathlib import Path
 
-import pytest
 
 from mercury.backup.on_disk_index import build_on_disk_backup_list, latest_records_by_database
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.backup.terminal.verify import print_on_disk_backup_list
 from mercury.core.safety import BACKUP_KIND_FULL
 
-from tests.conftest import REPO_ROOT, run_cli
+from tests.conftest import run_cli
 
 
 def test_full_backup_verify_requires_dump_not_schema_only(tmp_path: Path) -> None:
@@ -118,15 +117,35 @@ def test_latest_records_by_database_keeps_newest_record_first(tmp_path: Path) ->
     assert latest[0].backup_id == "new"
 
 
-def test_cli_backup_list_on_disk() -> None:
-    backups = REPO_ROOT / "backups"
-    if not any(backups.glob("*/*/manifest.json")) and not any(backups.glob("*/*/*/manifest.json")):
-        pytest.skip("no on-disk backups in repo")
+def test_cli_backup_list_on_disk(tmp_path: Path) -> None:
+    backup_dir = tmp_path / "2026-05-30" / "erebus_threat_intel_prod"
+    backup_dir.mkdir(parents=True)
+    (backup_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "backup_id": "erebus-full-cli-test",
+                "database": "erebus_threat_intel_prod",
+                "backup_kind": "full",
+                "created_at": "2026-05-30T12:00:00+00:00",
+                "dump_file": "erebus.sql.gz",
+                "schema_file": None,
+                "sha256": "abc",
+                "size_bytes": 1,
+                "source_role": "production",
+                "tool_used": "mariadb-dump",
+                "verified": True,
+                "live_actions_enabled": True,
+                "dry_run": False,
+                "notes": "hermetic CLI fixture",
+            }
+        ),
+        encoding="utf-8",
+    )
 
     result = run_cli(
         "backup",
         "list",
-        env={**os.environ, "MERCURY_BACKUP_ROOT": str(backups)},
+        env={**os.environ, "MERCURY_BACKUP_ROOT": str(tmp_path)},
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "BACKUP LIST (on-disk)" in result.stdout

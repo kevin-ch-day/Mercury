@@ -791,7 +791,6 @@ def test_parent_identity_change_blocks_power_off(tmp_path: Path, host_state) -> 
     _seed_package(mount)
     mp = str(mount)
     from mercury.storage.block_device import MercuryBlockIdentity
-    from mercury.storage import detach_wizard as dw
 
     first = MercuryBlockIdentity(
         partition_device="/dev/sdb1",

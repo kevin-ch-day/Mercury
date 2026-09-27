@@ -23,7 +23,7 @@ from mercury.migration.erebus_capture.intake_validation import ALLOWED, EXCLUDED
 from mercury.migration.erebus_capture.contract import REQUIRED, expected_bundle_name, validate_members
 from mercury.migration.erebus_capture.package_validation import validate_erebus_capture_for_package
 from mercury.migration.erebus_capture.context import CaptureContext
-from mercury.migration.erebus_capture.validation_runner import DeterministicValidationRunner, ValidationResult
+from mercury.migration.erebus_capture.validation_runner import DeterministicValidationRunner
 from mercury.migration.erebus_capture.service import (
     build_preview_payload, create_preview, publish_preview, revalidate_preview_for_execute,
 )

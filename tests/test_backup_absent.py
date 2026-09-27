@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mercury.backup.status import BackupStatusEntry, build_backup_status_report
+from mercury.backup.status import build_backup_status_report
 from mercury.core.handoff_status import database_bundle_package_status
 from mercury.core.execution_policy import ExecutionPolicy
-from mercury.core.paths import REPO_ROOT
 
 
 def test_absent_source_does_not_count_as_missing(monkeypatch, tmp_path: Path) -> None:

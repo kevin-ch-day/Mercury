@@ -9,9 +9,7 @@ import pytest
 
 from mercury.menu.actions import menu_action_blocked_for_writes, menu_actions, resolve_menu_action
 from mercury.menu.options import (
-    ACTION_BACKUP,
     ACTION_HDD_STORAGE,
-    ACTION_SYNC,
     WRITES_DISABLED_SUFFIX,
     main_menu_hint,
     main_menu_items,
@@ -530,7 +528,6 @@ def test_menu_snapshot_writes_disabled_suffix(monkeypatch: pytest.MonkeyPatch) -
 
 def test_menu_snapshot_detached_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     from mercury.menu import main_display as menu_display
-    from mercury.menu.options import HDD_ABSENT_SUFFIX, REPORTS_LIMITED_SUFFIX
 
     monkeypatch.setattr("mercury.menu.main_display.dashboard_rows", lambda **kwargs: [])
     monkeypatch.setattr("mercury.menu.main_display.hdd_writes_allowed", lambda *_a, **_k: False)

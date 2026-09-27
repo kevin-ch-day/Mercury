@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from mercury.core.platform import detect_platform
-from mercury.core.usb_mount import DEFAULT_USB_MOUNT, resolve_usb_mount, usb_mount_is_active
+from mercury.core.usb_mount import DEFAULT_USB_MOUNT, resolve_usb_mount
 from mercury.repair.usb import USB_REPAIR_COMMAND
 
 MERCURY_USB_LABEL = "MERCURY_DATA_USB"

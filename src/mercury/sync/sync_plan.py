@@ -3,7 +3,7 @@
 from pydantic import BaseModel, Field
 
 from mercury.database import discover_demo
-from mercury.database.prod_dev_pairs import ProdDevPair, build_prod_dev_pairs
+from mercury.database.prod_dev_pairs import build_prod_dev_pairs
 
 SYNC_PLAN_NOTES = [
     "Sync execution remains gated until readiness passes and live confirmation is provided.",

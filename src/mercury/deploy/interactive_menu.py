@@ -11,7 +11,6 @@ from mercury.deploy.preflight import run_deployment_preflight
 from mercury.deploy.repos.build_plan import build_repo_deploy_plan
 from mercury.deploy.repos.preflight import run_repo_deploy_preflight
 from mercury.deploy.repos.runner import execute_repo_deploy_batch
-from mercury.deploy.repos.selection import resolve_repo_deploy_candidates
 from mercury.deploy.repos.terminal.plan import print_repo_deploy_plan
 from mercury.deploy.repos.terminal.summary import print_repo_deploy_summary
 from mercury.deploy.runner import execute_deployment_batch

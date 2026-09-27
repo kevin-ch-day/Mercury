@@ -3,7 +3,7 @@
 import pytest
 
 from mercury.backup.on_disk_index import DEMO_BACKUP_RECORDS, build_demo_backup_list
-from mercury.backup.manifest_preview import ManifestPreviewError, build_manifest_preview
+from mercury.backup.manifest_preview import build_manifest_preview
 from mercury.reporting.preview import build_report_preview, format_report_preview_markdown
 from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
 from mercury.backup.verification import (

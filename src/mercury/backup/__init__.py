@@ -82,6 +82,7 @@ __all__ = [
     "assert_not_production_restore_target",
     "assert_safe_backup_source",
     "build_backup_layout",
+    "build_backup_manifest",
     "build_database_bundle_plan",
     "build_backup_status_report",
     "build_demo_backup_list",

@@ -9,7 +9,6 @@ import pytest
 from mercury.core.usb_device import (
     UsbDeviceProbe,
     log_directory_repair_hint,
-    probe_usb_device,
     systemd_mount_unit_name,
     usb_repair_banner,
 )

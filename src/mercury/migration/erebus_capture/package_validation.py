@@ -6,7 +6,6 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from .contract import validate_members
 from .manifest import sha256_file, verify_manifest
 from .phase3b_validation import BACKUPS
 from .scanner import scan_capture

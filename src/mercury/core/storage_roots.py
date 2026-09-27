@@ -31,7 +31,6 @@ from mercury.core.storage_roles import (
     ENV_PRIMARY_MOUNT,
     ENV_USB_MOUNT,
     MAINTENANCE_WRITE_FREEZE_STATES,
-    MERCURY_LAYOUT_DIRS,
     STORAGE_SCHEMA_VERSION,
     MigrationState,
     MountValidationCode,

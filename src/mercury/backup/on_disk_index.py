@@ -7,7 +7,6 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from mercury.backup.layout import MANIFEST_FILENAME
 from mercury.backup.manifest import BackupKind, BackupManifest
 from mercury.backup.manifest_preview import ManifestPreview, build_manifest_preview
 from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY

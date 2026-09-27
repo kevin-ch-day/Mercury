@@ -158,7 +158,6 @@ def _write_focus_callout(
     from mercury.terminal.theme import (
         active_styles,
         colors_enabled,
-        hint_text,
         markup,
         status_badge,
     )

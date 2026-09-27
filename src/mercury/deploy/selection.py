@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from mercury.backup.find_latest_backup import (
     BackupSelectionError,

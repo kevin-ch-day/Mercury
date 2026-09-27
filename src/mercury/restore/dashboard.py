@@ -21,8 +21,6 @@ from mercury.core.usb_mount import resolve_operator_mount
 from mercury.restore.check_plan import RestoreCheckPlan, build_restore_check_plan
 from mercury.restore.recovery_scope import (
     DEVELOPMENT_SNAPSHOT_DATABASES,
-    REQUIRED_RECOVERY_DATABASES,
-    REQUIRED_RECOVERY_DEVELOPMENT,
     REQUIRED_RECOVERY_PRODUCTION,
     is_required_recovery_production,
 )

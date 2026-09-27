@@ -9,7 +9,6 @@ import pytest
 
 from mercury.core.environment_status import EnvironmentStatus
 from mercury.core.path_permissions import PathPermissionCheck
-from mercury.core.usb_mount import resolve_usb_mount
 from mercury.repair.startup import (
     apply_usb_repair,
     maybe_prompt_usb_repair_at_startup,
@@ -105,7 +104,6 @@ def test_maybe_prompt_runs_repair_when_user_confirms(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    mount = Path("/mnt/MERCURY_DATA_USB")
     states = iter(
         [
             _env(repair_banner="Mercury USB is not ready."),

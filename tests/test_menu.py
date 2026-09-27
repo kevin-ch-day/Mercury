@@ -6,7 +6,6 @@ import pytest
 
 from mercury.menu import main_display as menu_display
 from mercury.menu.runners import (
-    MENU_SUBTITLE,
     MENU_TITLE,
     handle_menu_choice,
     render_menu_text,

@@ -15,8 +15,7 @@ MAIN_DEPLOY = "main_deploy_handoff"
 MAIN_REPORTS = "reports_history"
 MAIN_HEALTH = "main_health"
 
-# Compatibility aliases (older call sites / recommendations).
-MAIN_BACKUP_SYNC = MAIN_BACKUP  # guided backup remains the writer-ready recommendation
+# Compatibility aliases still used by saved recommendations and operator hints.
 ACTION_HDD_STORAGE = MAIN_STORAGE
 ACTION_BACKUP = MAIN_BACKUP
 ACTION_BACKUP_LEGACY = "backup_sources"
@@ -88,18 +87,9 @@ def main_menu_option_by_action(
         ACTION_RECOVERY_LEGACY: MAIN_RECOVERY,
         ACTION_HANDOFF: MAIN_HEALTH,
         MAIN_ADVANCED: MAIN_BACKUP,
-        MAIN_BACKUP_SYNC: MAIN_BACKUP,
         MAIN_DEPLOY: MAIN_RECOVERY,
         MAIN_MIGRATION: MAIN_HEALTH,
         "main_backup_sync": MAIN_BACKUP,
-        "main_deploy_handoff": MAIN_RECOVERY,
-        "main_migration": MAIN_HEALTH,
-        "system_deployment": MAIN_RECOVERY,
-        "workstation_handoff": MAIN_HEALTH,
-        "disaster_recovery": MAIN_RECOVERY,
-        "backup_sources": MAIN_BACKUP,
-        "sync_prod_dev": MAIN_SYNC,
-        "offline_repos": MAIN_REPO,
     }
     resolved = legacy_aliases.get(action_id, action_id)
     for key, title, action, _needs_writes in _active_menu_options(software_only=software_only):

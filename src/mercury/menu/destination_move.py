@@ -9,7 +9,7 @@ from pathlib import Path
 from mercury import output
 from mercury.storage.host_maintenance import HostMaintenanceState, load_host_maintenance, writes_allowed
 from mercury.storage.retention import RetentionPolicy, load_retention_policy
-from mercury.terminal.format import format_package_id_snapshot, short_commit
+from mercury.terminal.format import short_commit
 from mercury.terminal.theme import dashboard_row, rule_line
 
 

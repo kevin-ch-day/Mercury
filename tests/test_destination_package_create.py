@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from mercury.core.storage_roles import CONTROL_DIRNAME, DEFAULT_PRIMARY_UUID
+from mercury.core.storage_roles import CONTROL_DIRNAME
 from mercury.migration.destination_documents import (
     DOCUMENT_IDS,
     DOCUMENT_SCHEMA,

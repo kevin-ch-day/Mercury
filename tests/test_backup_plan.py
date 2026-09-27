@@ -1,7 +1,6 @@
 """Tests for dry-run backup planning."""
 
 from datetime import datetime, timezone
-from pathlib import Path
 
 import pytest
 

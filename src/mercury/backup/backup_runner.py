@@ -26,7 +26,6 @@ from mercury.database.mariadb.client import client_process_credentials, prepend_
 from mercury.database.mariadb.identifiers import assert_safe_identifier
 from mercury.database.mariadb.session import resolve_mariadb_target, try_load_mariadb_config
 from mercury.backup.dump_planner import (
-    DumpKind,
     build_dump_argv_for_config,
     build_planned_dump,
     select_dump_tool,

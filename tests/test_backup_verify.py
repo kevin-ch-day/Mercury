@@ -7,7 +7,6 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
 
 from mercury.backup.dump_planner import build_dump_argv_for_config
 from mercury.backup.backup_runner import execute_backup

@@ -35,7 +35,7 @@ def _migration_report(*, database_summary: str = "3 local sources verified") -> 
     )
 
 
-def _first_run_env(tmp_path: Path) -> tuple[ExecutionPolicy, SimpleNamespace]:
+def _first_run_env(tmp_path: Path) -> SimpleNamespace:
     policy = ExecutionPolicy(
         dry_run=True,
         live_actions_enabled=False,
@@ -63,13 +63,12 @@ def _first_run_env(tmp_path: Path) -> tuple[ExecutionPolicy, SimpleNamespace]:
         repairable_blockers=(),
         has_repairable_blockers=False,
     )
-    return policy, env
+    return env
 
 
 def _install_first_run_dashboard(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    policy, env = _first_run_env(tmp_path)
+    env = _first_run_env(tmp_path)
     monkeypatch.setattr("mercury.menu.dashboard.build_environment_status", lambda **kwargs: env)
-    monkeypatch.setattr("mercury.menu.dashboard.load_execution_policy", lambda: policy)
 
 
 def test_dashboard_rows_include_core_fields(
@@ -120,7 +119,6 @@ def test_dashboard_rows_include_extended_stats(
         has_repairable_blockers=False,
     )
     monkeypatch.setattr("mercury.menu.dashboard.build_environment_status", lambda **kwargs: env)
-    monkeypatch.setattr("mercury.menu.dashboard.load_execution_policy", lambda: policy)
     monkeypatch.setattr(
         "mercury.migration.readiness.build_migration_readiness",
         lambda **kwargs: _migration_report(),
@@ -161,7 +159,6 @@ def test_dashboard_rows_warn_on_repo_local_backup_root(monkeypatch) -> None:
         has_repairable_blockers=False,
     )
     monkeypatch.setattr("mercury.menu.dashboard.build_environment_status", lambda **kwargs: env)
-    monkeypatch.setattr("mercury.menu.dashboard.load_execution_policy", lambda: policy)
     monkeypatch.setattr(
         "mercury.core.runtime.load_execution_policy",
         lambda: policy,

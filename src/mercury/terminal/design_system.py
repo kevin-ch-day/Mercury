@@ -8,7 +8,6 @@ from typing import Mapping
 from mercury.terminal.color_capability import detect_color_mode, unicode_box_supported
 from mercury.terminal.theme_settings import active_theme_id
 from mercury.terminal.theme_tokens import (
-    THEME_CLASSIC,
     THEME_MONOCHROME,
     THEME_REDLINE,
     ColorMode,

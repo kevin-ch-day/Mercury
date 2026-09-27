@@ -16,7 +16,6 @@ from mercury import output
 from mercury.terminal.prompts import (
     choice_prompt,
     ensure_choice_prompt,
-    input_prompt,
     normalize_input_prompt,
 )
 from mercury.terminal.theme import continue_prompt

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import json
 from pathlib import Path
 import socket
 
@@ -19,8 +18,7 @@ from mercury.reporting.protection import build_protection_report
 from mercury.repo import inspect_repositories, load_repo_bundle_settings, load_repo_definitions
 from mercury.repo.config import RepoBundleSettings
 from mercury.repo.manifest_index import latest_repo_manifest_entries
-from mercury.repo.status import RepoStatus
-from mercury.sync.readiness import SyncReadinessReport, build_sync_readiness_report
+from mercury.sync.readiness import build_sync_readiness_report
 from mercury.state.ledger import record_transfer_bundle_written
 
 

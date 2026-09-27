@@ -10,7 +10,6 @@ from typing import Any, Callable
 from mercury.backup.session_models import (
     BackupSyncSession,
     DatabaseArtifactRecord,
-    FrozenSessionPlan,
     GitArtifactRecord,
     LaneResult,
     LaneSummary,

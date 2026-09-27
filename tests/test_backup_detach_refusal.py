@@ -9,7 +9,6 @@ from types import SimpleNamespace
 import pytest
 
 from mercury.backup.batch_runner import (
-    FullBackupOutcome,
     LaneResult,
     apply_full_backup_run_evidence,
     build_full_backup_global_refusal_result,

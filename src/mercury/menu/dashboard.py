@@ -10,7 +10,7 @@ from mercury.core.environment_status import (
     mariadb_dashboard_label,
     resolve_dashboard_blocker,
 )
-from mercury.core.execution_policy import backup_root_state_is_ready, load_execution_policy
+from mercury.core.execution_policy import backup_root_state_is_ready
 from mercury.core.platform import detect_platform
 from mercury.core.runtime import should_probe_database_status
 from mercury.core.storage_status import backup_root_free_space_label

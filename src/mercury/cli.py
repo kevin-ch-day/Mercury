@@ -4242,7 +4242,7 @@ def logs_tail_cmd(
 ) -> None:
     """Show the tail of a log file."""
     from mercury.logging.analysis import resolve_named_log_file
-    from mercury.logging import list_all_log_files, read_log_tail, resolve_log_dir
+    from mercury.logging import list_all_log_files, read_log_tail
     from mercury.terminal import screen as display_screen
 
     log_file: Path | None = None
@@ -4283,7 +4283,7 @@ def logs_search_cmd(
 ) -> None:
     """Search Mercury log files for a pattern."""
     from mercury.logging.analysis import resolve_named_log_file
-    from mercury.logging import list_all_log_files, resolve_log_dir, search_log_files
+    from mercury.logging import resolve_log_dir, search_log_files
     from mercury.terminal import screen as display_screen
 
     log_dir = resolve_log_dir()

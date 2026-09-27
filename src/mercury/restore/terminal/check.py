@@ -1,7 +1,6 @@
 """Display restore-check plans."""
 
 from mercury import output
-from mercury.terminal import format as display_format
 from mercury.terminal import screen as display_screen
 from mercury.terminal.table import Table, TableStyle
 from mercury.restore.check_plan import RestoreCheckPlan

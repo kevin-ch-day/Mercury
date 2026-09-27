@@ -17,10 +17,9 @@ from mercury.backup.session_models import (
 )
 from mercury.backup.session_receipt import (
     render_session_summary_text,
-    write_host_local_session_refusal,
     write_session_receipt,
 )
-from mercury.backup.session_runner import SessionHooks, preview_session, run_backup_sync_session
+from mercury.backup.session_runner import SessionHooks, run_backup_sync_session
 from mercury.core.storage_roles import (
     DEFAULT_FILESYSTEM_TYPE,
     DEFAULT_PRIMARY_LABEL,
@@ -627,7 +626,7 @@ def test_source_delta_first_db_and_git_write(host_path: Path, tmp_path: Path) ->
 
         return mark_source_changed_since_package(**kwargs)
 
-    session = run_backup_sync_session(
+    run_backup_sync_session(
         SessionPlan(production_backup=True, git_recovery=True).normalize(),
         execute=True,
         interactive=False,
@@ -638,7 +637,7 @@ def test_source_delta_first_db_and_git_write(host_path: Path, tmp_path: Path) ->
         ),
     )
     # Default mark_source_delta in _hooks is no-op; override:
-    session = run_backup_sync_session(
+    run_backup_sync_session(
         SessionPlan(production_backup=True, git_recovery=False).normalize(),
         execute=True,
         interactive=False,

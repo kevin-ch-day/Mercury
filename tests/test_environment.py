@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -217,7 +216,6 @@ def test_dashboard_rows_show_first_run_messaging(monkeypatch, tmp_path: Path) ->
     )
 
     monkeypatch.setattr("mercury.menu.dashboard.build_environment_status", lambda **kwargs: env)
-    monkeypatch.setattr("mercury.menu.dashboard.load_execution_policy", lambda: policy)
     monkeypatch.setattr("mercury.menu.dashboard._verified_source_summary", lambda **kwargs: (set(), set()))
     monkeypatch.setattr(
         "mercury.menu.dashboard._sync_readiness_summary",
@@ -250,23 +248,27 @@ def test_config_init_repo_local_when_usb_absent(tmp_path: Path) -> None:
     assert "/mnt/MERCURY_DATA_USB" not in out
     assert "backups" in out
 
-def test_root_owned_log_file_blocks_directory(tmp_path: Path) -> None:
+def test_unwritable_log_file_blocks_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     logs = tmp_path / "mercury_logs"
     logs.mkdir()
-    if os.geteuid() == 0:
-        pytest.skip("cannot simulate root-owned files as root")
     log_file = logs / "mercury-2026-06-09.log"
     log_file.write_text("seed\n", encoding="utf-8")
-    try:
-        os.chown(log_file, 0, 0)
-    except PermissionError:
-        pytest.skip("cannot chown to root in this environment")
-    try:
-        check = check_path_permission(logs, label="USB log directory")
-        assert check.needs_repair
-        assert "mercury-2026-06-09.log" in check.detail
-    finally:
-        os.chown(log_file, os.geteuid(), os.getegid())
+    monkeypatch.setattr(
+        "mercury.core.path_permissions.can_append",
+        lambda path: path != log_file,
+    )
+    monkeypatch.setattr(
+        "mercury.core.path_permissions._owner_name",
+        lambda _uid: "root",
+    )
+
+    check = check_path_permission(logs, label="USB log directory")
+
+    assert check.needs_repair
+    assert "mercury-2026-06-09.log" in check.detail
+    assert "owner: root" in check.detail
 
 def test_fresh_rebuild_missing_dbs_are_warnings_not_blockers() -> None:
     from mercury.env.doctor import DoctorReport, _collect_blockers, _collect_warnings
@@ -413,22 +415,22 @@ def test_doctor_repair_plan_includes_web_directory_prep(
     assert "sudo chown linuxadmin:linuxadmin /var/www/html" in text
 
 
-def test_root_owned_usb_dir_needs_repair(tmp_path: Path) -> None:
+def test_unwritable_usb_dir_needs_repair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     mount = tmp_path / "usb"
     logs = mount / "mercury_logs"
     logs.mkdir(parents=True)
-    if os.geteuid() == 0:
-        pytest.skip("cannot simulate root-owned dirs as root")
-    try:
-        logs.chmod(0o755)
-        os.chown(logs, 0, 0)
-    except PermissionError:
-        pytest.skip("cannot chown to root in this environment")
-    try:
-        check = check_path_permission(logs, label="USB log directory")
-        assert check.needs_repair or not check.writable
-    finally:
-        os.chown(logs, os.geteuid(), os.getegid())
+    monkeypatch.setattr(
+        "mercury.core.path_permissions._probe_directory_writable",
+        lambda _path: (False, "not writable (owner: root)"),
+    )
+
+    check = check_path_permission(logs, label="USB log directory")
+
+    assert check.needs_repair
+    assert not check.writable
+    assert "owner: root" in check.detail
 
 def test_doctor_repair_plan_includes_chown_commands(tmp_path: Path, monkeypatch) -> None:
     from mercury.core.storage_roots import default_storage_config

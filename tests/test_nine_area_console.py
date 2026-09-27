@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
 
 import pytest
 
 from mercury.menu.options import (
     MAIN_ADVANCED,
     MAIN_BACKUP,
-    MAIN_DEPLOY,
     MAIN_HEALTH,
     MAIN_MIGRATION,
     MAIN_RECOVERY,

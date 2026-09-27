@@ -1,6 +1,5 @@
 """Environment probe for Mercury seed deployments."""
 
-import platform
 import sys
 
 from pydantic import BaseModel, Field

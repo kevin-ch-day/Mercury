@@ -235,7 +235,6 @@ def register_commands(app: typer.Typer) -> None:
     ) -> None:
         """Short summary: counts and backup sources."""
         from mercury.database import (
-            MariaDbConfigError,
             MariaDbLiveError,
             discover,
             discover_demo,

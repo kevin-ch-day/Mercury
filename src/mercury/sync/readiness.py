@@ -14,7 +14,6 @@ from mercury.backup.freshness import (
     FRESHNESS_STALE,
     FRESHNESS_UNKNOWN,
     assess_backup_freshness,
-    parse_backup_timestamp,
 )
 from mercury.backup.layout import MANIFEST_FILENAME
 from mercury.backup.content_contract import (
@@ -29,7 +28,7 @@ from mercury.core.runtime import should_probe_database_status
 from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.database.core.scope import is_in_scope
 from mercury.database.discovery import discover_for_planning
-from mercury.database.prod_dev_pairs import ProdDevPair, build_prod_dev_pairs
+from mercury.database.prod_dev_pairs import build_prod_dev_pairs
 
 
 class SyncReadinessEntry(BaseModel):

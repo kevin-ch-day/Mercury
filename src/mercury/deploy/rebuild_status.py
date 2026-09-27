@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import re
 
-from mercury.core.execution_policy import load_execution_policy
 from mercury.deploy.snapshot import build_deployment_snapshot
 from mercury.repo import inspect_repositories, load_repo_definitions
 

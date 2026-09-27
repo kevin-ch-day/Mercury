@@ -14,7 +14,7 @@ from mercury.storage.report import (
     build_storage_status_report,
     suggested_primary_fstab_line,
 )
-from mercury.core.storage_roots import default_storage_config, load_storage_config
+from mercury.core.storage_roots import default_storage_config
 from mercury.core.storage_validate import MountValidationResult
 
 

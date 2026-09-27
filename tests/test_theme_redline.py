@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -14,7 +13,6 @@ from mercury.terminal.color_capability import (
 )
 from mercury.terminal.design_system import (
     active_styles,
-    build_style_bundle,
     clear_style_cache,
     style_for,
 )
@@ -28,7 +26,7 @@ from mercury.terminal.theme import (
     tag,
     tag_plain,
 )
-from mercury.terminal.theme_preview import print_theme_preview, render_theme_preview
+from mercury.terminal.theme_preview import render_theme_preview
 from mercury.terminal.theme_settings import (
     THEME_CLASSIC,
     THEME_MONOCHROME,

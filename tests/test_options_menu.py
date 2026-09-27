@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -21,7 +20,7 @@ from mercury.menu.intent import (
 )
 from mercury.storage.host_maintenance import HostMaintenanceState, save_host_maintenance
 from mercury.terminal.color_capability import detect_color_mode, set_color_mode_override
-from mercury.terminal.design_system import active_styles, clear_style_cache
+from mercury.terminal.design_system import clear_style_cache
 from mercury.terminal.theme import menu_header_lines, set_color_enabled, strip_markup
 from mercury.terminal.theme_settings import (
     THEME_CLASSIC,
@@ -36,7 +35,6 @@ from mercury.terminal.theme_settings import (
     set_theme_override,
     validate_theme_id,
 )
-from mercury.terminal.theme_tokens import ColorMode
 
 
 @pytest.fixture(autouse=True)
@@ -223,12 +221,7 @@ def test_theme_switch_does_not_change_recommendation() -> None:
 
 
 def test_host_maintenance_fingerprint_unchanged(tmp_path: Path) -> None:
-    host = tmp_path / "host.json"
     _verified_host()
-    # Re-point was already set by fixture; rewrite known content
-    text = host.read_text(encoding="utf-8") if host.exists() else Path(
-        os.environ["MERCURY_HOST_MAINTENANCE_PATH"]
-    ).read_text(encoding="utf-8")
     path = Path(os.environ["MERCURY_HOST_MAINTENANCE_PATH"])
     before = path.read_bytes()
     save_theme_selection(THEME_REDLINE)

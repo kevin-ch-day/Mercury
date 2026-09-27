@@ -7,7 +7,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from mercury.core.paths import LOCAL_EXAMPLE, LOGS_DIR, REPO_ROOT, resolve_local_config
+from mercury.core.paths import LOGS_DIR, REPO_ROOT, resolve_local_config
 
 LOGGER_NAME = "mercury"
 DATABASE_LOGGER_NAME = f"{LOGGER_NAME}.database"

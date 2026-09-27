@@ -21,7 +21,6 @@ from mercury.migration.destination_documents import (
     generate_destination_documents,
     legacy_documents_dir,
     load_destination_documents,
-    required_evidence_errors,
     validate_documents_against_preview_pins,
     verify_document_payload_checksum,
 )

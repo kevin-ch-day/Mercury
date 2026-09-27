@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -14,12 +13,10 @@ from mercury.storage.detach_wizard import (
     detach_execute_approved,
     format_disconnect_complete,
     format_privileged_detach_report,
-    format_wizard_report,
 )
 from mercury.storage.host_maintenance import (
     HostMaintenanceState,
     intentional_safe_disconnect_active,
-    mark_detached,
     save_host_maintenance,
 )
 from mercury.storage.transitions import RESTORE_SOURCE_WRITER_PHRASE

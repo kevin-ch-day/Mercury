@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -435,7 +434,6 @@ def test_startup_intent_choices_dispatch(monkeypatch) -> None:
         INTENT_DESTINATION_REHEARSAL,
         INTENT_EXIT,
         INTENT_SAFE_DISCONNECT,
-        OUTCOME_CANCELLED,
         OUTCOME_CONTINUE,
         OUTCOME_EXIT,
         dispatch_startup_intent,

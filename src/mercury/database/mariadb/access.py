@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from mercury.database.core import backup_source_names, classify_database
+from mercury.database.core import classify_database
 from mercury.database.core.catalog import PLATFORM_CATALOG
 from mercury.database.discovery import discover
 from mercury.database.mariadb.config import MariaDbConnectionConfig

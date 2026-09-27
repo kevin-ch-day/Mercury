@@ -11,9 +11,6 @@ from pathlib import Path
 from typing import Iterator
 
 from mercury.logging.config import (
-    BACKUP_LOG_FILENAME,
-    DATABASE_LOG_FILENAME,
-    ERROR_LOG_FILENAME,
     KNOWN_LOG_FILENAMES,
     LOGGER_NAME,
     resolve_log_dir,

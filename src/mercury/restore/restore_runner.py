@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import shlex
-import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import Mapping

@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 
 from mercury.backup.layout import (
-    MANIFEST_FILENAME,
     TOOL_FAMILY,
     build_backup_layout,
 )

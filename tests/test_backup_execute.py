@@ -16,7 +16,7 @@ from mercury.backup.backup_runner import (
     plan_backup_execution,
 )
 from mercury.backup.layout import build_backup_layout
-from mercury.backup.manifest import BackupManifest, build_backup_manifest
+from mercury.backup.manifest import build_backup_manifest
 from mercury.backup.checksum import sha256_file, verify_checksums, write_checksum_file
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy, resolve_backup_root
 from mercury.core.paths import REPO_ROOT

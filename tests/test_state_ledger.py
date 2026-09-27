@@ -248,7 +248,7 @@ def test_resolve_state_root_falls_back_to_data_dir(tmp_path: Path, monkeypatch) 
 
 
 def test_is_operator_ledger_path_filters_pytest_temp_dirs() -> None:
-    from mercury.state.ledger import is_operator_ledger_path, read_operator_database_backup_rows
+    from mercury.state.ledger import is_operator_ledger_path
 
     assert is_operator_ledger_path("/mnt/MERCURY_DATA_USB/mercury_backups/2026-06-09/db") is True
     assert is_operator_ledger_path("/tmp/pytest-of-secadmin/pytest-1/backups/db") is False

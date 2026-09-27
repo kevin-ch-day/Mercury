@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from mercury.core.storage_roles import MountValidationCode, StorageWriteRole
-from mercury.core.storage_roots import StorageConfig, StorageRootConfig, default_storage_config
+from mercury.core.storage_roots import StorageConfig, StorageRootConfig
 from mercury.core.storage_roles import StorageRootRole, MigrationState
 from mercury.core.storage_space import SpaceAssessment, SpacePolicy
 from mercury.core.storage_validate import MountIdentity, MountValidationResult
@@ -50,7 +50,6 @@ def _ok_validation(mount: Path, *, writable: bool = True) -> MountValidationResu
 
 
 def _config_for_mounts(primary: Path, legacy: Path) -> StorageConfig:
-    base = default_storage_config()
     return StorageConfig(
         primary=StorageRootConfig(
             key="primary",

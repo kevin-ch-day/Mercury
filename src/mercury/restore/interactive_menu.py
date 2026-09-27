@@ -6,12 +6,11 @@ from pathlib import Path
 
 from mercury import output
 from mercury.menu import main_display as menu_display
-from mercury.menu import prompts as menu_prompts
 from mercury.terminal import screen as display_screen
 from mercury.backup.batch_runner import resolve_batch_sources
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.runtime import should_probe_database_status
-from mercury.menu.subscreen import pause_and_redraw, read_submenu_choice, render_submenu
+from mercury.menu.subscreen import read_submenu_choice, render_submenu
 from mercury.restore.check_plan import RestoreCheckPlan, build_restore_check_plan
 from mercury.restore.check_cleanup import cleanup_restorecheck_databases, discover_restorecheck_names
 from mercury.restore.terminal.check_cleanup import print_restorecheck_cleanup_batch

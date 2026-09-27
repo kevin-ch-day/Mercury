@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from mercury.core.safety import BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY
+from mercury.core.safety import BACKUP_KIND_SCHEMA_ONLY
 from mercury.database.mariadb.config import MariaDbConfigError, assert_tcp_tls_policy
 from mercury.database.mariadb.identifiers import assert_safe_identifier
 

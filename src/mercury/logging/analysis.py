@@ -14,7 +14,7 @@ from mercury.logging.config import (
     logging_enabled,
     resolve_log_dir,
 )
-from mercury.logging.utils import list_all_log_files, list_log_files
+from mercury.logging.utils import list_log_files
 
 SESSION_START_RE = re.compile(r"session start id=(\S+)")
 SESSION_END_RE = re.compile(r"session end id=(\S+) exit_code=(\d+)")

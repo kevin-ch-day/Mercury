@@ -3,8 +3,6 @@
 from mercury.database.core.classifier import DatabaseRole, classify_database
 from mercury.database.core.models import DatabaseInventory, DatabaseRecord
 from mercury.database.core.scope import (
-    ACTIVE_BACKUP_SOURCE_DATABASES,
-    ACTIVE_DEV_TARGET_DATABASES,
     is_active_backup_source,
     is_active_dev_target,
     is_active_sync_source,

@@ -13,7 +13,7 @@ from mercury.deploy.repos.models import RepoDeployOptions
 from mercury.deploy.repos.plan import planned_repo_commands
 from mercury.deploy.repos.runner import execute_repo_deploy_batch
 from mercury.deploy.repos.selection import resolve_repo_deploy_candidates
-from mercury.repo.config import RepoDefinition, load_repo_definitions
+from mercury.repo.config import RepoDefinition
 from mercury.repo.manifest_index import latest_repo_manifest_entries
 
 

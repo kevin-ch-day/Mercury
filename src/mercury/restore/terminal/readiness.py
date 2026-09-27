@@ -8,7 +8,6 @@ from mercury.restore.readiness import (
     TargetCompletenessEntry,
     TargetCompletenessReport,
 )
-from mercury.terminal import format as display_format
 from mercury.terminal import screen as display_screen
 
 
