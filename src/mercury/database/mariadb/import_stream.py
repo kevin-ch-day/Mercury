@@ -55,7 +55,10 @@ def _open_dump_lines(dump_path: Path) -> Iterator[Iterator[bytes]]:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    assert proc.stdout is not None
+    if proc.stdout is None:
+        proc.kill()
+        proc.wait()
+        raise BackupExecutionError("pigz stdout pipe was not created")
     try:
         yield proc.stdout
     finally:
@@ -411,7 +414,10 @@ def run_compressed_sql_import(
     )
 
     stdin = import_proc.stdin
-    assert stdin is not None
+    if stdin is None:
+        import_proc.kill()
+        import_proc.wait()
+        raise BackupExecutionError("MariaDB import stdin pipe was not created")
     stderr_chunks: list[bytes] = []
 
     def _drain_stderr() -> None:

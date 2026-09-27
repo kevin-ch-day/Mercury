@@ -154,7 +154,10 @@ def _default_dump_runner(
                 stderr=subprocess.PIPE,
                 env=env,
             )
-            assert dump_proc.stdout is not None
+            if dump_proc.stdout is None:
+                dump_proc.kill()
+                dump_proc.wait()
+                raise BackupExecutionError("mariadb-dump stdout pipe was not created")
             gzip_proc = subprocess.Popen(
                 [compress, "-c"],
                 stdin=dump_proc.stdout,
@@ -487,7 +490,10 @@ def execute_backup(
                 prepend_client_defaults(schema_argv, extra) if schema_argv else None
             )
             if kind == BACKUP_KIND_SCHEMA_ONLY:
-                assert schema_name is not None
+                if schema_name is None:
+                    raise BackupExecutionError(
+                        "Schema-only backup plan did not provide an artifact name"
+                    )
                 schema_path = backup_dir / schema_name
                 schema_temp = _temp_artifact_path(schema_path)
                 runner(live_argv, env, schema_temp, config)
@@ -496,7 +502,10 @@ def execute_backup(
                 checksum_targets.append(schema_name)
                 primary_path = schema_path
             else:
-                assert dump_name is not None
+                if dump_name is None:
+                    raise BackupExecutionError(
+                        "Backup plan did not provide a dump artifact name"
+                    )
                 dump_path = backup_dir / dump_name
                 dump_temp = _temp_artifact_path(dump_path)
                 runner(live_argv, env, dump_temp, config)
@@ -513,7 +522,10 @@ def execute_backup(
                     checksum_targets.append(schema_name)
 
         if live_inventory is not None:
-            assert primary_path is not None
+            if primary_path is None:
+                raise BackupExecutionError(
+                    "Backup content validation requires a primary artifact"
+                )
             dump_inventory = extract_dump_object_inventory(primary_path)
             schema_inventory = (
                 extract_dump_object_inventory(schema_path)
@@ -550,7 +562,8 @@ def execute_backup(
         schema_size = schema_path.stat().st_size if schema_path else None
 
         manifest_dump_file = schema_name if kind == BACKUP_KIND_SCHEMA_ONLY else dump_name
-        assert manifest_dump_file is not None
+        if manifest_dump_file is None:
+            raise BackupExecutionError("Backup manifest requires a dump artifact name")
 
         manifest = build_backup_manifest(
             backup_id=f"{database}-{kind}-{layout.timestamp}",

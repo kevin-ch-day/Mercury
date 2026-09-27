@@ -26,7 +26,8 @@ TRANSFER_PACKAGES_CSV = "transfer_packages.csv"
 SYNC_EVENTS_CSV = "sync_events.csv"
 
 ENV_STATE_ROOT = "MERCURY_STATE_ROOT"
-TEST_LEDGER_PATH_MARKERS = ("/tmp/pytest", "/pytest-of-", "/pyfakefs")
+# Detection-only markers used to exclude test artifacts; Mercury never writes to these paths.
+TEST_LEDGER_PATH_MARKERS = ("/tmp/pytest", "/pytest-of-", "/pyfakefs")  # nosec B108
 
 DATABASE_BACKUP_FIELDS = [
     "timestamp",

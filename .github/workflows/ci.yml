@@ -14,9 +14,13 @@ env:
   MERCURY_LIVE_ACTIONS: "0"
   TZ: UTC
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -42,7 +46,11 @@ jobs:
       - name: Check runtime and test hygiene
         run: |
           python -m ruff check src tests --select F401,F841,F811,F821,B018,B023
+          python -m ruff check src --select S101,S102,S301,S307,S324,S602,S605
           python -m vulture src/mercury tests --min-confidence 80
+
+      - name: Audit runtime dependencies
+        run: python -m pip_audit . --progress-spinner off
 
       - name: Build distribution artifacts
         run: python -m build
