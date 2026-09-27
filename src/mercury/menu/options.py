@@ -107,10 +107,6 @@ def main_menu_hint(action_id: str, *, software_only: bool = False) -> str:
     return f"{title} [{key}]"
 
 
-def main_menu_next(action_id: str, *, software_only: bool = False) -> str:
-    return f"Next: {main_menu_hint(action_id, software_only=software_only)}"
-
-
 def main_menu_items(
     *,
     writes_allowed: bool = True,

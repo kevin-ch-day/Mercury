@@ -216,11 +216,6 @@ def test_dashboard_rows_show_first_run_messaging(monkeypatch, tmp_path: Path) ->
     )
 
     monkeypatch.setattr("mercury.menu.dashboard.build_environment_status", lambda **kwargs: env)
-    monkeypatch.setattr("mercury.menu.dashboard._verified_source_summary", lambda **kwargs: (set(), set()))
-    monkeypatch.setattr(
-        "mercury.menu.dashboard._sync_readiness_summary",
-        lambda **kwargs: (0, 2, "No verified full backups exist yet."),
-    )
 
     text = "\n".join(dashboard_rows(probe_database=False))
     assert "service active" in text

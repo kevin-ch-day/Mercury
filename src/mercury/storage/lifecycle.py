@@ -246,11 +246,6 @@ def writes_disabled_redirect_message() -> str:
     )
 
 
-def dashboard_hdd_line(snapshot: StorageLifecycleSnapshot | None = None) -> str:
-    snap = snapshot or assess_storage_lifecycle(probe_disconnect=True)
-    return snap.label
-
-
 def dashboard_next_action_line(snapshot: StorageLifecycleSnapshot | None = None) -> str:
     snap = snapshot or assess_storage_lifecycle(probe_disconnect=True)
     return snap.recommended

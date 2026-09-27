@@ -27,13 +27,15 @@ def test_logs_readonly_commands(args: tuple[str, ...], expected: tuple[str, ...]
         assert snippet in result.stdout
 
 
-def test_logs_status_after_activity(seeded_logs: None) -> None:
+@pytest.mark.usefixtures("seeded_logs")
+def test_logs_status_after_activity() -> None:
     result = run_cli("logs", "status")
     assert result.returncode == 0, result.stderr
     assert "Log status" in result.stdout
 
 
-def test_logs_search_after_activity(seeded_logs: None) -> None:
+@pytest.mark.usefixtures("seeded_logs")
+def test_logs_search_after_activity() -> None:
     result = run_cli("logs", "search", "inventory")
     assert result.returncode == 0, result.stderr
     assert "Log search" in result.stdout

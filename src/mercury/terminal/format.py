@@ -110,30 +110,6 @@ def short_commit(commit: str, *, length: int = 7) -> str:
     return text[:length] + "…"
 
 
-def format_compact_human_datetime(value: str | datetime | None) -> str:
-    """Compact local timestamp for narrow operator tables like ``6/9 10:01 AM``."""
-    if value is None:
-        return "-"
-    if isinstance(value, datetime):
-        instant = value
-    else:
-        try:
-            instant = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return value
-
-    if instant.tzinfo is None:
-        instant = instant.replace(tzinfo=timezone.utc)
-    local_instant = instant.astimezone()
-
-    hour = local_instant.hour % 12 or 12
-    suffix = "AM" if local_instant.hour < 12 else "PM"
-    return (
-        f"{local_instant.month}/{local_instant.day} "
-        f"{hour}:{local_instant.minute:02d} {suffix}"
-    )
-
-
 def short_path(path: str, *, max_len: int = 52) -> str:
     """Truncate long paths from the left with an ellipsis."""
     if len(path) <= max_len:
@@ -225,25 +201,6 @@ def format_menu_rule(*, width: int = 62) -> str:
 def format_menu_status_row(label: str, tag: str, detail: str, *, label_width: int = 10) -> str:
     """One aligned status row: ``  Mode       [--] dry-run only``."""
     return f"  {label:<{label_width}}{tag} {detail}"
-
-
-def format_menu_item_row(
-    key: str,
-    title: str,
-    *,
-    blurb: str = "",
-    title_width: int = 0,
-    indent: int = 4,
-) -> str:
-    """One menu option row with optional trailing description."""
-    prefix = " " * indent
-    if title_width > 0:
-        label = f"[{key}] {title.ljust(title_width)}"
-    else:
-        label = f"[{key}] {title}"
-    if blurb:
-        return f"{prefix}{label}  —  {blurb}"
-    return f"{prefix}{label}"
 
 
 def format_menu_section_header(name: str, *, indent: int = 2) -> str:

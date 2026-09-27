@@ -25,9 +25,5 @@ REQUIRED_RECOVERY_PRODUCTION = PRODUCTION_RECOVERY_DATABASES
 REQUIRED_RECOVERY_DEVELOPMENT: tuple[str, ...] = ()
 
 
-def is_required_recovery_database(name: str) -> bool:
-    return name in PRODUCTION_RECOVERY_DATABASES
-
-
 def is_required_recovery_production(name: str) -> bool:
     return name in PRODUCTION_RECOVERY_DATABASES

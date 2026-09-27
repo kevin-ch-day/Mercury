@@ -40,7 +40,9 @@ jobs:
         run: python -m pip check
 
       - name: Check runtime and test hygiene
-        run: python -m ruff check src tests --select F401,F841,F811,F821,B018,B023
+        run: |
+          python -m ruff check src tests --select F401,F841,F811,F821,B018,B023
+          python -m vulture src/mercury tests --min-confidence 80
 
       - name: Build distribution artifacts
         run: python -m build

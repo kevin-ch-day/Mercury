@@ -34,7 +34,7 @@ class WebCaptureResult:
     error: str | None = None
 
 
-def _git(path: Path, *args: str, binary: bool = False) -> bytes:
+def _git(path: Path, *args: str) -> bytes:
     return subprocess.run(["git", *args], cwd=path, check=True, capture_output=True).stdout
 
 

@@ -631,15 +631,6 @@ def style_table_lines(lines: list[str]) -> list[str]:
     return [styled_header, styled_rule, *body]
 
 
-def table_header_line(prefix: str, header_cells: list[str]) -> str:
-    line = prefix + "  ".join(header_cells)
-    if not colors_enabled():
-        return line
-    s = active_styles()
-    styled_cells = [markup(cell, s.table_header) for cell in header_cells]
-    return prefix + "  ".join(styled_cells)
-
-
 @dataclass(frozen=True)
 class MercuryTheme:
     """Named palette export for documentation and future extension."""

@@ -88,9 +88,9 @@ class _DumpHeartbeat:
 
     def __exit__(
         self,
-        exc_type: type[BaseException] | None,
+        _exc_type: type[BaseException] | None,
         exc: BaseException | None,
-        tb: TracebackType | None,
+        _tb: TracebackType | None,
     ) -> None:
         self._stop.set()
         self._thread.join(timeout=1.0)
@@ -103,19 +103,6 @@ class _DumpHeartbeat:
             display_screen.write_summary(
                 f"  …{self._label}: still dumping ({mins}m{secs:02d}s)"
             )
-
-
-def _backup_target_label(policy) -> str:
-    state = policy.backup_root_state()
-    if backup_root_state_is_ready(state):
-        return "operator storage mounted"
-    if state == "operator mount not mounted":
-        return "operator storage not mounted"
-    if state == "repo-local fallback":
-        return "repo-local fallback"
-    if state == "low free space":
-        return "operator storage mounted; low free space"
-    return state.replace("-", " ")
 
 
 def read_backup_choice() -> str | None:
@@ -1062,9 +1049,6 @@ def run_backup_menu(*, interactive: bool = True) -> None:
 
         if choice == "4":
             _run_advanced_backup_menu(plan)
-            show_title = pause_and_redraw()
-            continue
-
             show_title = pause_and_redraw()
             continue
 

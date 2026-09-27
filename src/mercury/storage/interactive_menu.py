@@ -374,52 +374,6 @@ def _print_reconnect_result(result) -> None:
         output.write(f"  {msg}")
 
 
-def _run_enable_writes() -> None:
-    from mercury.storage.lifecycle import (
-        StorageLifecycleState,
-        assess_storage_lifecycle,
-    )
-    from mercury.storage.transitions import (
-        RESTORE_SOURCE_WRITER_PHRASE,
-        restore_source_writer,
-    )
-
-    snap = assess_storage_lifecycle(probe_disconnect=False)
-    if snap.state in {
-        StorageLifecycleState.PREPARING_TO_DISCONNECT,
-        StorageLifecycleState.READY_TO_DISCONNECT,
-    }:
-        display_screen.write_status(
-            "fail",
-            "Enable writes unavailable · detach preparation active. "
-            "Finish or cancel Safe disconnect first, or restore via Backup.",
-        )
-        return
-    if snap.writes_allowed:
-        display_screen.write_summary("Mercury writes are already enabled.")
-        return
-    if snap.state == StorageLifecycleState.DETACHED:
-        display_screen.write_status(
-            "fail",
-            "Attach the HDD physically, then choose Reconnect before enabling writes.",
-        )
-        return
-    phrase = menu_prompts.ask(
-        f"Type {RESTORE_SOURCE_WRITER_PHRASE} to enable: "
-    ).strip()
-    result = restore_source_writer(
-        confirm=phrase,
-        operator_intent="hdd_menu_enable_writes",
-        require_strong_phrase=True,
-    )
-    if not result.ok:
-        display_screen.write_status("fail", "Writes not restored (phrase mismatch or validation).")
-        for blocker in result.blockers:
-            display_screen.write_status("fail", blocker)
-    else:
-        display_screen.write_summary("Mercury writes enabled (active writer = primary).")
-
-
 def _run_disable_writes() -> None:
     from mercury.storage.transitions import disable_writes
 

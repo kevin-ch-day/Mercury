@@ -9,14 +9,6 @@ from mercury.terminal.table import Table, TableStyle
 from mercury.sync.readiness import SyncReadinessEntry, SyncReadinessReport
 
 
-def _display_sync_database_name(database: str) -> str:
-    if database.endswith("_prod"):
-        return database[: -len("_prod")]
-    if database.endswith("_dev"):
-        return database[: -len("_dev")]
-    return database
-
-
 def _compact_readiness_status(*, ready: bool, blockers: list[str]) -> str:
     if ready:
         return "ready"
