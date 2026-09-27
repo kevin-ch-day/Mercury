@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from typing import TextIO
 
@@ -21,6 +22,20 @@ from mercury.terminal.theme import (
 
 _stream: TextIO | None = None
 _console = None
+
+_PRIVATE_KEY_BLOCK = re.compile(
+    r"-----BEGIN [^-\r\n]*PRIVATE KEY-----.*?-----END [^-\r\n]*PRIVATE KEY-----",
+    re.DOTALL,
+)
+_SENSITIVE_ASSIGNMENT = re.compile(
+    r"(?i)\b(password|passwd|api[_-]?key|access[_-]?token|token|secret|credential)\b"
+    r"(\s*[:=]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;]+)"
+)
+_SENSITIVE_CLI_OPTION = re.compile(
+    r"(?i)(--(?:password|passwd|api-key|access-token|token))(?:=|\s+)([^\s]+)"
+)
+_URL_USERINFO = re.compile(r"(?i)([a-z][a-z0-9+.-]*://)[^/@\s]+@")
+_AWS_ACCESS_KEY = re.compile(r"\bAKIA[0-9A-Z]{16}\b")
 
 
 def _configure_stdio() -> None:
@@ -79,11 +94,23 @@ def _looks_like_markup(text: str) -> bool:
     return False
 
 
+def redact_sensitive_text(text: str) -> str:
+    """Remove common credential forms before operator-facing output."""
+    value = _PRIVATE_KEY_BLOCK.sub("<redacted-private-key>", str(text))
+    value = _SENSITIVE_ASSIGNMENT.sub(r"\1\2<redacted>", value)
+    value = _SENSITIVE_CLI_OPTION.sub(r"\1=<redacted>", value)
+    value = _URL_USERINFO.sub(r"\1<redacted>@", value)
+    return _AWS_ACCESS_KEY.sub("<redacted-aws-access-key>", value)
+
+
 def write(text: str = "") -> None:
-    if _looks_like_markup(text):
-        _get_console().print(text, markup=True, highlight=False)
+    safe_text = redact_sensitive_text(text)
+    if _looks_like_markup(safe_text):
+        _get_console().print(safe_text, markup=True, highlight=False)
     else:
-        print(text, file=_out())
+        # Every caller passes through the credential redactor above. Paths and
+        # hardware identifiers intentionally remain visible in this operator CLI.
+        print(safe_text, file=_out())  # lgtm[py/clear-text-logging-sensitive-data]
 
 
 def rule(width: int = 60, char: str | None = None) -> None:

@@ -4,8 +4,14 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shlex
 
 from mercury.deploy.repos.models import RepoDeployCandidate, RepoDeployOptions
+
+
+def _command(*argv: object) -> str:
+    """Render display text that round-trips safely through ``shlex.split``."""
+    return shlex.join(str(value) for value in argv)
 
 
 def _parent_writable(parent: Path) -> bool:
@@ -35,13 +41,30 @@ def planned_repo_commands(
 
             branch = candidate.branch or recovery_branch_name()
             commands = [
-                f"git bundle verify {candidate.bundle_path}",
-                f"git -C {candidate.target_path} cat-file -e {candidate.commit}^{{commit}}",
-                f"git -C {candidate.target_path} checkout -B {branch} {candidate.commit}",
+                _command("git", "bundle", "verify", candidate.bundle_path),
+                _command(
+                    "git",
+                    "-C",
+                    candidate.target_path,
+                    "cat-file",
+                    "-e",
+                    f"{candidate.commit}^{{commit}}",
+                ),
+                _command(
+                    "git", "-C", candidate.target_path, "checkout", "-B", branch, candidate.commit
+                ),
             ]
             if candidate.remote_url:
                 commands.append(
-                    f"git -C {candidate.target_path} remote set-url origin {candidate.remote_url}"
+                    _command(
+                        "git",
+                        "-C",
+                        candidate.target_path,
+                        "remote",
+                        "set-url",
+                        "origin",
+                        candidate.remote_url,
+                    )
                 )
             return commands, None
         return [], "Existing repository resume requires a verified USB bundle with an exact commit"
@@ -54,28 +77,38 @@ def planned_repo_commands(
     commands: list[str] = []
 
     if candidate.source == "github" and candidate.remote_url:
-        commands.append(f"mkdir -p {parent}")
+        commands.append(_command("mkdir", "-p", parent))
         branch = candidate.branch or "main"
-        commands.append(f"git clone --branch {branch} {candidate.remote_url} {target}")
+        commands.append(
+            _command("git", "clone", "--branch", branch, candidate.remote_url, target)
+        )
         ref = candidate.commit or "HEAD"
-        commands.append(f"git -C {target} checkout -B {branch} {ref}")
+        commands.append(_command("git", "-C", target, "checkout", "-B", branch, ref))
         if candidate.remote_url:
-            commands.append(f"git -C {target} remote set-url origin {candidate.remote_url}")
+            commands.append(
+                _command(
+                    "git", "-C", target, "remote", "set-url", "origin", candidate.remote_url
+                )
+            )
         return commands, None
 
     if candidate.source == "usb_bundle" and candidate.bundle_path:
         from mercury.deploy.repos.post_deploy import recovery_branch_name
 
-        commands.append(f"mkdir -p {parent}")
-        commands.append(f"git bundle verify {candidate.bundle_path}")
-        commands.append(f"git clone {candidate.bundle_path} {target}")
+        commands.append(_command("mkdir", "-p", parent))
+        commands.append(_command("git", "bundle", "verify", candidate.bundle_path))
+        commands.append(_command("git", "clone", candidate.bundle_path, target))
         branch = candidate.branch or recovery_branch_name()
         ref = candidate.commit or "HEAD"
-        commands.append(f"git -C {target} checkout -B {branch} {ref}")
+        commands.append(_command("git", "-C", target, "checkout", "-B", branch, ref))
         if candidate.remote_url:
             # git clone <bundle> creates origin pointing at the local bundle;
             # replace it with the manifest-pinned official remote.
-            commands.append(f"git -C {target} remote set-url origin {candidate.remote_url}")
+            commands.append(
+                _command(
+                    "git", "-C", target, "remote", "set-url", "origin", candidate.remote_url
+                )
+            )
         return commands, None
 
     return [], candidate.skip_reason or "No deployment source resolved"

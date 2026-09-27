@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shlex
 
 import pytest
 
@@ -45,7 +46,41 @@ def test_planned_repo_commands_github_clone() -> None:
     )
     commands, skip = planned_repo_commands(candidate, options=RepoDeployOptions())
     assert skip is None
-    assert any("git clone" in command and "github.com" in command for command in commands)
+    clone = next(command for command in commands if shlex.split(command)[:2] == ["git", "clone"])
+    assert shlex.split(clone) == [
+        "git",
+        "clone",
+        "--branch",
+        "main",
+        "https://github.com/example/Mercury.git",
+        "/tmp/mercury",
+    ]
+
+
+def test_planned_repo_commands_quote_operator_paths() -> None:
+    from mercury.deploy.repos.models import RepoDeployCandidate
+
+    candidate = RepoDeployCandidate(
+        key="mercury",
+        display_name="Mercury",
+        target_path="/tmp/operator repos/mercury",
+        source="github",
+        remote_url="https://github.com/example/Mercury.git",
+        branch="release candidate",
+    )
+
+    commands, skip = planned_repo_commands(candidate, options=RepoDeployOptions())
+
+    assert skip is None
+    clone = next(command for command in commands if shlex.split(command)[:2] == ["git", "clone"])
+    assert shlex.split(clone) == [
+        "git",
+        "clone",
+        "--branch",
+        "release candidate",
+        "https://github.com/example/Mercury.git",
+        "/tmp/operator repos/mercury",
+    ]
 
 
 def test_planned_repo_commands_skip_existing() -> None:
@@ -132,7 +167,10 @@ def test_usb_bundle_resume_never_reclones_existing_worktree() -> None:
     commands, skip = planned_repo_commands(candidate, options=RepoDeployOptions(skip_existing=False))
     assert skip is None
     assert not any("git clone" in command for command in commands)
-    assert any("cat-file -e abc123" in command for command in commands)
+    assert any(
+        shlex.split(command) == ["git", "-C", "/tmp/demo", "cat-file", "-e", "abc123^{commit}"]
+        for command in commands
+    )
     assert any("remote set-url origin" in command for command in commands)
 
 

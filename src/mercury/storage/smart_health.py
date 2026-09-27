@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from mercury.core.artifact_permissions import write_private_text
 from mercury.core.storage_roots import StorageConfig, load_storage_config
 from mercury.core.storage_roles import CONTROL_DIRNAME
 
@@ -161,7 +162,6 @@ def record_smart_health(
             message="sudo requires an interactive password — run: " + plan["command"],
         )
 
-    path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
     mount = cfg.primary.mount_path.expanduser().resolve()
     resolved = path.expanduser().resolve()
     try:
@@ -170,8 +170,7 @@ def record_smart_health(
         raise ValueError(
             f"SMART evidence path is not under primary mount {mount}: {resolved}"
         ) from exc
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    path.chmod(0o600)
+    write_private_text(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
     ok = bool(payload["overall_health_passed"])
     return SmartHealthResult(
         path,

@@ -32,3 +32,18 @@ def test_bullet_uses_plain_dash_even_with_color(capsys) -> None:
         set_color_enabled(None)
     assert "- safe note" in out
     assert "◆" not in out
+
+
+def test_write_redacts_common_credential_forms(capsys) -> None:
+    output.write(
+        "password=hunter2 api_key: abcdefgh token='token-value' "
+        "https://user:pass@example.test/path AKIAABCDEFGHIJKLMNOP"
+    )
+    out = capsys.readouterr().out
+
+    assert "hunter2" not in out
+    assert "abcdefgh" not in out
+    assert "token-value" not in out
+    assert "user:pass" not in out
+    assert "AKIAABCDEFGHIJKLMNOP" not in out
+    assert out.count("<redacted>") >= 3
