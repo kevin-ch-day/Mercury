@@ -15,19 +15,35 @@ pip-wheel-metadata/
 .venv/
 venv/
 /env/
+__pypackages__/
+.direnv/
+.envrc
 
 # Test / type / lint caches
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.pyre/
+.pyright/
+.pytype/
+.benchmarks/
 .tox/
 .nox/
 .hypothesis/
+.dmypy.json
+dmypy.json
 .coverage
 .coverage.*
 coverage.xml
 htmlcov/
 pytestdebug.log
+junit*.xml
+test-results/
+
+# Local profiling / debug output
+*.prof
+*.pstats
+cython_debug/
 
 # Operator-local config (keep *.example.toml tracked)
 config/*.toml
@@ -63,10 +79,13 @@ data/*
 # Editors / OS
 .idea/
 .vscode/
+.fleet/
+.history/
 *.swp
 *.swo
 *~
 .DS_Store
+._*
 Thumbs.db
 ehthumbs.db
 Desktop.ini
