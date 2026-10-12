@@ -41,6 +41,7 @@ def _home_github_candidates() -> list[tuple[str, str, str]]:
 DEFAULT_LOCAL_REPO_CANDIDATES: list[tuple[str, str, str]] = [
     ("mercury", "Mercury", "{home}/GitHub/Mercury"),
     ("erebus_engine", "Erebus Engine", "{home}/GitHub/erebus-engine-fedora"),
+    ("android_permission_intel", "Android Permission Intel", "{home}/GitHub/android-permission-intel"),
     ("erebus_web", "Erebus Web", "{home}/GitHub/erebus-web"),
     ("scytaledroid", "ScytaleDroid", "{home}/GitHub/ScytaleDroid"),
     ("scytaledroid_web", "ScytaleDroid Web", "{home}/GitHub/ScytaleDroid-Web"),
