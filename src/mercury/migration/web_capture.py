@@ -113,6 +113,14 @@ def _safe_extract(archive: Path, destination: Path) -> None:
         handle.extractall(destination, filter="data")
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _capture_data(
     repo: RepoDefinition, *, include_runtime_metadata: bool = True
 ) -> tuple[dict[str, Any], bytes, bytes, list[str], list[str]]:
@@ -224,10 +232,16 @@ def capture_web_worktrees(*, execute: bool = False, repositories: list[RepoDefin
             subprocess.run(["git", "bundle", "create", str(bundle), "HEAD"], cwd=repo.path, check=True, capture_output=True)
             os.chmod(bundle, 0o600)
             manifest["artifacts"] = {"unstaged_patch": "tracked-unstaged.patch", "staged_patch": "staged.patch", "untracked_archive": archive.name, "history_bundle": bundle.name}
+            manifest["artifact_sha256"] = {
+                name: _file_sha256(destination / filename)
+                for name, filename in manifest["artifacts"].items()
+            }
             manifest_path = destination / "snapshot_manifest.json"
             manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             os.chmod(manifest_path, 0o600)
             restore_checked = validate_snapshot(destination)
+            if not restore_checked:
+                raise ValueError("RESTORE_VALIDATION_FAILED")
             manifest["restore_validation"] = {"passed": restore_checked, "validated_at": datetime.now(timezone.utc).isoformat()}
             manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             results.append(WebCaptureResult(repo.key, repo.display_name, repo.path, destination, manifest["status_fingerprint"], True, restore_checked))
@@ -247,14 +261,41 @@ def capture_worktrees(*, execute: bool = False, repositories: list[RepoDefinitio
 def validate_snapshot(snapshot: Path) -> bool:
     """Validate artifacts in a temporary checkout; source repositories stay untouched."""
     manifest = json.loads((snapshot / "snapshot_manifest.json").read_text(encoding="utf-8"))
-    bundle = snapshot / manifest["artifacts"]["history_bundle"]
+    artifacts = manifest["artifacts"]
+    digests = manifest.get("artifact_sha256") or {}
+    if set(digests) != set(artifacts):
+        return False
+    for name, filename in artifacts.items():
+        artifact = snapshot / filename
+        if not artifact.is_file() or _file_sha256(artifact) != digests[name]:
+            return False
+    bundle = snapshot / artifacts["history_bundle"]
     with tempfile.TemporaryDirectory(prefix="mercury-web-restore-") as temp:
         checkout = Path(temp) / "checkout"
         subprocess.run(["git", "clone", "--no-checkout", str(bundle), str(checkout)], check=True, capture_output=True)
         subprocess.run(["git", "checkout", manifest["head_commit"]], cwd=checkout, check=True, capture_output=True)
-        for patch in ("tracked-unstaged.patch", "staged.patch"):
-            content = (snapshot / patch).read_bytes()
-            if content:
-                subprocess.run(["git", "apply", "--check", str(snapshot / patch)], cwd=checkout, check=True, capture_output=True)
-        _safe_extract(snapshot / manifest["artifacts"]["untracked_archive"], checkout / "untracked")
+        staged = snapshot / artifacts["staged_patch"]
+        unstaged = snapshot / artifacts["unstaged_patch"]
+        if staged.stat().st_size:
+            subprocess.run(["git", "apply", "--index", str(staged)], cwd=checkout, check=True, capture_output=True)
+        if unstaged.stat().st_size:
+            subprocess.run(["git", "apply", str(unstaged)], cwd=checkout, check=True, capture_output=True)
+        restored_staged = subprocess.run(
+            ["git", "diff", "--cached", "--binary", "--full-index"], cwd=checkout,
+            check=True, capture_output=True,
+        ).stdout
+        restored_unstaged = subprocess.run(
+            ["git", "diff", "--binary", "--full-index"], cwd=checkout,
+            check=True, capture_output=True,
+        ).stdout
+        if restored_staged != staged.read_bytes() or restored_unstaged != unstaged.read_bytes():
+            return False
+        archive = snapshot / artifacts["untracked_archive"]
+        with tarfile.open(archive, "r:gz") as handle:
+            members = handle.getmembers()
+            names = [member.name for member in members]
+            if (len(names) != len(set(names)) or sorted(names) != sorted(manifest["untracked_files"])
+                    or not all(member.isfile() for member in members)):
+                return False
+        _safe_extract(archive, checkout)
     return True
