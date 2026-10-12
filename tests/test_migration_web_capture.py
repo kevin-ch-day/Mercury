@@ -67,6 +67,22 @@ def test_capture_reconstructs_staged_then_unstaged_change(monkeypatch, tmp_path:
     assert validate_snapshot(snapshot) is True
 
 
+def test_capture_reconstructs_intent_to_add_files(monkeypatch, tmp_path: Path) -> None:
+    repo, definition = _repo(tmp_path)
+    (repo / "tracked.txt").write_text("changed\n", encoding="utf-8")
+    (repo / "new file.txt").write_text("first\n", encoding="utf-8")
+    (repo / "another.txt").write_text("second\n", encoding="utf-8")
+    _git(repo, "add", "-N", "--", "new file.txt", "another.txt")
+
+    snapshot = _capture(monkeypatch, tmp_path, definition)
+    from mercury.migration.web_capture import validate_snapshot
+
+    manifest = json.loads((snapshot / "snapshot_manifest.json").read_text())
+    assert manifest["restore_validation"]["passed"] is True
+    assert manifest["untracked_files"] == []
+    assert validate_snapshot(snapshot) is True
+
+
 def test_capture_refuses_modified_untracked_archive(monkeypatch, tmp_path: Path) -> None:
     repo, definition = _repo(tmp_path)
     (repo / "notes.txt").write_text("original\n", encoding="utf-8")

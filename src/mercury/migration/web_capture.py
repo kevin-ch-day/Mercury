@@ -276,6 +276,19 @@ def capture_worktrees(*, execute: bool = False, repositories: list[RepoDefinitio
     )
 
 
+def _intent_to_add_paths(status: str) -> list[str]:
+    """Recover intent-to-add index entries recorded in porcelain v2 status."""
+    paths: list[str] = []
+    for record in status.split("\0"):
+        if not record.startswith("1 .A "):
+            continue
+        fields = record.split(" ", 8)
+        if len(fields) != 9 or not fields[8]:
+            raise ValueError("INVALID_INTENT_TO_ADD_STATUS")
+        paths.append(fields[8])
+    return paths
+
+
 def validate_snapshot(snapshot: Path) -> bool:
     """Validate artifacts in a temporary checkout; source repositories stay untouched."""
     manifest = json.loads((snapshot / "snapshot_manifest.json").read_text(encoding="utf-8"))
@@ -298,6 +311,11 @@ def validate_snapshot(snapshot: Path) -> bool:
             subprocess.run(["git", "apply", "--index", str(staged)], cwd=checkout, check=True, capture_output=True)
         if unstaged.stat().st_size:
             subprocess.run(["git", "apply", str(unstaged)], cwd=checkout, check=True, capture_output=True)
+        # git apply recreates these files but does not preserve their index
+        # intent, so the original unstaged diff would otherwise disappear.
+        intent_paths = _intent_to_add_paths(manifest["status_porcelain_v2"])
+        if intent_paths:
+            subprocess.run(["git", "add", "-N", "--", *intent_paths], cwd=checkout, check=True, capture_output=True)
         restored_staged = subprocess.run(
             ["git", "diff", "--cached", "--binary", "--full-index"], cwd=checkout,
             check=True, capture_output=True,
