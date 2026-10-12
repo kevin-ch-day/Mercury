@@ -129,6 +129,54 @@ def test_capture_excludes_untracked_runtime_secret_contents(monkeypatch, tmp_pat
     with tarfile.open(snapshot / "untracked-files.tar.gz") as archive:
         assert ".env" not in archive.getnames()
         assert "notes.txt" in archive.getnames()
+    from mercury.migration.web_capture import snapshot_status
+    assert snapshot_status(definition) == ("current", True)
+    (repo / ".env").write_text("DATABASE_PASSWORD=changed-but-excluded\n", encoding="utf-8")
+    assert snapshot_status(definition) == ("current", True)
+
+
+def test_untracked_content_and_membership_change_snapshot_freshness(monkeypatch, tmp_path: Path) -> None:
+    repo, definition = _repo(tmp_path)
+    note = repo / "notes.txt"
+    note.write_text("first\n", encoding="utf-8")
+    snapshot = _capture(monkeypatch, tmp_path, definition)
+    from mercury.migration.web_capture import snapshot_status, validate_snapshot
+    assert snapshot_status(definition) == ("current", True)
+    assert validate_snapshot(snapshot)
+    note.write_text("second\n", encoding="utf-8")
+    assert snapshot_status(definition) == ("stale", True)
+    note.write_text("first\n", encoding="utf-8")
+    assert snapshot_status(definition) == ("current", True)
+    extra = repo / "extra.txt"
+    extra.write_text("extra\n", encoding="utf-8")
+    assert snapshot_status(definition) == ("stale", True)
+    extra.unlink()
+    assert snapshot_status(definition) == ("current", True)
+    note.unlink()
+    assert snapshot_status(definition) == ("stale", True)
+
+
+def test_untracked_archive_bytes_match_manifest(monkeypatch, tmp_path: Path) -> None:
+    import hashlib
+    import tarfile
+    repo, definition = _repo(tmp_path)
+    (repo / "notes.txt").write_bytes(b"captured source bytes\n")
+    snapshot = _capture(monkeypatch, tmp_path, definition)
+    manifest = json.loads((snapshot / "snapshot_manifest.json").read_text())
+    with tarfile.open(snapshot / "untracked-files.tar.gz") as archive:
+        contents = archive.extractfile("notes.txt").read()
+    assert contents == (repo / "notes.txt").read_bytes()
+    assert manifest["untracked_sha256"]["notes.txt"] == hashlib.sha256(contents).hexdigest()
+
+
+def test_oversized_untracked_capture_fails_closed(monkeypatch, tmp_path: Path) -> None:
+    repo, definition = _repo(tmp_path)
+    from mercury.migration import web_capture
+    (repo / "large.bin").write_bytes(b"123456789")
+    monkeypatch.setattr(web_capture, "MAX_UNTRACKED_FINGERPRINT_BYTES", 8)
+    assert web_capture.snapshot_status(definition) == ("missing", False)
+    result = web_capture.capture_web_worktrees(execute=False, repositories=[definition])[0]
+    assert result.error == "UNTRACKED_FINGERPRINT_LIMIT"
 
 
 def test_capture_worktrees_accepts_non_web_configured_repo(monkeypatch, tmp_path: Path) -> None:

@@ -20,6 +20,7 @@ from mercury.repo.config import RepoDefinition, RepoSelectionError, load_repo_de
 WEB_REPO_KEYS = ("erebus_web", "scytaledroid_web")
 RUNTIME_NAMES = {".env", "config.php", "database.php", "credentials", "secrets", "token", "private"}
 SENSITIVE_SUFFIXES = {".pem", ".key", ".p12", ".pfx"}
+MAX_UNTRACKED_FINGERPRINT_BYTES = 512 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -136,8 +137,20 @@ def _capture_data(
     commit = _git(path, "rev-parse", "HEAD").decode().strip()
     remotes = _git(path, "remote", "-v").decode("utf-8", "replace").splitlines()
     remote_metadata = [_redact_remote(line) for line in remotes]
+    untracked_sha256: dict[str, str] = {}
+    total_untracked_bytes = 0
+    for relative in sorted(untracked):
+        source = path / relative
+        info = source.lstat()
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError(f"UNTRACKED_NOT_REGULAR: {relative}")
+        total_untracked_bytes += info.st_size
+        if total_untracked_bytes > MAX_UNTRACKED_FINGERPRINT_BYTES:
+            raise ValueError("UNTRACKED_FINGERPRINT_LIMIT")
+        untracked_sha256[relative] = _file_sha256(source)
     digest = hashlib.sha256()
-    for value in (status, unstaged, staged, "\0".join(sorted(all_untracked)).encode()):
+    for value in (status, unstaged, staged, "\0".join(sorted(all_untracked)).encode(),
+                  json.dumps(untracked_sha256, sort_keys=True).encode()):
         digest.update(value)
         digest.update(b"\0")
     ignored_set = set(ignored)
@@ -146,6 +159,7 @@ def _capture_data(
         "repository_name": repo.display_name, "repository_key": repo.key, "branch": branch, "head_commit": commit,
         "remote_metadata": remote_metadata, "status_porcelain_v2": status.decode("utf-8", "surrogateescape"),
         "untracked_files": sorted(untracked),
+        "untracked_sha256": untracked_sha256,
         "excluded_sensitive_untracked": excluded_sensitive,
         "ignored_files": sorted(ignored), "status_fingerprint": digest.hexdigest(),
         "source_metadata": _metadata(path, ".", "repository"),
@@ -242,6 +256,10 @@ def capture_web_worktrees(*, execute: bool = False, repositories: list[RepoDefin
             restore_checked = validate_snapshot(destination)
             if not restore_checked:
                 raise ValueError("RESTORE_VALIDATION_FAILED")
+            current, *_ = _capture_data(repo, include_runtime_metadata=False)
+            if (current["status_fingerprint"] != manifest["status_fingerprint"]
+                    or current["head_commit"] != manifest["head_commit"]):
+                raise ValueError("SOURCE_CHANGED_DURING_CAPTURE")
             manifest["restore_validation"] = {"passed": restore_checked, "validated_at": datetime.now(timezone.utc).isoformat()}
             manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             results.append(WebCaptureResult(repo.key, repo.display_name, repo.path, destination, manifest["status_fingerprint"], True, restore_checked))
@@ -297,5 +315,17 @@ def validate_snapshot(snapshot: Path) -> bool:
             if (len(names) != len(set(names)) or sorted(names) != sorted(manifest["untracked_files"])
                     or not all(member.isfile() for member in members)):
                 return False
+            expected = manifest.get("untracked_sha256", {})
+            if set(expected) != set(names):
+                return False
+            for member in members:
+                stream = handle.extractfile(member)
+                if stream is None:
+                    return False
+                digest = hashlib.sha256()
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+                if digest.hexdigest() != expected[member.name]:
+                    return False
         _safe_extract(archive, checkout)
     return True
