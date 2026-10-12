@@ -28,7 +28,7 @@ dev = [
     "pytest>=8.0",
     "pymysql>=1.2.3",
     "ruff>=0.16.9",
-    "vulture>=2.14,<3",
+    "vulture>=2.16,<3",
 ]
 
 [build-system]
