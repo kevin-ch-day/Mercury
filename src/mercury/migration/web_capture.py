@@ -323,7 +323,7 @@ def validate_snapshot(snapshot: Path) -> bool:
                 if stream is None:
                     return False
                 digest = hashlib.sha256()
-                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                while chunk := stream.read(1024 * 1024):
                     digest.update(chunk)
                 if digest.hexdigest() != expected[member.name]:
                     return False
