@@ -56,6 +56,45 @@ def test_capture_staged_change(monkeypatch, tmp_path: Path) -> None:
     assert b"staged" in (snapshot / "staged.patch").read_bytes()
 
 
+def test_capture_reconstructs_staged_then_unstaged_change(monkeypatch, tmp_path: Path) -> None:
+    repo, definition = _repo(tmp_path)
+    (repo / "tracked.txt").write_text("staged\n", encoding="utf-8")
+    _git(repo, "add", "tracked.txt")
+    (repo / "tracked.txt").write_text("unstaged\n", encoding="utf-8")
+    snapshot = _capture(monkeypatch, tmp_path, definition)
+    from mercury.migration.web_capture import validate_snapshot
+
+    assert validate_snapshot(snapshot) is True
+
+
+def test_capture_refuses_modified_untracked_archive(monkeypatch, tmp_path: Path) -> None:
+    repo, definition = _repo(tmp_path)
+    (repo / "notes.txt").write_text("original\n", encoding="utf-8")
+    snapshot = _capture(monkeypatch, tmp_path, definition)
+    archive = snapshot / "untracked-files.tar.gz"
+    with archive.open("ab") as handle:
+        handle.write(b"corruption")
+    from mercury.migration.web_capture import validate_snapshot
+
+    assert validate_snapshot(snapshot) is False
+
+
+def test_capture_reports_failed_restore_validation(monkeypatch, tmp_path: Path) -> None:
+    repo, definition = _repo(tmp_path)
+    (repo / "tracked.txt").write_text("changed\n", encoding="utf-8")
+    from mercury.migration import web_capture
+
+    operator = tmp_path / "operator"
+    operator.mkdir()
+    monkeypatch.setattr(web_capture, "resolve_operator_mount", lambda: operator)
+    monkeypatch.setattr(web_capture, "assert_operator_storage_path", lambda _path, **_kwargs: None)
+    monkeypatch.setattr(web_capture, "validate_snapshot", lambda _path: False)
+
+    result = web_capture.capture_worktrees(execute=True, repositories=[definition])[0]
+    assert result.restore_checked is False
+    assert result.error == "RESTORE_VALIDATION_FAILED"
+
+
 def test_capture_binary_patch(monkeypatch, tmp_path: Path) -> None:
     repo, definition = _repo(tmp_path)
     (repo / "binary.bin").write_bytes(b"\x00changed\xff")
