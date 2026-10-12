@@ -137,6 +137,29 @@ def _execute_client_sql(config: MariaDbConnectionConfig, sql: str) -> None:
         raise BackupExecutionError(str(exc)) from exc
 
 
+def _drop_restorecheck_routines(config: MariaDbConnectionConfig, database: str) -> None:
+    """Remove creator grants with disposable routines before dropping their schema."""
+    if classify_database(database).role != DatabaseRole.RESTORE_CHECK_TEMP:
+        raise BackupExecutionError("Routine teardown is limited to restore-check databases.")
+    quoted_database = _quote_restore_ident(database, what="restore-check database")
+    try:
+        rows = run_client_query(
+            config,
+            "SELECT ROUTINE_TYPE, ROUTINE_NAME FROM information_schema.ROUTINES "
+            f"WHERE ROUTINE_SCHEMA='{database}' ORDER BY ROUTINE_TYPE, ROUTINE_NAME",
+        )
+    except MariaDbLiveError as exc:
+        raise BackupExecutionError(str(exc)) from exc
+    for line in rows.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 2 or parts[0] not in {"FUNCTION", "PROCEDURE"}:
+            raise BackupExecutionError("Unexpected restore-check routine metadata; retaining schema.")
+        quoted_routine = _quote_restore_ident(parts[1], what="restore-check routine")
+        _execute_client_sql(
+            config, f"DROP {parts[0]} {quoted_database}.{quoted_routine}"
+        )
+
+
 def _default_import_runner(
     argv: list[str],
     env: dict[str, str],
@@ -530,6 +553,7 @@ def execute_restore_into_database(
 
     if cleanup_command and verification_passed is not False:
         try:
+            _drop_restorecheck_routines(cfg, target_database)
             _execute_client_sql(cfg, cleanup_command)
             cleanup_dropped = True
             message = (
@@ -538,7 +562,8 @@ def execute_restore_into_database(
         except BackupExecutionError:
             message = (
                 f"Restored {source_database} into {target_database}, but automatic cleanup failed. "
-                f"Run: {cleanup_command}"
+                "Temporary restore-check database retained; inspect routine teardown "
+                "before manual cleanup."
             )
 
     result = RestoreExecutionResult(

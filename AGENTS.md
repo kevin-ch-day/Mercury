@@ -248,7 +248,10 @@ Manifest builder: `build_backup_manifest()` in `backup/manifest.py`.
 Checksum helpers: `backup/checksum.py`.  
 Verification: `verify_backup_artifacts()` in `backup/verification.py`.
 
-Restore-check behavior: successful restore-check imports auto-drop the `_restorecheck_*` database; failed runs preserve it for debugging and print the cleanup command.
+Restore-check behavior: successful restore-check imports remove routines first
+(clearing MariaDB's automatic creator grants), then auto-drop the
+`_restorecheck_*` database. Failed verification or routine teardown preserves
+the temporary database for inspection.
 
 ## Suggested agent workflow
 

@@ -200,6 +200,10 @@ CREATE VIEW `v_pi` AS SELECT id FROM `android_permission_intel`.`tokens`;
     assert not root(
         f"SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='{target}'"
     )
+    assert root(
+        "SELECT COUNT(*) FROM mysql.procs_priv "
+        f"WHERE User='mercury_dev_restore' AND Db='{target}'"
+    )[0][0] == 0
     # Real import succeeds, then a real verification failure preserves target and receipt.
     failed = "_restorecheck_contract_failed"
     manifest["row_counts"] = {"t": 1, "missing": 1}

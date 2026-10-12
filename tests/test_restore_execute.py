@@ -13,7 +13,11 @@ from typer.testing import CliRunner
 from mercury.backup.backup_runner import BackupExecutionError
 from mercury.cli import app
 from mercury.core.execution_policy import ExecutionPolicy
-from mercury.restore.restore_runner import assert_safe_restore_target, execute_restore_into_database
+from mercury.restore.restore_runner import (
+    _drop_restorecheck_routines,
+    assert_safe_restore_target,
+    execute_restore_into_database,
+)
 from mercury.restore.interactive_menu import run_restore_menu
 
 
@@ -29,6 +33,47 @@ def test_assert_safe_restore_target_blocks_prod() -> None:
 def test_assert_safe_restore_target_blocks_identifier_injection() -> None:
     with pytest.raises(BackupExecutionError, match="Unsafe SQL restore target"):
         assert_safe_restore_target("evil_dev`; DROP DATABASE `android_permission_intel")
+
+
+def test_restorecheck_routine_teardown_is_exact_and_disposable(monkeypatch) -> None:
+    from mercury.database.mariadb.config import MariaDbConnectionConfig
+
+    cfg = MariaDbConnectionConfig(host="localhost", user="mercury_dev_restore")
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "mercury.restore.restore_runner.run_client_query",
+        lambda _cfg, _sql: "FUNCTION\tf_status\nPROCEDURE\tp_refresh",
+    )
+    monkeypatch.setattr(
+        "mercury.restore.restore_runner._execute_client_sql",
+        lambda _cfg, sql: calls.append(sql),
+    )
+    _drop_restorecheck_routines(cfg, "_restorecheck_erebus_threat_intel_prod_test")
+    assert calls == [
+        "DROP FUNCTION `_restorecheck_erebus_threat_intel_prod_test`.`f_status`",
+        "DROP PROCEDURE `_restorecheck_erebus_threat_intel_prod_test`.`p_refresh`",
+    ]
+    with pytest.raises(BackupExecutionError, match="limited to restore-check"):
+        _drop_restorecheck_routines(cfg, "erebus_threat_intel_dev")
+    assert len(calls) == 2
+
+
+def test_restorecheck_routine_teardown_refuses_unexpected_metadata(monkeypatch) -> None:
+    from mercury.database.mariadb.config import MariaDbConnectionConfig
+
+    cfg = MariaDbConnectionConfig(host="localhost", user="mercury_dev_restore")
+    monkeypatch.setattr(
+        "mercury.restore.restore_runner.run_client_query",
+        lambda _cfg, _sql: "PROCEDURE\tp_ok\nPROCEDURE\tp_bad`; DROP DATABASE x",
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "mercury.restore.restore_runner._execute_client_sql",
+        lambda _cfg, sql: calls.append(sql),
+    )
+    with pytest.raises(BackupExecutionError, match="Unsafe SQL restore-check routine"):
+        _drop_restorecheck_routines(cfg, "_restorecheck_erebus_threat_intel_prod_test")
+    assert calls == ["DROP PROCEDURE `_restorecheck_erebus_threat_intel_prod_test`.`p_ok`"]
 
 
 def test_execute_restore_refuses_identifier_injection_before_sql(tmp_path: Path) -> None:
@@ -287,6 +332,59 @@ def test_restore_check_auto_drops_temp_database_on_success(monkeypatch: pytest.M
     assert any("DROP DATABASE IF EXISTS `_restorecheck_erebus_threat_intel_prod_20260608`" == call for call in calls)
 
 
+def test_restore_check_retains_schema_when_routine_teardown_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mercury.database.mariadb.config import MariaDbConnectionConfig
+    from mercury.deploy.models import DeploymentVerification
+
+    dump = tmp_path / "erebus.sql.gz"
+    dump.write_bytes(b"fake")
+    config = MariaDbConnectionConfig(host="localhost", user="root")
+    monkeypatch.setattr(
+        "mercury.restore.restore_runner.load_mariadb_restore_config",
+        lambda: config,
+    )
+    target = "_restorecheck_erebus_threat_intel_prod_20260608"
+    policy = ExecutionPolicy(
+        dry_run=False, live_actions_enabled=True,
+        backup_root=tmp_path, config_path=tmp_path / "local.toml",
+        allow_unsafe_backup_root=True,
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "mercury.restore.restore_runner._execute_client_sql",
+        lambda _cfg, sql: calls.append(sql),
+    )
+    monkeypatch.setattr(
+        "mercury.restore.restore_runner._verify_restore_target",
+        lambda *args, **kwargs: DeploymentVerification(
+            database=target, exists_on_server=True, table_count=1, verified=True
+        ),
+    )
+    monkeypatch.setattr(
+        "mercury.restore.restore_runner._drop_restorecheck_routines",
+        lambda _cfg, _db: (_ for _ in ()).throw(
+            BackupExecutionError("routine teardown failed")
+        ),
+    )
+    _allow_restorecheck_preflight(monkeypatch, dump)
+    result = execute_restore_into_database(
+        target_database=target,
+        source_database="erebus_threat_intel_prod",
+        dump_path=dump,
+        execute=True,
+        policy=policy,
+        config=config,
+        import_runner=lambda *args: None,
+        cleanup_after_success=True,
+    )
+    assert result.executed and result.verification_passed, result.message
+    assert not result.cleanup_dropped
+    assert "retained" in result.message
+    assert calls.count(f"DROP DATABASE IF EXISTS `{target}`") == 1
+
+
 def test_restore_check_preserves_temp_database_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     dump = tmp_path / "erebus.sql.gz"
     dump.write_bytes(b"fake")
@@ -537,7 +635,10 @@ def _allow_restorecheck_preflight(monkeypatch, dump):
     def passed(**kwargs):
         return SimpleNamespace(passed=True,source_database=kwargs["source"],target_database=kwargs["target"],artifact_file=dump.name,artifact_sha256=sha256_file(dump),backup_id="fixture",evidence_written=True,current_user="root@localhost")
     monkeypatch.setattr("mercury.sync.restore_preflight.evaluate_restore_privileges",passed)
-    monkeypatch.setattr("mercury.restore.restore_runner.run_client_query",lambda *args:"root@localhost")
+    monkeypatch.setattr(
+        "mercury.restore.restore_runner.run_client_query",
+        lambda _cfg, sql: "" if "information_schema.ROUTINES" in sql else "root@localhost",
+    )
 
 
 def test_restorecheck_missing_routine_privilege_stops_before_any_ddl(monkeypatch,tmp_path):
