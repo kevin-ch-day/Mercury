@@ -49,6 +49,11 @@ def print_backup_status_report(report: BackupStatusReport) -> None:
     else:
         display_screen.write_status("warn", "No production databases in active backup scope.")
 
+    for entry in report.entries:
+        reason = getattr(entry, "freshness_reason", None)
+        if reason and entry.freshness in {"stale", "unknown"}:
+            display_screen.write_status("info", f"{entry.database}: {reason}")
+
     if report.warnings:
         display_screen.write_blank()
         for warning in report.warnings:

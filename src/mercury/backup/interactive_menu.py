@@ -177,9 +177,11 @@ def _write_focus_callout(
         return
 
     if pending_rc and not needs_backup:
-        # The RC column already identifies these as restore-check gaps.  Their
-        # names and Phase 3B status belong on the recovery/reporting screens;
-        # repeating them here obscures Backup Operations itself.
+        from mercury.menu.options import MAIN_RECOVERY, main_menu_hint
+
+        output.write(
+            f"Next: Run restore checks — Main menu → {main_menu_hint(MAIN_RECOVERY)}"
+        )
         return
 
     if needs_backup:
@@ -480,6 +482,10 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
                 else menu_handoff_problem_summary(problem_parts)
             )
             body_notes.append(("info" if only_absent else "warn", message))
+        for entry in status_report.entries:
+            reason = getattr(entry, "freshness_reason", None)
+            if reason and entry.freshness in {"stale", "unknown"}:
+                body_notes.append(("info", f"{entry.database}: {reason}"))
         for line in dumpability_lines:
             body_notes.append(("warn", line))
     else:

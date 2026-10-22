@@ -267,7 +267,7 @@ def test_build_backup_status_report_includes_freshness_fields(
                 "activity_signal": "virustotal_run_ledger.finished_at_utc",
                 "backup_age": "19h ago",
                 "recommend_full_backup": True,
-                "notes": [],
+                "notes": ["21 rows in virustotal_sample_state have record_updated_at_utc after backup"],
             },
         )(),
     )
@@ -278,6 +278,7 @@ def test_build_backup_status_report_includes_freshness_fields(
         policy=policy,
     )
     entry = report.entries[0]
+    assert "21 rows in virustotal_sample_state" in entry.freshness_reason
     assert entry.protection_status == "verified"
     assert entry.freshness == FRESHNESS_STALE
     assert entry.recommend_full_backup is True
@@ -578,3 +579,60 @@ def test_restore_readiness_complete_while_freshness_stale(
     assert completeness.completeness_status == "complete"
     assert completeness.live_object_count == 201
     assert freshness.freshness == FRESHNESS_STALE
+
+
+def test_stale_reason_counts_rows_and_names_latest_signal() -> None:
+    queries = []
+
+    def query(_config, sql):
+        queries.append(sql)
+        if 'COUNT(*)' in sql:
+            return '21'
+        if 'virustotal_run_ledger' in sql:
+            return '2026-10-22 20:40:00'
+        return '2026-10-22 20:42:20'
+
+    result = assess_backup_freshness(
+        'erebus_threat_intel_prod',
+        backup_at=parse_backup_timestamp('2026-10-22T15:24:28.760838-05:00'),
+        config=object(), scalar_fn=query,
+    )
+    assert result.freshness == FRESHNESS_STALE
+    assert result.activity_signal == 'virustotal_sample_state.record_updated_at_utc'
+    assert '21 rows in virustotal_sample_state have record_updated_at_utc after backup' in result.notes
+    counts = [sql for sql in queries if 'COUNT(*)' in sql]
+    assert len(counts) == 2
+    assert all("2026-10-22 20:24:28.760838" in sql for sql in counts)
+    assert all(sql.startswith('SELECT ') for sql in queries)
+
+
+def test_count_failure_keeps_stale_timestamp_evidence() -> None:
+    from mercury.database.mariadb.errors import MariaDbLiveError
+
+    def query(_config, sql):
+        if 'COUNT(*)' in sql:
+            raise MariaDbLiveError('Count unavailable')
+        return '2026-10-22 20:42:20'
+
+    result = assess_backup_freshness(
+        'erebus_threat_intel_prod',
+        backup_at=parse_backup_timestamp('2026-10-22T20:24:28Z'),
+        config=object(), scalar_fn=query,
+    )
+    assert result.freshness == FRESHNESS_STALE
+    assert result.recommend_full_backup
+    assert 'virustotal_sample_state.record_updated_at_utc' in result.notes[-1]
+    assert not any('0 rows' in note for note in result.notes)
+
+
+def test_fresh_source_does_not_run_extra_row_counts() -> None:
+    def query(_config, sql):
+        assert 'COUNT(*)' not in sql
+        return '2026-10-22 20:24:28'
+
+    result = assess_backup_freshness(
+        'erebus_threat_intel_prod',
+        backup_at=parse_backup_timestamp('2026-10-22T20:24:28Z'),
+        config=object(), scalar_fn=query,
+    )
+    assert result.freshness == FRESHNESS_FRESH

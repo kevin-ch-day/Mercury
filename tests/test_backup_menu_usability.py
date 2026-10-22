@@ -31,6 +31,7 @@ def _stale_entry(database: str) -> SimpleNamespace:
         protection_status="verified",
         freshness="stale",
         backup_age="3d ago",
+        freshness_reason="21 rows in virustotal_sample_state have record_updated_at_utc after backup",
         backup_id=f"{database}-full-1",
         restore_check_status=None,
         restore_check_backup_id=None,
@@ -382,6 +383,8 @@ def test_backup_screen_next_pending_restore_check(
     _render_backup_screen(plan, show_title=True)
     out = capsys.readouterr().out
     assert "RC" in out
+    assert "Next: Run restore checks" in out
+    assert "Next: Back up and verify production" not in out
     assert "Next: Restore and disaster recovery [5]" not in out
     assert "Pending: scytaledroid_core_prod" not in out
     assert "Do not run another backup" not in out
@@ -513,6 +516,7 @@ def test_backup_screen_recommends_guided_when_stale(
     out = capsys.readouterr().out
     assert "Next: Back up and verify production [1]" in out
     assert "Back up and verify production      recommended" in out
+    assert "21 rows in virustotal_sample_state" in out
 
 
 def test_home_recommendation_skips_expensive_backup_assessment(monkeypatch) -> None:

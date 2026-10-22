@@ -33,6 +33,7 @@ class BackupStatusEntry(BaseModel):
     freshness: str = FRESHNESS_UNKNOWN
     latest_source_activity_at: str | None = None
     activity_signal: str | None = None
+    freshness_reason: str | None = None
     backup_age: str | None = None
     recommend_full_backup: bool = False
     source_is_empty: bool = False
@@ -371,6 +372,7 @@ def build_backup_status_report(
                     else None
                 ),
                 activity_signal=freshness.activity_signal,
+                freshness_reason="; ".join(freshness.notes) or None,
                 backup_age=freshness.backup_age,
                 recommend_full_backup=(
                     (freshness.recommend_full_backup or status != "verified")

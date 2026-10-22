@@ -546,13 +546,46 @@ def fetch_latest_source_activity_at(
             continue
         if latest is None or parsed > latest:
             latest = parsed
-        signals.append(signal)
+            signals = [signal]
+        elif parsed == latest:
+            signals.append(signal)
 
     if latest is None:
         return None, None
     if len(signals) == 1:
         return latest, signals[0]
-    return latest, "combined activity signals"
+    return latest, ", ".join(signals)
+
+
+
+def source_change_reasons(
+    database: str, config: MariaDbConnectionConfig, backup_at: datetime,
+    *, scalar_fn: ScalarFn | None = None,
+) -> list[str]:
+    """Count rows carrying post-backup timestamps, not individual write events.
+
+    These counts explain stale status only; they never override its timestamp
+    comparison or claim complete change tracking for the database.
+    """
+    fetch = scalar_fn or readonly_scalar
+    cutoff = backup_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")
+    reasons = []
+    for signal, sql in SOURCE_ACTIVITY_PROBES.get(database, []):
+        table, column = signal.split(".", 1)
+        # Probe SQL is fixed in this module; only a formatted datetime is inserted.
+        count_sql = sql.replace(f"MAX({column})", "COUNT(*)").replace(
+            f"{column} IS NOT NULL", f"{column} > '{cutoff}'"
+        )
+        try:
+            raw = fetch(config, count_sql)
+            count = int(raw)
+        except (MariaDbLiveError, OSError, ValueError, TypeError):
+            continue
+        if count > 0:
+            reasons.append(
+                f"{count} rows in {table} have {column} after backup"
+            )
+    return reasons
 
 
 def assess_backup_freshness(
@@ -639,6 +672,9 @@ def assess_backup_freshness(
 
     assessment.freshness = FRESHNESS_STALE
     assessment.recommend_full_backup = True
+    assessment.notes.extend(source_change_reasons(
+        database, cfg, backup_instant, scalar_fn=scalar_fn
+    ))
     assessment.notes.append(
         f"Source activity after backup detected via {signal}: "
         f"{format_human_datetime(activity_instant.isoformat())} > "
