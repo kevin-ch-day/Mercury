@@ -33,6 +33,7 @@ class WebCaptureResult:
     executed: bool
     restore_checked: bool = False
     error: str | None = None
+    excluded_sensitive_count: int = 0
 
 
 def _git(path: Path, *args: str) -> bytes:
@@ -93,6 +94,33 @@ def _is_sensitive_runtime_path(relative: str) -> bool:
     return any(token in name for token in ("secret", "password", "credential", "token"))
 
 
+def _reviewed_source_exception(path: Path, relative: str, expected_sha256: str) -> bool:
+    """Allow one reviewed test source by exact path and bytes, never runtime secrets."""
+    parts = Path(relative).parts
+    name = Path(relative).name.lower()
+    if (not parts or parts[0] != "tests" or ".." in parts or not name.startswith("test_")
+            or not name.endswith(".py") or name in RUNTIME_NAMES
+            or name.startswith(".env") or Path(name).suffix in SENSITIVE_SUFFIXES
+            or name in {"id_rsa", "id_ed25519"}):
+        return False
+    if (not isinstance(expected_sha256, str) or len(expected_sha256) != 64
+            or any(c not in "0123456789abcdef" for c in expected_sha256)):
+        return False
+    source = path / relative
+    try:
+        parent = path
+        for part in parts[:-1]:
+            parent = parent / part
+            if parent.is_symlink():
+                return False
+        if (not stat.S_ISREG(source.lstat().st_mode)
+                or not source.resolve().is_relative_to((path / "tests").resolve())):
+            return False
+        return _file_sha256(source) == expected_sha256
+    except OSError:
+        return False
+
+
 def _safe_tar_add(archive: tarfile.TarFile, repo: Path, relative: str) -> None:
     source = repo / relative
     try:
@@ -123,15 +151,28 @@ def _file_sha256(path: Path) -> str:
 
 
 def _capture_data(
-    repo: RepoDefinition, *, include_runtime_metadata: bool = True
+    repo: RepoDefinition, *, include_runtime_metadata: bool = True,
+    reviewed_source_exceptions: dict[str, str] | None = None,
 ) -> tuple[dict[str, Any], bytes, bytes, list[str], list[str]]:
     path = repo.path
     status = _git(path, "status", "--porcelain=v2", "--branch", "-z")
     unstaged = _git(path, "diff", "--binary", "--full-index")
     staged = _git(path, "diff", "--cached", "--binary", "--full-index")
     all_untracked = _paths(_git(path, "ls-files", "--others", "--exclude-standard", "-z"))
-    untracked = [relative for relative in all_untracked if not _is_sensitive_runtime_path(relative)]
-    excluded_sensitive = sorted(relative for relative in all_untracked if _is_sensitive_runtime_path(relative))
+    if reviewed_source_exceptions is not None and not isinstance(reviewed_source_exceptions, dict):
+        raise ValueError("INVALID_REVIEWED_SOURCE_EXCEPTIONS")
+    exceptions = reviewed_source_exceptions or {}
+    if any(not isinstance(relative, str) for relative in exceptions):
+        raise ValueError("INVALID_REVIEWED_SOURCE_EXCEPTIONS")
+    if set(exceptions) - set(all_untracked):
+        raise ValueError("REVIEWED_SOURCE_EXCEPTION_NOT_UNTRACKED")
+    accepted: dict[str, str] = {}
+    for relative, expected in exceptions.items():
+        if not _is_sensitive_runtime_path(relative) or not _reviewed_source_exception(path, relative, expected):
+            raise ValueError(f"INVALID_REVIEWED_SOURCE_EXCEPTION: {relative}")
+        accepted[relative] = expected
+    untracked = [relative for relative in all_untracked if not _is_sensitive_runtime_path(relative) or relative in accepted]
+    excluded_sensitive = sorted(relative for relative in all_untracked if _is_sensitive_runtime_path(relative) and relative not in accepted)
     ignored = _paths(_git(path, "ls-files", "--others", "-i", "--exclude-standard", "-z"))
     branch = _git(path, "branch", "--show-current").decode().strip() or "(detached)"
     commit = _git(path, "rev-parse", "HEAD").decode().strip()
@@ -161,6 +202,7 @@ def _capture_data(
         "untracked_files": sorted(untracked),
         "untracked_sha256": untracked_sha256,
         "excluded_sensitive_untracked": excluded_sensitive,
+        "reviewed_source_exceptions": accepted,
         "ignored_files": sorted(ignored), "status_fingerprint": digest.hexdigest(),
         "source_metadata": _metadata(path, ".", "repository"),
         # Recursive runtime metadata discovery is useful in a capture artifact,
@@ -207,7 +249,11 @@ def snapshot_status(repo: RepoDefinition) -> tuple[str, bool]:
         return "missing", False
     try:
         recorded = json.loads(manifests[0].read_text(encoding="utf-8"))
-        current, *_ = _capture_data(repo, include_runtime_metadata=False)
+        exceptions = recorded.get("reviewed_source_exceptions", {})
+        if not isinstance(exceptions, dict):
+            raise ValueError("INVALID_REVIEWED_SOURCE_EXCEPTIONS")
+        current, *_ = _capture_data(repo, include_runtime_metadata=False,
+                                    reviewed_source_exceptions=exceptions) if exceptions else _capture_data(repo, include_runtime_metadata=False)
         restore = bool((recorded.get("restore_validation") or {}).get("passed"))
         if recorded.get("status_fingerprint") != current.get("status_fingerprint"):
             return "stale", restore
@@ -216,17 +262,22 @@ def snapshot_status(repo: RepoDefinition) -> tuple[str, bool]:
         return "invalid", False
 
 
-def capture_web_worktrees(*, execute: bool = False, repositories: list[RepoDefinition] | None = None) -> list[WebCaptureResult]:
+def capture_web_worktrees(*, execute: bool = False, repositories: list[RepoDefinition] | None = None,
+                          reviewed_source_exceptions: dict[str, str] | None = None) -> list[WebCaptureResult]:
     """Preview or explicitly snapshot two configured web repos; never changes sources."""
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     root = resolve_operator_mount() / "mercury_worktree_snapshots" / stamp
     results: list[WebCaptureResult] = []
     for repo in repositories if repositories is not None else selected_web_repositories():
         try:
-            manifest, unstaged, staged, untracked, _ignored = _capture_data(repo)
+            manifest, unstaged, staged, untracked, _ignored = _capture_data(
+                repo, reviewed_source_exceptions=reviewed_source_exceptions)
             destination = root / repo.path.name
             if not execute:
-                results.append(WebCaptureResult(repo.key, repo.display_name, repo.path, destination, manifest["status_fingerprint"], False))
+                results.append(WebCaptureResult(
+                    repo.key, repo.display_name, repo.path, destination,
+                    manifest["status_fingerprint"], False,
+                    excluded_sensitive_count=len(manifest["excluded_sensitive_untracked"])))
                 continue
             assert_operator_storage_path(destination, action="worktree capture")
             root.mkdir(parents=True, mode=0o700, exist_ok=True)
@@ -256,23 +307,30 @@ def capture_web_worktrees(*, execute: bool = False, repositories: list[RepoDefin
             restore_checked = validate_snapshot(destination)
             if not restore_checked:
                 raise ValueError("RESTORE_VALIDATION_FAILED")
-            current, *_ = _capture_data(repo, include_runtime_metadata=False)
+            current, *_ = _capture_data(repo, include_runtime_metadata=False,
+                                        reviewed_source_exceptions=reviewed_source_exceptions)
             if (current["status_fingerprint"] != manifest["status_fingerprint"]
                     or current["head_commit"] != manifest["head_commit"]):
                 raise ValueError("SOURCE_CHANGED_DURING_CAPTURE")
             manifest["restore_validation"] = {"passed": restore_checked, "validated_at": datetime.now(timezone.utc).isoformat()}
             manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-            results.append(WebCaptureResult(repo.key, repo.display_name, repo.path, destination, manifest["status_fingerprint"], True, restore_checked))
+            results.append(WebCaptureResult(
+                repo.key, repo.display_name, repo.path, destination,
+                manifest["status_fingerprint"], True, restore_checked,
+                excluded_sensitive_count=len(manifest["excluded_sensitive_untracked"])))
         except (OSError, ValueError, subprocess.CalledProcessError) as exc:
             results.append(WebCaptureResult(repo.key, repo.display_name, repo.path, root / repo.path.name, "", execute, error=str(exc)))
     return results
 
 
-def capture_worktrees(*, execute: bool = False, repositories: list[RepoDefinition] | None = None, keys: set[str] | None = None) -> list[WebCaptureResult]:
+def capture_worktrees(*, execute: bool = False, repositories: list[RepoDefinition] | None = None,
+                      keys: set[str] | None = None,
+                      reviewed_source_exceptions: dict[str, str] | None = None) -> list[WebCaptureResult]:
     """Capture every selected dirty configured repository using web-safe rules."""
     return capture_web_worktrees(
         execute=execute,
         repositories=repositories if repositories is not None else selected_dirty_repositories(keys=keys),
+        reviewed_source_exceptions=reviewed_source_exceptions,
     )
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 import subprocess
 
@@ -24,7 +25,8 @@ def _repo(tmp_path: Path) -> tuple[Path, RepoDefinition]:
     return repo, RepoDefinition(key="erebus_web", display_name="Erebus Web", path=repo)
 
 
-def _capture(monkeypatch, tmp_path: Path, definition: RepoDefinition):
+def _capture(monkeypatch, tmp_path: Path, definition: RepoDefinition,
+             reviewed_source_exceptions: dict[str, str] | None = None):
     from mercury.migration import web_capture
 
     operator = tmp_path / "operator"
@@ -33,7 +35,9 @@ def _capture(monkeypatch, tmp_path: Path, definition: RepoDefinition):
     monkeypatch.setattr(
         web_capture, "assert_operator_storage_path", lambda _path, **_kwargs: None
     )
-    results = web_capture.capture_web_worktrees(execute=True, repositories=[definition])
+    results = web_capture.capture_web_worktrees(
+        execute=True, repositories=[definition],
+        reviewed_source_exceptions=reviewed_source_exceptions)
     assert results[0].error is None
     assert results[0].restore_checked is True
     return results[0].snapshot_dir
@@ -149,6 +153,105 @@ def test_capture_excludes_untracked_runtime_secret_contents(monkeypatch, tmp_pat
     assert snapshot_status(definition) == ("current", True)
     (repo / ".env").write_text("DATABASE_PASSWORD=changed-but-excluded\n", encoding="utf-8")
     assert snapshot_status(definition) == ("current", True)
+
+
+def test_reviewed_source_exception_is_exact_and_visible(monkeypatch, tmp_path: Path) -> None:
+    import tarfile
+    from mercury.migration.web_capture import snapshot_status, validate_snapshot
+
+    repo, definition = _repo(tmp_path)
+    source = repo / "tests" / "static_analysis" / "test_secret_family_semantics.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("def test_family():\n    assert True\n", encoding="utf-8")
+    (repo / ".env").write_text("PASSWORD=synthetic\n", encoding="utf-8")
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+
+    from mercury.migration.web_capture import _capture_data
+    default_manifest, *_ = _capture_data(definition)
+    relative = source.relative_to(repo).as_posix()
+    assert relative in default_manifest["excluded_sensitive_untracked"]
+    assert default_manifest["reviewed_source_exceptions"] == {}
+    from mercury.migration import web_capture
+    preview = web_capture.capture_web_worktrees(execute=False, repositories=[definition])[0]
+    assert preview.excluded_sensitive_count == 2
+
+    reviewed = _capture(monkeypatch, tmp_path, definition, {relative: digest})
+    manifest = json.loads((reviewed / "snapshot_manifest.json").read_text())
+    assert manifest["reviewed_source_exceptions"] == {relative: digest}
+    assert relative in manifest["untracked_files"]
+    assert relative not in manifest["excluded_sensitive_untracked"]
+    assert ".env" in manifest["excluded_sensitive_untracked"]
+    with tarfile.open(reviewed / "untracked-files.tar.gz") as archive:
+        assert relative in archive.getnames()
+        assert ".env" not in archive.getnames()
+    assert validate_snapshot(reviewed)
+    assert snapshot_status(definition) == ("current", True)
+    source.write_text("def test_family():\n    assert False\n", encoding="utf-8")
+    assert snapshot_status(definition) == ("invalid", False)
+
+
+def test_reviewed_source_exception_rejects_runtime_and_mismatched_bytes(monkeypatch, tmp_path: Path) -> None:
+    from mercury.migration import web_capture
+
+    repo, definition = _repo(tmp_path)
+    source = repo / "tests" / "test_secret.py"
+    source.parent.mkdir()
+    source.write_text("assert True\n", encoding="utf-8")
+    (repo / ".env").write_text("synthetic\n", encoding="utf-8")
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    (repo / "config").mkdir()
+    (repo / "config" / "test_secret.py").write_text("synthetic\n", encoding="utf-8")
+    for relative, expected in [("tests/test_secret.py", "0" * 64),
+                               (".env", hashlib.sha256((repo / ".env").read_bytes()).hexdigest()),
+                               ("tests/missing_secret.py", digest),
+                               ("config/test_secret.py", hashlib.sha256((repo / "config" / "test_secret.py").read_bytes()).hexdigest())]:
+        result = web_capture.capture_web_worktrees(
+            execute=False, repositories=[definition],
+            reviewed_source_exceptions={relative: expected})[0]
+        assert result.error and "EXCEPTION" in result.error
+
+
+def test_reviewed_source_exception_rejects_symlinks_and_malformed_receipts(monkeypatch, tmp_path: Path) -> None:
+    from mercury.migration import web_capture
+
+    repo, definition = _repo(tmp_path)
+    (repo / "tests").mkdir()
+    (repo / "config").mkdir()
+    secret = repo / "config" / "test_secret.py"
+    secret.write_text("synthetic\n", encoding="utf-8")
+    (repo / "tests" / "test_secret.py").symlink_to(secret)
+    digest = hashlib.sha256(secret.read_bytes()).hexdigest()
+    assert not web_capture._reviewed_source_exception(repo, "tests/test_secret.py", digest)
+    (repo / "tests" / "test_secret.py").unlink()
+    (repo / "tests" / "linked").symlink_to(repo / "config", target_is_directory=True)
+    assert not web_capture._reviewed_source_exception(repo, "tests/linked/test_secret.py", digest)
+    assert not web_capture._reviewed_source_exception(repo, "tests/../config/test_secret.py", digest)
+    assert not web_capture._reviewed_source_exception(repo, "tests/test_secret.py", 123)
+
+    operator = tmp_path / "operator"
+    manifest = operator / "mercury_worktree_snapshots" / "x" / repo.name / "snapshot_manifest.json"
+    manifest.parent.mkdir(parents=True)
+    monkeypatch.setattr(web_capture, "resolve_operator_mount", lambda: operator)
+    for malformed in (["invalid"], [], None, ""):
+        manifest.write_text(json.dumps({"reviewed_source_exceptions": malformed,
+                                        "status_fingerprint": "fake", "restore_validation": {"passed": True}}))
+        assert web_capture.snapshot_status(definition) == ("invalid", False)
+
+
+def test_reviewed_source_cli_requires_one_repo_and_passes_exact_binding(monkeypatch, tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+    from mercury.cli import app
+    from mercury.migration import web_capture
+
+    calls = []
+    monkeypatch.setattr(web_capture, "capture_worktrees", lambda **kwargs: calls.append(kwargs) or [])
+    digest = "a" * 64
+    args = ["migration", "capture-worktrees", "--reviewed-source", f"tests/test_secret.py={digest}"]
+    assert CliRunner().invoke(app, args).exit_code != 0
+    result = CliRunner().invoke(app, [*args, "--repo", "scytaledroid"])
+    assert result.exit_code == 0
+    assert calls == [{"execute": False, "keys": {"scytaledroid"},
+                      "reviewed_source_exceptions": {"tests/test_secret.py": digest}}]
 
 
 def test_untracked_content_and_membership_change_snapshot_freshness(monkeypatch, tmp_path: Path) -> None:

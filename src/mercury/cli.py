@@ -1080,6 +1080,8 @@ def migration_capture_web_cmd(
     for result in results:
         outcome = "restore checked" if result.restore_checked else ("preview" if not execute else "failed")
         output.write(f"  {result.name}: {outcome} · {result.snapshot_dir}")
+        if result.excluded_sensitive_count:
+            output.write(f"    {result.excluded_sensitive_count} untracked path(s) excluded; inspect the restricted snapshot manifest.")
         if result.error:
             output.write(f"    error: {result.error}")
     if not execute:
@@ -1092,13 +1094,26 @@ def migration_capture_web_cmd(
 def migration_capture_worktrees_cmd(
     execute: bool = typer.Option(False, "--execute", help="Write restricted snapshots to the active HDD."),
     repo: list[str] = typer.Option(None, "--repo", help="Configured repository key to capture (repeatable)."),
+    reviewed_source: list[str] = typer.Option(None, "--reviewed-source", help="Exact reviewed test source PATH=SHA256 (repeatable; requires one --repo)."),
 ) -> None:
     """Preview or capture dirty configured repositories; source repositories are never modified."""
     from mercury.migration.web_capture import capture_worktrees
     from mercury.repo.config import RepoSelectionError
 
     try:
-        results = capture_worktrees(execute=execute, keys=set(repo) if repo else None)
+        exceptions: dict[str, str] = {}
+        if reviewed_source:
+            if not repo or len(repo) != 1:
+                raise typer.BadParameter("--reviewed-source requires exactly one --repo")
+            for item in reviewed_source:
+                if "=" not in item:
+                    raise typer.BadParameter("--reviewed-source requires PATH=SHA256")
+                path, digest = item.rsplit("=", 1)
+                if not path or path in exceptions:
+                    raise typer.BadParameter("Each reviewed source path must be nonempty and unique")
+                exceptions[path] = digest
+        results = capture_worktrees(execute=execute, keys=set(repo) if repo else None,
+                                    reviewed_source_exceptions=exceptions or None)
     except RepoSelectionError as exc:
         raise typer.BadParameter(str(exc)) from exc
     output.heading("Worktree Capture")
@@ -1108,6 +1123,8 @@ def migration_capture_worktrees_cmd(
     for result in results:
         outcome = "restore checked" if result.restore_checked else ("preview" if not execute else "failed")
         output.write(f"  {result.name}: {outcome} · {result.snapshot_dir}")
+        if result.excluded_sensitive_count:
+            output.write(f"    {result.excluded_sensitive_count} untracked path(s) excluded; inspect the restricted snapshot manifest.")
         if result.error:
             output.write(f"    error: {result.error}")
     if not execute:
