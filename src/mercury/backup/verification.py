@@ -190,9 +190,8 @@ def _load_manifest(path: Path) -> BackupManifest | None:
 
 def collect_verification_identity(config) -> dict[str, str]:
     """Record the verification connection identity, not a claim about an old dump."""
-    from mercury.database.mariadb.session import readonly_scalar
-    value = readonly_scalar(config, "SELECT CONCAT(CURRENT_USER(), CHAR(9), @@hostname)")
-    fields = value.split("\t")
+    from mercury.database.mariadb.session import readonly_row
+    fields = readonly_row(config, "SELECT CURRENT_USER(), @@hostname")
     if len(fields) != 2 or not all(fields):
         raise ValueError("Database verification identity is unavailable")
     return {"requested_user": config.user, "authenticated_user": fields[0],
@@ -362,9 +361,10 @@ def verify_backup_directory(
         manifest_path = Path(result.manifest_path)
         manifest = _load_manifest(manifest_path)
         if manifest is not None:
-            updated = manifest.model_copy(update={"verified": True})
+            updated = json.loads(manifest_path.read_text(encoding="utf-8"))
+            updated["verified"] = True
             manifest_path.write_text(
-                json.dumps(updated.model_dump(mode="json"), indent=2, default=str) + "\n",
+                json.dumps(updated, indent=2, default=str) + "\n",
                 encoding="utf-8",
             )
             updated_manifest = True

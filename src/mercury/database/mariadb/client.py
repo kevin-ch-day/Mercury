@@ -157,7 +157,7 @@ def client_process_credentials(
     try:
         if hasattr(os, "fchmod"):
             os.fchmod(fd, stat.S_IRUSR | stat.S_IWUSR)
-        payload = f'[client]\npassword="{_cnf_escape_password(config.password)}"\n'.encode()
+        payload = f'[client]\npassword="{_cnf_escape_password(config.password or "")}"\n'.encode()
         os.write(fd, payload)
         os.close(fd)
         fd = -1
