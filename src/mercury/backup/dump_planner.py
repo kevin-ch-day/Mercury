@@ -100,7 +100,7 @@ def build_dump_argv(
     unix_socket: str | None = None,
     ssl_disabled: bool = True,
 ) -> list[str]:
-    """Build argv for subprocess (password via a private defaults-extra-file)."""
+    """Build argv for subprocess (password via a private exclusive defaults-file)."""
     assert_safe_identifier(database, what="dump database")
     try:
         assert_tcp_tls_policy(host=host, unix_socket=unix_socket, ssl_disabled=ssl_disabled)

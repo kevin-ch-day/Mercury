@@ -81,13 +81,13 @@ def test_client_credentials_use_private_defaults_file_not_mysql_pwd(
     config = MariaDbConnectionConfig(host="127.0.0.1", user="u", password='s3c"ret')
     with client_process_credentials(config) as (env, extra):
         assert "MYSQL_PWD" not in env
-        assert extra[0].startswith("--defaults-extra-file=")
+        assert extra[0].startswith("--defaults-file=")
         path = Path(extra[0].split("=", 1)[1])
         text = path.read_text(encoding="utf-8")
         assert 'password="s3c\\"ret"' in text
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
         argv = prepend_client_defaults(["mariadb", "-u", "u"], extra)
-        assert argv[1].startswith("--defaults-extra-file=")
+        assert argv[1].startswith("--defaults-file=")
         saved = path
     assert not saved.exists()
 

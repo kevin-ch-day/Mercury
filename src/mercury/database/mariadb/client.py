@@ -129,7 +129,10 @@ def _cnf_escape_password(password: str) -> str:
 
 
 def prepend_client_defaults(argv: list[str], extra: list[str]) -> list[str]:
-    """Insert ``--defaults-extra-file`` as the first option after the tool name."""
+    """Insert ``--defaults-file`` as the first option after the tool name.
+
+    MariaDB clients only honor ``--defaults-file`` when it is the first option.
+    """
     if not extra:
         return argv
     if not argv:
@@ -141,7 +144,13 @@ def prepend_client_defaults(argv: list[str], extra: list[str]) -> list[str]:
 def client_process_credentials(
     config: MariaDbConnectionConfig,
 ) -> Iterator[tuple[dict[str, str], list[str]]]:
-    """Yield subprocess env/argv extras without putting the password in MYSQL_PWD."""
+    """Yield subprocess env/argv extras without putting the password in MYSQL_PWD.
+
+    A configured password is delivered through an exclusive ``--defaults-file``
+    so ``~/.my.cnf`` and system option files cannot override the dedicated
+    credential (they are read after ``--defaults-extra-file`` and would win).
+    Passwordless socket lanes keep normal option-file resolution.
+    """
     env = os.environ.copy()
     env.pop("MYSQL_PWD", None)
     if not config.password:
@@ -155,7 +164,7 @@ def client_process_credentials(
         os.write(fd, payload)
         os.close(fd)
         fd = -1
-        yield env, [f"--defaults-extra-file={path}"]
+        yield env, [f"--defaults-file={path}"]
     finally:
         if fd >= 0:
             os.close(fd)
