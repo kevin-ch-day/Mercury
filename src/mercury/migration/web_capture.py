@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -121,7 +122,7 @@ def _reviewed_source_exception(path: Path, relative: str, expected_sha256: str) 
         return False
 
 
-def _safe_tar_add(archive: tarfile.TarFile, repo: Path, relative: str) -> None:
+def _safe_tar_add(archive: tarfile.TarFile, repo: Path, relative: str, *, expected_sha256: str | None = None) -> None:
     source = repo / relative
     try:
         if not source.resolve().is_relative_to(repo.resolve()):
@@ -129,6 +130,18 @@ def _safe_tar_add(archive: tarfile.TarFile, repo: Path, relative: str) -> None:
     except OSError:
         return
     if source.is_symlink() or not source.is_file():
+        return
+    if expected_sha256 is not None:
+        if not _reviewed_source_exception(repo, relative, expected_sha256):
+            raise ValueError("REVIEWED_SOURCE_CHANGED_BEFORE_ARCHIVE")
+        # Archive exactly the bytes checked here, not a second read of the path.
+        payload = source.read_bytes()
+        if hashlib.sha256(payload).hexdigest() != expected_sha256:
+            raise ValueError("REVIEWED_SOURCE_CHANGED_BEFORE_ARCHIVE")
+        info = tarfile.TarInfo(relative)
+        info.size = len(payload)
+        info.mode = 0o600
+        archive.addfile(info, io.BytesIO(payload))
         return
     archive.add(source, arcname=relative, recursive=False)
 
@@ -291,7 +304,8 @@ def capture_web_worktrees(*, execute: bool = False, repositories: list[RepoDefin
             archive = destination / "untracked-files.tar.gz"
             with tarfile.open(archive, "w:gz") as handle:
                 for relative in untracked:
-                    _safe_tar_add(handle, repo.path, relative)
+                    _safe_tar_add(handle, repo.path, relative,
+                                  expected_sha256=manifest["reviewed_source_exceptions"].get(relative))
             os.chmod(archive, 0o600)
             bundle = destination / "history.bundle"
             subprocess.run(["git", "bundle", "create", str(bundle), "HEAD"], cwd=repo.path, check=True, capture_output=True)

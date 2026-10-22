@@ -311,3 +311,62 @@ def test_capture_worktrees_accepts_non_web_configured_repo(monkeypatch, tmp_path
     result = web_capture.capture_worktrees(execute=True, repositories=[definition])
     assert result[0].key == "mercury"
     assert result[0].restore_checked is True
+
+
+def test_reviewed_source_hash_is_bound_to_exact_file(tmp_path):
+    from mercury.migration.web_capture import _capture_data
+    repo, definition = _repo(tmp_path)
+    (repo / "tests").mkdir()
+    first = repo / "tests/test_secret_one.py"
+    second = repo / "tests/test_secret_two.py"
+    first.write_text("assert True")
+    second.write_text("assert False")
+    import pytest
+    with pytest.raises(ValueError, match="INVALID_REVIEWED_SOURCE_EXCEPTION"):
+        _capture_data(definition, reviewed_source_exceptions={
+            "tests/test_secret_two.py": hashlib.sha256(first.read_bytes()).hexdigest()})
+
+
+def test_reviewed_source_rechecks_bytes_at_archive(tmp_path):
+    import pytest
+    import tarfile
+    from mercury.migration.web_capture import _safe_tar_add
+    repo, _ = _repo(tmp_path)
+    (repo / "tests").mkdir()
+    source = repo / "tests/test_secret.py"
+    source.write_text("assert True")
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    source.write_text("assert False")
+    with tarfile.open(tmp_path / "archive.tar", "w") as archive:
+        with pytest.raises(ValueError, match="REVIEWED_SOURCE_CHANGED"):
+            _safe_tar_add(archive, repo, "tests/test_secret.py", expected_sha256=digest)
+        assert archive.getmembers() == []
+
+
+def test_reviewed_exception_keeps_storage_write_guards(monkeypatch, tmp_path):
+    import pytest
+    from mercury.migration import web_capture
+    from mercury.core import usb_mount
+    from mercury.storage import host_maintenance
+    repo, definition = _repo(tmp_path)
+    (repo / "tests").mkdir()
+    source = repo / "tests/test_secret.py"
+    source.write_text("assert True")
+    exceptions = {"tests/test_secret.py": hashlib.sha256(source.read_bytes()).hexdigest()}
+    operator = tmp_path / "operator"
+    operator.mkdir()
+    monkeypatch.setattr(web_capture, "resolve_operator_mount", lambda: operator)
+    monkeypatch.setattr(usb_mount, "resolve_operator_mount", lambda: operator)
+    monkeypatch.setattr(usb_mount, "usb_mount_is_active", lambda _: False)
+    results = web_capture.capture_web_worktrees(execute=True, repositories=[definition],
+                                                reviewed_source_exceptions=exceptions)
+    assert "not active" in results[0].error
+    assert list(operator.iterdir()) == []
+    monkeypatch.setattr(usb_mount, "usb_mount_is_active", lambda _: True)
+    def refuse(_):
+        raise RuntimeError("writes disabled for safe disconnect")
+    monkeypatch.setattr(host_maintenance, "refuse_if_hdd_writes_disabled", refuse)
+    with pytest.raises(RuntimeError, match="safe disconnect"):
+        web_capture.capture_web_worktrees(execute=True, repositories=[definition],
+                                         reviewed_source_exceptions=exceptions)
+    assert list(operator.iterdir()) == []
