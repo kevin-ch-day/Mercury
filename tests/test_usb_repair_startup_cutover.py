@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -154,7 +156,7 @@ def test_doctor_repair_plan_suggests_usb_ro_remount_after_cutover(monkeypatch) -
     primary = StorageRootStatus(
         key="primary",
         role="canonical",
-        label="MERCURY_DATA_V2",
+        label=DEFAULT_PRIMARY_LABEL,
         mount_path="/mnt/MERCURY_DATA",
         filesystem_uuid="715f",
         writable_policy=True,

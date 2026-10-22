@@ -8,7 +8,7 @@ from typing import Any, Callable
 import subprocess
 
 from mercury.core.storage_roles import (
-    DEFAULT_PRIMARY_LABEL,
+    primary_storage_label,
     DEFAULT_PRIMARY_MOUNT,
     DEFAULT_PRIMARY_UUID,
 )
@@ -115,7 +115,7 @@ def run_reconnect_validate(
         result_state="RECONNECT_BLOCKED",
     )
 
-    automounts = detect_desktop_automount(DEFAULT_PRIMARY_LABEL)
+    automounts = detect_desktop_automount(primary_storage_label())
     if automounts:
         result.errors.append(f"unexpected desktop automount: {automounts}")
         return result
@@ -135,7 +135,7 @@ def run_reconnect_validate(
     # If require_mounted was false, label/model checks may still have errors when unmounted
     identity = resolved.identity
     result.identity = identity.as_dict()
-    if identity.label and identity.label != DEFAULT_PRIMARY_LABEL:
+    if identity.label and identity.label != primary_storage_label():
         result.errors.append(f"label mismatch: {identity.label}")
     if resolved.errors and identity.mountpoint:
         # Mounted but inconsistent

@@ -1,5 +1,7 @@
 """Tests for Mercury USB repair command helpers."""
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 from mercury.repair.usb import USB_REPAIR_COMMAND, describe_usb_repair, usb_repair_script_path
 
 
@@ -16,5 +18,5 @@ def test_describe_usb_repair_mentions_mount_and_ownership() -> None:
     assert "mount" in text.lower()
     assert "root-owned" in text.lower() or "ownership" in text.lower()
     assert USB_REPAIR_COMMAND in text
-    assert "MERCURY_DATA_V2" in text or "primary" in text.lower()
+    assert DEFAULT_PRIMARY_LABEL in text or "primary" in text.lower()
     assert "storage status" in text.lower()

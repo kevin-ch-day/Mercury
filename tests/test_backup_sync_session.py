@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -274,7 +276,7 @@ def test_strong_confirmation_required_for_live_like(host_path: Path, monkeypatch
         lambda **kwargs: SimpleNamespace(
             identity=SimpleNamespace(
                 uuid="715f29a9-2671-477b-8c8d-515d190addb9",
-                label="MERCURY_DATA_V2",
+                label=DEFAULT_PRIMARY_LABEL,
                 fstype="ext4",
                 mountpoint="/mnt/MERCURY_DATA",
             ),
@@ -320,7 +322,7 @@ def test_operator_cancellation_recoverable(host_path: Path, monkeypatch) -> None
         lambda **kwargs: SimpleNamespace(
             identity=SimpleNamespace(
                 uuid="715f29a9-2671-477b-8c8d-515d190addb9",
-                label="MERCURY_DATA_V2",
+                label=DEFAULT_PRIMARY_LABEL,
                 fstype="ext4",
                 mountpoint="/mnt/MERCURY_DATA",
             ),

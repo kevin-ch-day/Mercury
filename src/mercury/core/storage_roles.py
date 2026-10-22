@@ -26,7 +26,8 @@ EPHEMERAL_TOP_DIRS: Final[frozenset[str]] = frozenset({"mercury_logs", "mercury_
 # Known device defaults (operator-approved contract).
 DEFAULT_PRIMARY_MOUNT: Final[str] = "/mnt/MERCURY_DATA"
 DEFAULT_PRIMARY_UUID: Final[str] = "715f29a9-2671-477b-8c8d-515d190addb9"
-DEFAULT_PRIMARY_LABEL: Final[str] = "MERCURY_DATA_V2"
+DEFAULT_PRIMARY_LABEL: Final[str] = "MERCURY_DATA"
+ENV_PRIMARY_LABEL: Final[str] = "MERCURY_PRIMARY_LABEL"
 DEFAULT_LEGACY_MOUNT: Final[str] = "/mnt/MERCURY_DATA_USB"
 DEFAULT_LEGACY_UUID: Final[str] = "e4f0c7fb-132e-4867-9c16-5e4749f5c43a"
 DEFAULT_LEGACY_LABEL: Final[str] = "MERCURY_DATA_USB"
@@ -100,3 +101,9 @@ class MountValidationCode(StrEnum):
     MIGRATION_WRITE_FREEZE = "migration_write_freeze"
     ROLE_WRITE_FORBIDDEN = "role_write_forbidden"
     ACTIVE_ROLE_MISMATCH = "active_role_mismatch"
+
+
+def primary_storage_label() -> str:
+    """Configured primary label; environment overrides [storage.primary].label."""
+    from mercury.core.storage_roots import load_storage_config
+    return load_storage_config(warn_deprecated=False).primary.label

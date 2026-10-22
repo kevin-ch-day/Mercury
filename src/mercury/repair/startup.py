@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import primary_storage_label
+
 import os
 import subprocess
 import sys
@@ -232,6 +234,6 @@ def primary_mount_hint() -> str | None:
     return (
         f"HDD writer not ready at {path}. Mount: "
         f"sudo mount UUID={uuid} {path}  "
-        f"(or: sudo mount --bind /run/media/$USER/MERCURY_DATA_V2 {path}); "
+        f"(or: sudo mount --bind /run/media/$USER/{primary_storage_label()} {path}); "
         f"then ./run.sh storage validate"
     )

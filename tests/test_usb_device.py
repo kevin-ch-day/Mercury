@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 from pathlib import Path
 
 import pytest
@@ -37,7 +39,7 @@ def test_log_directory_repair_hint_suggests_storage_validate_when_unmounted(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    mount = tmp_path / "mnt" / "MERCURY_DATA_V2"
+    mount = tmp_path / "mnt" / DEFAULT_PRIMARY_LABEL
     log_dir = mount / "mercury_logs"
     log_dir.mkdir(parents=True)
 
@@ -57,7 +59,7 @@ def test_log_directory_repair_hint_suggests_chown_for_owner_mismatch(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    mount = tmp_path / "mnt" / "MERCURY_DATA_V2"
+    mount = tmp_path / "mnt" / DEFAULT_PRIMARY_LABEL
     log_dir = mount / "mercury_logs"
     log_dir.mkdir(parents=True)
     monkeypatch.setattr(

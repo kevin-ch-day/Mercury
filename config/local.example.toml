@@ -1,7 +1,7 @@
 # Copy to config/local.toml for local overrides (gitignored).
 
 # --- Storage roles (post-cutover defaults) ---
-# MERCURY_DATA_V2 is the sole active writer. MERCURY_DATA_USB is a retired
+# MERCURY_DATA is the sole active writer. MERCURY_DATA_USB is a retired
 # offline archive (legacy_runtime_dependency = "none").
 #
 # Fresh init still rewrites paths when a mounted HDD or USB layout is detected.
@@ -23,7 +23,8 @@ legacy_runtime_dependency = "none"
 
 [storage.primary]
 role = "canonical"
-label = "MERCURY_DATA_V2"
+# Override with MERCURY_PRIMARY_LABEL; default is MERCURY_DATA.
+label = "MERCURY_DATA"
 mount_path = "/mnt/MERCURY_DATA"
 filesystem_uuid = "715f29a9-2671-477b-8c8d-515d190addb9"
 filesystem_type = "ext4"

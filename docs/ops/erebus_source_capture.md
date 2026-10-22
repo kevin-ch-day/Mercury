@@ -195,3 +195,10 @@ Troubleshoot the emitted stable refusal (for example
 `PREVIEW_CHECKSUM_MISMATCH`, `PREVIEW_COMPONENT_MISMATCH`,
 `EXECUTION_NOT_AUTHORIZED`, or the writer codes above) rather than altering a
 published preview in place.
+
+
+Primary label configuration: `[storage.primary].label` defaults to `MERCURY_DATA`;
+`MERCURY_PRIMARY_LABEL` overrides it. The existing disk may still be labelled
+`MERCURY_DATA_V2`. Doctor reports that mismatch as a warning and prints a pending
+relabel command; it does not change the disk. UUID and mount-path safety checks
+remain in force. Relabelling requires a separate operator action.

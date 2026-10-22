@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +25,7 @@ from mercury.core.storage_roles import (
     DEFAULT_MIN_FREE_BYTES,
     DEFAULT_MIN_FREE_PERCENT,
     DEFAULT_PRIMARY_LABEL,
+    ENV_PRIMARY_LABEL,
     DEFAULT_PRIMARY_MOUNT,
     DEFAULT_PRIMARY_UUID,
     ENV_LEGACY_MOUNT,
@@ -399,6 +400,11 @@ def load_storage_config(
     usb_env = _env_path(ENV_USB_MOUNT)
 
     primary = cfg.primary
+    label_override = os.environ.get(ENV_PRIMARY_LABEL, "").strip()
+    if label_override:
+        if len(label_override.encode()) > 16 or any(c in label_override for c in "/\\\n\r\t"):
+            raise ValueError("MERCURY_PRIMARY_LABEL must be a filesystem label of at most 16 bytes")
+        primary = replace(primary, label=label_override)
     legacy = cfg.legacy
     if primary_env is not None:
         primary = StorageRootConfig(

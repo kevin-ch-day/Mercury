@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import primary_storage_label
+
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable
@@ -152,7 +154,7 @@ def assess_operation_availability(
         blockers.append("Mercury HDD is detached")
 
     if blockers:
-        expected = f"Expected:\n  MERCURY_DATA_V2\n  UUID {DEFAULT_PRIMARY_UUID}"
+        expected = f"Expected:\n  {primary_storage_label()}\n  UUID {DEFAULT_PRIMARY_UUID}"
         return OperationAvailability(
             operation=operation,
             classification=AvailabilityClassification.HARD_BLOCK,

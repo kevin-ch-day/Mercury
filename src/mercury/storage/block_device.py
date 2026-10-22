@@ -13,7 +13,7 @@ from mercury.core.storage_roles import (
     DEFAULT_FILESYSTEM_TYPE,
     DEFAULT_LEGACY_LABEL,
     DEFAULT_LEGACY_UUID,
-    DEFAULT_PRIMARY_LABEL,
+    primary_storage_label,
     DEFAULT_PRIMARY_MOUNT,
     DEFAULT_PRIMARY_UUID,
 )
@@ -118,7 +118,7 @@ def find_mountpoints_for_uuid(
 def resolve_mercury_block_device(
     *,
     expected_uuid: str = DEFAULT_PRIMARY_UUID,
-    expected_label: str = DEFAULT_PRIMARY_LABEL,
+    expected_label: str | None = None,
     expected_mount: str = DEFAULT_PRIMARY_MOUNT,
     expected_fstype: str = DEFAULT_FILESYSTEM_TYPE,
     expected_model: str = EXPECTED_PRIMARY_MODEL,
@@ -128,6 +128,7 @@ def resolve_mercury_block_device(
     lsblk_json: dict[str, Any] | None = None,
 ) -> BlockResolveResult:
     """Resolve UUID → partition → parent. Never trusts a fixed device letter."""
+    expected_label = primary_storage_label() if expected_label is None else expected_label
     errors: list[str] = []
     if not expected_uuid or expected_uuid == refuse_legacy_uuid:
         return BlockResolveResult(

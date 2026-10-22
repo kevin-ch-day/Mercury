@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,7 +16,7 @@ def _config(tmp_path: Path) -> StorageConfig:
     primary = tmp_path / "hdd"
     primary.mkdir()
     return StorageConfig(
-        primary=StorageRootConfig("primary", StorageRootRole.CANONICAL, "MERCURY_DATA_V2", primary, "hdd", "ext4", True),
+        primary=StorageRootConfig("primary", StorageRootRole.CANONICAL, DEFAULT_PRIMARY_LABEL, primary, "hdd", "ext4", True),
         legacy=StorageRootConfig(
             "legacy",
             StorageRootRole.LEGACY_ARCHIVE,
@@ -269,7 +271,7 @@ def test_environment_check_hides_usb_detected_when_phased_out(monkeypatch, tmp_p
         "mercury.core.storage_roots.load_storage_config",
         lambda **_kwargs: SimpleNamespace(
             primary=SimpleNamespace(
-                label="MERCURY_DATA_V2",
+                label=DEFAULT_PRIMARY_LABEL,
                 mount_path=Path("/mnt/MERCURY_DATA"),
             ),
         ),
@@ -288,5 +290,5 @@ def test_environment_check_hides_usb_detected_when_phased_out(monkeypatch, tmp_p
     fields = build_environment_check_fields(env)
     storage = fields["Backup Storage"]
     assert "USB detected" not in storage
-    assert storage["Active storage"].startswith("MERCURY_DATA_V2")
+    assert storage["Active storage"].startswith(DEFAULT_PRIMARY_LABEL)
     assert storage["Legacy archive"] == "retired / offline"

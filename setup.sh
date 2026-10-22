@@ -97,12 +97,13 @@ if [[ "$INIT_CONFIG" -eq 1 ]]; then
   "$VENV/bin/mercury" config init
 fi
 
-cat <<'EOF'
+MERCURY_SETUP_PRIMARY_LABEL=$("$VENV/bin/python" -c 'from mercury.core.storage_roles import primary_storage_label; print(primary_storage_label())')
+cat <<EOF
 
 Mercury bootstrap complete.
 
 Next safe steps on a new host:
-  1. Mount MERCURY_DATA_V2 at /mnt/MERCURY_DATA.
+  1. Mount ${MERCURY_SETUP_PRIMARY_LABEL} at /mnt/MERCURY_DATA.
   2. Run ./setup.sh --init-config if config/local.toml is not present.
   3. Review config/local.toml; do not copy source-host credentials.
   4. Run ./run.sh doctor, then ./run.sh db ping.

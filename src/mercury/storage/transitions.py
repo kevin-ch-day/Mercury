@@ -13,7 +13,7 @@ from typing import Any, Callable
 
 from mercury.core.storage_roles import (
     DEFAULT_FILESYSTEM_TYPE,
-    DEFAULT_PRIMARY_LABEL,
+    primary_storage_label,
     DEFAULT_PRIMARY_MOUNT,
     DEFAULT_PRIMARY_UUID,
 )
@@ -285,7 +285,7 @@ def observe_storage_facts(
     desktop = False
 
     try:
-        desktop = bool(detect_desktop_automount(DEFAULT_PRIMARY_LABEL))
+        desktop = bool(detect_desktop_automount(primary_storage_label()))
     except OSError:
         desktop = False
 

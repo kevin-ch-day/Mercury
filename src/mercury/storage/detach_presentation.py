@@ -123,13 +123,13 @@ def print_safe_disconnect_intro(*, identity) -> None:
 
 def print_privileged_detach_prompt(*, identity) -> None:
     """Stage-2 authorization chrome before sudo / unmount / power-off."""
-    from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+    from mercury.core.storage_roles import primary_storage_label
 
     styles = active_styles()
     _section("PRIVILEGED DETACH")
     output.write("Mercury will now:")
     model = (getattr(identity, "model", None) if identity else None) or "the Mercury HDD"
-    label = (getattr(identity, "label", None) if identity else None) or DEFAULT_PRIMARY_LABEL
+    label = (getattr(identity, "label", None) if identity else None) or primary_storage_label()
     bullets = (
         "inspect system-wide open handles",
         "flush pending filesystem writes",
@@ -147,7 +147,7 @@ def print_privileged_detach_prompt(*, identity) -> None:
 
 def print_physical_move_ready(*, identity, package_id: str = "") -> None:
     """Post-success destination-move screen (not a reconnect recommendation)."""
-    from mercury.core.storage_roles import DEFAULT_LEGACY_LABEL, DEFAULT_PRIMARY_LABEL
+    from mercury.core.storage_roles import DEFAULT_LEGACY_LABEL, primary_storage_label
     from mercury.terminal.theme import menu_item_line
 
     styles = active_styles()
@@ -159,7 +159,7 @@ def print_physical_move_ready(*, identity, package_id: str = "") -> None:
     output.write(rule_line(level="major"))
 
     model = (getattr(identity, "model", None) if identity else None) or "WDC Mercury HDD"
-    label = (getattr(identity, "label", None) if identity else None) or DEFAULT_PRIMARY_LABEL
+    label = (getattr(identity, "label", None) if identity else None) or primary_storage_label()
     rows = [
         ("Mercury HDD", "Powered off · safe to unplug"),
         ("Package", "VERIFIED" if package_id else "Recorded"),

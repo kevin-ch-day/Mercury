@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -78,7 +80,7 @@ def _snap(
         active_write_role="primary" if writes_allowed else "none",
         package_status="DESTINATION_PACKAGE_VERIFIED" if package_verified else "",
         package_id="phase3b_test" if package_verified else "",
-        device_label="MERCURY_DATA_V2",
+        device_label=DEFAULT_PRIMARY_LABEL,
         device_model="WDC WD10JDRW-11CFYS0",
         device_uuid="715f29a9-2671-477b-8c8d-515d190addb9",
         filesystem="ext4",
@@ -326,7 +328,7 @@ def test_assess_lifecycle_writes_disabled_ready(
         "mercury.storage.block_device.resolve_mercury_block_device",
         lambda **kwargs: SimpleNamespace(
             identity=SimpleNamespace(
-                label="MERCURY_DATA_V2",
+                label=DEFAULT_PRIMARY_LABEL,
                 model="WDC WD10JDRW",
                 uuid="715f29a9-2671-477b-8c8d-515d190addb9",
                 fstype="ext4",
@@ -377,7 +379,7 @@ def test_restore_writes_requires_exact_phrase(host_path: Path) -> None:
 
 
 def test_hdd_absent_does_not_create_mountpoint(tmp_path: Path) -> None:
-    missing = tmp_path / "MERCURY_DATA_V2"
+    missing = tmp_path / DEFAULT_PRIMARY_LABEL
     with pytest.raises(OSError, match="Refusing to create"):
         ensure_no_mountpoint_mkdir(missing)
     assert not missing.exists()

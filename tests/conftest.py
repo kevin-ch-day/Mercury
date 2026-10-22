@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 import os
 import subprocess
 import sys
@@ -252,7 +254,7 @@ def make_storage_mount_tree(root: Path) -> dict[str, Path]:
     """Create sibling primary/legacy mount trees under ``root`` with Mercury layout dirs."""
     from mercury.core.storage_roles import MERCURY_LAYOUT_DIRS
 
-    primary = root / "MERCURY_DATA_V2"
+    primary = root / DEFAULT_PRIMARY_LABEL
     legacy = root / "MERCURY_DATA_USB"
     primary.mkdir(parents=True, exist_ok=True)
     legacy.mkdir(parents=True, exist_ok=True)
@@ -279,7 +281,7 @@ def write_pre_cutover_storage_toml(
         "",
         "[storage.primary]",
         'role = "canonical"',
-        'label = "MERCURY_DATA_V2"',
+        f'label = "{DEFAULT_PRIMARY_LABEL}"',
         f'mount_path = "{primary}"',
         f'filesystem_uuid = "{DEFAULT_PRIMARY_UUID}"',
         'filesystem_type = "ext4"',
@@ -338,6 +340,7 @@ def _isolate_operator_local_config(
         return
     missing = tmp_path_factory.mktemp("isolated-local-config") / "local.toml"
     monkeypatch.setenv("MERCURY_LOCAL_CONFIG", str(missing))
+    monkeypatch.delenv("MERCURY_PRIMARY_LABEL", raising=False)
     monkeypatch.setenv("MERCURY_DRY_RUN", "1")
     monkeypatch.setenv("MERCURY_LIVE_ACTIONS", "0")
     monkeypatch.setenv("MERCURY_NO_COLOR", "1")

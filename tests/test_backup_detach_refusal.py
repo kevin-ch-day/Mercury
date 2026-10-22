@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -90,7 +92,7 @@ def test_full_backup_global_refusal_before_dev_prompt(
         raise AssertionError("run_backup_batch must not be called during global refusal")
 
     monkeypatch.setattr("mercury.backup.interactive_menu.run_backup_batch", _no_batch)
-    hdd = tmp_path / "mnt" / "MERCURY_DATA_V2"
+    hdd = tmp_path / "mnt" / DEFAULT_PRIMARY_LABEL
     hdd.mkdir(parents=True)
     control = hdd / ".mercury_control"
     monkeypatch.setattr(
@@ -102,7 +104,7 @@ def test_full_backup_global_refusal_before_dev_prompt(
         lambda **kwargs: SimpleNamespace(
             identity=SimpleNamespace(
                 uuid="715f29a9-2671-477b-8c8d-515d190addb9",
-                label="MERCURY_DATA_V2",
+                label=DEFAULT_PRIMARY_LABEL,
                 fstype="ext4",
                 mountpoint="/mnt/MERCURY_DATA",
                 parent_device="/dev/sdb",
@@ -346,6 +348,7 @@ def test_resolve_log_dir_redirects_off_hdd_when_writes_disabled(
     )
     resolved = resolve_log_dir()
     assert resolved == host_logs.resolve()
+    # Historical mount name must not leak into the current path.
     assert "MERCURY_DATA_V2" not in str(resolved)
 
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import primary_storage_label
+
 import getpass
 import sys
 from dataclasses import dataclass, field
@@ -68,7 +70,7 @@ def run_doctor(*, probe_database: bool = True, self_heal: bool = False) -> Docto
     report.backup_status_current = _backup_status_current(
         live=env.mariadb.connection_works is True
     )
-    report.warnings = _collect_warnings(env, report)
+    report.warnings = _collect_warnings(env, report) + primary_label_warnings()
     report.blockers = _collect_blockers(env, report)
     report.cleanup_suggestions = _collect_cleanup_suggestions(env)
     report.rebuild_complete = _rebuild_is_complete(report)
@@ -220,9 +222,9 @@ def build_repair_plan(report: DoctorReport) -> list[tuple[str, list[str]]]:
             cutover_done = storage.config.cutover_complete
             sections.append(
                 (
-                    "Primary storage (MERCURY_DATA_V2) — mount active writer"
+                    f"Primary storage ({primary_storage_label()}) — mount active writer"
                     if cutover_done
-                    else "Primary storage (MERCURY_DATA_V2) — operator mount only",
+                    else f"Primary storage ({primary_storage_label()}) — operator mount only",
                     [
                         "./run.sh storage status",
                         "./run.sh storage validate",
@@ -230,9 +232,9 @@ def build_repair_plan(report: DoctorReport) -> list[tuple[str, list[str]]]:
                         suggested_primary_fstab_line(storage.config),
                         f"sudo mkdir -p {primary.mount_path}",
                         (
-                            f"# If desktop already mounted the disk under /run/media/$USER/MERCURY_DATA_V2:"
+                            f"# If desktop already mounted the disk under /run/media/$USER/{primary_storage_label()}:"
                         ),
-                        f"sudo mount --bind /run/media/$USER/MERCURY_DATA_V2 {primary.mount_path}",
+                        f"sudo mount --bind /run/media/$USER/{primary_storage_label()} {primary.mount_path}",
                         f"# Or mount by UUID:",
                         f"sudo mount UUID={primary.filesystem_uuid} {primary.mount_path}",
                         (
@@ -727,6 +729,39 @@ def _collect_blockers(env, report: DoctorReport) -> list[str]:
     # Missing MariaDB sources are operator/data lifecycle issues — warnings only, not repair-plan blockers.
     _ = missing_sources
     return blockers
+
+
+def primary_label_warnings(*, config=None, runner=None) -> list[str]:
+    """Observe a mounted UUID's label; suggest, never execute, a later relabel."""
+    import json
+    import shlex
+    import subprocess
+    from mercury.core.storage_roots import load_storage_config
+    cfg = config or load_storage_config(warn_deprecated=False)
+    primary = cfg.primary
+    run = runner or subprocess.run
+    try:
+        result = run(["findmnt", "--json", "-S", f"UUID={primary.filesystem_uuid}",
+                      "-o", "LABEL,FSTYPE"], capture_output=True, text=True, check=False)
+        if result.returncode:
+            return []
+        rows = json.loads(result.stdout).get("filesystems", [])
+    except (OSError, ValueError):
+        return []
+    warnings = []
+    for row in rows:
+        actual = row.get("label")
+        if actual is None or actual == primary.label:
+            continue
+        message = f"Primary label mismatch: observed {actual!r}; configured {primary.label!r}."
+        if row.get("fstype") == "ext4":
+            device = shlex.quote(f"/dev/disk/by-uuid/{primary.filesystem_uuid}")
+            label = shlex.quote(primary.label)
+            message += f" Pending separately approved relabel: sudo e2label {device} {label}"
+        else:
+            message += " Relabel command requires filesystem-specific review."
+        warnings.append(message)
+    return warnings
 
 
 def _collect_warnings(env, report: DoctorReport) -> list[str]:

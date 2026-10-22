@@ -23,7 +23,7 @@ After governed retirement (`LEGACY_USB_RETIRED_ARCHIVE_ONLY`):
 
 | Concern | Behavior |
 |---------|----------|
-| Active writer | `MERCURY_DATA_V2` only |
+| Active writer | `MERCURY_DATA` only |
 | Backup / restore / migration readiness | Do not require USB |
 | Doctor / dashboard / env check | No USB activation, mount, or writer repair |
 | USB absent | No warning, failure, or degraded status |
@@ -126,3 +126,10 @@ package** membership rules unless policy explicitly includes them. That packagin
 boundary does **not** make the three development schemas optional for local
 Fedora recovery, restore-check drills, or Asus tester readiness—those workflows
 require all seven.
+
+
+Primary label configuration: `[storage.primary].label` defaults to `MERCURY_DATA`;
+`MERCURY_PRIMARY_LABEL` overrides it. The existing disk may still be labelled
+`MERCURY_DATA_V2`. Doctor reports that mismatch as a warning and prints a pending
+relabel command; it does not change the disk. UUID and mount-path safety checks
+remain in force. Relabelling requires a separate operator action.

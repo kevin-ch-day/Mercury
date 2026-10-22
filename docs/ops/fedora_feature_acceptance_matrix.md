@@ -65,7 +65,7 @@ For each operation, file one row (or linked receipt) with:
 | USB absent | No legacy writer dependency |
 | USB present | Archive-only; physical RO preferred before transport |
 
-Primary UUID: `715f29a9-2671-477b-8c8d-515d190addb9` (`MERCURY_DATA_V2`).  
+Primary UUID: `715f29a9-2671-477b-8c8d-515d190addb9` (`MERCURY_DATA`).
 Legacy UUID: `e4f0c7fb-132e-4867-9c16-5e4749f5c43a` (`MERCURY_DATA_USB`).
 
 ---
@@ -169,7 +169,7 @@ Obsolete routing: former **Advanced tools** / combined Backup+Sync+Git front doo
 
 ## Execution log (Fedora 43 · Dell · 2026-07-26)
 
-Distro: Fedora 43 (`ID=fedora`). Host: Dell Inspiron 15 7000 Gaming. Writer: `MERCURY_DATA_V2` primary.
+Distro: Fedora 43 (`ID=fedora`). Host: Dell Inspiron 15 7000 Gaming. Writer at that checkpoint: `MERCURY_DATA_V2` primary.
 
 | ID | Path | Preview | Execute | Receipts / notes | Classification |
 |----|------|---------|---------|------------------|----------------|
@@ -225,3 +225,10 @@ Track A **passes** when:
 ## Track B (later)
 
 `run.sh` reads `/etc/os-release`, sets `MERCURY_DISTRO_FAMILY` / package manager, loads a thin adapter, and launches the same Python CLI. Repeat this matrix on disposable Mint after Track A.
+
+
+Primary label configuration: `[storage.primary].label` defaults to `MERCURY_DATA`;
+`MERCURY_PRIMARY_LABEL` overrides it. The existing disk may still be labelled
+`MERCURY_DATA_V2`. Doctor reports that mismatch as a warning and prints a pending
+relabel command; it does not change the disk. UUID and mount-path safety checks
+remain in force. Relabelling requires a separate operator action.

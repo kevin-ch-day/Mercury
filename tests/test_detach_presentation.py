@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 from types import SimpleNamespace
 
 from mercury.storage.detach_presentation import render_safe_disconnect_intro
@@ -9,7 +11,7 @@ from mercury.storage.detach_presentation import render_safe_disconnect_intro
 
 def test_safe_disconnect_intro_is_compact_and_protective() -> None:
     identity = SimpleNamespace(
-        label="MERCURY_DATA_V2",
+        label=DEFAULT_PRIMARY_LABEL,
         uuid="715f29a9-2671-477b-8c8d-515d190addb9",
         model="WDC WD10JDRW-11CFYS0",
         partition_device="/dev/sdb1",
@@ -39,7 +41,7 @@ def test_safe_disconnect_wizard_uses_new_prompt(monkeypatch) -> None:
         "mercury.storage.block_device.resolve_mercury_block_device",
         lambda **_k: SimpleNamespace(
             identity=SimpleNamespace(
-                label="MERCURY_DATA_V2",
+                label=DEFAULT_PRIMARY_LABEL,
                 uuid="715f29a9-2671-477b-8c8d-515d190addb9",
                 model="WDC",
                 partition_device="/dev/sdb1",

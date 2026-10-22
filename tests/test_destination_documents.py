@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 import json
 import os
 from pathlib import Path
@@ -140,7 +142,7 @@ def _seed_evidence(tmp_path: Path) -> None:
         json.dumps(
             {
                 "filesystem_uuid": DEFAULT_PRIMARY_UUID,
-                "filesystem_label": "MERCURY_DATA_V2",
+                "filesystem_label": DEFAULT_PRIMARY_LABEL,
             }
         ),
         encoding="utf-8",

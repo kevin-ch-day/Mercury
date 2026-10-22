@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import primary_storage_label
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import hashlib
@@ -627,7 +629,7 @@ def build_document_bodies(
                 "filesystem_uuid": storage_identity.get("filesystem_uuid")
                 or DEFAULT_PRIMARY_UUID,
                 "filesystem_label": storage_identity.get("filesystem_label")
-                or "MERCURY_DATA_V2",
+                or primary_storage_label(),
                 "filesystem_type": storage_identity.get("filesystem_type") or "ext4",
                 "active_write_role_at_phase3b": preflight.get("active_write_role"),
                 "migration_state_at_phase3b": preflight.get("migration_state"),
@@ -685,7 +687,7 @@ def build_document_bodies(
                 "note": "Rehearsal dumps produced with mariadb-dump on source; destination must restore those dumps into disposable schemas only.",
             },
             "filesystem_and_mounts": {
-                "operator_storage_label": "MERCURY_DATA_V2",
+                "operator_storage_label": primary_storage_label(),
                 "operator_storage_uuid": DEFAULT_PRIMARY_UUID,
                 "filesystem_type": "ext4",
                 "mount_path_canonical": "/mnt/MERCURY_DATA",
@@ -719,7 +721,7 @@ def build_document_bodies(
             },
             "required_free_disk_space": {
                 "package_estimate_gib": 0.34,
-                "phase3b_source_available_at_preflight": "~593 GiB available on MERCURY_DATA_V2",
+                "phase3b_source_available_at_preflight": "~593 GiB available at historical preflight (see recorded storage identity)",
                 "destination_free_space_required_gib": UNRESOLVED,
                 "note": "Destination must hold package (~0.34 GiB) plus restore workspace and MariaDB data growth; exact floor is operator input.",
             },

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import primary_storage_label
+
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -112,7 +114,7 @@ def assess_storage_lifecycle(
         if resolved.identity:
             device_found = True
             ident = resolved.identity
-            device_label = ident.label or "MERCURY_DATA_V2"
+            device_label = ident.label or primary_storage_label()
             device_model = ident.model or ""
             device_uuid = ident.uuid or ""
             filesystem = ident.fstype or ""

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 from pathlib import Path
 
 from mercury.core.storage_roles import (
@@ -79,7 +81,7 @@ def test_space_policy_uses_max_of_floor_and_percent() -> None:
 
 
 def test_stale_mountpoint_entries_reported_not_deleted(tmp_path: Path) -> None:
-    mount = tmp_path / "MERCURY_DATA_V2"
+    mount = tmp_path / DEFAULT_PRIMARY_LABEL
     mount.mkdir()
     (mount / "scytaledroid_artifacts").symlink_to("/tmp/nowhere")
     (mount / "notes.txt").write_text("stale", encoding="utf-8")
@@ -92,7 +94,7 @@ def test_stale_mountpoint_entries_reported_not_deleted(tmp_path: Path) -> None:
 def test_find_mount_row_prefers_real_mount_over_fedora_autofs_placeholder(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    mount = tmp_path / "MERCURY_DATA_V2"
+    mount = tmp_path / DEFAULT_PRIMARY_LABEL
     mount.mkdir()
     monkeypatch.setattr(
         "mercury.core.storage_validate._read_proc_mounts",

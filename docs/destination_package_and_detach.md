@@ -34,7 +34,7 @@ Or CLI:
 ```
 
 Identity is always resolved by filesystem UUID
-`715f29a9-2671-477b-8c8d-515d190addb9` (label `MERCURY_DATA_V2`, model `WDC WD10JDRW`).
+`715f29a9-2671-477b-8c8d-515d190addb9` (label `MERCURY_DATA`, model `WDC WD10JDRW`).
 Never trust a fixed `/dev/sdX` letter.
 
 Mercury may invoke interactive `sudo` so the terminal can prompt for a password.
@@ -76,3 +76,10 @@ Known invalid example from a pre-fix refusal:
 Classify as `invalid_maintenance_mode_artifact`. Quarantine later under
 `.mercury_control/quarantine/invalid_maintenance_receipts/` (keep `.sha256`; do not delete).
 Do not treat it as a successful backup run or destination-package member.
+
+
+Primary label configuration: `[storage.primary].label` defaults to `MERCURY_DATA`;
+`MERCURY_PRIMARY_LABEL` overrides it. The existing disk may still be labelled
+`MERCURY_DATA_V2`. Doctor reports that mismatch as a warning and prints a pending
+relabel command; it does not change the disk. UUID and mount-path safety checks
+remain in force. Relabelling requires a separate operator action.

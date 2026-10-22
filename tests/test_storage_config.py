@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 from pathlib import Path
 
 import pytest
@@ -47,14 +49,14 @@ live_actions_enabled = false
 def test_load_storage_section_pre_cutover(tmp_path: Path) -> None:
     cfg_path = tmp_path / "local.toml"
     cfg_path.write_text(
-        """
+        f"""
 [storage]
 active_write_role = "legacy"
 migration_state = "not_started"
 
 [storage.primary]
 role = "canonical"
-label = "MERCURY_DATA_V2"
+label = "{DEFAULT_PRIMARY_LABEL}"
 mount_path = "/mnt/MERCURY_DATA"
 filesystem_uuid = "715f29a9-2671-477b-8c8d-515d190addb9"
 filesystem_type = "ext4"
@@ -207,7 +209,7 @@ def test_storage_identity_schema_roundtrip() -> None:
     doc = StorageIdentityDocument(
         storage_role="canonical",
         filesystem_uuid="715f29a9-2671-477b-8c8d-515d190addb9",
-        filesystem_label="MERCURY_DATA_V2",
+        filesystem_label=DEFAULT_PRIMARY_LABEL,
         mount_path="/mnt/MERCURY_DATA",
         filesystem_type="ext4",
         device_model="WDC W",

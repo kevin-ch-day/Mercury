@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -599,7 +601,7 @@ def test_destination_documents_resolve_in_package_preview(
         encoding="utf-8",
     )
     (tmp_path / ".mercury_control" / "storage_identity.json").write_text(
-        json.dumps({"filesystem_uuid": DEFAULT_PRIMARY_UUID, "filesystem_label": "MERCURY_DATA_V2"}),
+        json.dumps({"filesystem_uuid": DEFAULT_PRIMARY_UUID, "filesystem_label": DEFAULT_PRIMARY_LABEL}),
         encoding="utf-8",
     )
 

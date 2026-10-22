@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 from types import SimpleNamespace
 from pathlib import Path
 
@@ -45,7 +47,7 @@ def test_safe_disconnect_wizard_two_yes_no_only(monkeypatch) -> None:
         "mercury.storage.block_device.resolve_mercury_block_device",
         lambda **_k: SimpleNamespace(
             identity=SimpleNamespace(
-                label="MERCURY_DATA_V2",
+                label=DEFAULT_PRIMARY_LABEL,
                 uuid="715f29a9-2671-477b-8c8d-515d190addb9",
                 model="WDC WD10JDRW-11CFYS0",
                 partition_device="/dev/sdb1",
@@ -82,7 +84,7 @@ def test_safe_disconnect_wizard_two_yes_no_only(monkeypatch) -> None:
 
     preview = SimpleNamespace(
         ok=True,
-        identity=SimpleNamespace(model="WDC", label="MERCURY_DATA_V2"),
+        identity=SimpleNamespace(model="WDC", label=DEFAULT_PRIMARY_LABEL),
         result_state="PREFLIGHT_OK",
         phases=[],
         package_id="pkg",
@@ -145,7 +147,7 @@ def test_successful_report_has_one_result_code_no_preview_leak() -> None:
         package_id="destination_rehearsal_final_source_20260723T205343Z",
         identity=SimpleNamespace(
             model="WDC WD10JDRW-11CFYS0",
-            label="MERCURY_DATA_V2",
+            label=DEFAULT_PRIMARY_LABEL,
             uuid="715f29a9-2671-477b-8c8d-515d190addb9",
             partition_device="/dev/sdb1",
             parent_device="/dev/sdb",
@@ -287,7 +289,7 @@ def test_physical_move_ready_screen_after_success(monkeypatch) -> None:
 
     identity = SimpleNamespace(
         model="WDC WD10JDRW-11CFYS0",
-        label="MERCURY_DATA_V2",
+        label=DEFAULT_PRIMARY_LABEL,
         uuid="715f29a9-2671-477b-8c8d-515d190addb9",
         partition_device="/dev/sdb1",
         parent_device="/dev/sdb",

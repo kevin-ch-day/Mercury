@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 from pathlib import Path
 
 import pytest
@@ -653,7 +655,7 @@ def test_recommendation_destination_and_mismatch(host_path: Path) -> None:
 def test_software_only_empty_mountpoint_untouched(
     monkeypatch, host_path: Path, tmp_path: Path
 ) -> None:
-    mount = tmp_path / "MERCURY_DATA_V2"
+    mount = tmp_path / DEFAULT_PRIMARY_LABEL
     mount.mkdir()
     before = {p.name for p in mount.iterdir()}
     save_host_maintenance(

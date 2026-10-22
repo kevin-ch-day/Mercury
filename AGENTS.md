@@ -26,7 +26,7 @@ Mercury is a **Fedora- and Windows-supported Python CLI** for MariaDB backup, di
 
 It is **not** an AI tool, web app, malware analyzer, or full workstation/OS bootstrap utility.
 
-**Production targets:** Fedora and Windows for live operations when MariaDB tools, `config/local.toml`, and the active operator storage root (`MERCURY_DATA_V2`) are configured. Non-Fedora Linux remains seed planning/development only. Legacy `MERCURY_DATA_USB` is a retired offline archive, not a normal dependency.
+**Production targets:** Fedora and Windows for live operations when MariaDB tools, `config/local.toml`, and the active operator storage root (`MERCURY_DATA`) are configured. Non-Fedora Linux remains seed planning/development only. Legacy `MERCURY_DATA_USB` is a retired offline archive, not a normal dependency.
 
 ## Non-negotiable safety policy
 
@@ -180,7 +180,7 @@ migration_state = "cutover_complete"
 legacy_runtime_dependency = "none"
 ```
 
-The active write mount is `/mnt/MERCURY_DATA` (`MERCURY_DATA_V2`). Legacy `MERCURY_DATA_USB` is a retired offline archive only — see `docs/ops/post_cutover_storage.md`. Repo-local `backups/` are development artifacts only and do not count as production protection. Inspect roots with `mercury storage status` / `storage archive-status`.
+The active write mount is `/mnt/MERCURY_DATA` (`MERCURY_DATA`). Legacy `MERCURY_DATA_USB` is a retired offline archive only — see `docs/ops/post_cutover_storage.md`. Repo-local `backups/` are development artifacts only and do not count as production protection. Inspect roots with `mercury storage status` / `storage archive-status`.
 
 Never commit passwords or `config/local.toml`.
 
@@ -304,3 +304,10 @@ Full test file index: [docs/ai_extension_points.md](docs/ai_extension_points.md#
 
 - Prod→dev sync execution polish with default-no confirmation.
 - Development restore-check lane (Track A A-3-02).
+
+
+Primary label configuration: `[storage.primary].label` defaults to `MERCURY_DATA`;
+`MERCURY_PRIMARY_LABEL` overrides it. The existing disk may still be labelled
+`MERCURY_DATA_V2`. Doctor reports that mismatch as a warning and prints a pending
+relabel command; it does not change the disk. UUID and mount-path safety checks
+remain in force. Relabelling requires a separate operator action.

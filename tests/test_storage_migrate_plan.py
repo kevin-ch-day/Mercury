@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 from pathlib import Path
 from unittest.mock import patch
 
@@ -54,7 +56,7 @@ def _config_for_mounts(primary: Path, legacy: Path) -> StorageConfig:
         primary=StorageRootConfig(
             key="primary",
             role=StorageRootRole.CANONICAL,
-            label="MERCURY_DATA_V2",
+            label=DEFAULT_PRIMARY_LABEL,
             mount_path=primary,
             filesystem_uuid="715f29a9-2671-477b-8c8d-515d190addb9",
             filesystem_type="ext4",

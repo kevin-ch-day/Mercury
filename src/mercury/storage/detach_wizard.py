@@ -16,7 +16,7 @@ from mercury.core.storage_roles import (
     DEFAULT_LEGACY_LABEL,
     DEFAULT_LEGACY_MOUNT,
     DEFAULT_LEGACY_UUID,
-    DEFAULT_PRIMARY_LABEL,
+    primary_storage_label,
     DEFAULT_PRIMARY_MOUNT,
     DEFAULT_PRIMARY_UUID,
 )
@@ -431,10 +431,11 @@ def check_legacy_usb_untouched(
 
 
 def detect_desktop_automount(
-    label: str = DEFAULT_PRIMARY_LABEL,
+    label: str | None = None,
     *,
     media_root: Path | None = None,
 ) -> list[str]:
+    label = primary_storage_label() if label is None else label
     hits: list[str] = []
     media = media_root or Path("/run/media")
     if not media.is_dir():
@@ -892,7 +893,7 @@ def run_detach_wizard(
     if legacy_errs:
         preflight.warnings.extend(legacy_errs)
 
-    automounts = detect_desktop_automount(DEFAULT_PRIMARY_LABEL)
+    automounts = detect_desktop_automount(primary_storage_label())
     if automounts:
         preflight.ok = False
         preflight.result_state = DETACH_UNMOUNT_FAILED
@@ -1033,7 +1034,7 @@ def run_detach_wizard(
         preflight.phases.append(PhaseResult("power_off", True, lines=[power_msg]))
         preflight.user_messages.extend(
             [
-                f"You may now unplug: {identity.model or 'WDC'} · {DEFAULT_PRIMARY_LABEL} · UUID {expected_uuid}",
+                f"You may now unplug: {identity.model or 'WDC'} · {primary_storage_label()} · UUID {expected_uuid}",
                 f"Do not unplug: {DEFAULT_LEGACY_LABEL}",
             ]
         )
@@ -1115,11 +1116,11 @@ def format_privileged_detach_report(result: DetachWizardResult) -> list[str]:
 
 def format_disconnect_complete(result: DetachWizardResult) -> list[str]:
     """Canonical post-success summary — one result code, no preview leftovers."""
-    from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL, DEFAULT_PRIMARY_UUID
+    from mercury.core.storage_roles import primary_storage_label, DEFAULT_PRIMARY_UUID
 
     ident = result.identity
     model = (ident.model if ident else None) or EXPECTED_PRIMARY_MODEL
-    label = (ident.label if ident else None) or DEFAULT_PRIMARY_LABEL
+    label = (ident.label if ident else None) or primary_storage_label()
     uuid = (ident.uuid if ident else None) or DEFAULT_PRIMARY_UUID
     powered_off = result.result_state == HDD_POWERED_OFF_SAFE_TO_DISCONNECT
     lines = [

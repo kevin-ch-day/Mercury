@@ -48,7 +48,7 @@ cd /path/to/Mercury
 `./setup.sh` creates the local virtual environment and installs Mercury's
 Python dependencies. It does **not** install OS packages, mount storage,
 modify MariaDB, or write backups. On a receiving host, mount
-`MERCURY_DATA_V2` first; use `./setup.sh --init-config` only to create missing
+`MERCURY_DATA` first; use `./setup.sh --init-config` only to create missing
 local config templates, then review them before running `./run.sh doctor`.
 
 The menu groups actions by task, pauses after each screen, and accepts `q` to quit.
@@ -284,11 +284,11 @@ migration_state = "cutover_complete"
 legacy_runtime_dependency = "none"
 
 [mercury]
-backup_root = "E:/MERCURY_DATA_V2/mercury_backups"
-log_dir = "E:/MERCURY_DATA_V2/mercury_logs"
-repo_backup_root = "E:/MERCURY_DATA_V2/mercury_repo_backups"
-manifest_dir = "E:/MERCURY_DATA_V2/mercury_manifests"
-runbook_dir = "E:/MERCURY_DATA_V2/mercury_runbooks"
+backup_root = "E:/MERCURY_DATA/mercury_backups"
+log_dir = "E:/MERCURY_DATA/mercury_logs"
+repo_backup_root = "E:/MERCURY_DATA/mercury_repo_backups"
+manifest_dir = "E:/MERCURY_DATA/mercury_manifests"
+runbook_dir = "E:/MERCURY_DATA/mercury_runbooks"
 dry_run = true
 live_actions_enabled = false
 
@@ -374,3 +374,10 @@ See [database module](docs/database_module.md).
 ## License
 
 See [LICENSE](LICENSE).
+
+
+Primary label configuration: `[storage.primary].label` defaults to `MERCURY_DATA`;
+`MERCURY_PRIMARY_LABEL` overrides it. The existing disk may still be labelled
+`MERCURY_DATA_V2`. Doctor reports that mismatch as a warning and prints a pending
+relabel command; it does not change the disk. UUID and mount-path safety checks
+remain in force. Relabelling requires a separate operator action.

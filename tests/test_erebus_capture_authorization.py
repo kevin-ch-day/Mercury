@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -135,7 +137,7 @@ def test_cli_execute_without_receipt_stays_locked(tmp_path: Path) -> None:
                 "partition": "/dev/x1",
                 "parent": "/dev/x",
                 "fstype": "ext4",
-                "label": "MERCURY_DATA_V2",
+                "label": DEFAULT_PRIMARY_LABEL,
                 "uuid": "715f29a9-2671-477b-8c8d-515d190addb9",
                 "mount_path": "/mnt/MERCURY_DATA",
                 "mount_options": "rw",

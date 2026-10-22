@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 from pathlib import Path
 from dataclasses import replace
 from unittest.mock import patch
@@ -39,7 +41,7 @@ def test_dashboard_line_names_usb_writer_before_cutover(
 
 
 def test_warning_for_stale_primary_mountpoint(tmp_path: Path) -> None:
-    primary = tmp_path / "MERCURY_DATA_V2"
+    primary = tmp_path / DEFAULT_PRIMARY_LABEL
     primary.mkdir()
     (primary / "leftover_link").symlink_to("/tmp/x")
     cfg = default_storage_config()
@@ -50,7 +52,7 @@ def test_warning_for_stale_primary_mountpoint(tmp_path: Path) -> None:
         primary=StorageRootConfig(
             key="primary",
             role=StorageRootRole.CANONICAL,
-            label="MERCURY_DATA_V2",
+            label=DEFAULT_PRIMARY_LABEL,
             mount_path=primary,
             filesystem_uuid="715f29a9-2671-477b-8c8d-515d190addb9",
             filesystem_type="ext4",
@@ -208,7 +210,7 @@ def test_print_storage_status_smoke(capsys, tmp_path: Path) -> None:
     out = capsys.readouterr().out
     assert "Mercury Storage" in out
     assert "Active write role" in out
-    assert "MERCURY_DATA_V2" in out or "primary" in out.lower()
+    assert DEFAULT_PRIMARY_LABEL in out or "primary" in out.lower()
 
 
 def test_physical_mount_mode_handles_none_options() -> None:
@@ -232,7 +234,7 @@ def test_physical_mount_mode_handles_none_options() -> None:
     root = StorageRootStatus(
         key="primary",
         role="canonical",
-        label="MERCURY_DATA_V2",
+        label=DEFAULT_PRIMARY_LABEL,
         mount_path="/mnt/MERCURY_DATA",
         filesystem_uuid="715f29a9-2671-477b-8c8d-515d190addb9",
         writable_policy=True,
@@ -242,7 +244,7 @@ def test_physical_mount_mode_handles_none_options() -> None:
     assert root.physical_mount_mode == "unknown"
     line = root.one_line()
     assert isinstance(line, str)
-    assert "MERCURY_DATA_V2" in line
+    assert DEFAULT_PRIMARY_LABEL in line
     assert "ACTIVE WRITER" in line
 
 
@@ -257,7 +259,7 @@ def test_read_only_physical_mount_is_not_reported_as_writable() -> None:
         expected_uuid=identity.mounted_uuid, expected_fstype="ext4", identity=identity,
     )
     root = StorageRootStatus(
-        key="primary", role="canonical", label="MERCURY_DATA_V2",
+        key="primary", role="canonical", label=DEFAULT_PRIMARY_LABEL,
         mount_path=str(identity.mount_path), filesystem_uuid=identity.mounted_uuid,
         writable_policy=True, validation=validation, is_active_writer=False,
     )
@@ -283,7 +285,7 @@ def test_storage_validate_returns_nonzero_for_failed_active_writer(capsys) -> No
         ),
         is_active_writer=True,
     )
-    primary = replace(failed, key="primary", label="MERCURY_DATA_V2", is_active_writer=False)
+    primary = replace(failed, key="primary", label=DEFAULT_PRIMARY_LABEL, is_active_writer=False)
     report = StorageStatusReport(config=cfg, primary=primary, legacy=failed)
 
     assert print_storage_validate(report) == 1
@@ -313,7 +315,7 @@ def test_next_step_after_cutover_prefers_primary_mount() -> None:
     primary = StorageRootStatus(
         key="primary",
         role="canonical",
-        label="MERCURY_DATA_V2",
+        label=DEFAULT_PRIMARY_LABEL,
         mount_path=str(cfg.primary.mount_path),
         filesystem_uuid=cfg.primary.filesystem_uuid,
         writable_policy=True,

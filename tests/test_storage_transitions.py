@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
+
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -62,7 +64,7 @@ def host_path(hermetic_root: Path) -> Path:
 
 def _mounted_identity(**kwargs):
     base = dict(
-        label="MERCURY_DATA_V2",
+        label=DEFAULT_PRIMARY_LABEL,
         model="WDC WD10JDRW",
         uuid="715f29a9-2671-477b-8c8d-515d190addb9",
         fstype="ext4",
