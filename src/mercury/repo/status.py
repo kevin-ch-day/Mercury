@@ -49,7 +49,7 @@ class RepoStatusSummary(BaseModel):
 
 def _git_output(path: Path, *args: str) -> str:
     completed = subprocess.run(
-        ["git", *args],
+        ["git", "--no-optional-locks", *args],
         cwd=path,
         check=True,
         capture_output=True,

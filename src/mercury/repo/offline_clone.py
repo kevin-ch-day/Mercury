@@ -1,17 +1,15 @@
-"""Preview-first, independent offline Git worktree copies on operator storage."""
+"""Preview-first, independent all-reference Git mirrors on operator storage."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-import shutil
 import subprocess
-import tempfile
 
 from pydantic import BaseModel, Field
 
-from mercury.core.artifact_permissions import ensure_private_directory, restrict_artifact_file
+from mercury.core.artifact_permissions import ensure_private_directory
 from mercury.core.usb_mount import assert_operator_storage_path, resolve_operator_mount
 from mercury.repo.status import RepoStatus
 
@@ -31,6 +29,11 @@ class OfflineCloneEntry(BaseModel):
     action: str
     error: str | None = None
     executed: bool = False
+    refs: dict[str, str] = Field(default_factory=dict)
+    fsck: str = "not checked"
+    uncommitted_count: int = 0
+    snapshot: dict | None = None
+    snapshot_at: str | None = None
 
 
 class OfflineClonePlan(BaseModel):
@@ -43,7 +46,7 @@ class OfflineClonePlan(BaseModel):
 
 
 def offline_clone_root() -> Path:
-    """Return the HDD/operator-storage location for runnable repository copies."""
+    """Return the HDD/operator-storage location for repository mirrors."""
     return resolve_operator_mount() / OFFLINE_CLONE_DIRNAME
 
 
@@ -59,41 +62,6 @@ def load_offline_sync_receipt(root: Path) -> dict[str, object] | None:
     except (OSError, json.JSONDecodeError):
         return None
     return payload if isinstance(payload, dict) else None
-
-
-def _write_offline_sync_receipt(plan: OfflineClonePlan) -> Path:
-    path = offline_sync_receipt_path(plan.root)
-    payload = {
-        "receipt_version": "offline-repo-sync-v1",
-        "recorded_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "plan_generated_at": plan.generated_at,
-        "clone_root": str(plan.root),
-        "repositories": [
-            {
-                "key": entry.key,
-                "display_name": entry.display_name,
-                "commit": entry.commit,
-                "destination": str(entry.destination_path),
-                "source_dirty": entry.source_dirty,
-                "action": entry.action,
-                "synced": entry.executed,
-                "error": entry.error,
-            }
-            for entry in plan.entries
-        ],
-    }
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    temporary.replace(path)
-    restrict_artifact_file(path)
-    return path
-
-
-def _destination_is_dirty(path: Path) -> bool:
-    result = subprocess.run(
-        ["git", "status", "--porcelain"], cwd=path, check=True, capture_output=True, text=True
-    )
-    return bool(result.stdout.strip())
 
 
 def _head(path: Path) -> str:
@@ -140,154 +108,112 @@ def _is_repairable_stale_source_head(error: str) -> bool:
     )
 
 
-def _checkout_and_verify(path: Path, entry: OfflineCloneEntry) -> None:
-    subprocess.run(
-        ["git", "checkout", "--detach", entry.commit], cwd=path,
-        check=True, capture_output=True, text=True,
-    )
-    subprocess.run(
-        ["git", "fsck", "--no-dangling"], cwd=path,
-        check=True, capture_output=True, text=True,
-    )
-    if _head(path) != entry.commit:
-        raise ValueError("offline copy commit verification failed")
-
-
-def _clone_entry_to_staging(entry: OfflineCloneEntry, root: Path) -> None:
-    """Clone and verify off to the side, then atomically publish the copy."""
-    staging_root = Path(tempfile.mkdtemp(prefix=f".{entry.key}.staging-", dir=root))
-    staged_destination = staging_root / "checkout"
-    try:
-        subprocess.run(
-            ["git", "clone", "--no-hardlinks", "--origin", "mercury-source", str(entry.source_path), str(staged_destination)],
-            check=True, capture_output=True, text=True,
-        )
-        _checkout_and_verify(staged_destination, entry)
-        if entry.destination_path.exists():
-            raise ValueError("offline destination appeared during staging; refresh the preview before retrying")
-        staged_destination.replace(entry.destination_path)
-    finally:
-        # This directory is created solely for this attempted clone and never
-        # contains an existing managed repository.
-        shutil.rmtree(staging_root, ignore_errors=True)
-
-
-def _refresh_source_remote(path: Path, source_path: Path) -> None:
-    """Point an existing offline checkout at its configured local source.
-
-    Offline clones are deliberately made from a local checkout rather than a
-    network remote.  A workstation migration can therefore leave an otherwise
-    healthy HDD clone with a ``mercury-source`` path from the former host.
-    Refresh that remote immediately before fetch, while the clone has already
-    passed dirty-state and integrity checks.
-    """
-    remotes = subprocess.run(
-        ["git", "remote"], cwd=path, check=True, capture_output=True, text=True
-    ).stdout.splitlines()
-    if "mercury-source" in remotes:
-        subprocess.run(
-            ["git", "remote", "set-url", "mercury-source", str(source_path)],
-            cwd=path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        return
-    subprocess.run(
-        ["git", "remote", "add", "mercury-source", str(source_path)],
-        cwd=path,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-
-def _refresh_source_head(path: Path) -> None:
-    """Refresh remote-tracking HEAD after fetching the configured source."""
-    subprocess.run(
-        ["git", "remote", "set-head", "mercury-source", "--auto"],
-        cwd=path,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+def _refs(path: Path) -> dict[str, str]:
+    from mercury.repo.snapshot import git_bytes
+    return dict(line.split(" ", 1) for line in git_bytes(
+        path, "for-each-ref", "--format=%(refname) %(objectname)"
+    ).decode().splitlines())
 
 
 def build_offline_clone_plan(statuses: list[RepoStatus], *, root: Path | None = None) -> OfflineClonePlan:
-    """Plan clone/update actions without modifying source or operator storage."""
+    """Compare all refs with the last verified mirror, without writing sources."""
+    from mercury.repo.snapshot import dirty_paths
     target_root = root or offline_clone_root()
-    entries: list[OfflineCloneEntry] = []
+    receipt = load_offline_sync_receipt(target_root) or {}
+    previous = {r['key']: r for r in receipt.get('repositories', [])}
+    entries = []
     for status in statuses:
         if not status.migration_scope:
             continue
+        old = previous.get(status.key, {})
         destination = target_root / status.key
-        action = "clone"
-        error = status.error
-        if error or not status.exists or not status.git_repo or status.commit == "unknown":
-            action = "blocked"
-            error = error or "source repository is unavailable"
-        elif destination.exists():
-            if not (destination / ".git").is_dir():
-                action, error = "blocked", "destination exists but is not a managed Git checkout"
-            else:
-                try:
-                    if _destination_is_dirty(destination):
-                        action, error = "blocked", "offline copy has local changes; resolve them before sync"
-                    elif integrity_error := _destination_integrity_error(destination):
-                        if _is_repairable_stale_source_head(integrity_error):
-                            action = "update"
-                        else:
-                            action, error = "blocked", f"offline copy Git integrity check failed: {integrity_error}"
-                    elif _head(destination) == status.commit:
-                        action = "current"
-                    else:
-                        action = "update"
-                except subprocess.CalledProcessError as exc:
-                    action, error = "blocked", _subprocess_error_detail(exc)
-        entries.append(
-            OfflineCloneEntry(
-                key=status.key,
-                display_name=status.display_name,
-                source_path=status.path,
-                destination_path=destination,
-                commit=status.commit,
-                source_dirty=status.dirty,
-                action=action,
-                error=error,
-            )
-        )
-    return OfflineClonePlan(
-        root=target_root,
-        generated_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        entries=entries,
-    )
+        if old.get('mirror_path'):
+            candidate = Path(old['mirror_path'])
+            if candidate.resolve().is_relative_to(target_root.resolve()):
+                destination = candidate
+        entry = OfflineCloneEntry(key=status.key, display_name=status.display_name,
+            source_path=status.path, destination_path=destination, commit=status.commit,
+            source_dirty=status.dirty, action='clone', error=status.error,
+            snapshot=old.get('snapshot'), snapshot_at=old.get('snapshot_at'))
+        try:
+            if status.error or not status.git_repo or status.commit == 'unknown':
+                raise ValueError('Source repository is unavailable')
+            entry.refs = _refs(status.path)
+            tracked, untracked = dirty_paths(status.path)
+            entry.uncommitted_count = len(set(tracked + untracked))
+            if old.get('mirror_path') and destination.is_dir():
+                error = _destination_integrity_error(destination)
+                if error:
+                    raise ValueError('Offline mirror integrity check failed; retained for inspection')
+                entry.fsck = 'PASS'
+                entry.action = ('current' if _refs(destination) == entry.refs
+                                and _head(destination) == status.commit else 'update')
+            elif destination.exists():
+                # Keep legacy runnable copies intact; first mirror is a new generation.
+                entry.action = 'update'
+        except (OSError, ValueError, subprocess.CalledProcessError):
+            entry.action = 'blocked'
+            entry.error = entry.error or 'Repository inspection failed; source or mirror unavailable/corrupt'
+        entries.append(entry)
+    return OfflineClonePlan(root=target_root, entries=entries)
 
 
-def execute_offline_clone_plan(plan: OfflineClonePlan) -> OfflineClonePlan:
-    """Create or update clean independent clones; never changes source checkouts."""
-    assert_operator_storage_path(plan.root, action="offline repository clone write")
+def execute_offline_clone_plan(plan: OfflineClonePlan, *, snapshots: bool = False) -> OfflineClonePlan:
+    """Create immutable all-ref mirrors; old backups and source repos stay untouched."""
+    import uuid
+    from mercury.core.artifact_permissions import write_private_text
+    from mercury.repo.snapshot import snapshot_uncommitted
+    assert_operator_storage_path(plan.root, action='offline repository mirror write')
     ensure_private_directory(plan.root)
+    run = plan.root / 'generations' / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8])
+    ensure_private_directory(run)
     for entry in plan.entries:
-        if entry.action in {"current", "blocked"}:
+        if entry.action == 'blocked':
             continue
         try:
-            if entry.action == "clone":
-                _clone_entry_to_staging(entry, plan.root)
-            else:
-                _refresh_source_remote(entry.destination_path, entry.source_path)
-                subprocess.run(
-                    ["git", "fetch", "mercury-source", "--prune"], cwd=entry.destination_path,
-                    check=True, capture_output=True, text=True,
-                )
-                _refresh_source_head(entry.destination_path)
-                _checkout_and_verify(entry.destination_path, entry)
+            if not entry.key or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for c in entry.key):
+                raise ValueError('Invalid repository key')
+            before = _refs(entry.source_path)
+            if before != entry.refs or _head(entry.source_path) != entry.commit:
+                raise ValueError('Source refs changed after preview; retry')
+            destination = run / (entry.key + '.git')
+            subprocess.run(['git', 'clone', '--mirror', '--no-hardlinks',
+                            str(entry.source_path), str(destination)],
+                           check=True, capture_output=True, text=True)
+            # A detached HEAD is also protected by clone; verify it independently.
+            if _refs(destination) != before or _head(destination) != entry.commit:
+                raise ValueError('Mirror references do not match the source')
+            if _refs(entry.source_path) != before or _head(entry.source_path) != entry.commit:
+                raise ValueError('Source refs changed during sync; retry')
+            if _destination_integrity_error(destination):
+                entry.fsck = 'FAIL'
+                raise ValueError('Mirror integrity check failed')
+            entry.fsck = 'PASS'
+            entry.destination_path = destination
+            if snapshots and entry.source_dirty:
+                entry.snapshot = snapshot_uncommitted(entry.source_path, run / (entry.key + '-uncommitted'))
+                entry.snapshot_at = datetime.now(timezone.utc).isoformat()
             entry.executed = True
-        except (OSError, subprocess.CalledProcessError, ValueError) as exc:
-            entry.action = "blocked"
-            entry.error = (
-                _subprocess_error_detail(exc)
-                if isinstance(exc, subprocess.CalledProcessError)
-                else str(exc)
-            )
-    plan.receipt_path = _write_offline_sync_receipt(plan)
+            entry.action = 'current'
+        except (OSError, subprocess.CalledProcessError, ValueError):
+            entry.action = 'blocked'
+            entry.error = 'Sync or snapshot verification failed; existing backups preserved'
+    payload = {'receipt_version': 'offline-repo-sync-v2',
+               'recorded_at_utc': datetime.now(timezone.utc).isoformat(),
+               'clone_root': str(plan.root), 'repositories': []}
+    for entry in plan.entries:
+        payload['repositories'].append({**entry.model_dump(mode='json'),
+            'mirror_path': str(entry.destination_path) if entry.executed else None,
+            'synced': entry.executed,
+            'refs_verified': entry.executed,
+            'branches': {k.removeprefix('refs/heads/'): v for k, v in entry.refs.items() if k.startswith('refs/heads/')},
+            'tags': {k.removeprefix('refs/tags/'): v for k, v in entry.refs.items() if k.startswith('refs/tags/')},
+            'remote_tracking': {k: v for k, v in entry.refs.items() if k.startswith('refs/remotes/')}})
+    text = json.dumps(payload, indent=2, sort_keys=True) + '\n'
+    plan.receipt_path = write_private_text(run / OFFLINE_SYNC_RECEIPT_NAME, text)
+    # Preserve the earlier receipt before refreshing the latest-status pointer.
+    latest = offline_sync_receipt_path(plan.root)
+    if latest.exists():
+        write_private_text(run / 'previous-receipt.json', latest.read_text())
+    write_private_text(latest, text)
     return plan

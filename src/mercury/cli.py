@@ -1677,7 +1677,8 @@ def repo_bundle_cmd(
 
 @repo_app.command("offline-sync")
 def repo_offline_sync_cmd(
-    execute: bool = typer.Option(False, "--execute", help="Create or update runnable HDD repository copies."),
+    execute: bool = typer.Option(False, "--execute", help="Create verified all-ref repository mirrors on backup storage."),
+    snapshots: bool = typer.Option(False, "--snapshots", help="Also save filtered uncommitted patches and untracked files."),
     confirm: str = typer.Option("", "--confirm", help="Required with --execute: SYNC OFFLINE REPOS"),
 ) -> None:
     """Preview or synchronize independent offline Git worktrees on operator storage."""
@@ -1692,7 +1693,10 @@ def repo_offline_sync_cmd(
     if confirm != OFFLINE_SYNC_CONFIRMATION:
         typer.echo(f"Refusing execution: pass --confirm '{OFFLINE_SYNC_CONFIRMATION}'.")
         raise typer.Exit(2)
-    print_offline_clone_plan(execute_offline_clone_plan(plan), executed=True)
+    result = execute_offline_clone_plan(plan, snapshots=snapshots)
+    print_offline_clone_plan(result, executed=True)
+    if any(entry.error for entry in result.entries):
+        raise typer.Exit(1)
 
 
 @transfer_app.command("status")

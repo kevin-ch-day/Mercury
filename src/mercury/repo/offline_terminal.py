@@ -25,7 +25,7 @@ def print_offline_clone_plan(
     if with_title:
         display_screen.open_screen(title)
     synced = sum(1 for entry in plan.entries if entry.executed)
-    current = sum(1 for entry in plan.entries if entry.action == "current")
+    current = sum(1 for entry in plan.entries if entry.action == "current" and not entry.executed)
     blocked = sum(1 for entry in plan.entries if entry.action == "blocked")
     pending = sum(1 for entry in plan.entries if entry.action in {"clone", "update"})
     progress = f"{pending} need sync · {current} current · {blocked} blocked"
@@ -60,12 +60,18 @@ def print_offline_clone_plan(
             rows,
             style=TableStyle(indent=0, gap=2),
             min_col_widths=[14, 12, 7, 16],
-            max_col_widths=[22, 12, 8, 40],
+            max_col_widths=[max([22] + [len(e.display_name) for e in plan.entries]), 12, 8, 40],
         )
     )
+    for entry in plan.entries:
+        if entry.source_dirty:
+            stamp = format_human_datetime(entry.snapshot_at) if entry.snapshot_at else "none"
+            output.write(f"{entry.display_name}: {entry.uncommitted_count} uncommitted files, last snapshot {stamp}")
+            if entry.snapshot and entry.snapshot.get("excluded_count"):
+                output.write(f"  Snapshot excludes {entry.snapshot['excluded_count']} sensitive, ignored, or unsafe files; see snapshot.json.")
     notes = [
         "Independent copies on backup storage; source repos are never modified.",
-        "Only committed history is copied; dirty/untracked files stay on the source host.",
+        "Mirrors cover all branches, tags and remote-tracking refs; uncommitted snapshots are optional.",
     ]
     if not executed:
         notes.append("Preview only — select [1] to create or update offline copies.")
@@ -109,6 +115,6 @@ def print_offline_sync_receipt(plan: OfflineClonePlan) -> None:
             rows,
             style=TableStyle(indent=0, gap=2),
             min_col_widths=[14, 12, 7, 16],
-            max_col_widths=[22, 12, 8, 40],
+            max_col_widths=[max([22] + [len(e.display_name) for e in plan.entries]), 12, 8, 40],
         )
     )

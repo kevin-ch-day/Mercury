@@ -137,6 +137,8 @@ def discover_local_repo_definitions() -> list[RepoDefinition]:
         if path_key in seen_paths:
             continue
         seen_paths.add(path_key)
+        while key in {repo.key for repo in repos}:
+            key += "_alternate"
         repos.append(
             RepoDefinition(
                 key=key,
@@ -197,12 +199,12 @@ def build_workstation_repo_definitions(
         seen_keys.add(key)
         seen_paths.add(str(repo_path.resolve()))
     for key, display_name, raw_path in _home_github_candidates():
-        if key in seen_keys:
-            continue
-        previous = existing_by_key.get(key)
         repo_path = Path(raw_path).resolve()
         if str(repo_path) in seen_paths:
             continue
+        while key in seen_keys:
+            key += "_alternate"
+        previous = existing_by_key.get(key)
         repos.append(
             RepoDefinition(
                 key=key,

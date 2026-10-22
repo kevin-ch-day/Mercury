@@ -21,13 +21,18 @@ def run_offline_sync_now() -> None:
     output.write(
         hint_text(
             f"Copy committed history to backup storage → {plan.root} "
-            "(committed history only; source repos untouched; dirty offline copies blocked)"
+            "(all branches and tags; source repos and earlier copies untouched)"
         )
     )
     if menu_prompts.ask_yes_no("Copy repository backups to backup storage now?", default=False) is not True:
         display_screen.write_status("warn", "Offline repository sync cancelled.")
         return
-    print_offline_clone_plan(execute_offline_clone_plan(plan), executed=True)
+    snapshots = False
+    if any(entry.source_dirty for entry in plan.entries):
+        snapshots = menu_prompts.ask_yes_no(
+            "Also save filtered uncommitted patches and untracked files?", default=False
+        ) is True
+    print_offline_clone_plan(execute_offline_clone_plan(plan, snapshots=snapshots), executed=True)
 
 
 def show_offline_sync_receipt() -> None:

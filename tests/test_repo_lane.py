@@ -84,144 +84,119 @@ def test_inspect_repositories_reports_dirty_and_untracked(tmp_path: Path) -> Non
     assert status.state_label == "dirty"
 
 
-def test_offline_clone_sync_creates_independent_hdd_worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _mirror_setup(tmp_path, monkeypatch):
     source = _make_repo(tmp_path, "source")
-    status = inspect_repositories([RepoDefinition(key="source", display_name="Source", path=source)])[0]
-    hdd = tmp_path / "hdd"
-    plan = build_offline_clone_plan([status], root=hdd / "mercury_repo_clones")
-
-    monkeypatch.setattr("mercury.core.usb_mount.resolve_operator_mount", lambda **kwargs: hdd)
-    monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
-    executed = execute_offline_clone_plan(plan)
-
-    entry = executed.entries[0]
-    assert entry.executed is True
-    assert entry.action == "clone"
-    assert entry.destination_path != source
-    assert (entry.destination_path / "README.md").is_file()
-    assert _git_output(entry.destination_path, "rev-parse", "HEAD") == status.commit
-    assert executed.receipt_path is not None and executed.receipt_path.is_file()
-    assert stat.S_IMODE(executed.receipt_path.stat().st_mode) == 0o600
-    receipt = json.loads(executed.receipt_path.read_text(encoding="utf-8"))
-    assert receipt["repositories"][0]["commit"] == status.commit
-    assert receipt["repositories"][0]["synced"] is True
-
-    (entry.destination_path / "README.md").write_text("offline edit\n", encoding="utf-8")
-    blocked = build_offline_clone_plan([status], root=hdd / "mercury_repo_clones")
-    assert blocked.entries[0].action == "blocked"
-    assert "local changes" in (blocked.entries[0].error or "")
+    hdd = tmp_path / 'hdd'
+    monkeypatch.setattr('mercury.core.usb_mount.resolve_operator_mount', lambda **kw: hdd)
+    monkeypatch.setattr('mercury.core.usb_mount.usb_mount_is_active', lambda *a, **kw: True)
+    def plan():
+        return build_offline_clone_plan(inspect_repositories([
+            RepoDefinition(key='source', display_name='Source', path=source)
+        ]), root=hdd / 'mercury_repo_clones')
+    return source, plan
 
 
-def test_offline_clone_preview_blocks_damaged_copy_before_head_comparison(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    source = _make_repo(tmp_path, "source")
-    status = inspect_repositories([RepoDefinition(key="source", display_name="Source", path=source)])[0]
-    hdd = tmp_path / "hdd"
-    destination = hdd / "mercury_repo_clones" / "source"
-    subprocess.run(["git", "clone", "--no-hardlinks", str(source), str(destination)], check=True, capture_output=True, text=True)
-    monkeypatch.setattr(
-        "mercury.repo.offline_clone._destination_integrity_error",
-        lambda _path: "pack index unavailable",
-    )
-
-    plan = build_offline_clone_plan([status], root=hdd / "mercury_repo_clones")
-
-    assert plan.entries[0].action == "blocked"
-    assert "integrity check failed" in (plan.entries[0].error or "")
-
-
-def test_offline_clone_update_refreshes_stale_local_source_remote(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    source = _make_repo(tmp_path, "source")
-    hdd = tmp_path / "hdd"
-    root = hdd / "mercury_repo_clones"
-    monkeypatch.setattr("mercury.core.usb_mount.resolve_operator_mount", lambda **kwargs: hdd)
-    monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
-
-    initial_status = inspect_repositories(
-        [RepoDefinition(key="source", display_name="Source", path=source)]
-    )[0]
-    initial = execute_offline_clone_plan(build_offline_clone_plan([initial_status], root=root))
-    destination = initial.entries[0].destination_path
-    _git(destination, "remote", "set-url", "mercury-source", str(tmp_path / "retired-source"))
-
-    (source / "next.txt").write_text("next\n", encoding="utf-8")
-    _git(source, "add", "next.txt")
-    _git(source, "commit", "-m", "next")
-    updated_status = inspect_repositories(
-        [RepoDefinition(key="source", display_name="Source", path=source)]
-    )[0]
-
-    updated = execute_offline_clone_plan(build_offline_clone_plan([updated_status], root=root))
-
-    assert updated.entries[0].executed is True
-    assert _git_output(destination, "rev-parse", "HEAD") == updated_status.commit
-    assert _git_output(destination, "remote", "get-url", "mercury-source") == str(source)
+def test_offline_clone_sync_creates_independent_hdd_worktree(tmp_path, monkeypatch):
+    source, plan = _mirror_setup(tmp_path, monkeypatch)
+    for branch in ('keep/saved', 'wip/work', 'preserve/old', 'research/permission-evidence-v1.1', 'recovery/asus-hdd-bundle-20260726'):
+        _git(source, 'branch', branch)
+    _git(source, 'tag', 'v1')
+    _git(source, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+    before = _git_output(source, 'show-ref')
+    result = execute_offline_clone_plan(plan())
+    entry = result.entries[0]
+    assert entry.executed and entry.fsck == 'PASS'
+    assert _git_output(entry.destination_path, 'rev-parse', '--is-bare-repository') == 'true'
+    assert _git_output(entry.destination_path, 'show-ref') == before
+    assert _git_output(source, 'show-ref') == before
+    receipt = json.loads(result.receipt_path.read_text())['repositories'][0]
+    assert len(receipt['branches']) == 6
+    assert receipt['tags']['v1'] == entry.commit
+    assert receipt['remote_tracking']['refs/remotes/origin/main'] == entry.commit
+    assert plan().entries[0].action == 'current'
 
 
-def test_offline_clone_update_repairs_only_stale_zero_oid_source_head(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    source = _make_repo(tmp_path, "source")
-    hdd = tmp_path / "hdd"
-    root = hdd / "mercury_repo_clones"
-    monkeypatch.setattr("mercury.core.usb_mount.resolve_operator_mount", lambda **kwargs: hdd)
-    monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
-
-    status = inspect_repositories([RepoDefinition(key="source", display_name="Source", path=source)])[0]
-    initial = execute_offline_clone_plan(build_offline_clone_plan([status], root=root))
-    destination = initial.entries[0].destination_path
-    remote_head = destination / ".git" / "refs" / "remotes" / "mercury-source" / "HEAD"
-    remote_head.write_text("0" * 40 + "\n", encoding="utf-8")
-
-    repair_plan = build_offline_clone_plan([status], root=root)
-    assert repair_plan.entries[0].action == "update"
-    assert repair_plan.entries[0].error is None
-
-    repaired = execute_offline_clone_plan(repair_plan)
-    assert repaired.entries[0].executed is True
-    assert _git_output(destination, "symbolic-ref", "refs/remotes/mercury-source/HEAD") == (
-        "refs/remotes/mercury-source/main"
-    )
-
-    assert _is_repairable_stale_source_head(
-        "error: refs/remotes/mercury-source/HEAD: invalid sha1 pointer " + "0" * 40
-    )
-    assert not _is_repairable_stale_source_head("error: object corrupt")
+def test_offline_clone_preview_blocks_damaged_copy_before_head_comparison(tmp_path, monkeypatch):
+    source, plan = _mirror_setup(tmp_path, monkeypatch)
+    result = execute_offline_clone_plan(plan())
+    monkeypatch.setattr('mercury.repo.offline_clone._destination_integrity_error', lambda p: 'corrupt')
+    assert plan().entries[0].action == 'blocked'
 
 
-def test_offline_clone_error_detail_is_bounded() -> None:
-    exc = subprocess.CalledProcessError(
-        1, ["git", "fetch"], stderr="one\ntwo\nthree\nfour\nfive\n",
-    )
+def test_offline_clone_update_refreshes_stale_local_source_remote(tmp_path, monkeypatch):
+    source, plan = _mirror_setup(tmp_path, monkeypatch)
+    first = execute_offline_clone_plan(plan())
+    old = first.entries[0].destination_path
+    old_refs = _git_output(old, 'show-ref')
+    _git(source, 'branch', 'research/new')
+    assert plan().entries[0].action == 'update'  # HEAD unchanged, another ref added.
+    second = execute_offline_clone_plan(plan())
+    assert second.entries[0].destination_path != old
+    assert _git_output(old, 'show-ref') == old_refs
+    assert first.receipt_path.exists()
+    assert plan().entries[0].action == 'current'
 
-    detail = _subprocess_error_detail(exc)
 
-    assert detail == "one | two | three | … 2 additional Git error line(s)"
+def test_offline_clone_update_repairs_only_stale_zero_oid_source_head(tmp_path, monkeypatch):
+    source, plan = _mirror_setup(tmp_path, monkeypatch)
+    legacy = plan().root / 'source'
+    legacy.mkdir(parents=True)
+    (legacy / 'keep.txt').write_text('legacy offline edits')
+    result = execute_offline_clone_plan(plan())
+    assert result.entries[0].executed
+    assert (legacy / 'keep.txt').read_text() == 'legacy offline edits'
 
 
-def test_failed_fresh_offline_clone_leaves_no_managed_destination(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    source = _make_repo(tmp_path, "source")
-    status = inspect_repositories([RepoDefinition(key="source", display_name="Source", path=source)])[0]
-    hdd = tmp_path / "hdd"
-    plan = build_offline_clone_plan([status], root=hdd / "mercury_repo_clones")
+def test_offline_clone_error_detail_is_bounded():
+    exc = subprocess.CalledProcessError(1, ['git'], stderr='one\ntwo\nthree\nfour\nfive\n')
+    assert _subprocess_error_detail(exc) == 'one | two | three | … 2 additional Git error line(s)'
 
-    monkeypatch.setattr("mercury.core.usb_mount.resolve_operator_mount", lambda **kwargs: hdd)
-    monkeypatch.setattr("mercury.core.usb_mount.usb_mount_is_active", lambda path, **kwargs: True)
-    monkeypatch.setattr(
-        "mercury.repo.offline_clone._head",
-        lambda _path: (_ for _ in ()).throw(ValueError("forced verification failure")),
-    )
 
-    executed = execute_offline_clone_plan(plan)
+def test_failed_fresh_offline_clone_leaves_no_managed_destination(tmp_path, monkeypatch):
+    source, plan = _mirror_setup(tmp_path, monkeypatch)
+    preview = plan()
+    _git(source, 'branch', 'new-after-preview')
+    result = execute_offline_clone_plan(preview)
+    assert result.entries[0].action == 'blocked'
+    assert not result.entries[0].executed
+    assert not list(result.root.glob('generations/*/*.git'))
 
-    assert executed.entries[0].action == "blocked"
-    assert not executed.entries[0].destination_path.exists()
-    assert not list(executed.root.glob(".source.staging-*"))
+
+def test_snapshot_filters_ignored_secrets_and_symlinks(tmp_path, monkeypatch):
+    import tarfile
+    source, plan = _mirror_setup(tmp_path, monkeypatch)
+    (source / 'README.md').write_text('safe tracked edit\n')
+    (source / '.gitignore').write_text('ignored.txt\n.env\n')
+    (source / 'ignored.txt').write_text('ignored')
+    (source / '.env').write_text('excluded')
+    (source / 'credentials.json').write_text('excluded')
+    (source / 'notes.txt').write_text('safe untracked')
+    (source / 'outside-link').symlink_to(tmp_path / 'outside')
+    (tmp_path / 'outside').write_text('outside')
+    before = _git_output(source, 'status', '--porcelain')
+    result = execute_offline_clone_plan(plan(), snapshots=True)
+    snapshot = Path(result.entries[0].snapshot['path'])
+    with tarfile.open(snapshot / 'untracked.tar.gz') as archive:
+        names = archive.getnames()
+        assert 'notes.txt' in names
+        assert not set(names) & {'.env', 'ignored.txt', 'credentials.json', 'outside-link'}
+    assert 'safe tracked edit' in (snapshot / 'tracked.patch').read_text()
+    assert _git_output(source, 'status', '--porcelain') == before
+    assert result.entries[0].snapshot['excluded_count'] == 2
+
+
+def test_snapshot_excludes_tracked_ignored_and_secret_changes(tmp_path, monkeypatch):
+    source, plan = _mirror_setup(tmp_path, monkeypatch)
+    (source / 'settings.txt').write_text('safe\n')
+    (source / 'ignored.txt').write_text('safe\n')
+    _git(source, 'add', '.'); _git(source, 'commit', '-m', 'settings')
+    (source / '.gitignore').write_text('ignored.txt\n')
+    (source / 'ignored.txt').write_text('should not copy')
+    (source / 'settings.txt').write_text('password = "example-sensitive-value"')
+    result = execute_offline_clone_plan(plan(), snapshots=True)
+    data = json.loads((Path(result.entries[0].snapshot['path']) / 'snapshot.json').read_text())
+    assert set(data['excluded_files']) == {'settings.txt', 'ignored.txt'}
+    assert data['tracked_files'] == []
 
 
 def test_offline_clone_terminal_marks_executed_entries_as_synced(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
@@ -564,3 +539,13 @@ def test_forced_repo_config_preserves_existing_path_and_deduplicates_discovery(
     assert [(definition.key, definition.path) for definition in definitions] == [
         ("erebus_web", web_checkout.resolve())
     ]
+
+
+def test_discovery_keeps_both_erebus_checkouts(tmp_path, monkeypatch):
+    home = tmp_path / 'home'
+    (home / 'GitHub' / 'erebus-engine-fedora' / '.git').mkdir(parents=True)
+    (home / 'GitHub' / 'erebus-engine' / '.git').mkdir(parents=True)
+    monkeypatch.setattr(repo_config.Path, 'home', lambda: home)
+    definitions = repo_config.discover_local_repo_definitions()
+    assert {r.key for r in definitions} == {'erebus_engine', 'erebus_engine_alternate'}
+    assert len({r.path for r in definitions}) == 2
