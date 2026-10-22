@@ -433,6 +433,9 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
             max_col_widths=[36, 12, 12, 12, 44],
         )
         display_screen.write_structured_table(table)
+        display_screen.write_blank()
+        output.write("RC = restore check: imports this backup into a temporary database and checks its structure.")
+        output.write("Pending = this backup has not passed a restore check; Stale = source data changed after backup.")
         problem_parts: list[str] = []
         for label in (
             "Stale",
@@ -485,7 +488,12 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
         for entry in status_report.entries:
             reason = getattr(entry, "freshness_reason", None)
             if reason and entry.freshness in {"stale", "unknown"}:
-                body_notes.append(("info", f"{entry.database}: {reason}"))
+                body_notes.append(("info", f"{entry.database} — why {entry.freshness}:"))
+                for detail in reason.split("; "):
+                    body_notes.append(("detail", detail))
+                if entry.freshness == "stale":
+                    body_notes.append(("detail", "The existing backup is retained, but does not cover these later changes."))
+                    body_notes.append(("detail", "Mercury blocks restore checks of stale backups. Normal next step: a fresh backup, then a restore check."))
         for line in dumpability_lines:
             body_notes.append(("warn", line))
     else:
@@ -506,6 +514,8 @@ def _render_backup_screen(plan: BackupPlanDryRun, *, show_title: bool) -> None:
                 output.write(f"[INFO] {text}")
             elif kind == "hint":
                 _write_phase3b_note(text)
+            elif kind == "detail":
+                output.write(f"  - {text}")
             else:
                 display_screen.write_status("warn", text)
 

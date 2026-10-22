@@ -384,6 +384,8 @@ def test_backup_screen_next_pending_restore_check(
     out = capsys.readouterr().out
     assert "RC" in out
     assert "Next: Run restore checks" in out
+    assert "RC = restore check:" in out
+    assert "Pending = this backup has not passed a restore check" in out
     assert "Next: Back up and verify production" not in out
     assert "Next: Restore and disaster recovery [5]" not in out
     assert "Pending: scytaledroid_core_prod" not in out
@@ -517,6 +519,10 @@ def test_backup_screen_recommends_guided_when_stale(
     assert "Next: Back up and verify production [1]" in out
     assert "Back up and verify production      recommended" in out
     assert "21 rows in virustotal_sample_state" in out
+    assert "erebus_threat_intel_prod — why stale:" in out
+    assert "  - 21 rows in virustotal_sample_state" in out
+    assert "The existing backup is retained" in out
+    assert "Mercury blocks restore checks of stale backups" in out
 
 
 def test_home_recommendation_skips_expensive_backup_assessment(monkeypatch) -> None:

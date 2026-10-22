@@ -290,7 +290,7 @@ def _main_menu_body_lines(*, probe_database: bool | None = None) -> list[str]:
     primary_hint = primary_mount_hint()
     if primary_hint:
         lines.extend(["", f"Quick fix: {primary_hint}"])
-    lines.append("")
+    # The Choice prompt supplies the blank separator after the menu.
     return lines
 
 
