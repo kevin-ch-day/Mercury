@@ -22,7 +22,7 @@ def test_cutover_plan_lists_all_coordinated_writer_paths(monkeypatch) -> None:
         "backup_root", "log_dir", "repo_backup_root", "manifest_dir", "runbook_dir",
     ]
     assert all("MERCURY_DATA_USB" in change.legacy_path for change in plan.path_changes)
-    assert all(change.primary_path.startswith("/mnt/MERCURY_DATA/") for change in plan.path_changes)
+    assert all(change.primary_path.startswith(str(cfg.primary.mount_path) + "/") for change in plan.path_changes)
     assert plan.execution_available is False
     assert plan.ready_for_future_execution is False
     assert plan.runtime_blockers
