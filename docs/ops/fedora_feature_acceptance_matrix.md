@@ -77,7 +77,7 @@ Legacy UUID: `e4f0c7fb-132e-4867-9c16-5e4749f5c43a` (`MERCURY_DATA_USB`).
 | A-1-01 | Guided / full backup with `--include-dev` | 7 sources planned | Verified artifacts + receipt | Writer/mount refusal |
 | A-1-02 | Repeat backup | New exact backup IDs | Second receipt | Same-ID overwrite |
 | A-1-03 | Repo status dirty tree (via Menu 3 / CLI) | Dirty reported | Bundle still produced | Dirty labeled clean |
-| A-1-04 | Active root is V2 only | Paths under `/mnt/MERCURY_DATA_V2` | — | USB writer dependency |
+| A-1-04 | Active root is V2 only | Paths under `/mnt/MERCURY_DATA` | — | USB writer dependency |
 | A-1-05 | Bundle verification | PASS for written bundles | — | Unverified as ready |
 
 ## Menu 2 — Database sync and data movement
@@ -176,7 +176,7 @@ Distro: Fedora 43 (`ID=fedora`). Host: Dell Inspiron 15 7000 Gaming. Writer: `ME
 | A-DASH-001 | dashboard / `StateSummary` | Was false “No recent verified backup” | Fixed + unit tests | Live: `Verified · 7/26/2026 1:34 PM CDT` after repeat backup | **accepted** |
 | Doc sync | `erebus_source_capture.md`, `post_cutover_storage.md` | — | Updated to real capture + mandatory seven DBs + retired USB | — | **accepted** |
 | A-1-01 | `backup full --include-dev` | Dry-run 7 planned | Prior run `20260726T180739Z_full_backup` PASS | Receipt + sha256 on V2 | **accepted** |
-| A-1-02 | repeat `backup full --include-dev` | Dashboard shows verified timestamp | `20260726T183046Z_full_backup` PASS; new exact IDs | `/mnt/MERCURY_DATA_V2/.mercury_control/full_backup_runs/20260726T183046Z_full_backup.json` sha256 `96245dba…ad9b39` | **accepted** |
+| A-1-02 | repeat `backup full --include-dev` | Dashboard shows verified timestamp | `20260726T183046Z_full_backup` PASS; new exact IDs | `/mnt/MERCURY_DATA/.mercury_control/full_backup_runs/20260726T183046Z_full_backup.json` sha256 `96245dba…ad9b39` | **accepted** |
 | A-1-03 / A-1-05 | `repo bundle` (prior consolidation) | Dirty Mercury + Obsidian reported | Bundles verified; dirty not labeled clean | Manifest `repo_transfer_manifest_20260726_181227.json` | **accepted** |
 | A-1-04 | storage + backup paths | USB retired offline archive | Artifacts only under V2 | No USB writer dependency | **accepted** (policy) |
 | A-4-01 / A-4-02 / A-4-03 | `backup full-receipts` + `backup verify --backup-id` | Governed vs invalid separated | All 7 new IDs verify PASS | Receipt plan shows 4 governed PASS including today’s two runs | **accepted** |

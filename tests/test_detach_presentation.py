@@ -14,7 +14,7 @@ def test_safe_disconnect_intro_is_compact_and_protective() -> None:
         model="WDC WD10JDRW-11CFYS0",
         partition_device="/dev/sdb1",
         parent_device="/dev/sdb",
-        mountpoint="/mnt/MERCURY_DATA_V2",
+        mountpoint="/mnt/MERCURY_DATA",
     )
     text = "\n".join(render_safe_disconnect_intro(identity=identity))
     assert "TARGET DEVICE" in text
@@ -44,7 +44,7 @@ def test_safe_disconnect_wizard_uses_new_prompt(monkeypatch) -> None:
                 model="WDC",
                 partition_device="/dev/sdb1",
                 parent_device="/dev/sdb",
-                mountpoint="/mnt/MERCURY_DATA_V2",
+                mountpoint="/mnt/MERCURY_DATA",
             ),
             errors=[],
         ),

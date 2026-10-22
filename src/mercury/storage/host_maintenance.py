@@ -33,7 +33,7 @@ def assert_not_live_mercury_path(path: Path | str, *, purpose: str = "write") ->
         (Path.home() / ".local" / "share" / "mercury" / "transition_ledger.jsonl").resolve(),
     }
     live_roots = {
-        Path("/mnt/MERCURY_DATA_V2").resolve(),
+        Path("/mnt/MERCURY_DATA").resolve(),
         Path("/mnt/MERCURY_DATA_USB").resolve(),
     }
     if resolved in live_files:

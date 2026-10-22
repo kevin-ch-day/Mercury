@@ -15,7 +15,7 @@ This repo is a **Fedora- and Windows-supported Python CLI** for MariaDB backup, 
 - Never drop/overwrite/restore into `*_prod`.
 - **Backup writes** require a safe operator-storage environment (primary HDD after cutover); **sync/deploy/restore** additionally require explicit live-action gates.
 - Live execution is supported on **Fedora and Windows** when configured; non-Fedora Linux is seed/status only.
-- Live backup root is under the active writer (Linux default `/mnt/MERCURY_DATA_V2/mercury_backups`); repo-local `backups/` is dev-only.
+- Live backup root is under the active writer (Linux default `/mnt/MERCURY_DATA/mercury_backups`); repo-local `backups/` is dev-only.
 - Legacy `MERCURY_DATA_USB` is a retired offline archive — not a Doctor/dashboard dependency. Use `storage archive-status` for inspection only.
 - Live SQL: read-only only.
 

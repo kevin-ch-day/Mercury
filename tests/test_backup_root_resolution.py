@@ -78,7 +78,7 @@ def test_caller_provided_env_root_parameter_takes_precedence(
 def test_real_mercury_data_v2_writes_blocked_in_tests() -> None:
     with pytest.raises(RuntimeError, match="TEST ISOLATION"):
         assert_not_live_mercury_path(
-            Path("/mnt/MERCURY_DATA_V2/.mercury_control/backup_sync_sessions/x"),
+            Path("/mnt/MERCURY_DATA/.mercury_control/backup_sync_sessions/x"),
             purpose="test write",
         )
 

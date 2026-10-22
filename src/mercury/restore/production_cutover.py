@@ -428,7 +428,7 @@ def validate_production_cutover_preflight(
     smoke_runner = smoke_runner or _run_rehearsal_smoke
     git_probe = git_probe or _git_identity
     privilege_probe = privilege_probe or inspect_production_privileges
-    options = mount_options(Path("/mnt/MERCURY_DATA_V2"))
+    options = mount_options(Path("/mnt/MERCURY_DATA"))
     required_mount_options = {"ro", "nosuid", "nodev"}
     actual_mount_options = {part.strip() for part in options.split(",")}
     missing_mount_options = sorted(required_mount_options - actual_mount_options)

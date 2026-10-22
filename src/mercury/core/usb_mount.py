@@ -141,7 +141,7 @@ def inactive_operator_mount_blocker(path: Path, *, local_config: Path | None = N
     """
     If ``path`` is under the configured operator mount and that mount is not active,
     return a refusal detail. Prevents shadow writes onto the NVMe under an empty
-    mountpoint (e.g. /mnt/MERCURY_DATA_V2 when the HDD is unplugged).
+    mountpoint (e.g. /mnt/MERCURY_DATA when the HDD is unplugged).
     """
     try:
         mount = resolve_operator_mount(local_config=local_config).resolve()

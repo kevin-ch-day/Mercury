@@ -688,7 +688,7 @@ def build_document_bodies(
                 "operator_storage_label": "MERCURY_DATA_V2",
                 "operator_storage_uuid": DEFAULT_PRIMARY_UUID,
                 "filesystem_type": "ext4",
-                "mount_path_canonical": "/mnt/MERCURY_DATA_V2",
+                "mount_path_canonical": "/mnt/MERCURY_DATA",
                 "destination_mount_path": UNRESOLVED,
                 "writable_required_for_rehearsal_artifacts": True,
             },

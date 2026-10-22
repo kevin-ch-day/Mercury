@@ -23,11 +23,11 @@ from mercury.core.paths import (
 )
 
 _OPERATOR_PATH_REPLACEMENTS: tuple[tuple[str, str], ...] = (
-    ('backup_root = "/mnt/MERCURY_DATA_V2/mercury_backups"', 'backup_root = "{backup_root}"'),
-    ('log_dir = "/mnt/MERCURY_DATA_V2/mercury_logs"', 'log_dir = "{log_dir}"'),
-    ('repo_backup_root = "/mnt/MERCURY_DATA_V2/mercury_repo_backups"', 'repo_backup_root = "{repo_backup_root}"'),
-    ('manifest_dir = "/mnt/MERCURY_DATA_V2/mercury_manifests"', 'manifest_dir = "{manifest_dir}"'),
-    ('runbook_dir = "/mnt/MERCURY_DATA_V2/mercury_runbooks"', 'runbook_dir = "{runbook_dir}"'),
+    ('backup_root = "/mnt/MERCURY_DATA/mercury_backups"', 'backup_root = "{backup_root}"'),
+    ('log_dir = "/mnt/MERCURY_DATA/mercury_logs"', 'log_dir = "{log_dir}"'),
+    ('repo_backup_root = "/mnt/MERCURY_DATA/mercury_repo_backups"', 'repo_backup_root = "{repo_backup_root}"'),
+    ('manifest_dir = "/mnt/MERCURY_DATA/mercury_manifests"', 'manifest_dir = "{manifest_dir}"'),
+    ('runbook_dir = "/mnt/MERCURY_DATA/mercury_runbooks"', 'runbook_dir = "{runbook_dir}"'),
     # Pre-cutover / historical example strings (still rewritten when present).
     ('backup_root = "/mnt/MERCURY_DATA_USB/mercury_backups"', 'backup_root = "{backup_root}"'),
     ('log_dir = "/mnt/MERCURY_DATA_USB/mercury_logs"', 'log_dir = "{log_dir}"'),

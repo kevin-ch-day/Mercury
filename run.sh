@@ -35,7 +35,7 @@ Mercury's Fedora-local MariaDB socket setup belongs in config/local.toml:
   unix_socket = "/var/lib/mysql/mysql.sock"
 
 Operator-storage backup-root example:
-  /mnt/MERCURY_DATA_V2/mercury_backups
+  /mnt/MERCURY_DATA/mercury_backups
 Legacy USB archive example:
   /mnt/MERCURY_DATA_USB/mercury_backups
 EOF

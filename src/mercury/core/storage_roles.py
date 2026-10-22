@@ -24,7 +24,7 @@ CONTROL_DIRNAME: Final[str] = ".mercury_control"
 EPHEMERAL_TOP_DIRS: Final[frozenset[str]] = frozenset({"mercury_logs", "mercury_state"})
 
 # Known device defaults (operator-approved contract).
-DEFAULT_PRIMARY_MOUNT: Final[str] = "/mnt/MERCURY_DATA_V2"
+DEFAULT_PRIMARY_MOUNT: Final[str] = "/mnt/MERCURY_DATA"
 DEFAULT_PRIMARY_UUID: Final[str] = "715f29a9-2671-477b-8c8d-515d190addb9"
 DEFAULT_PRIMARY_LABEL: Final[str] = "MERCURY_DATA_V2"
 DEFAULT_LEGACY_MOUNT: Final[str] = "/mnt/MERCURY_DATA_USB"

@@ -270,7 +270,7 @@ def write_pre_cutover_storage_toml(
     include_mercury: bool = True,
 ) -> Path:
     """Write a minimal pre-cutover ``[storage]`` local.toml for tests."""
-    primary = str(primary_mount or "/mnt/MERCURY_DATA_V2")
+    primary = str(primary_mount or "/mnt/MERCURY_DATA")
     legacy = str(legacy_mount or "/mnt/MERCURY_DATA_USB")
     lines = [
         "[storage]",
@@ -384,7 +384,7 @@ def _forbid_live_mercury_path_access(monkeypatch: pytest.MonkeyPatch) -> Iterato
         (Path.home() / ".local" / "share" / "mercury" / "transition_ledger.jsonl").resolve(),
     }
     live_roots = (
-        Path("/mnt/MERCURY_DATA_V2").resolve(),
+        Path("/mnt/MERCURY_DATA").resolve(),
         Path("/mnt/MERCURY_DATA_USB").resolve(),
     )
     real_open = open

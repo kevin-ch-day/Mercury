@@ -77,7 +77,7 @@ def test_dashboard_lists_authoritative_sources_and_readiness(
     )
     monkeypatch.setattr(
         "mercury.restore.dashboard.resolve_operator_mount",
-        lambda: Path("/mnt/MERCURY_DATA_V2"),
+        lambda: Path("/mnt/MERCURY_DATA"),
     )
     monkeypatch.setattr(
         "mercury.restore.check_cleanup.discover_restorecheck_names",
@@ -241,7 +241,7 @@ def test_dashboard_render_and_back_is_readonly(
         temp_restore_schemas=[],
         latest_backup_label="7/26/2026 1:47 PM CDT",
         package_line="Phase 3B sealed",
-        runbooks_path="/mnt/MERCURY_DATA_V2/mercury_runbooks",
+        runbooks_path="/mnt/MERCURY_DATA/mercury_runbooks",
         scope_summary="7/7 backed up · prod RC 2/4",
         plans_by_database={},
     )

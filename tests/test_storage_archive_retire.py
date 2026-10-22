@@ -162,7 +162,7 @@ def test_doctor_repair_plan_skips_usb_activation_when_phased_out(monkeypatch) ->
                     identity=SimpleNamespace(is_mount=True, stale_mountpoint_entries=[]),
                 ),
                 filesystem_uuid="hdd",
-                mount_path="/mnt/MERCURY_DATA_V2",
+                mount_path="/mnt/MERCURY_DATA",
             ),
             legacy=SimpleNamespace(
                 role="legacy_archive",
@@ -270,7 +270,7 @@ def test_environment_check_hides_usb_detected_when_phased_out(monkeypatch, tmp_p
         lambda **_kwargs: SimpleNamespace(
             primary=SimpleNamespace(
                 label="MERCURY_DATA_V2",
-                mount_path=Path("/mnt/MERCURY_DATA_V2"),
+                mount_path=Path("/mnt/MERCURY_DATA"),
             ),
         ),
     )

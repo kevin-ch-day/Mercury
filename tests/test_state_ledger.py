@@ -95,13 +95,13 @@ def test_build_state_summary_counts_files(tmp_path: Path) -> None:
     )
     (state_root / "database_backups.csv").write_text(
         "timestamp,database,role,event,backup_kind,backup_id,backup_path,dump_file,schema_file,size_bytes,verified,restore_check_status,warnings\n"
-        "2026-06-09T00:00:00+00:00,android_permission_intel,shared,verify,full,id1,/mnt/MERCURY_DATA_V2/mercury_backups/db,,,,True,,\n"
-        "2026-06-09T01:00:00+00:00,erebus_threat_intel_prod,production,verify,full,id2,/mnt/MERCURY_DATA_V2/mercury_backups/db,,,,True,,\n",
+        "2026-06-09T00:00:00+00:00,android_permission_intel,shared,verify,full,id1,/mnt/MERCURY_DATA/mercury_backups/db,,,,True,,\n"
+        "2026-06-09T01:00:00+00:00,erebus_threat_intel_prod,production,verify,full,id2,/mnt/MERCURY_DATA/mercury_backups/db,,,,True,,\n",
         encoding="utf-8",
     )
     (state_root / "repo_bundles.csv").write_text(
         "timestamp,repo_name,path,branch,commit,remote,dirty,untracked_count,bundle_path,bundle_verified,bundle_size_bytes,warnings\n"
-        "2026-06-09T02:00:00+00:00,Mercury,/repo,main,abc,origin,false,0,/mnt/MERCURY_DATA_V2/mercury_repo_backups/m.bundle,True,1,\n",
+        "2026-06-09T02:00:00+00:00,Mercury,/repo,main,abc,origin,false,0,/mnt/MERCURY_DATA/mercury_repo_backups/m.bundle,True,1,\n",
         encoding="utf-8",
     )
     (state_root / "transfer_packages.csv").write_text(

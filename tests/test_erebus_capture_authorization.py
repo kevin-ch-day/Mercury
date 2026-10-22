@@ -137,7 +137,7 @@ def test_cli_execute_without_receipt_stays_locked(tmp_path: Path) -> None:
                 "fstype": "ext4",
                 "label": "MERCURY_DATA_V2",
                 "uuid": "715f29a9-2671-477b-8c8d-515d190addb9",
-                "mount_path": "/mnt/MERCURY_DATA_V2",
+                "mount_path": "/mnt/MERCURY_DATA",
                 "mount_options": "rw",
                 "free_bytes": 100,
                 "source_host": True,

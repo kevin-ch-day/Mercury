@@ -46,7 +46,7 @@ def _lsblk(
     parent: str,
     mounted: bool = True,
     extra_mounted: bool = False,
-    mountpoint: str = "/mnt/MERCURY_DATA_V2",
+    mountpoint: str = "/mnt/MERCURY_DATA",
     model: str = "WDC WD10JDRW-11CFYS0",
 ):
     part_name = partition.rsplit("/", 1)[-1]
@@ -113,7 +113,7 @@ def _runner_for(
     parent: str,
     *,
     mounted: bool = True,
-    mountpoint: str = "/mnt/MERCURY_DATA_V2",
+    mountpoint: str = "/mnt/MERCURY_DATA",
 ):
     state = {"mounted": mounted}
 
@@ -221,7 +221,7 @@ def test_uuid_resolves_as_sda_in_one_layout() -> None:
                         "name": "sda1",
                         "path": "/dev/sda1",
                         "pkname": "sda",
-                        "mountpoint": "/mnt/MERCURY_DATA_V2",
+                        "mountpoint": "/mnt/MERCURY_DATA",
                         "fstype": "ext4",
                         "label": DEFAULT_PRIMARY_LABEL,
                         "uuid": DEFAULT_PRIMARY_UUID,
@@ -268,7 +268,7 @@ def test_device_letter_reorder_same_uuid() -> None:
                             "name": "sda1",
                             "path": "/dev/sda1",
                             "pkname": "sda",
-                            "mountpoint": "/mnt/MERCURY_DATA_V2",
+                            "mountpoint": "/mnt/MERCURY_DATA",
                             "fstype": "ext4",
                             "label": DEFAULT_PRIMARY_LABEL,
                             "uuid": DEFAULT_PRIMARY_UUID,
@@ -309,13 +309,13 @@ def test_parent_with_other_mounted_partition_refuses() -> None:
 
 
 def test_kernel_only_fuser_does_not_block() -> None:
-    text = "root     kernel mount /mnt/MERCURY_DATA_V2\n"
-    assert parse_fuser_output(text, mount="/mnt/MERCURY_DATA_V2") == []
+    text = "root     kernel mount /mnt/MERCURY_DATA\n"
+    assert parse_fuser_output(text, mount="/mnt/MERCURY_DATA") == []
 
 
 def test_fuser_user_process_parsed() -> None:
     text = "secadmin  12345 F.... bash\n"
-    holders = parse_fuser_output(text, mount="/mnt/MERCURY_DATA_V2")
+    holders = parse_fuser_output(text, mount="/mnt/MERCURY_DATA")
     assert any(h.pid == 12345 for h in holders)
 
 
@@ -441,7 +441,7 @@ def test_external_writable_handle_blocks(tmp_path: Path, host_state) -> None:
         skip_log_redirect=True,
         skip_sudo_validate=True,
         lsblk_json=_lsblk(partition="/dev/sdb1", parent="/dev/sdb", mountpoint=mp),
-        fuser_text="secadmin  99999 F.... vim /mnt/MERCURY_DATA_V2/notes.txt\n",
+        fuser_text="secadmin  99999 F.... vim /mnt/MERCURY_DATA/notes.txt\n",
         lsof_text="",
     )
     assert result.result_state == DETACH_BLOCKED_OPEN_HANDLES
@@ -592,7 +592,7 @@ def test_no_lazy_forced_unmount_emitted(tmp_path: Path, host_state) -> None:
 
 
 def test_systemd_unit_name() -> None:
-    assert systemd_mount_unit_for_path("/mnt/MERCURY_DATA_V2") == "mnt-MERCURY_DATA_V2.mount"
+    assert systemd_mount_unit_for_path("/mnt/MERCURY_DATA") == "mnt-MERCURY_DATA_V2.mount"
 
 
 def test_menu_report_success_text(tmp_path: Path, host_state) -> None:
@@ -834,11 +834,11 @@ def test_uuid_letter_change_same_serial_is_drift(tmp_path: Path) -> None:
 
     a = MercuryBlockIdentity(
         "/dev/sda1", "/dev/sda", DEFAULT_PRIMARY_UUID, DEFAULT_PRIMARY_LABEL,
-        "WDC WD10JDRW", "SER1", "/mnt/MERCURY_DATA_V2", "ext4",
+        "WDC WD10JDRW", "SER1", "/mnt/MERCURY_DATA", "ext4",
     )
     b = MercuryBlockIdentity(
         "/dev/sdb1", "/dev/sdb", DEFAULT_PRIMARY_UUID, DEFAULT_PRIMARY_LABEL,
-        "WDC WD10JDRW", "SER1", "/mnt/MERCURY_DATA_V2", "ext4",
+        "WDC WD10JDRW", "SER1", "/mnt/MERCURY_DATA", "ext4",
     )
     # Same UUID/serial but different parent letter → refuse power-off without re-binding
     errs = identities_match(a, b)

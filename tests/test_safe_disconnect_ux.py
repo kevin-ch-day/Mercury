@@ -50,7 +50,7 @@ def test_safe_disconnect_wizard_two_yes_no_only(monkeypatch) -> None:
                 model="WDC WD10JDRW-11CFYS0",
                 partition_device="/dev/sdb1",
                 parent_device="/dev/sdb",
-                mountpoint="/mnt/MERCURY_DATA_V2",
+                mountpoint="/mnt/MERCURY_DATA",
             ),
             errors=[],
         ),
@@ -291,7 +291,7 @@ def test_physical_move_ready_screen_after_success(monkeypatch) -> None:
         uuid="715f29a9-2671-477b-8c8d-515d190addb9",
         partition_device="/dev/sdb1",
         parent_device="/dev/sdb",
-        mountpoint="/mnt/MERCURY_DATA_V2",
+        mountpoint="/mnt/MERCURY_DATA",
     )
     preview = DetachWizardResult(
         result_state="PREFLIGHT_OK",

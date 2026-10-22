@@ -154,7 +154,7 @@ for secrets; never commit either secret material or `config/local.toml`.
 
 Live backup execution also requires:
 - Fedora or Windows as the runtime host
-- a configured operator-storage root (this deployment: `/mnt/MERCURY_DATA_V2/mercury_backups`; use `[storage.*]`, `MERCURY_PRIMARY_MOUNT`, or `MERCURY_LEGACY_MOUNT` for other layouts)
+- a configured operator-storage root (this deployment: `/mnt/MERCURY_DATA/mercury_backups`; use `[storage.*]`, `MERCURY_PRIMARY_MOUNT`, or `MERCURY_LEGACY_MOUNT` for other layouts)
 
 Inspect both storage roots with `./run.sh storage status`. Use `./run.sh --no-logging storage audit` for a no-write configured-root integrity check; add `--hash` for byte-level comparison and `--write-report` for an atomic JSON artifact under `output/storage/`. On a completed cutover, HDD is authoritative and USB differences are historical archive evidence only. Mercury warns when the USB archive is physically mounted read-write; resolve that at the host level before transporting it. For a new migration before cutover, use `storage migrate-plan`, `storage migrate-run`, and `storage migrate-verify` before `storage cutover-readiness`.
 Repo-local `backups/` remains development-only and does not count as production protection in live/operator mode.
@@ -184,7 +184,7 @@ mercury repo offline-sync [--execute --confirm "SYNC OFFLINE REPOS"]
 
 `repo offline-sync` previews independent, runnable Git checkouts under
 `<active operator mount>/mercury_repo_clones` (currently
-`/mnt/MERCURY_DATA_V2/mercury_repo_clones`). It never changes source checkouts,
+`/mnt/MERCURY_DATA/mercury_repo_clones`). It never changes source checkouts,
 refuses to overwrite a dirty offline copy, and creates clones with
 `--no-hardlinks` so they remain usable if the source disk disappears. Execute
 only with `--confirm "SYNC OFFLINE REPOS"`.
@@ -243,11 +243,11 @@ Live deploy requires the same gates as sync/restore (`dry_run = false`, `live_ac
 ```toml
 # config/local.toml
 [mercury]
-backup_root = "/mnt/MERCURY_DATA_V2/mercury_backups"
-log_dir = "/mnt/MERCURY_DATA_V2/mercury_logs"
-repo_backup_root = "/mnt/MERCURY_DATA_V2/mercury_repo_backups"
-manifest_dir = "/mnt/MERCURY_DATA_V2/mercury_manifests"
-runbook_dir = "/mnt/MERCURY_DATA_V2/mercury_runbooks"
+backup_root = "/mnt/MERCURY_DATA/mercury_backups"
+log_dir = "/mnt/MERCURY_DATA/mercury_logs"
+repo_backup_root = "/mnt/MERCURY_DATA/mercury_repo_backups"
+manifest_dir = "/mnt/MERCURY_DATA/mercury_manifests"
+runbook_dir = "/mnt/MERCURY_DATA/mercury_runbooks"
 # Backups write when HDD operator storage + config are valid. These flags gate sync/deploy/restore:
 dry_run = true
 live_actions_enabled = false

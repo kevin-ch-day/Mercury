@@ -40,7 +40,7 @@ live_actions_enabled = false
     assert cfg.legacy.role == StorageRootRole.TRANSITION_SOURCE
     assert cfg.legacy.writable is True
     assert cfg.legacy.mount_path == Path("/mnt/MERCURY_DATA_USB")
-    assert cfg.primary.mount_path == Path("/mnt/MERCURY_DATA_V2")
+    assert cfg.primary.mount_path == Path("/mnt/MERCURY_DATA")
     assert cfg.cutover_complete is False
 
 
@@ -55,7 +55,7 @@ migration_state = "not_started"
 [storage.primary]
 role = "canonical"
 label = "MERCURY_DATA_V2"
-mount_path = "/mnt/MERCURY_DATA_V2"
+mount_path = "/mnt/MERCURY_DATA"
 filesystem_uuid = "715f29a9-2671-477b-8c8d-515d190addb9"
 filesystem_type = "ext4"
 writable = true
@@ -95,7 +95,7 @@ active_write_role = "legacy"
 migration_state = "not_started"
 
 [storage.primary]
-mount_path = "/mnt/MERCURY_DATA_V2"
+mount_path = "/mnt/MERCURY_DATA"
 filesystem_uuid = "715f29a9-2671-477b-8c8d-515d190addb9"
 
 [storage.legacy]
@@ -109,7 +109,7 @@ filesystem_uuid = "e4f0c7fb-132e-4867-9c16-5e4749f5c43a"
     assert cfg.active_write_role == StorageWriteRole.PRIMARY
     assert cfg.legacy.role == StorageRootRole.LEGACY_ARCHIVE
     assert cfg.legacy.writable is False
-    assert cfg.derived_paths()["operator_mount"] == "/mnt/MERCURY_DATA_V2"
+    assert cfg.derived_paths()["operator_mount"] == "/mnt/MERCURY_DATA"
 
 
 def test_mercury_usb_mount_only_affects_legacy_before_cutover(
@@ -123,7 +123,7 @@ def test_mercury_usb_mount_only_affects_legacy_before_cutover(
     monkeypatch.delenv(ENV_PRIMARY_MOUNT, raising=False)
     cfg = load_storage_config(local_config=cfg_path, warn_deprecated=False)
     assert cfg.legacy.mount_path == Path("/mnt/custom_usb").resolve()
-    assert cfg.primary.mount_path == Path("/mnt/MERCURY_DATA_V2")
+    assert cfg.primary.mount_path == Path("/mnt/MERCURY_DATA")
     assert cfg.usb_mount_deprecated_override is True
 
 
@@ -139,7 +139,7 @@ active_write_role = "primary"
 migration_state = "cutover_complete"
 
 [storage.primary]
-mount_path = "/mnt/MERCURY_DATA_V2"
+mount_path = "/mnt/MERCURY_DATA"
 filesystem_uuid = "715f29a9-2671-477b-8c8d-515d190addb9"
 
 [storage.legacy]
@@ -154,7 +154,7 @@ filesystem_uuid = "e4f0c7fb-132e-4867-9c16-5e4749f5c43a"
     monkeypatch.delenv(ENV_PRIMARY_MOUNT, raising=False)
     cfg = load_storage_config(local_config=cfg_path, warn_deprecated=False)
     assert cfg.active_write_role == StorageWriteRole.PRIMARY
-    assert cfg.primary.mount_path == Path("/mnt/MERCURY_DATA_V2")
+    assert cfg.primary.mount_path == Path("/mnt/MERCURY_DATA")
     assert cfg.legacy.mount_path == Path("/mnt/MERCURY_DATA_USB")
 
 
@@ -208,7 +208,7 @@ def test_storage_identity_schema_roundtrip() -> None:
         storage_role="canonical",
         filesystem_uuid="715f29a9-2671-477b-8c8d-515d190addb9",
         filesystem_label="MERCURY_DATA_V2",
-        mount_path="/mnt/MERCURY_DATA_V2",
+        mount_path="/mnt/MERCURY_DATA",
         filesystem_type="ext4",
         device_model="WDC W",
         device_serial="WD-WX5",

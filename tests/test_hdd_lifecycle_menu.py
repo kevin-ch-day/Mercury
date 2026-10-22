@@ -82,7 +82,7 @@ def _snap(
         device_model="WDC WD10JDRW-11CFYS0",
         device_uuid="715f29a9-2671-477b-8c8d-515d190addb9",
         filesystem="ext4",
-        mount="/mnt/MERCURY_DATA_V2"
+        mount="/mnt/MERCURY_DATA"
         if state
         not in {
             StorageLifecycleState.DETACHED,
@@ -330,7 +330,7 @@ def test_assess_lifecycle_writes_disabled_ready(
                 model="WDC WD10JDRW",
                 uuid="715f29a9-2671-477b-8c8d-515d190addb9",
                 fstype="ext4",
-                mountpoint="/mnt/MERCURY_DATA_V2",
+                mountpoint="/mnt/MERCURY_DATA",
                 partition_device="/dev/mock",
                 parent_device="/dev/mock-parent",
             ),

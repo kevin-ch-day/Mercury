@@ -7,7 +7,7 @@ Mercury recovery deployment assumes the host is already set up (MariaDB running,
 ## When to use
 
 - Prod/shared databases are **missing** on the new server.
-- Mercury operator storage is mounted (this deployment: HDD at `/mnt/MERCURY_DATA_V2`).
+- Mercury operator storage is mounted (this deployment: HDD at `/mnt/MERCURY_DATA`).
 - Backups are **verified** (manifest + checksum + size).
 
 This lane is **not** prod→dev sync. It recreates protected databases on the local host from artifact files.
@@ -52,7 +52,7 @@ Live execution requires in `config/local.toml`:
 [mercury]
 dry_run = false
 live_actions_enabled = true
-backup_root = "/mnt/MERCURY_DATA_V2/mercury_backups"
+backup_root = "/mnt/MERCURY_DATA/mercury_backups"
 ```
 
 ## Workflow phases

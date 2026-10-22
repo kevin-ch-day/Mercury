@@ -157,7 +157,7 @@ CREATE VIEW `v_pi` AS SELECT id FROM `android_permission_intel`.`tokens`;
     policy = ExecutionPolicy(
         dry_run=False,
         live_actions_enabled=True,
-        backup_root=Path("/mnt/MERCURY_DATA_V2/mercury_backups"),
+        backup_root=Path("/mnt/MERCURY_DATA/mercury_backups"),
         config_path=policy_file,
     )
     # Use the real importer and live schema verification; inspect data before normal cleanup.

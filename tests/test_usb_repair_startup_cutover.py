@@ -56,12 +56,12 @@ def test_primary_mount_hint_when_hdd_not_ready() -> None:
             report = MagicMock()
             report.primary.validation.ok = False
             report.primary.filesystem_uuid = "715f29a9-2671-477b-8c8d-515d190addb9"
-            report.primary.mount_path = "/mnt/MERCURY_DATA_V2"
+            report.primary.mount_path = "/mnt/MERCURY_DATA"
             build.return_value = report
             hint = repair_startup.primary_mount_hint()
     assert hint is not None
     assert "715f29a9" in hint
-    assert "/mnt/MERCURY_DATA_V2" in hint
+    assert "/mnt/MERCURY_DATA" in hint
 
 
 def test_setup_hints_prefer_storage_validate_after_cutover() -> None:
@@ -155,16 +155,16 @@ def test_doctor_repair_plan_suggests_usb_ro_remount_after_cutover(monkeypatch) -
         key="primary",
         role="canonical",
         label="MERCURY_DATA_V2",
-        mount_path="/mnt/MERCURY_DATA_V2",
+        mount_path="/mnt/MERCURY_DATA",
         filesystem_uuid="715f",
         writable_policy=True,
         validation=MountValidationResult(
             code=MountValidationCode.OK,
-            mount_path=Path("/mnt/MERCURY_DATA_V2"),
+            mount_path=Path("/mnt/MERCURY_DATA"),
             expected_uuid="715f",
             expected_fstype="ext4",
             identity=MountIdentity(
-                mount_path=Path("/mnt/MERCURY_DATA_V2"),
+                mount_path=Path("/mnt/MERCURY_DATA"),
                 path_exists=True,
                 is_mount=True,
                 mounted_uuid="715f",

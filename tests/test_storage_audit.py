@@ -36,8 +36,8 @@ def test_hash_compare_trees_reports_durable_and_ephemeral_differences(tmp_path) 
 
 
 def test_mount_targets_from_findmnt_output_detects_duplicate_mounts() -> None:
-    assert mount_targets_from_findmnt_output("/mnt/MERCURY_DATA_V2\n/run/media/secadmin/MERCURY_DATA_V2\n") == (
-        "/mnt/MERCURY_DATA_V2",
+    assert mount_targets_from_findmnt_output("/mnt/MERCURY_DATA\n/run/media/secadmin/MERCURY_DATA_V2\n") == (
+        "/mnt/MERCURY_DATA",
         "/run/media/secadmin/MERCURY_DATA_V2",
     )
 

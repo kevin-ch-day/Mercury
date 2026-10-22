@@ -21,7 +21,7 @@ from mercury.core.storage_validate import MountValidationResult
 def test_suggested_fstab_line_uses_primary_uuid() -> None:
     line = suggested_primary_fstab_line(default_storage_config())
     assert "715f29a9-2671-477b-8c8d-515d190addb9" in line
-    assert "/mnt/MERCURY_DATA_V2" in line
+    assert "/mnt/MERCURY_DATA" in line
     assert "nofail" in line
 
 
@@ -213,7 +213,7 @@ def test_print_storage_status_smoke(capsys, tmp_path: Path) -> None:
 
 def test_physical_mount_mode_handles_none_options() -> None:
     identity = MountIdentity(
-        mount_path=Path("/mnt/MERCURY_DATA_V2"),
+        mount_path=Path("/mnt/MERCURY_DATA"),
         path_exists=True,
         is_mount=False,
         mounted_uuid=None,
@@ -223,7 +223,7 @@ def test_physical_mount_mode_handles_none_options() -> None:
     )
     validation = MountValidationResult(
         code=MountValidationCode.NOT_A_MOUNT,
-        mount_path=Path("/mnt/MERCURY_DATA_V2"),
+        mount_path=Path("/mnt/MERCURY_DATA"),
         expected_uuid="715f29a9-2671-477b-8c8d-515d190addb9",
         expected_fstype="ext4",
         identity=identity,
@@ -233,7 +233,7 @@ def test_physical_mount_mode_handles_none_options() -> None:
         key="primary",
         role="canonical",
         label="MERCURY_DATA_V2",
-        mount_path="/mnt/MERCURY_DATA_V2",
+        mount_path="/mnt/MERCURY_DATA",
         filesystem_uuid="715f29a9-2671-477b-8c8d-515d190addb9",
         writable_policy=True,
         validation=validation,
@@ -248,7 +248,7 @@ def test_physical_mount_mode_handles_none_options() -> None:
 
 def test_read_only_physical_mount_is_not_reported_as_writable() -> None:
     identity = MountIdentity(
-        mount_path=Path("/mnt/MERCURY_DATA_V2"), path_exists=True, is_mount=True,
+        mount_path=Path("/mnt/MERCURY_DATA"), path_exists=True, is_mount=True,
         mounted_uuid="715f29a9-2671-477b-8c8d-515d190addb9", mounted_fstype="ext4",
         mount_options="ro,nosuid,nodev", writable=False,
     )

@@ -66,7 +66,7 @@ def _mounted_identity(**kwargs):
         model="WDC WD10JDRW",
         uuid="715f29a9-2671-477b-8c8d-515d190addb9",
         fstype="ext4",
-        mountpoint="/mnt/MERCURY_DATA_V2",
+        mountpoint="/mnt/MERCURY_DATA",
         partition_device="/dev/mock1",
         parent_device="/dev/mock",
     )
@@ -109,7 +109,7 @@ def test_isolation_refuses_live_host_paths(hermetic_root: Path) -> None:
     with pytest.raises(RuntimeError, match="TEST ISOLATION"):
         assert_not_live_mercury_path(live, purpose="test")
     with pytest.raises(RuntimeError, match="TEST ISOLATION"):
-        assert_not_live_mercury_path("/mnt/MERCURY_DATA_V2/foo", purpose="test")
+        assert_not_live_mercury_path("/mnt/MERCURY_DATA/foo", purpose="test")
     # Hermetic ledger is under tmp — allowed.
     append_transition_ledger({"transition": "noop", "result": "SUCCESS"})
     ledger = default_transition_ledger_path()

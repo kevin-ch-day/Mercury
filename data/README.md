@@ -19,7 +19,7 @@ prefers:
 
 Typical mounts:
 
-- Canonical primary: `/mnt/MERCURY_DATA_V2/mercury_state/`
+- Canonical primary: `/mnt/MERCURY_DATA/mercury_state/`
 - Retired legacy archive (not a normal dependency): `/mnt/MERCURY_DATA_USB/mercury_state/`
 
 Inspect roles with `./run.sh storage status` or `./run.sh storage archive-status`.

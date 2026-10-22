@@ -8,7 +8,7 @@ from .models import ErebusCaptureStorageIdentity
 
 EXPECTED_LABEL = "MERCURY_DATA_V2"
 EXPECTED_UUID = "715f29a9-2671-477b-8c8d-515d190addb9"
-EXPECTED_MOUNT = "/mnt/MERCURY_DATA_V2"
+EXPECTED_MOUNT = "/mnt/MERCURY_DATA"
 
 
 @dataclass(frozen=True)

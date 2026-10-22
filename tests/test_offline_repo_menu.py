@@ -10,7 +10,7 @@ def test_offline_repo_sync_uses_a_yes_no_confirmation(monkeypatch) -> None:
     prompts_seen: list[tuple[str, bool | None]] = []
 
     class _Plan:
-        root = "/mnt/MERCURY_DATA_V2/mercury_repo_clones"
+        root = "/mnt/MERCURY_DATA/mercury_repo_clones"
 
     monkeypatch.setattr(interactive_menu, "offline_clone_plan", lambda: _Plan())
     monkeypatch.setattr(

@@ -104,7 +104,7 @@ def test_full_backup_global_refusal_before_dev_prompt(
                 uuid="715f29a9-2671-477b-8c8d-515d190addb9",
                 label="MERCURY_DATA_V2",
                 fstype="ext4",
-                mountpoint="/mnt/MERCURY_DATA_V2",
+                mountpoint="/mnt/MERCURY_DATA",
                 parent_device="/dev/sdb",
                 partition_device="/dev/sdb1",
             ),
@@ -338,11 +338,11 @@ def test_resolve_log_dir_redirects_off_hdd_when_writes_disabled(
     monkeypatch.delenv("MERCURY_LOG_DIR", raising=False)
     monkeypatch.setattr(
         "mercury.logging.config.load_mercury_section",
-        lambda: {"log_dir": "/mnt/MERCURY_DATA_V2/mercury_logs"},
+        lambda: {"log_dir": "/mnt/MERCURY_DATA/mercury_logs"},
     )
     monkeypatch.setattr(
         "mercury.core.storage_roles.DEFAULT_PRIMARY_MOUNT",
-        "/mnt/MERCURY_DATA_V2",
+        "/mnt/MERCURY_DATA",
     )
     resolved = resolve_log_dir()
     assert resolved == host_logs.resolve()

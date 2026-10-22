@@ -172,7 +172,7 @@ Then: `export MERCURY_MARIADB_PASSWORD=...`
 [mercury]
 # Backup writes use environment checks (Fedora/Windows + mounted operator root).
 # dry_run / live_actions_enabled gate sync, deploy, and restore — not routine backups.
-backup_root = "/mnt/MERCURY_DATA_V2/mercury_backups"
+backup_root = "/mnt/MERCURY_DATA/mercury_backups"
 
 [storage]
 active_write_role = "primary"
@@ -180,7 +180,7 @@ migration_state = "cutover_complete"
 legacy_runtime_dependency = "none"
 ```
 
-The active write mount is `/mnt/MERCURY_DATA_V2` (`MERCURY_DATA_V2`). Legacy `MERCURY_DATA_USB` is a retired offline archive only — see `docs/ops/post_cutover_storage.md`. Repo-local `backups/` are development artifacts only and do not count as production protection. Inspect roots with `mercury storage status` / `storage archive-status`.
+The active write mount is `/mnt/MERCURY_DATA` (`MERCURY_DATA_V2`). Legacy `MERCURY_DATA_USB` is a retired offline archive only — see `docs/ops/post_cutover_storage.md`. Repo-local `backups/` are development artifacts only and do not count as production protection. Inspect roots with `mercury storage status` / `storage archive-status`.
 
 Never commit passwords or `config/local.toml`.
 

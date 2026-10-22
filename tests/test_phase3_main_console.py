@@ -329,7 +329,7 @@ def test_menu_snapshot_does_not_depend_on_live_host(monkeypatch, tmp_path: Path)
     monkeypatch.setattr("mercury.menu.main_display.dashboard_rows", lambda **_k: ["  Recommended"])
     text = menu_display.render_main_menu(probe_database=False)
     assert "Backup production" in text or "Reconnect" in text
-    assert "/mnt/MERCURY_DATA_V2" not in text
+    assert "/mnt/MERCURY_DATA" not in text
 
 
 def test_capability_routing_matrix_reachable() -> None:

@@ -24,7 +24,7 @@ The capture was written, validated, and consumed as package authority:
 | Preview state | `CONSUMED` |
 | Real execution | `true` (not synthetic) |
 | Authorization receipt SHA-256 | `5c1c78f116cee6cceced3eec22cd6b313b7ce16f090ef885e50ea1ac4e1755d6` |
-| Control path | `/mnt/MERCURY_DATA_V2/.mercury_control/validation/erebus/erebus_destination_candidate_05f3abc_20260724T185539Z` |
+| Control path | `/mnt/MERCURY_DATA/.mercury_control/validation/erebus/erebus_destination_candidate_05f3abc_20260724T185539Z` |
 
 Historical reference capture `erebus_destination_candidate_3f1bb5b_20260722T150930Z`
 remains preserved for display only and is not package authority.
