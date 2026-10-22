@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Mercury repository backup at 20:00 local time
+
+[Timer]
+OnCalendar=*-*-* 20:00:00
+Persistent=true
+RandomizedDelaySec=5m
+Unit=mercury-repo-sync.service
+
+[Install]
+WantedBy=timers.target

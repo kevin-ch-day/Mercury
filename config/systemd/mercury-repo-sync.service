@@ -1,0 +1,17 @@
+[Unit]
+Description=Mercury verified repository mirrors and filtered work snapshots
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/GitHub/Mercury
+EnvironmentFile=%h/.config/mercury/repo-sync.conf
+Environment=MERCURY_LOGGING=0
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=GIT_OPTIONAL_LOCKS=0
+UMask=0077
+TimeoutStartSec=2h
+TimeoutStopSec=30s
+KillMode=control-group
+StandardOutput=journal
+StandardError=journal
+ExecStart=%h/GitHub/Mercury/.venv/bin/python -B -m mercury.repo.scheduled_sync --mount ${MERCURY_SYNC_MOUNT} --uuid ${MERCURY_SYNC_UUID}
