@@ -565,7 +565,10 @@ def execute_backup(
         if manifest_dump_file is None:
             raise BackupExecutionError("Backup manifest requires a dump artifact name")
 
+        from mercury.backup.verification import collect_verification_identity
+        identity = collect_verification_identity(config) if live or dump_runner is None else {"requested_user": config.user}
         manifest = build_backup_manifest(
+            **identity,
             backup_id=f"{database}-{kind}-{layout.timestamp}",
             database=database,
             backup_kind=kind,

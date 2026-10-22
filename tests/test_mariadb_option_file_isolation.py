@@ -103,8 +103,9 @@ def test_control_defaults_extra_file_is_overridden_by_home_mycnf(hostile_home: P
         ),
     ],
 )
-def test_dedicated_credentials_ignore_home_mycnf(hostile_home: Path, build_argv) -> None:
-    cfg = _restore_config()
+@pytest.mark.parametrize("password", [DEDICATED_PASSWORD, ""])
+def test_dedicated_credentials_ignore_home_mycnf(hostile_home: Path, build_argv, password) -> None:
+    cfg = _restore_config(password=password)
     argv = build_argv(cfg)
     _client_tool_available(argv[0])
     with client_process_credentials(cfg) as (env, extra):
@@ -112,7 +113,7 @@ def test_dedicated_credentials_ignore_home_mycnf(hostile_home: Path, build_argv)
         assert live[1].startswith("--defaults-file=")
         assert not any(a.startswith("--defaults-extra-file") for a in live)
         out = _print_defaults(live, env)
-    assert f"--password={DEDICATED_PASSWORD}" in out
+    assert f"--password={password}" in out
     assert HOME_PASSWORD not in out
     assert HOME_USER not in out
     assert "home-mycnf-host" not in out
@@ -123,9 +124,23 @@ def test_dedicated_credentials_ignore_home_mycnf(hostile_home: Path, build_argv)
     assert "--socket=/var/lib/mysql/mysql.sock" in live
 
 
-def test_passwordless_socket_lane_adds_no_defaults_file(hostile_home: Path) -> None:
-    cfg = _restore_config(user="systemadmin", password="")
-    argv = build_client_argv(cfg, "SELECT 1")
-    with client_process_credentials(cfg) as (_env, extra):
-        assert extra == []
-        assert prepend_client_defaults(argv, extra) == argv
+@pytest.mark.parametrize("password", [DEDICATED_PASSWORD, ""])
+def test_exclusive_defaults_file_is_private_and_has_no_includes(hostile_home, password):
+    import stat
+    cfg = _restore_config(password=password)
+    with client_process_credentials(cfg) as (_, extra):
+        path = Path(extra[0].split("=", 1)[1])
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        content = path.read_text()
+        assert content == f'[client]\npassword="{password}"\n'
+        assert "!include" not in content  # No /etc/my.cnf.d or other ambient includes.
+    assert not path.exists()
+
+
+def test_host_repair_has_only_exclusive_mariadb_invocations():
+    script = (Path(__file__).resolve().parents[1] / "scripts/repair-mercury-host.sh").read_text()
+    calls = [line.strip() for line in script.splitlines() if line.strip().startswith("mariadb ")]
+    assert calls == ['mariadb --defaults-file="$MERCURY_REPAIR_DEFAULTS" <<EOF']
+    assert "umask 077" in script
+    assert 'trap ' in script
+    assert 'password=""' in script

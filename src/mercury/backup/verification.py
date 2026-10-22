@@ -48,6 +48,10 @@ class BackupVerificationResult(BaseModel):
     database: str
     backup_kind: BackupKind
     manifest_path: str
+    requested_user: str | None = None
+    authenticated_user: str | None = None
+    server_hostname: str | None = None
+    identity_matches: bool | None = None
     checked_at: str | None = None
     manifest_exists: bool = False
     dump_exists: bool = False
@@ -184,6 +188,17 @@ def _load_manifest(path: Path) -> BackupManifest | None:
         return None
 
 
+def collect_verification_identity(config) -> dict[str, str]:
+    """Record the verification connection identity, not a claim about an old dump."""
+    from mercury.database.mariadb.session import readonly_scalar
+    value = readonly_scalar(config, "SELECT CONCAT(CURRENT_USER(), CHAR(9), @@hostname)")
+    fields = value.split("\t")
+    if len(fields) != 2 or not all(fields):
+        raise ValueError("Database verification identity is unavailable")
+    return {"requested_user": config.user, "authenticated_user": fields[0],
+            "server_hostname": fields[1]}
+
+
 def verify_backup_artifacts(
     backup_dir: Path,
     *,
@@ -300,6 +315,13 @@ def verify_backup_artifacts(
         database=resolved_db,
         backup_kind=resolved_kind,
         manifest_path=str(manifest_path),
+        requested_user=manifest.requested_user if manifest else None,
+        authenticated_user=manifest.authenticated_user if manifest else None,
+        server_hostname=manifest.server_hostname if manifest else None,
+        identity_matches=(
+            manifest.authenticated_user.rsplit("@", 1)[0] == manifest.requested_user
+            if manifest and manifest.authenticated_user and manifest.requested_user else None
+        ),
         checked_at=datetime.now(timezone.utc).isoformat(),
         manifest_exists=manifest_exists,
         dump_exists=dump_exists,

@@ -42,6 +42,9 @@ class BackupManifest(BaseModel):
     notes: str = ""
     # Content proof is absent from historical manifests.  New live backups
     # attach it only after the dump has been checked against live metadata.
+    requested_user: str | None = None
+    authenticated_user: str | None = None
+    server_hostname: str | None = None
     dump_options: list[str] = Field(default_factory=list)
     object_contract: dict[str, object] | None = None
     restore_requirements: dict[str, object] | None = None
@@ -65,6 +68,9 @@ def build_backup_manifest(
     schema_size_bytes: int | None = None,
     notes: str = "",
     verified: bool = False,
+    requested_user: str | None = None,
+    authenticated_user: str | None = None,
+    server_hostname: str | None = None,
     dump_options: list[str] | None = None,
     object_contract: dict[str, object] | None = None,
     restore_requirements: dict[str, object] | None = None,
@@ -87,6 +93,9 @@ def build_backup_manifest(
         live_actions_enabled=live_actions_enabled,
         dry_run=dry_run,
         notes=notes,
+        requested_user=requested_user,
+        authenticated_user=authenticated_user,
+        server_hostname=server_hostname,
         dump_options=dump_options or [],
         object_contract=object_contract,
         restore_requirements=restore_requirements,

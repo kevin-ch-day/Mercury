@@ -149,13 +149,10 @@ def client_process_credentials(
     A configured password is delivered through an exclusive ``--defaults-file``
     so ``~/.my.cnf`` and system option files cannot override the dedicated
     credential (they are read after ``--defaults-extra-file`` and would win).
-    Passwordless socket lanes keep normal option-file resolution.
+    Passwordless connections use an explicit empty password in the same file.
     """
     env = os.environ.copy()
     env.pop("MYSQL_PWD", None)
-    if not config.password:
-        yield env, []
-        return
     fd, path = tempfile.mkstemp(prefix="mercury-my-", suffix=".cnf")
     try:
         if hasattr(os, "fchmod"):

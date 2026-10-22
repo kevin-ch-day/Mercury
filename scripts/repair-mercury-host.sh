@@ -20,7 +20,12 @@ fi
 
 echo
 echo "Applying MariaDB deployment grants for ${USER_NAME}..."
-mariadb <<EOF
+# Exclusive options prevent ambient user/system client credentials being loaded.
+umask 077
+MERCURY_REPAIR_DEFAULTS=$(mktemp "${TMPDIR:-/tmp}/mercury-my-XXXXXXXX.cnf")
+trap 'rm -f -- "$MERCURY_REPAIR_DEFAULTS"' EXIT
+printf '[client]\npassword=""\n' > "$MERCURY_REPAIR_DEFAULTS"
+mariadb --defaults-file="$MERCURY_REPAIR_DEFAULTS" <<EOF
 GRANT CREATE, INSERT, UPDATE, DELETE, ALTER, INDEX,
   CREATE TEMPORARY TABLES, CREATE VIEW, CREATE ROUTINE,
   ALTER ROUTINE, EXECUTE, TRIGGER, EVENT
