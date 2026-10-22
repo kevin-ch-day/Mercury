@@ -12,6 +12,41 @@ from mercury.backup.interactive_menu import run_backup_menu
 from mercury.core.execution_policy import ExecutionPolicy
 
 
+@pytest.mark.parametrize("include_dev_targets", [False, True])
+def test_backup_screen_lists_each_production_source_once(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    include_dev_targets: bool,
+) -> None:
+    from mercury.backup.interactive_menu import _backup_screen_rows
+    from mercury.database.backup_planning import build_backup_plan
+
+    sources = [
+        "android_permission_intel",
+        "erebus_threat_intel_prod",
+        "erebus_provider_secrets_prod",
+        "scytaledroid_core_prod",
+        "obsidiandroid_core_prod",
+    ]
+    names = list(sources)
+    if include_dev_targets:
+        names.extend([
+            "android_permission_intel_dev",
+            "erebus_threat_intel_dev",
+            "scytaledroid_core_dev",
+        ])
+    monkeypatch.setattr(
+        "mercury.backup.interactive_menu.load_execution_policy",
+        lambda: ExecutionPolicy(
+            dry_run=True, live_actions_enabled=False, backup_root=tmp_path / "backups"
+        ),
+    )
+    rows = _backup_screen_rows(build_backup_plan(names), status_entries={})
+    displayed = [row[0] for row in rows]
+    assert sorted(displayed) == sorted(sources)
+    assert displayed[0] == "android_permission_intel"
+
+
 def test_run_backup_menu_non_interactive(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

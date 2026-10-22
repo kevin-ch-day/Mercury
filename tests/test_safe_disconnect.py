@@ -592,7 +592,7 @@ def test_no_lazy_forced_unmount_emitted(tmp_path: Path, host_state) -> None:
 
 
 def test_systemd_unit_name() -> None:
-    assert systemd_mount_unit_for_path("/mnt/MERCURY_DATA") == "mnt-MERCURY_DATA_V2.mount"
+    assert systemd_mount_unit_for_path("/mnt/MERCURY_DATA") == "mnt-MERCURY_DATA.mount"
 
 
 def test_menu_report_success_text(tmp_path: Path, host_state) -> None:

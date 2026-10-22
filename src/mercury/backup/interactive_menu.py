@@ -296,8 +296,13 @@ def _backup_screen_rows(
 
     blocked = dumpability_blocked or set()
     rows: list[list[str]] = []
+    displayed_names: set[str] = set()
 
     def append_row(name: str) -> None:
+        # Shared authority sources can also be approved sync-pair sources.
+        if name in displayed_names:
+            return
+        displayed_names.add(name)
         entry = status_entries.get(name)
         record = latest_records.get(name)
         freshness = "Undumpable" if name in blocked else _freshness_label(entry)
