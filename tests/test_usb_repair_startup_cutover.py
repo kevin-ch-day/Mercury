@@ -242,3 +242,11 @@ def test_dashboard_skips_usb_repair_banner_after_cutover() -> None:
             else:
                 rows.append("USB repair")
     assert rows == []
+
+
+def test_usb_repair_hint_skips_environment_probe_after_cutover(monkeypatch) -> None:
+    monkeypatch.setattr(repair_startup, "_hdd_writer_active", lambda: True)
+    with patch.object(repair_startup, "build_environment_status") as build:
+        assert repair_startup.usb_repair_needed() is False
+        assert repair_startup.main_menu_usb_repair_hint() is None
+        build.assert_not_called()

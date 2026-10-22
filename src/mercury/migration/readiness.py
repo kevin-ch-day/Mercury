@@ -118,10 +118,7 @@ def _repo_checks() -> tuple[MigrationCheck, MigrationCheck, MigrationCheck, Migr
 
 def build_migration_readiness(*, probe_database: bool = True, detailed: bool = True) -> MigrationReadinessReport:
     """Build evidence only; never copies, packages, mounts, or changes policy state."""
-    from mercury.backup.status import build_backup_status_report
     from mercury.core.storage_roots import load_storage_config
-    from mercury.storage.audit import find_mount_targets
-    from mercury.storage.migrate_verify import verify_migration
     from mercury.storage.report import build_storage_status_report
 
     storage = build_storage_status_report()
@@ -197,6 +194,10 @@ def build_migration_readiness(*, probe_database: bool = True, detailed: bool = T
             ),
             checks=tuple(checks),
         )
+
+    from mercury.backup.status import build_backup_status_report
+    from mercury.storage.audit import find_mount_targets
+    from mercury.storage.migrate_verify import verify_migration
 
     if config.cutover_complete:
         from mercury.migration.generation import build_active_hdd_generation, read_archive_receipt, read_cutover_receipt

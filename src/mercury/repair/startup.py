@@ -68,6 +68,9 @@ def usb_repair_reason(env: EnvironmentStatus) -> str | None:
 
 
 def usb_repair_needed(*, probe_database: bool = False) -> bool:
+    # Retired USB storage must not trigger environment probes on every render.
+    if detect_platform().is_windows or _hdd_writer_active():
+        return False
     return usb_repair_reason(build_environment_status(probe_database=probe_database)) is not None
 
 
