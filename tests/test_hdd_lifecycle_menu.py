@@ -581,3 +581,36 @@ def test_legacy_usb_never_selected_as_mercury_hdd() -> None:
         return
     assert resolved.identity.uuid == DEFAULT_PRIMARY_UUID
     assert "USB" not in (resolved.identity.label or "").upper()
+
+
+def test_recommendation_uses_live_device_result_instead_of_saved_host_state() -> None:
+    from mercury.menu.recommendation import build_main_menu_recommendation
+    from mercury.storage.block_device import BlockResolveResult
+
+    calls = []
+
+    def absent_device(**kwargs):
+        calls.append(kwargs)
+        return BlockResolveResult(ok=False, errors=["Device absent"])
+
+    host = HostMaintenanceState(storage_availability="mounted", writes_allowed=True)
+    rec = build_main_menu_recommendation(host=host, resolve_fn=absent_device)
+    assert calls == [{"require_mounted": False}]
+    assert rec.software_only is True
+    assert rec.recommended_action == "attach"
+
+
+def test_recommendation_rejects_live_identity_mismatch() -> None:
+    from mercury.menu.recommendation import build_main_menu_recommendation
+    from mercury.storage.block_device import BlockResolveResult
+
+    identity = SimpleNamespace(
+        label="unexpected", model="disk", uuid="wrong-uuid",
+        fstype="ext4", mountpoint="/mnt/example",
+    )
+    host = HostMaintenanceState(storage_availability="mounted", writes_allowed=True)
+    rec = build_main_menu_recommendation(
+        host=host,
+        resolve_fn=lambda **kwargs: BlockResolveResult(ok=True, identity=identity),
+    )
+    assert rec.recommended_action == "diagnose"

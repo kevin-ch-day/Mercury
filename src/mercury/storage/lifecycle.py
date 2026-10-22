@@ -93,6 +93,7 @@ def assess_storage_lifecycle(
     host: HostMaintenanceState | None = None,
     expected_uuid: str = DEFAULT_PRIMARY_UUID,
     probe_disconnect: bool = True,
+    resolve_fn=None,
 ) -> StorageLifecycleSnapshot:
     """Derive lifecycle state from host maintenance + block device (observe-only)."""
     host = host or load_host_maintenance()
@@ -110,7 +111,8 @@ def assess_storage_lifecycle(
     try:
         from mercury.storage.block_device import resolve_mercury_block_device
 
-        resolved = resolve_mercury_block_device(require_mounted=False)
+        resolve = resolve_fn or resolve_mercury_block_device
+        resolved = resolve(require_mounted=False)
         if resolved.identity:
             device_found = True
             ident = resolved.identity

@@ -166,6 +166,7 @@ def test_recommendation_restore_check_when_fresh_pending(
     recommendation = build_main_menu_recommendation(
         host=_writer_host(),
         lifecycle=_writer_lifecycle(),
+        inspect_backups=True,
     )
     assert recommendation.recommended_action == MAIN_RECOVERY
     assert recommendation.recommended_action != MAIN_BACKUP
@@ -250,6 +251,7 @@ def test_recommendation_backup_when_stale(monkeypatch: pytest.MonkeyPatch) -> No
     recommendation = build_main_menu_recommendation(
         host=_writer_host(),
         lifecycle=_writer_lifecycle(),
+        inspect_backups=True,
     )
     assert recommendation.recommended_action == MAIN_BACKUP
 
@@ -511,3 +513,32 @@ def test_backup_screen_recommends_guided_when_stale(
     out = capsys.readouterr().out
     assert "Next: Back up and verify production [1]" in out
     assert "Back up and verify production      recommended" in out
+
+
+def test_home_recommendation_skips_expensive_backup_assessment(monkeypatch) -> None:
+    def unexpected(*args, **kwargs):
+        pytest.fail("Home navigation must not hash dumps or query backup inventory")
+
+    monkeypatch.setattr(
+        "mercury.backup.freshness.assess_operator_backup_next", unexpected
+    )
+    monkeypatch.setattr(
+        "mercury.core.runtime.should_probe_database_status", unexpected
+    )
+    recommendation = build_main_menu_recommendation(
+        host=_writer_host(), lifecycle=_writer_lifecycle()
+    )
+    assert recommendation.recommended_action == MAIN_BACKUP
+    assert recommendation.backup_state == "unknown"
+
+
+def test_dashboard_recommendation_skips_expensive_backup_assessment(monkeypatch) -> None:
+    from mercury.storage.hdd_menu_options import dashboard_next_action_short
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Dashboard recommendation must not assess backup contents")
+
+    monkeypatch.setattr(
+        "mercury.backup.freshness.assess_operator_backup_next", unexpected
+    )
+    assert dashboard_next_action_short(_writer_lifecycle()) == "Backup production"

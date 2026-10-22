@@ -98,8 +98,14 @@ def build_main_menu_recommendation(
     host=None,
     lifecycle=None,
     resolve_fn=None,
+    inspect_backups: bool = False,
 ) -> MainMenuRecommendation:
-    """Derive the recommended main-console action from storage/migration facts."""
+    """Derive navigation from storage facts without scanning backup contents.
+
+    Detailed backup assessment is opt-in: it hashes dumps and queries live
+    inventory, which must not run on every home-screen render. Backup and
+    verification workflows retain their own full checks.
+    """
     from mercury.storage.host_maintenance import load_host_maintenance
     from mercury.storage.lifecycle import assess_storage_lifecycle
 
@@ -190,9 +196,14 @@ def build_main_menu_recommendation(
         mounted = availability in {"mounted", "attached", "detaching"}
         connected = availability != "detached"
         if snap is not None:
-            connected = bool(getattr(snap, "drive_present", connected))
+            connected = bool(getattr(
+                snap, "drive_present",
+                storage_state not in {"DEVICE_NOT_FOUND", "DETACHED"},
+            ))
             mounted = bool(getattr(snap, "mounted", mounted))
-            identity_ok = bool(getattr(snap, "identity_ok", True))
+            identity_ok = bool(getattr(
+                snap, "identity_ok", storage_state != "DEVICE_IDENTITY_MISMATCH",
+            ))
 
     allowed = (
         MAIN_BACKUP,
@@ -320,10 +331,12 @@ def build_main_menu_recommendation(
         )
 
     if writes:
-        from mercury.backup.freshness import assess_operator_backup_next
-        from mercury.core.runtime import should_probe_database_status
+        next_action = {}
+        if inspect_backups:
+            from mercury.backup.freshness import assess_operator_backup_next
+            from mercury.core.runtime import should_probe_database_status
 
-        next_action = assess_operator_backup_next(live=should_probe_database_status())
+            next_action = assess_operator_backup_next(live=should_probe_database_status())
         if next_action.get("recommend") == "restore_check":
             pending = list(next_action.get("pending_restore_check") or [])
             pending_note = ", ".join(pending) if pending else "restore-check pending"
