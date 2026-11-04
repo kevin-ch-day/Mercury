@@ -39,8 +39,8 @@ def _entry(
 
 
 def test_required_recovery_scope_is_authoritative_production_only() -> None:
-    assert len(REQUIRED_RECOVERY_DATABASES) == 5
-    assert len(REQUIRED_RECOVERY_PRODUCTION) == 5
+    assert len(REQUIRED_RECOVERY_DATABASES) == 6
+    assert len(REQUIRED_RECOVERY_PRODUCTION) == 6
     assert len(REQUIRED_RECOVERY_DEVELOPMENT) == 0
     assert "android_permission_intel_dev" not in REQUIRED_RECOVERY_DEVELOPMENT
 
@@ -360,7 +360,7 @@ def test_dev_unknown_freshness_renders_ok(monkeypatch: pytest.MonkeyPatch) -> No
     entries = [
         _entry(
             name,
-            restore_checked=name.endswith("_prod") or name == "android_permission_intel",
+            restore_checked=name.endswith("_prod") or name in {"android_permission_intel", "noctivar"},
             freshness="unknown" if name.endswith("_dev") else "fresh",
         )
         for name in REQUIRED_RECOVERY_DATABASES

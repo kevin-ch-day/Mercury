@@ -1988,6 +1988,23 @@ def backup_verify_cmd(
         raise typer.Exit(1)
 
 
+@backup_app.command('health')
+def backup_health_cmd(
+    json_output: bool = typer.Option(False, '--json', help='Machine-readable read-only health observations.'),
+) -> None:
+    """Observe physical disk, coverage, freshness, incomplete runs and recovery receipts."""
+    import json
+    from mercury.backup.health import build_health
+    report = build_health()
+    if json_output:
+        typer.echo(json.dumps(report, indent=2))
+    else:
+        typer.echo(f"Mercury physical mount: {report['physical_mount']}")
+        typer.echo(f"Latest repository success: {report.get('latest_successful_repository_receipt', 'unavailable')}")
+        for warning in report['warnings']:
+            typer.echo(f'Attention: {warning}')
+
+
 @backup_app.command("run")
 def backup_run_cmd(
     db: str = typer.Option(..., "--db", help="Database name (backup source only)."),
@@ -2001,6 +2018,9 @@ def backup_run_cmd(
         "--execute/--dry-run",
         help="Execute backup (default). Use --dry-run to preview only.",
     ),
+    protected: bool = typer.Option(False, '--protected', help='Linux: verified staged generation, retained failures and single writer.'),
+    credentials_json: Path | None = typer.Option(None, '--credentials-json', help='Protected scoped socket credentials; never printed.'),
+    tables_only: bool = typer.Option(False, '--tables-only', help='Explicit partial Noctivar preservation outside managed full backups; excludes triggers/routines/events.'),
 ) -> None:
     """Execute a logical backup (use --dry-run to preview only)."""
     from mercury.backup.backup_runner import BackupExecutionError, execute_backup
@@ -2023,11 +2043,21 @@ def backup_run_cmd(
             raise typer.Exit(2)
 
     try:
-        result = execute_backup(db, normalized, execute=execute, live=True)  # type: ignore[arg-type]
-    except BackupExecutionError as exc:
+        if protected:
+            if not execute or normalized != 'full':
+                raise BackupExecutionError('--protected requires an explicit full execution')
+            from mercury.backup.protected_generation import execute_protected_backup
+            result = execute_protected_backup(db, credentials=credentials_json, tables_only=tables_only)
+        else:
+            if credentials_json or tables_only:
+                raise BackupExecutionError('--credentials-json and --tables-only require --protected')
+            result = execute_backup(db, normalized, execute=execute, live=True)  # type: ignore[arg-type]
+    except (BackupExecutionError, ValueError, OSError) as exc:
         typer.echo(str(exc))
         raise typer.Exit(1) from exc
 
+    if tables_only:
+        typer.echo('TABLE-ONLY PARTIAL PRESERVATION: triggers, routines and events excluded; not a complete database backup.')
     print_backup_execution(result)
     if result.refused and execute:
         raise typer.Exit(1)

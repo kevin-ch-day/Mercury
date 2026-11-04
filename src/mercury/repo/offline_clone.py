@@ -158,19 +158,25 @@ def build_offline_clone_plan(statuses: list[RepoStatus], *, root: Path | None = 
     return OfflineClonePlan(root=target_root, entries=entries)
 
 
-def execute_offline_clone_plan(plan: OfflineClonePlan, *, snapshots: bool = False) -> OfflineClonePlan:
+def execute_offline_clone_plan(plan: OfflineClonePlan, *, snapshots: bool = False, guard=None) -> OfflineClonePlan:
     """Create immutable all-ref mirrors; old backups and source repos stay untouched."""
     import uuid
     from mercury.core.artifact_permissions import write_private_text
     from mercury.repo.snapshot import snapshot_uncommitted
+    from mercury.backup.durability import durable_replace_text, sync_tree, sync_directory
+    if guard:
+        guard()
     assert_operator_storage_path(plan.root, action='offline repository mirror write')
     ensure_private_directory(plan.root)
     run = plan.root / 'generations' / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8])
     ensure_private_directory(run)
+    durable_replace_text(run / 'STATE.json', json.dumps({'status': 'incomplete'}) + '\n')
     for entry in plan.entries:
         if entry.action == 'blocked':
             continue
         try:
+            if guard:
+                guard()
             if not entry.key or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for c in entry.key):
                 raise ValueError('Invalid repository key')
             before = _refs(entry.source_path)
@@ -193,12 +199,15 @@ def execute_offline_clone_plan(plan: OfflineClonePlan, *, snapshots: bool = Fals
             if snapshots and entry.source_dirty:
                 entry.snapshot = snapshot_uncommitted(entry.source_path, run / (entry.key + '-uncommitted'))
                 entry.snapshot_at = datetime.now(timezone.utc).isoformat()
+            if guard:
+                guard()
             entry.executed = True
             entry.action = 'current'
         except (OSError, subprocess.CalledProcessError, ValueError):
             entry.action = 'blocked'
             entry.error = 'Sync or snapshot verification failed; existing backups preserved'
-    payload = {'receipt_version': 'offline-repo-sync-v2',
+    complete = all(e.executed and not e.error for e in plan.entries) and bool(plan.entries)
+    payload = {'receipt_version': 'offline-repo-sync-v2', 'status': 'complete' if complete else 'partial',
                'recorded_at_utc': datetime.now(timezone.utc).isoformat(),
                'clone_root': str(plan.root), 'repositories': []}
     for entry in plan.entries:
@@ -211,9 +220,17 @@ def execute_offline_clone_plan(plan: OfflineClonePlan, *, snapshots: bool = Fals
             'remote_tracking': {k: v for k, v in entry.refs.items() if k.startswith('refs/remotes/')}})
     text = json.dumps(payload, indent=2, sort_keys=True) + '\n'
     plan.receipt_path = write_private_text(run / OFFLINE_SYNC_RECEIPT_NAME, text)
+    if guard:
+        guard()
+    durable_replace_text(run / 'STATE.json', json.dumps({'status': payload['status']}) + '\n')
+    sync_tree(run)
+    sync_directory(run.parent)
     # Preserve the earlier receipt before refreshing the latest-status pointer.
     latest = offline_sync_receipt_path(plan.root)
     if latest.exists():
         write_private_text(run / 'previous-receipt.json', latest.read_text())
-    write_private_text(latest, text)
+    if complete:
+        if guard:
+            guard()
+        durable_replace_text(latest, text)
     return plan

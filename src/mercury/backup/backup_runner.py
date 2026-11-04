@@ -323,6 +323,10 @@ def execute_backup(
     live: bool = False,
     server_names: set[str] | None = None,
     allow_development_backup: bool = False,
+    record_execution: bool = True,
+    preserve_failure: bool = False,
+    tables_only: bool = False,
+    nonlocking_schema: bool = False,
 ) -> BackupExecutionResult:
     """
     Plan or execute a logical backup.
@@ -380,6 +384,17 @@ def execute_backup(
             schema_argv = build_dump_argv(
                 database, BACKUP_KIND_SCHEMA_ONLY, host=host, port=port, user=user, tool=tool
             )
+
+    if tables_only:
+        if database != 'noctivar':
+            raise BackupExecutionError('Explicit table-only preservation is restricted to noctivar')
+        argv = [x for x in argv if x not in {'--events', '--routines', '--triggers'}] + ['--skip-triggers']
+        if schema_argv:
+            schema_argv = [x for x in schema_argv if x not in {'--events', '--routines', '--triggers'}] + ['--skip-triggers']
+    if nonlocking_schema and schema_argv:
+        # Protected generations compare source DDL/rows before and after the
+        # dump; their no-data companion need not acquire source table locks.
+        schema_argv.append('--skip-lock-tables')
 
     base_result = BackupExecutionResult(
         database=database,
@@ -472,6 +487,8 @@ def execute_backup(
         dumpability = view_dumpability_error(config, database, live_inventory.views)
         if dumpability:
             raise BackupExecutionError(dumpability)
+        if tables_only:
+            live_inventory = live_inventory.model_copy(update={'triggers': [], 'procedures': [], 'functions': [], 'events': []})
 
     runner = dump_runner or _default_dump_runner
 
@@ -599,6 +616,9 @@ def execute_backup(
         )
 
         manifest_path = backup_dir / MANIFEST_FILENAME
+        if tables_only:
+            manifest = manifest.model_copy(update={'object_scope': 'tables_only',
+                'notes': 'Table definitions and rows only. Triggers, routines and events excluded; not a complete database backup.'})
         manifest_temp = backup_dir / f"{MANIFEST_FILENAME}.tmp"
         manifest_temp.write_text(
             json.dumps(manifest.model_dump(mode="json"), indent=2, default=str) + "\n",
@@ -618,6 +638,8 @@ def execute_backup(
         for artifact in created_paths:
             restrict_artifact_file(artifact)
     except Exception:
+        if preserve_failure:
+            raise
         cleanup_candidates = created_paths + list(backup_dir.glob("*.tmp"))
         for path in cleanup_candidates:
             try:
@@ -648,7 +670,8 @@ def execute_backup(
     )
     from mercury.state.ledger import record_backup_execution
 
-    record_backup_execution(result)
+    if record_execution:
+        record_backup_execution(result)
     return result
 
 

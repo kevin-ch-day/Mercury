@@ -31,6 +31,7 @@ def test_real_disk_requires_matching_uuid():
 
 
 def test_missing_disk_entrypoint_logs_clean_failure(monkeypatch, capsys):
+    monkeypatch.setattr('mercury.repo.scheduled_sync.activate_disk', lambda *args: None)
     monkeypatch.setattr('mercury.repo.scheduled_sync.require_disk',
                         lambda *args: (_ for _ in ()).throw(ValueError('disk absent; no writes')))
     assert main(['--mount', '/mnt/MERCURY_DATA', '--uuid', 'uuid']) == 1

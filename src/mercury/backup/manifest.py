@@ -48,6 +48,7 @@ class BackupManifest(BaseModel):
     dump_options: list[str] = Field(default_factory=list)
     object_contract: dict[str, object] | None = None
     restore_requirements: dict[str, object] | None = None
+    object_scope: Literal['complete_schema', 'tables_only'] = 'complete_schema'
 
 
 def build_backup_manifest(
