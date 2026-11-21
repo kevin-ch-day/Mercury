@@ -162,6 +162,7 @@ def _production_backup_preview_entries(
     restore_records = latest_restore_check_by_backup_id()
     entries: list[CleanupPreviewEntry] = []
     floor = max(2, policy.production_min_valid_generations)
+    keep_newest = max(floor, policy.production_keep_latest_per_database)
 
     for database in sorted(ACTIVE_BACKUP_SOURCE_DATABASES):
         parsed_rows: list[tuple[Path, dict[str, object], datetime]] = []
@@ -201,6 +202,14 @@ def _production_backup_preview_entries(
             str(payload.get("backup_id") or "").strip()
             for _path, payload, _created in passed_rows[:floor]
         }
+        # Newest-N per database counts every full generation, restore-checked or
+        # not, so a run of unverified dumps cannot push verified ones out.
+        newest_full = list(dict.fromkeys(
+            str(payload.get("backup_id") or "").strip()
+            for _path, payload, _created in parsed_rows
+            if payload.get("backup_kind") == "full"
+        ))
+        retained_ids.update(newest_full[:keep_newest])
         retained_ids.update(
             _calendar_retained_ids(passed_rows, policy=policy, now=current)
         )
@@ -236,7 +245,10 @@ def _production_backup_preview_entries(
                 risk = "critical"
             elif backup_id in retained_ids:
                 classification = CleanupClassification.RETAIN
-                reason = "production retention floor or calendar window"
+                reason = (
+                    f"within newest {keep_newest} full generations, retention floor, "
+                    "or calendar window"
+                )
                 risk = "low"
             elif backup_id not in passed_ids:
                 classification = CleanupClassification.MANUAL_REVIEW_ONLY
@@ -268,7 +280,8 @@ def _production_backup_preview_entries(
                     reason=reason,
                     references=references,
                     canonical_replacement=(
-                        f"newest {floor} exact restore-checked full generations"
+                        f"newest {keep_newest} full generations "
+                        f"(at least {floor} exact restore-checked)"
                         if classification
                         == CleanupClassification.CLEANUP_CANDIDATE_AFTER_DESTINATION
                         else None

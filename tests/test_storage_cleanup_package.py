@@ -265,6 +265,7 @@ def test_production_preview_requires_two_newer_exact_restore_checked_sets(
         production_keep_weekly_weeks=0,
         production_keep_monthly_months=0,
         production_min_valid_generations=2,
+        production_keep_latest_per_database=2,
     )
 
     preview = build_cleanup_preview(tmp_path, policy=policy)
@@ -309,6 +310,7 @@ def test_production_preview_refuses_unchecked_set_as_cleanup_candidate(
         production_keep_daily_days=0,
         production_keep_weekly_weeks=0,
         production_keep_monthly_months=0,
+        production_keep_latest_per_database=2,
     )
 
     preview = build_cleanup_preview(tmp_path, policy=policy)
@@ -317,6 +319,53 @@ def test_production_preview_refuses_unchecked_set_as_cleanup_candidate(
     )
     assert oldest.classification == CleanupClassification.MANUAL_REVIEW_ONLY
     assert "restore-check PASS" in oldest.reason
+
+
+def test_production_preview_retains_newest_n_full_generations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """keep_latest_per_database counts every full generation, checked or not."""
+    database = "erebus_threat_intel_prod"
+    rows = [
+        _write_production_backup(
+            tmp_path,
+            database=database,
+            stamp=f"20260927_14000{index}_000",
+            created_at=f"2026-09-27T14:00:0{index}+00:00",
+        )
+        for index in range(4)
+    ]
+    records = {
+        backup_id: SimpleNamespace(database=database, status="passed")
+        for _path, backup_id in rows[:3]
+    }
+    monkeypatch.setattr(
+        "mercury.backup.status.latest_restore_check_by_backup_id",
+        lambda: records,
+    )
+    policy = _policy(
+        production_keep_daily_days=0,
+        production_keep_weekly_weeks=0,
+        production_keep_monthly_months=0,
+        production_min_valid_generations=2,
+        production_keep_latest_per_database=3,
+    )
+
+    preview = build_cleanup_preview(tmp_path, policy=policy)
+    production = {
+        entry.references[0]: entry
+        for entry in preview.entries
+        if len(entry.references) == 2 and entry.references[1] == database
+    }
+
+    assert production[rows[0][1]].classification == (
+        CleanupClassification.CLEANUP_CANDIDATE_AFTER_DESTINATION
+    )
+    assert "newest 3 full generations" in production[rows[0][1]].canonical_replacement
+    for _path, backup_id in rows[1:]:
+        assert production[backup_id].classification == CleanupClassification.RETAIN
+        assert "newest 3" in production[backup_id].reason
 
 
 def test_protected_production_backup_overrides_retention_candidate(
