@@ -65,6 +65,7 @@ def test_symbolic_numbering_and_no_stale_eleven() -> None:
     assert "[10]" not in main_menu_hint("disaster_recovery")
 
 
+@pytest.mark.usefixtures("mounted_mercury_storage")
 def test_recommended_action_writer_enabled(host_path: Path) -> None:
     save_host_maintenance(
         HostMaintenanceState(
@@ -80,6 +81,7 @@ def test_recommended_action_writer_enabled(host_path: Path) -> None:
     assert "Backup production" in rec.explanation
 
 
+@pytest.mark.usefixtures("mounted_mercury_storage")
 def test_recommended_action_writes_disabled_intent(host_path: Path) -> None:
     save_host_maintenance(
         HostMaintenanceState(
@@ -601,6 +603,7 @@ def test_viewing_intent_chooser_does_not_mutate_host(
         ),
     ],
 )
+@pytest.mark.usefixtures("mounted_mercury_storage")
 def test_recommendation_states(host_path: Path, kwargs: dict, expected: str) -> None:
     save_host_maintenance(HostMaintenanceState(**kwargs), path=host_path)
     rec = build_main_menu_recommendation()
@@ -676,6 +679,7 @@ def test_software_only_empty_mountpoint_untouched(
     assert {p.name for p in mount.iterdir()} == before
 
 
+@pytest.mark.usefixtures("mounted_mercury_storage")
 def test_main_menu_marks_storage_recommended_when_safe_disconnect(
     host_path: Path,
 ) -> None:
@@ -709,6 +713,7 @@ def test_main_menu_marks_storage_recommended_when_safe_disconnect(
     assert "recommended" not in items["1"]
 
 
+@pytest.mark.usefixtures("mounted_mercury_storage")
 def test_should_offer_startup_intent_follows_recommendation(host_path: Path) -> None:
     from mercury.menu.intent import should_offer_startup_intent
 

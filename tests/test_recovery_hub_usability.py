@@ -19,6 +19,7 @@ def test_recovery_hub_opens_dashboard(monkeypatch: pytest.MonkeyPatch) -> None:
     assert called == ["dash"]
 
 
+@pytest.mark.usefixtures("mounted_mercury_storage")
 def test_main_three_is_recovery_hub() -> None:
     from mercury.menu.actions import menu_actions
 

@@ -269,6 +269,7 @@ def test_direct_cli_routes_unchanged() -> None:
     assert not (expected - groups)
 
 
+@pytest.mark.usefixtures("mounted_mercury_storage")
 def test_menu_actions_wire_all_nine_keys() -> None:
     from mercury.menu.actions import menu_actions
     from mercury.menu.main_display import refresh_menu_sections

@@ -97,6 +97,7 @@ def _seed_all_verified(policy: ExecutionPolicy) -> None:
         )
 
 
+@pytest.mark.usefixtures("mounted_mercury_storage")
 def test_deploy_lane_appears_in_menu() -> None:
     from mercury.menu.options import ACTION_DEPLOY, MAIN_RECOVERY, main_menu_option_by_action
 
@@ -774,6 +775,7 @@ def test_deploy_plan_blocks_stale_backup_on_live_execute(
     assert any("stale" in blocker.lower() for blocker in plan.blockers)
 
 
+@pytest.mark.usefixtures("mounted_mercury_storage")
 def test_handoff_lane_appears_in_menu() -> None:
     from mercury.menu.options import MAIN_BACKUP, MAIN_HEALTH, MAIN_REPORTS, MAIN_STORAGE
 

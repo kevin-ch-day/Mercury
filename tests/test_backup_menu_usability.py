@@ -67,6 +67,7 @@ def _writer_lifecycle() -> SimpleNamespace:
     )
 
 
+@pytest.mark.usefixtures("mounted_mercury_storage")
 def test_main_one_routes_directly_to_backup_operations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
