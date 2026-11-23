@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import os
 import shutil
-import stat
 import subprocess
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Literal
 
 from mercury.database.mariadb.config import (
@@ -150,25 +150,19 @@ def client_process_credentials(
     so ``~/.my.cnf`` and system option files cannot override the dedicated
     credential (they are read after ``--defaults-extra-file`` and would win).
     Passwordless connections use an explicit empty password in the same file.
+    MySQL can read its login-path file even with ``--defaults-file``, so point
+    it to an unused name inside the private temporary directory.
     """
     env = os.environ.copy()
     env.pop("MYSQL_PWD", None)
-    fd, path = tempfile.mkstemp(prefix="mercury-my-", suffix=".cnf")
-    try:
-        if hasattr(os, "fchmod"):
-            os.fchmod(fd, stat.S_IRUSR | stat.S_IWUSR)
-        payload = f'[client]\npassword="{_cnf_escape_password(config.password or "")}"\n'.encode()
-        os.write(fd, payload)
-        os.close(fd)
-        fd = -1
+    with tempfile.TemporaryDirectory(prefix="mercury-my-") as directory:
+        path = Path(directory) / "client.cnf"
+        payload = f'[client]\npassword="{_cnf_escape_password(config.password or "")}"\n'
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(payload)
+        env["MYSQL_TEST_LOGIN_FILE"] = str(path.with_name("login.cnf"))
         yield env, [f"--defaults-file={path}"]
-    finally:
-        if fd >= 0:
-            os.close(fd)
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
 
 
 def _run_client_argv(

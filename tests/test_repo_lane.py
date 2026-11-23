@@ -14,7 +14,6 @@ import pytest
 from mercury.repo.bundle import build_repo_bundle_plan, execute_repo_bundle_plan
 from mercury.repo.offline_clone import (
     _subprocess_error_detail,
-    _is_repairable_stale_source_head,
     build_offline_clone_plan,
     execute_offline_clone_plan,
 )
@@ -87,8 +86,8 @@ def test_inspect_repositories_reports_dirty_and_untracked(tmp_path: Path) -> Non
 def _mirror_setup(tmp_path, monkeypatch):
     source = _make_repo(tmp_path, "source")
     hdd = tmp_path / 'hdd'
-    monkeypatch.setattr('mercury.core.usb_mount.resolve_operator_mount', lambda **kw: hdd)
-    monkeypatch.setattr('mercury.core.usb_mount.usb_mount_is_active', lambda *a, **kw: True)
+    monkeypatch.setattr('mercury.core.usb_mount.resolve_operator_mount', lambda **_kwargs: hdd)
+    monkeypatch.setattr('mercury.core.usb_mount.usb_mount_is_active', lambda *_args, **_kwargs: True)
     def plan():
         return build_offline_clone_plan(inspect_repositories([
             RepoDefinition(key='source', display_name='Source', path=source)
@@ -118,7 +117,7 @@ def test_offline_clone_sync_creates_independent_hdd_worktree(tmp_path, monkeypat
 
 def test_offline_clone_preview_blocks_damaged_copy_before_head_comparison(tmp_path, monkeypatch):
     source, plan = _mirror_setup(tmp_path, monkeypatch)
-    result = execute_offline_clone_plan(plan())
+    execute_offline_clone_plan(plan())
     monkeypatch.setattr('mercury.repo.offline_clone._destination_integrity_error', lambda p: 'corrupt')
     assert plan().entries[0].action == 'blocked'
 
@@ -295,7 +294,7 @@ def test_execute_repo_bundle_plan_writes_bundle_manifest_and_runbook(
     assert "repo_bundle_written" in operations
 
 
-def test_execute_repo_bundle_plan_prunes_older_repo_artifacts_after_success(
+def test_execute_repo_bundle_plan_retains_earlier_sets_even_in_the_same_second(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -331,11 +330,14 @@ def test_execute_repo_bundle_plan_prunes_older_repo_artifacts_after_success(
     first_plan = build_repo_bundle_plan(statuses, settings)
     first_executed = execute_repo_bundle_plan(first_plan)
     first_entry = first_executed.entries[0]
-    assert first_entry.planned_bundle_path.exists()
-    assert first_entry.planned_manifest_path.exists()
-    assert first_entry.planned_runbook_path.exists()
-
-    _FakeDateTime.current = datetime(2026, 6, 9, 3, 19, 0, tzinfo=timezone.utc)
+    first_files = (
+        first_entry.planned_bundle_path,
+        first_entry.planned_manifest_path,
+        first_entry.planned_runbook_path,
+        first_executed.planned_index_manifest_path,
+        first_executed.planned_index_runbook_path,
+    )
+    original_bytes = {path: path.read_bytes() for path in first_files}
     second_plan = build_repo_bundle_plan(statuses, settings)
     second_executed = execute_repo_bundle_plan(second_plan)
     second_entry = second_executed.entries[0]
@@ -343,15 +345,13 @@ def test_execute_repo_bundle_plan_prunes_older_repo_artifacts_after_success(
     assert second_entry.planned_bundle_path.exists()
     assert second_entry.planned_manifest_path.exists()
     assert second_entry.planned_runbook_path.exists()
-    assert not first_entry.planned_bundle_path.exists()
-    assert not first_entry.planned_manifest_path.exists()
-    assert not first_entry.planned_runbook_path.exists()
-    assert second_entry.pruned_bundle_paths == [first_entry.planned_bundle_path]
-    assert second_entry.pruned_manifest_paths == [first_entry.planned_manifest_path]
-    assert second_entry.pruned_runbook_paths == [first_entry.planned_runbook_path]
+    assert second_entry.planned_bundle_path != first_entry.planned_bundle_path
+    with pytest.raises(FileExistsError, match="output already exists"):
+        execute_repo_bundle_plan(first_plan)
+    assert {path: path.read_bytes() for path in first_files} == original_bytes
 
     operations = (state_root / "operations.jsonl").read_text(encoding="utf-8")
-    assert "repo_bundle_retention_pruned" in operations
+    assert operations.count("repo_bundle_written") == 2
 
 
 def test_print_repo_bundle_plan_includes_state_summary(

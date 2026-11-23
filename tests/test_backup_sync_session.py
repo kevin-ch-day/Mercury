@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from mercury.core.storage_roles import DEFAULT_PRIMARY_LABEL
-
 import json
 from pathlib import Path
 from types import SimpleNamespace

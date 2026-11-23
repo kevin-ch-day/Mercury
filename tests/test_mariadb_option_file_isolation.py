@@ -113,7 +113,14 @@ def test_dedicated_credentials_ignore_home_mycnf(hostile_home: Path, build_argv,
         assert live[1].startswith("--defaults-file=")
         assert not any(a.startswith("--defaults-extra-file") for a in live)
         out = _print_defaults(live, env)
-    assert f"--password={password}" in out
+    password_options = [
+        part.removeprefix("--password=") for part in out.split() if part.startswith("--password=")
+    ]
+    assert len(password_options) == 1
+    observed = password_options[0]
+    # MySQL masks even empty passwords in --print-defaults. The separate file
+    # assertion covers the exact value written for both clients.
+    assert observed == password or set(observed) == {"*"}
     assert HOME_PASSWORD not in out
     assert HOME_USER not in out
     assert "home-mycnf-host" not in out
@@ -125,16 +132,20 @@ def test_dedicated_credentials_ignore_home_mycnf(hostile_home: Path, build_argv,
 
 
 @pytest.mark.parametrize("password", [DEDICATED_PASSWORD, ""])
-def test_exclusive_defaults_file_is_private_and_has_no_includes(hostile_home, password):
+def test_exclusive_defaults_file_is_private_and_has_no_includes(hostile_home, password, monkeypatch):
     import stat
+    monkeypatch.setenv("MYSQL_TEST_LOGIN_FILE", str(hostile_home / "ambient-login.cnf"))
     cfg = _restore_config(password=password)
-    with client_process_credentials(cfg) as (_, extra):
+    with client_process_credentials(cfg) as (env, extra):
         path = Path(extra[0].split("=", 1)[1])
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
         content = path.read_text()
         assert content == f'[client]\npassword="{password}"\n'
         assert "!include" not in content  # No /etc/my.cnf.d or other ambient includes.
-    assert not path.exists()
+        login = Path(env["MYSQL_TEST_LOGIN_FILE"])
+        assert login.parent == path.parent
+        assert not login.exists()
+    assert not path.parent.exists()
 
 
 def test_host_repair_has_only_exclusive_mariadb_invocations():

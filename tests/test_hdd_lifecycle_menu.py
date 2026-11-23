@@ -103,6 +103,7 @@ def _option_labels(snapshot: StorageLifecycleSnapshot) -> list[str]:
     return [label for _key, label in hdd_menu_render_options(snapshot)]
 
 
+@pytest.mark.usefixtures("mounted_mercury_storage")
 def test_main_menu_backup_storage_is_option_four() -> None:
     items = main_menu_items(writes_allowed=True)
     assert items[0] == ("1", "Backup production")
@@ -113,6 +114,7 @@ def test_main_menu_backup_storage_is_option_four() -> None:
     assert action.action_id == ACTION_HDD_STORAGE
 
 
+@pytest.mark.usefixtures("mounted_mercury_storage")
 def test_main_menu_actions_shift_and_symbolic_hints_stay_synced() -> None:
     from mercury.menu.options import (
         MAIN_BACKUP,
@@ -348,6 +350,7 @@ def test_assess_lifecycle_writes_disabled_ready(
     assert snap.recommended == "Safe disconnect backup storage"
 
 
+@pytest.mark.usefixtures("mounted_mercury_storage")
 def test_storage_menu_launches_from_main_menu_four(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

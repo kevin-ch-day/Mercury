@@ -516,32 +516,6 @@ def record_repo_bundle_execution(plan, *, state_root: Path | None = None) -> Non
         )
 
 
-def record_repo_bundle_retention(plan, *, state_root: Path | None = None) -> None:
-    root = _ensure_state_root(state_root)
-    if root is None:
-        return
-    for entry in plan.entries:
-        pruned_bundles = [str(path) for path in entry.pruned_bundle_paths]
-        pruned_manifests = [str(path) for path in entry.pruned_manifest_paths]
-        pruned_runbooks = [str(path) for path in entry.pruned_runbook_paths]
-        if not (pruned_bundles or pruned_manifests or pruned_runbooks):
-            continue
-        _append_jsonl(
-            root / OPERATIONS_JSONL,
-            _operation_payload(
-                "repo_bundle_retention_pruned",
-                {
-                    "repo_name": entry.display_name,
-                    "repo_key": entry.key,
-                    "bundle_path": str(entry.planned_bundle_path),
-                    "pruned_bundle_paths": pruned_bundles,
-                    "pruned_manifest_paths": pruned_manifests,
-                    "pruned_runbook_paths": pruned_runbooks,
-                },
-            ),
-        )
-
-
 def record_database_bundle_written(plan, *, state_root: Path | None = None) -> None:
     package_status = database_bundle_package_status(
         source_count=plan.source_count,

@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 import pytest
 from mercury.repo.retention import retention_plan, prune_generations
 from mercury.repo.offline_clone import OFFLINE_SYNC_RECEIPT_NAME as RECEIPT

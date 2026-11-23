@@ -175,6 +175,30 @@ def repo_root() -> Path:
     return REPO_ROOT
 
 
+@pytest.fixture
+def mounted_mercury_storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Use an attached device for console tests on hosts without a Mercury disk."""
+    from mercury.core.storage_roles import DEFAULT_PRIMARY_UUID
+    from mercury.storage.block_device import BlockResolveResult, MercuryBlockIdentity
+
+    mount = tmp_path / "mercury-storage"
+    mount.mkdir()
+    identity = MercuryBlockIdentity(
+        partition_device="/dev/mercury-test1",
+        parent_device="/dev/mercury-test",
+        uuid=DEFAULT_PRIMARY_UUID,
+        label=DEFAULT_PRIMARY_LABEL,
+        model="synthetic Mercury disk",
+        serial="test",
+        mountpoint=str(mount),
+        fstype="ext4",
+    )
+    monkeypatch.setattr(
+        "mercury.storage.block_device.resolve_mercury_block_device",
+        lambda **_kwargs: BlockResolveResult(ok=True, identity=identity),
+    )
+
+
 @pytest.fixture(autouse=True)
 def _assume_fedora_platform_for_policy_tests(
     request: pytest.FixtureRequest,

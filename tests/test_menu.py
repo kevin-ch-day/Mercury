@@ -134,6 +134,7 @@ def test_handle_invalid_choice_includes_range(capsys: pytest.CaptureFixture[str]
     assert menu_option_range_label() in out
 
 
+@pytest.mark.usefixtures("mounted_mercury_storage")
 def test_handle_sync_plan_returns_to_menu_without_footer(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -227,6 +228,7 @@ def test_render_option_menu_puts_return_last() -> None:
     assert lines[-1] == "      [0] Return"
     assert "      [1] First" in lines
 
+@pytest.mark.usefixtures("mounted_mercury_storage")
 def test_render_main_menu_matches_simple_layout(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "mercury.menu.main_display.dashboard_rows",
@@ -278,6 +280,7 @@ def test_main_menu_options_are_single_action_lines(monkeypatch: pytest.MonkeyPat
     assert [line.strip().split("]", 1)[0][1:] for line in option_lines] == expected
     assert all(" — " not in line and "→" not in line for line in option_lines)
 
+@pytest.mark.usefixtures("mounted_mercury_storage")
 def test_render_main_menu_body_omits_title_block(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "mercury.menu.main_display.dashboard_rows",

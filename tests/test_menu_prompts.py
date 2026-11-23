@@ -88,6 +88,7 @@ def test_normalize_menu_choice_maps_quit_aliases() -> None:
     assert menu_prompts.normalize_menu_choice("2") == "2"
 
 
+@pytest.mark.usefixtures("mounted_mercury_storage")
 def test_is_valid_menu_choice() -> None:
     assert menu_prompts.is_valid_menu_choice("0")
     assert menu_prompts.is_valid_menu_choice("q")
