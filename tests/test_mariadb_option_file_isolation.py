@@ -118,9 +118,9 @@ def test_dedicated_credentials_ignore_home_mycnf(hostile_home: Path, build_argv,
     ]
     assert len(password_options) == 1
     observed = password_options[0]
-    # MySQL masks nonempty passwords in --print-defaults. The separate file
+    # MySQL masks even empty passwords in --print-defaults. The separate file
     # assertion covers the exact value written for both clients.
-    assert observed == password or (password and observed and set(observed) == {"*"})
+    assert observed == password or set(observed) == {"*"}
     assert HOME_PASSWORD not in out
     assert HOME_USER not in out
     assert "home-mycnf-host" not in out
