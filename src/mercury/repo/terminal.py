@@ -113,5 +113,5 @@ def print_repo_bundle_plan(plan: RepoBundlePlan, *, executed: bool = False) -> N
             "Bundles, per-repo manifests, transfer index manifest, and restore notes were written to the operator-storage paths above."
         )
         display_screen.write_summary(
-            "Repo retention keeps one current verified bundle set per repo; older repo artifacts are pruned after successful replacement."
+            "Mercury retains earlier repository bundles, manifests, and restore notes."
         )

@@ -180,7 +180,7 @@ mercury repo bundle [--repo mercury] [--execute]
 mercury repo offline-sync [--execute --confirm "SYNC OFFLINE REPOS"]
 ```
 
-`repo init-config` writes `config/repos.toml` from the known Fedora desktop repo paths. `repo status` is read-only and reports configured repo path, branch, commit, remote, clean/dirty state, untracked count, and upstream ahead/behind status when available. `repo bundle --execute` writes Git bundles plus repo manifests and short restore notes under the operator-storage paths configured in `config/local.toml`. Mercury keeps one current verified bundle set per repo and prunes older repo bundle artifacts only after the replacement bundle is written and verified successfully.
+`repo init-config` writes `config/repos.toml` from the known Fedora desktop repo paths. `repo status` is read-only and reports configured repo path, branch, commit, remote, clean/dirty state, untracked count, and upstream ahead/behind status when available. `repo bundle --execute` writes a new set of Git bundles, manifests and restore notes under the operator-storage paths configured in `config/local.toml`. Mercury retains earlier sets and refuses to overwrite a path from an existing set.
 
 `repo offline-sync` previews independent, runnable Git checkouts under
 `<active operator mount>/mercury_repo_clones` (currently

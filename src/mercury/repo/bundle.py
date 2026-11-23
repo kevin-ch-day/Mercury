@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import subprocess
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
@@ -33,9 +34,6 @@ class RepoBundleEntry(BaseModel):
     bundle_size_bytes: int | None = None
     executed: bool = False
     error: str | None = None
-    pruned_bundle_paths: list[Path] = Field(default_factory=list)
-    pruned_manifest_paths: list[Path] = Field(default_factory=list)
-    pruned_runbook_paths: list[Path] = Field(default_factory=list)
 
 
 class RepoBundlePlan(BaseModel):
@@ -80,50 +78,13 @@ def _write_text_atomic(path: Path, content: str) -> None:
     restrict_artifact_file(path)
 
 
-def _prune_repo_history(
-    plan: RepoBundlePlan,
-    entry: RepoBundleEntry,
-) -> tuple[list[Path], list[Path], list[Path]]:
-    slug = _slug(entry.display_name)
-    bundle_pattern = f"*/{slug}/{slug}_*.bundle"
-    manifest_pattern = f"*/{slug}_*.repo_manifest.json"
-    runbook_pattern = f"*/{slug}_*.restore.md"
-
-    pruned_bundles: list[Path] = []
-    pruned_manifests: list[Path] = []
-    pruned_runbooks: list[Path] = []
-
-    for candidate in sorted(plan.repo_backup_root.glob(bundle_pattern)):
-        if candidate == entry.planned_bundle_path:
-            continue
-        if candidate.is_file():
-            candidate.unlink()
-            pruned_bundles.append(candidate)
-
-    for candidate in sorted(plan.manifest_dir.glob(manifest_pattern)):
-        if candidate == entry.planned_manifest_path:
-            continue
-        if candidate.is_file():
-            candidate.unlink()
-            pruned_manifests.append(candidate)
-
-    for candidate in sorted(plan.runbook_dir.glob(runbook_pattern)):
-        if candidate == entry.planned_runbook_path:
-            continue
-        if candidate.is_file():
-            candidate.unlink()
-            pruned_runbooks.append(candidate)
-
-    return pruned_bundles, pruned_manifests, pruned_runbooks
-
-
 def build_repo_bundle_plan(
     statuses: list[RepoStatus],
     settings: RepoBundleSettings,
 ) -> RepoBundlePlan:
     now = datetime.now(timezone.utc)
     stamp_date = now.strftime("%Y-%m-%d")
-    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    timestamp = f"{now:%Y%m%d_%H%M%S}-{uuid4().hex}"
     index_manifest_path = settings.manifest_dir / stamp_date / f"repo_transfer_manifest_{timestamp}.json"
     index_runbook_path = settings.runbook_dir / stamp_date / f"repo_transfer_runbook_{timestamp}.md"
     entries: list[RepoBundleEntry] = []
@@ -294,6 +255,26 @@ def execute_repo_bundle_plan(plan: RepoBundlePlan) -> RepoBundlePlan:
     _ensure_operator_storage_path(plan.manifest_dir)
     _ensure_operator_storage_path(plan.runbook_dir)
 
+    index = plan.planned_index_manifest_path
+    ensure_private_directory(index.parent)
+    lock = index.with_suffix(".lock")
+    lock.mkdir(mode=0o700)
+    try:
+        outputs = [index, plan.planned_index_runbook_path]
+        for entry in plan.entries:
+            if not entry.error:
+                outputs.extend((entry.planned_bundle_path, entry.planned_manifest_path, entry.planned_runbook_path))
+        if len(set(outputs)) != len(outputs):
+            raise ValueError("Repository bundle plan contains duplicate output paths")
+        for path in outputs:
+            if path.exists() or path.is_symlink():
+                raise FileExistsError(f"Repository bundle output already exists: {path}")
+        return _write_repo_bundle_plan(plan)
+    finally:
+        lock.rmdir()
+
+
+def _write_repo_bundle_plan(plan: RepoBundlePlan) -> RepoBundlePlan:
     for entry in plan.entries:
         if entry.error:
             continue
@@ -347,13 +328,6 @@ def execute_repo_bundle_plan(plan: RepoBundlePlan) -> RepoBundlePlan:
                 except OSError:
                     pass
 
-        pruned_bundles, pruned_manifests, pruned_runbooks = _prune_repo_history(
-            plan,
-            entry,
-        )
-        entry.pruned_bundle_paths = pruned_bundles
-        entry.pruned_manifest_paths = pruned_manifests
-        entry.pruned_runbook_paths = pruned_runbooks
         entry.executed = True
     ensure_private_directory(plan.planned_index_manifest_path.parent)
     ensure_private_directory(plan.planned_index_runbook_path.parent)
@@ -365,8 +339,7 @@ def execute_repo_bundle_plan(plan: RepoBundlePlan) -> RepoBundlePlan:
         plan.planned_index_runbook_path,
         _index_runbook_text(plan),
     )
-    from mercury.state.ledger import record_repo_bundle_execution, record_repo_bundle_retention
+    from mercury.state.ledger import record_repo_bundle_execution
 
     record_repo_bundle_execution(plan)
-    record_repo_bundle_retention(plan)
     return plan
