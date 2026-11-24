@@ -9,6 +9,7 @@ import subprocess
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
+from time import perf_counter
 
 from pydantic import BaseModel, Field
 
@@ -19,7 +20,7 @@ from mercury.backup.layout import (
     build_backup_layout,
 )
 from mercury.backup.manifest import BackupKind, BackupManifest, build_backup_manifest
-from mercury.backup.checksum import sha256_file, write_checksum_file
+from mercury.backup.checksum import format_checksum_line, safe_artifact_name, sha256_file
 from mercury.database.core import DatabaseClassification, DatabaseRole, classify_database
 from mercury.database.mariadb.config import MariaDbConnectionConfig, load_mariadb_config
 from mercury.database.mariadb.client import client_process_credentials, prepend_client_defaults
@@ -323,6 +324,10 @@ def execute_backup(
     live: bool = False,
     server_names: set[str] | None = None,
     allow_development_backup: bool = False,
+    record_execution: bool = True,
+    preserve_failure: bool = False,
+    tables_only: bool = False,
+    nonlocking_schema: bool = False,
 ) -> BackupExecutionResult:
     """
     Plan or execute a logical backup.
@@ -333,6 +338,7 @@ def execute_backup(
     from mercury.logging import get_logger
 
     log = get_logger("mercury.backup")
+    started = perf_counter()
     log.info(
         "backup start database=%s kind=%s execute=%s",
         database,
@@ -380,6 +386,17 @@ def execute_backup(
             schema_argv = build_dump_argv(
                 database, BACKUP_KIND_SCHEMA_ONLY, host=host, port=port, user=user, tool=tool
             )
+
+    if tables_only:
+        if database != 'noctivar':
+            raise BackupExecutionError('Explicit table-only preservation is restricted to noctivar')
+        argv = [x for x in argv if x not in {'--events', '--routines', '--triggers'}] + ['--skip-triggers']
+        if schema_argv:
+            schema_argv = [x for x in schema_argv if x not in {'--events', '--routines', '--triggers'}] + ['--skip-triggers']
+    if nonlocking_schema and schema_argv:
+        # Protected generations compare source DDL/rows before and after the
+        # dump; their no-data companion need not acquire source table locks.
+        schema_argv.append('--skip-lock-tables')
 
     base_result = BackupExecutionResult(
         database=database,
@@ -469,20 +486,36 @@ def execute_backup(
                 "Could not establish the live backup object contract; "
                 "refusing to create an unverifiable backup."
             ) from exc
+        if tables_only and live_inventory.views:
+            raise BackupExecutionError(
+                "Table-only preservation requires a schema without views. Use a complete backup for this schema."
+            )
         dumpability = view_dumpability_error(config, database, live_inventory.views)
         if dumpability:
             raise BackupExecutionError(dumpability)
+        if tables_only:
+            live_inventory = live_inventory.model_copy(update={'triggers': [], 'procedures': [], 'functions': [], 'events': []})
 
     runner = dump_runner or _default_dump_runner
 
-    ensure_private_directory(backup_dir)
-    checksum_targets: list[str] = []
-
-    primary_path: Path | None = None
+    # Reserve the identity atomically before any artifact is written. A failed
+    # or interrupted reservation is never silently reused by a later operation.
+    if not safe_artifact_name(layout.date) or not safe_artifact_name(layout.timestamp):
+        raise BackupExecutionError("Backup identity must use direct safe directory names")
+    if any(path.is_symlink() for path in (backup_dir, *backup_dir.parents)):
+        raise BackupExecutionError("Refusing a backup destination containing symlinks")
+    ensure_private_directory(backup_dir.parent)
+    try:
+        backup_dir.mkdir(mode=0o700, exist_ok=False)
+    except FileExistsError as exc:
+        raise BackupExecutionError(f"Backup identity already exists; refusing overwrite: {backup_dir}") from exc
+    primary_path: Path
     schema_path: Path | None = None
     created_paths: list[Path] = []
+    temporary_paths: list[Path] = []
     content_contract: BackupContentContract | None = None
 
+    stage = "dump"
     try:
         with client_process_credentials(config) as (env, extra):
             live_argv = prepend_client_defaults(argv, extra)
@@ -496,10 +529,10 @@ def execute_backup(
                     )
                 schema_path = backup_dir / schema_name
                 schema_temp = _temp_artifact_path(schema_path)
+                temporary_paths.append(schema_temp)
                 runner(live_argv, env, schema_temp, config)
                 schema_temp.replace(schema_path)
                 created_paths.append(schema_path)
-                checksum_targets.append(schema_name)
                 primary_path = schema_path
             else:
                 if dump_name is None:
@@ -508,24 +541,21 @@ def execute_backup(
                     )
                 dump_path = backup_dir / dump_name
                 dump_temp = _temp_artifact_path(dump_path)
+                temporary_paths.append(dump_temp)
                 runner(live_argv, env, dump_temp, config)
                 dump_temp.replace(dump_path)
                 created_paths.append(dump_path)
-                checksum_targets.append(dump_name)
                 primary_path = dump_path
                 if schema_name and live_schema_argv:
                     schema_path = backup_dir / schema_name
                     schema_temp = _temp_artifact_path(schema_path)
+                    temporary_paths.append(schema_temp)
                     runner(live_schema_argv, env, schema_temp, config)
                     schema_temp.replace(schema_path)
                     created_paths.append(schema_path)
-                    checksum_targets.append(schema_name)
 
+        stage = "validate_content"
         if live_inventory is not None:
-            if primary_path is None:
-                raise BackupExecutionError(
-                    "Backup content validation requires a primary artifact"
-                )
             dump_inventory = extract_dump_object_inventory(primary_path)
             schema_inventory = (
                 extract_dump_object_inventory(schema_path)
@@ -546,24 +576,29 @@ def execute_backup(
 
         restore_requirements = (
             extract_restore_requirements(primary_path, source_database=database)
-            if live_inventory is not None and kind == BACKUP_KIND_FULL and primary_path is not None
+            if live_inventory is not None and kind == BACKUP_KIND_FULL
             else None
         )
 
+        stage = "prepare_manifest"
+        primary_sha = (
+            restore_requirements.artifact_sha256 if restore_requirements else sha256_file(primary_path)
+        )
+        primary_size = primary_path.stat().st_size
+        schema_sha = None
+        schema_size = None
+        checksum_text = format_checksum_line(primary_path, primary_sha)
+        if kind == BACKUP_KIND_FULL and schema_path is not None:
+            schema_sha = sha256_file(schema_path)
+            schema_size = schema_path.stat().st_size
+            checksum_text += format_checksum_line(schema_path, schema_sha)
+
         checksum_path = backup_dir / CHECKSUM_FILENAME
         checksum_temp = backup_dir / f"{CHECKSUM_FILENAME}.tmp"
-        write_checksum_file(backup_dir, checksum_targets, output_path=checksum_temp)
+        temporary_paths.append(checksum_temp)
+        checksum_temp.write_text(checksum_text, encoding="utf-8")
         checksum_temp.replace(checksum_path)
         created_paths.append(checksum_path)
-
-        primary_sha = sha256_file(primary_path)
-        primary_size = primary_path.stat().st_size
-        schema_sha = sha256_file(schema_path) if schema_path else None
-        schema_size = schema_path.stat().st_size if schema_path else None
-
-        manifest_dump_file = schema_name if kind == BACKUP_KIND_SCHEMA_ONLY else dump_name
-        if manifest_dump_file is None:
-            raise BackupExecutionError("Backup manifest requires a dump artifact name")
 
         from mercury.backup.verification import collect_verification_identity
         identity = collect_verification_identity(config) if live or dump_runner is None else {"requested_user": config.user}
@@ -574,7 +609,7 @@ def execute_backup(
             backup_kind=kind,
             created_at=instant,
             source_role=classification.role.value,
-            dump_file=manifest_dump_file,
+            dump_file=primary_path.name,
             dump_sha256=primary_sha,
             dump_size_bytes=primary_size,
             schema_file=schema_name if kind == BACKUP_KIND_FULL else None,
@@ -599,16 +634,18 @@ def execute_backup(
         )
 
         manifest_path = backup_dir / MANIFEST_FILENAME
+        if tables_only:
+            manifest = manifest.model_copy(update={'object_scope': 'tables_only',
+                'notes': 'Table definitions and rows only. Triggers, routines and events excluded; not a complete database backup.'})
         manifest_temp = backup_dir / f"{MANIFEST_FILENAME}.tmp"
+        temporary_paths.append(manifest_temp)
         manifest_temp.write_text(
             json.dumps(manifest.model_dump(mode="json"), indent=2, default=str) + "\n",
             encoding="utf-8",
         )
-        manifest_temp.replace(manifest_path)
-        created_paths.append(manifest_path)
-
         report_path = backup_dir / REPORT_FILENAME
         report_temp = backup_dir / f"{REPORT_FILENAME}.tmp"
+        temporary_paths.append(report_temp)
         report_temp.write_text(
             _format_backup_report(manifest, relative_dir),
             encoding="utf-8",
@@ -617,8 +654,20 @@ def execute_backup(
         created_paths.append(report_path)
         for artifact in created_paths:
             restrict_artifact_file(artifact)
-    except Exception:
-        cleanup_candidates = created_paths + list(backup_dir.glob("*.tmp"))
+        # manifest.json is the publication marker used by discovery. Publish
+        # it only after all data, sidecars, and report are complete and private.
+        restrict_artifact_file(manifest_temp)
+        stage = "publish_manifest"
+        manifest_temp.replace(manifest_path)
+        created_paths.append(manifest_path)
+    except Exception as exc:
+        log.error(
+            "backup failed database=%s kind=%s stage=%s error_type=%s elapsed_ms=%.1f",
+            database, kind, stage, type(exc).__name__, (perf_counter() - started) * 1000,
+        )
+        if preserve_failure:
+            raise
+        cleanup_candidates = created_paths + temporary_paths
         for path in cleanup_candidates:
             try:
                 if path.exists():
@@ -640,15 +689,18 @@ def execute_backup(
         }
     )
     log.info(
-        "backup executed database=%s kind=%s backup_id=%s directory=%s",
+        "backup executed database=%s kind=%s backup_id=%s directory=%s size_bytes=%s elapsed_ms=%.1f",
         database,
         kind,
         manifest.backup_id,
         relative_dir,
+        manifest.size_bytes,
+        (perf_counter() - started) * 1000,
     )
     from mercury.state.ledger import record_backup_execution
 
-    record_backup_execution(result)
+    if record_execution:
+        record_backup_execution(result)
     return result
 
 

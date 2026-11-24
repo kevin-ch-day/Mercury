@@ -423,6 +423,7 @@ def test_manifest_fields_are_stable() -> None:
             "dump_options",
             "object_contract",
             "restore_requirements",
+            "object_scope",
         }
     assert data["backup_kind"] == "full"
     assert data["live_actions_enabled"] is True

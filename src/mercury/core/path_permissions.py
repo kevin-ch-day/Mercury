@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import pwd
+import stat
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -35,10 +37,12 @@ def _owner_name(uid: int) -> str:
 def can_append(path: Path) -> bool:
     """Return whether the current user can append to an existing path."""
     try:
-        with path.open("a", encoding="utf-8"):
-            pass
-        return True
-    except (PermissionError, OSError):
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | getattr(os, "O_NONBLOCK", 0))
+        try:
+            return stat.S_ISREG(os.fstat(fd).st_mode)
+        finally:
+            os.close(fd)
+    except OSError:
         return False
 
 
@@ -69,19 +73,17 @@ def _probe_directory_writable(path: Path) -> tuple[bool, str]:
     blocked = _blocking_file_in_directory(path)
     if blocked:
         return False, blocked
-    probe = path / ".mercury_write_probe"
     try:
-        with probe.open("a", encoding="utf-8") as handle:
-            handle.write("")
-        probe.unlink(missing_ok=True)
+        with tempfile.TemporaryFile(dir=path):
+            pass
         return True, "ok"
-    except (PermissionError, OSError):
+    except OSError:
         try:
-            owner = _owner_name(path.stat().st_uid)
+            owner_uid = path.stat().st_uid
         except OSError:
-            owner = "unknown"
-        if path.stat().st_uid != os.geteuid():
-            return False, f"not writable (owner: {owner})"
+            return False, "not writable"
+        if owner_uid != os.geteuid():
+            return False, f"not writable (owner: {_owner_name(owner_uid)})"
         return False, "not writable"
 
 

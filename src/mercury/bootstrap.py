@@ -70,37 +70,26 @@ def init_command_logging(
         level=log_level,
         log_dir=log_dir,
     )
-    # If host maintenance has disabled HDD writes, force handlers off the Mercury mount.
-    try:
-        from mercury.storage.host_maintenance import writes_allowed
-        from mercury.storage.detach_logging import redirect_logging_off_hdd
-
-        if not writes_allowed() and log_dir is None:
-            redirect_logging_off_hdd()
-    except Exception:
-        pass
     log_session_start(argv=sys.argv)
 
 
 def run_with_session_logging(app: typer.Typer) -> None:
     """Run Typer app and record session end / uncaught errors in logs."""
-    import atexit
-
     from mercury.logging import log_session_end, log_uncaught_exception
 
-    state = {"exit_code": 0}
-
-    def _log_exit() -> None:
-        log_session_end(exit_code=state["exit_code"])
-
-    atexit.register(_log_exit)
+    exit_code = 0
     try:
         app()
     except SystemExit as exc:
-        code = exc.code
-        state["exit_code"] = int(code) if isinstance(code, int) else 1
+        if exc.code is not None:
+            exit_code = int(exc.code) if isinstance(exc.code, int) else 1
+        raise
+    except KeyboardInterrupt:
+        exit_code = 130
         raise
     except Exception:
+        exit_code = 1
         log_uncaught_exception()
-        state["exit_code"] = 1
         raise
+    finally:
+        log_session_end(exit_code=exit_code)

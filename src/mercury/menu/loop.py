@@ -16,15 +16,15 @@ MenuResult = Literal["exit", "continue", "invalid", "empty"]
 def handle_menu_choice(choice: str) -> MenuResult:
     """Handle one menu selection."""
     from mercury.logging.events import log_menu_action
-    from mercury.logging import get_logger, log_operation
+    from mercury.logging import log_operation
     from mercury.menu.actions import menu_action_blocked_for_writes
     from mercury.menu.options import MAIN_DEPLOY, main_menu_hint
     from mercury.storage.lifecycle import writes_disabled_redirect_message
 
     normalized = menu_prompts.normalize_menu_choice(choice)
-    get_logger("mercury.menu").info("menu choice raw=%r normalized=%r", choice, normalized)
     if choice.strip() == "?":
         output.write(menu_display.render_menu_help())
+        log_menu_action(choice="?", title="Menu help", result="displayed")
         return "empty"
     if not normalized:
         return "empty"
@@ -80,7 +80,7 @@ def handle_menu_choice(choice: str) -> MenuResult:
     action = resolve_menu_action(normalized)
     if action is None:
         menu_display.write_status("fail", menu_prompts.invalid_choice_message(choice))
-        log_menu_action(choice=normalized, title="Invalid", result="invalid")
+        log_menu_action(choice="invalid", title="Invalid", result="invalid")
         return "invalid"
 
     if menu_action_blocked_for_writes(action):

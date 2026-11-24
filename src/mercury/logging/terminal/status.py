@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from mercury.terminal import format as display_format
 from mercury.terminal import screen as display_screen
-from mercury.logging.analysis import LogStatusReport
+from mercury.logging.analysis import LogSession, LogStatusReport
 
 
 def print_log_status(report: LogStatusReport) -> None:
@@ -13,8 +13,8 @@ def print_log_status(report: LogStatusReport) -> None:
         {
             "log_dir": report.log_dir,
             "logging_enabled": report.logging_enabled,
-            "total_errors": report.total_errors,
-            "total_warnings": report.total_warnings,
+            "daily_log_errors": report.total_errors,
+            "daily_log_warnings": report.total_warnings,
         }
     )
     if not report.files:
@@ -36,11 +36,23 @@ def print_log_status(report: LogStatusReport) -> None:
 
     if report.sessions:
         display_screen.write_section("Recent sessions")
-        session_rows = []
-        for session in report.sessions:
-            command = session.command or "(unknown)"
-            if len(command) > 48:
-                command = f"…{command[-47:]}"
-            exit_code = "" if session.exit_code is None else str(session.exit_code)
-            session_rows.append([session.session_id, command, exit_code])
-        display_screen.write_table(["SESSION", "COMMAND", "EXIT"], session_rows)
+        print_session_table(report.sessions)
+
+
+def print_session_table(sessions: list[LogSession]) -> None:
+    rows = []
+    for session in sessions:
+        command = session.command or "(unknown)"
+        if len(command) > 48:
+            command = f"…{command[-47:]}"
+        if not session.start_line:
+            status = f"unpaired {session.exit_code}"
+        elif session.ambiguous:
+            status = "ambiguous"
+        elif session.exit_code is None:
+            status = "no end record"
+        else:
+            status = str(session.exit_code)
+        elapsed = "" if session.elapsed_ms is None else f"{session.elapsed_ms:.1f}"
+        rows.append([session.session_id, command, status, elapsed])
+    display_screen.write_table(["SESSION", "COMMAND", "EXIT", "MS"], rows)

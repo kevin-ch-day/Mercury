@@ -26,14 +26,14 @@ def _resolve_server_databases(cfg, preflight) -> set[str]:
 
 
 def _policy_labels(options: DeployOptions) -> tuple[str, bool, bool]:
-    policy = "skip-existing" if options.skip_existing else "import-into-existing"
-    return policy, options.allow_overwrite_database, options.allow_drop_database
+    policy = "skip-existing" if options.skip_existing else "refuse-existing"
+    return policy, False, False
 
 
 def _build_safety_notes(candidates, *, has_existing_targets: bool) -> list[str]:
     notes = [
         "Deployment imports verified operator-storage backups into local MariaDB.",
-        "Never drops target databases unless explicit overwrite/drop modes are enabled.",
+        "Deployment requires exclusive creation of a new target; existing databases are never replaced.",
     ]
     if has_existing_targets:
         notes.append(
@@ -48,8 +48,7 @@ def _blocked_existing_guidance() -> list[str]:
     return [
         "Deployment blocked by existing target databases.",
         "Default policy will not import into existing protected DBs.",
-        "Options: skip existing (default), deploy with suffix, restore-check lane, "
-        "or explicit overwrite mode when enabled by policy.",
+        "Use skip-existing (default) or a separately authorized restore-check lane.",
     ]
 
 
@@ -77,6 +76,15 @@ def build_deployment_plan(
 
     blockers = list(preflight.planning_blockers if not execute else preflight.blockers)
     warnings = list(preflight.warnings)
+    if databases:
+        from mercury.backup.backup_runner import BackupExecutionError
+        from mercury.deploy.safety import assert_deployment_target
+
+        for name in databases:
+            try:
+                assert_deployment_target(name, allow_development_deploy=allow_development_deploy)
+            except BackupExecutionError as exc:
+                blockers.append(str(exc))
     if not execute:
         for detail in preflight.live_blockers:
             warnings.append(f"Live deploy blocked: {detail}")

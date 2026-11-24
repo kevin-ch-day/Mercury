@@ -267,7 +267,7 @@ def _live_db_deploy() -> None:
     if menu_prompts.ask_yes_no(confirm, default=False) is not True:
         menu_display.write_summary("Deployment cancelled.")
         return
-    print_deployment_summary(execute_deployment_batch(policy=policy, execute=True))
+    print_deployment_summary(execute_deployment_batch(policy=policy, execute=True, deployment_plan=plan))
 
 
 def _repo_submenu() -> None:

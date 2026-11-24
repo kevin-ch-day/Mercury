@@ -47,7 +47,7 @@ def classify_database(name: str) -> DatabaseClassification:
             notes="Shared authority database; backup source per platform policy.",
         )
 
-    if name.endswith(PROD_SUFFIX):
+    if name == 'noctivar' or name.endswith(PROD_SUFFIX):
         return DatabaseClassification(
             name=name,
             role=DatabaseRole.PRODUCTION,

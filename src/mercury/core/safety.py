@@ -4,6 +4,10 @@ MODE_SEED = "seed"
 DRY_RUN_ONLY = True
 LIVE_ACTIONS_ENABLED = False
 
+# This source is admitted for backup only. Its independent isolated rehearsal
+# tool does not use the live restore/deployment executors.
+LIVE_RESTORE_PROHIBITED_DATABASES = frozenset({"noctivar"})
+
 # Storage migration copy confirmation (does not switch writers / cutover)
 MIGRATE_PRIMARY_CONFIRMATION_PHRASE = "MIGRATE PRIMARY"
 

@@ -30,7 +30,7 @@ def discover(
         cfg = mariadb_config or load_mariadb_config()
         inventory = discover_databases_live(cfg, connect_fn=connect_fn)
     elif mode == "demo":
-        inventory = discover_demo()
+        return discover_demo()
     else:
         inventory = discover_from_config(
             include_catalog=include_catalog,

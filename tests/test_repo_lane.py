@@ -8,6 +8,7 @@ import stat
 import os
 from pathlib import Path
 import subprocess
+import sys
 
 import pytest
 
@@ -116,8 +117,8 @@ def test_offline_clone_sync_creates_independent_hdd_worktree(tmp_path, monkeypat
 
 
 def test_offline_clone_preview_blocks_damaged_copy_before_head_comparison(tmp_path, monkeypatch):
-    source, plan = _mirror_setup(tmp_path, monkeypatch)
-    execute_offline_clone_plan(plan())
+    _, plan = _mirror_setup(tmp_path, monkeypatch)
+    assert execute_offline_clone_plan(plan()).entries[0].executed
     monkeypatch.setattr('mercury.repo.offline_clone._destination_integrity_error', lambda p: 'corrupt')
     assert plan().entries[0].action == 'blocked'
 
@@ -129,11 +130,101 @@ def test_offline_clone_update_refreshes_stale_local_source_remote(tmp_path, monk
     old_refs = _git_output(old, 'show-ref')
     _git(source, 'branch', 'research/new')
     assert plan().entries[0].action == 'update'  # HEAD unchanged, another ref added.
-    second = execute_offline_clone_plan(plan())
+    second = execute_offline_clone_plan(plan(), reuse_unchanged=sys.platform == 'linux')
     assert second.entries[0].destination_path != old
     assert _git_output(old, 'show-ref') == old_refs
     assert first.receipt_path.exists()
     assert plan().entries[0].action == 'current'
+
+
+@pytest.mark.skipif(sys.platform != 'linux', reason='mirror reuse uses the Linux operator-volume lock')
+def test_reused_mirror_recovers_new_snapshot_and_skips_historical_snapshot(tmp_path, monkeypatch, capsys):
+    from mercury.repo.recovery import main as recover
+
+    source, plan = _mirror_setup(tmp_path, monkeypatch)
+    tracked = source / 'README.md'
+    tracked.write_text('first working tree\n')
+    first = execute_offline_clone_plan(plan(), snapshots=True)
+    old = first.entries[0]
+
+    preview = plan()
+    tracked.write_text('second working tree\n')
+    second = execute_offline_clone_plan(preview, snapshots=True, reuse_unchanged=True)
+    entry = second.entries[0]
+    assert entry.executed and entry.mirror_reused and entry.fsck == 'PASS'
+    assert entry.destination_path == old.destination_path
+    assert not list(second.receipt_path.parent.glob('*.git'))
+    assert entry.snapshot_captured is True
+    assert Path(entry.snapshot['path']).parent == second.receipt_path.parent
+    assert Path(old.snapshot['path']).parent == first.receipt_path.parent
+
+    restored = tmp_path / 'restored'
+    monkeypatch.setattr(sys, 'argv', ['recover', '--receipt', str(second.receipt_path),
+                                    '--key', 'source', '--destination', str(restored)])
+    recover()
+    assert (restored / 'README.md').read_text() == 'second working tree\n'
+    assert json.loads(capsys.readouterr().out)['snapshot_files_verified'] == 1
+
+    third = execute_offline_clone_plan(plan(), reuse_unchanged=True)
+    assert third.entries[0].snapshot_captured is False
+    assert third.entries[0].snapshot == entry.snapshot
+    committed = tmp_path / 'committed'
+    monkeypatch.setattr(sys, 'argv', ['recover', '--receipt', str(third.receipt_path),
+                                    '--key', 'source', '--destination', str(committed)])
+    recover()
+    assert (committed / 'README.md').read_text() == '# source\n'
+    assert json.loads(capsys.readouterr().out)['snapshot_files_verified'] == 0
+
+
+@pytest.mark.skipif(sys.platform != 'linux', reason='mirror reuse uses the Linux operator-volume lock')
+def test_reusing_a_mirror_rechecks_integrity_before_publishing(tmp_path, monkeypatch):
+    _, plan = _mirror_setup(tmp_path, monkeypatch)
+    first = execute_offline_clone_plan(plan())
+    unchanged = plan()
+    assert unchanged.entries[0].action == 'current'
+    old = first.entries[0].destination_path
+    monkeypatch.setattr('mercury.repo.offline_clone._destination_integrity_error',
+                        lambda path: 'corrupt' if path == old else None)
+    result = execute_offline_clone_plan(unchanged, reuse_unchanged=True)
+    assert not result.entries[0].executed
+    assert result.entries[0].fsck == 'FAIL'
+    assert json.loads(result.receipt_path.read_text())['status'] == 'partial'
+    latest = result.root / first.receipt_path.name
+    assert latest.read_bytes() == first.receipt_path.read_bytes()
+
+
+@pytest.mark.skipif(sys.platform != 'linux', reason='mirror reuse uses the Linux operator-volume lock')
+def test_repository_pruning_and_publication_share_the_volume_lock(tmp_path, monkeypatch):
+    from mercury.repo.offline_clone import repository_operation_lock
+    from mercury.repo.retention import prune_generations
+
+    _, plan = _mirror_setup(tmp_path, monkeypatch)
+    first = execute_offline_clone_plan(plan())
+    unchanged = plan()
+    with repository_operation_lock(first.root):
+        with pytest.raises(ValueError, match='owns this lock'):
+            execute_offline_clone_plan(unchanged, reuse_unchanged=True)
+        with pytest.raises(ValueError, match='owns this lock'):
+            prune_generations(first.root, execute=True, enabled=True)
+    assert list(first.root.glob('generations/*')) == [first.receipt_path.parent]
+
+
+@pytest.mark.skipif(sys.platform != 'linux', reason='mirror reuse uses the Linux operator-volume lock')
+def test_scheduled_sync_opt_in_reuses_an_unchanged_mirror(tmp_path, monkeypatch, capsys):
+    from mercury.repo import scheduled_sync
+
+    source, plan = _mirror_setup(tmp_path, monkeypatch)
+    first = execute_offline_clone_plan(plan())
+    for name in ('activate_disk', 'require_disk', 'require_destination', 'require_headroom'):
+        monkeypatch.setattr(scheduled_sync, name, lambda *_: None)
+    monkeypatch.setattr('mercury.repo.offline_clone.offline_clone_root', lambda: first.root)
+    monkeypatch.setattr('mercury.repo.config.load_repo_definitions', lambda: [
+        RepoDefinition(key='source', display_name='Source', path=source),
+    ])
+    assert scheduled_sync.main(['--mount', str(first.root.parent), '--uuid', 'fixture', '--reuse-unchanged']) == 0
+    assert 'synced=1 requested=1 reused=1' in capsys.readouterr().out
+    receipt = json.loads((first.root / first.receipt_path.name).read_text())
+    assert receipt['repositories'][0]['mirror_path'] == str(first.entries[0].destination_path)
 
 
 def test_offline_clone_update_repairs_only_stale_zero_oid_source_head(tmp_path, monkeypatch):
@@ -198,7 +289,10 @@ def test_snapshot_excludes_tracked_ignored_and_secret_changes(tmp_path, monkeypa
     assert data['tracked_files'] == []
 
 
-def test_offline_clone_terminal_marks_executed_entries_as_synced(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+@pytest.mark.parametrize("snapshot_generation", [None, "previous", "current"])
+def test_offline_clone_terminal_marks_executed_entries_as_synced(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, snapshot_generation: str | None
+) -> None:
     from mercury.repo.offline_clone import OfflineCloneEntry, OfflineClonePlan
     from mercury.repo.offline_terminal import print_offline_clone_plan
 
@@ -209,11 +303,15 @@ def test_offline_clone_terminal_marks_executed_entries_as_synced(capsys: pytest.
                 key="mercury",
                 display_name="Mercury",
                 source_path=tmp_path / "source",
-                destination_path=tmp_path / "copy",
+                destination_path=tmp_path / "current" / "copy.git",
                 commit="a" * 40,
                 source_dirty=True,
                 action="clone",
                 executed=True,
+                snapshot=(
+                    {"path": str(tmp_path / snapshot_generation / "uncommitted")}
+                    if snapshot_generation else None
+                ),
             )
         ],
     )
@@ -221,7 +319,10 @@ def test_offline_clone_terminal_marks_executed_entries_as_synced(capsys: pytest.
     print_offline_clone_plan(plan, executed=True)
     text = capsys.readouterr().out
     assert "synced" in text
-    assert "source dirty" in text
+    if snapshot_generation == "current":
+        assert "dirty snapshot recorded" in text
+    else:
+        assert "source dirty (committed only)" in text
 
 
 def test_inspect_repositories_reports_ahead_behind_when_available(tmp_path: Path) -> None:

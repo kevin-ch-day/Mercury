@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from mercury.backup.layout import MANIFEST_FILENAME
+from mercury.core.safety import BACKUP_KIND_FULL
 
 
 def _manifest_created_at(path: Path) -> datetime | None:
@@ -14,7 +15,7 @@ def _manifest_created_at(path: Path) -> datetime | None:
         return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        raw = data.get("created_at")
+        raw = data.get("created_at") if isinstance(data, dict) else None
         if not raw:
             return None
         if isinstance(raw, datetime):
@@ -25,7 +26,7 @@ def _manifest_created_at(path: Path) -> datetime | None:
 
 
 def _manifest_payload(path: Path) -> dict:
-    if not path.is_file():
+    if path.is_symlink() or not path.is_file():
         return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -34,8 +35,23 @@ def _manifest_payload(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def find_backup_directories(backup_root: Path, database: str) -> list[Path]:
-    """Return backup dirs for a database that contain manifest.json (newest last)."""
+def _matches_complete_full(manifest: dict, database: str) -> bool:
+    return (
+        manifest.get("database") == database
+        and manifest.get("backup_kind") == BACKUP_KIND_FULL
+        and manifest.get("object_scope", "complete_schema") == "complete_schema"
+    )
+
+
+def is_complete_full_backup(backup_dir: Path, database: str) -> bool:
+    """Check declared backup scope and source identity without hashing artifacts."""
+    return _matches_complete_full(_manifest_payload(backup_dir / MANIFEST_FILENAME), database)
+
+
+def find_backup_directories(
+    backup_root: Path, database: str, *, require_complete_full: bool = False
+) -> list[Path]:
+    """Discover manifest directories, optionally limiting to complete full backups."""
     if not backup_root.is_dir():
         return []
 
@@ -59,6 +75,8 @@ def find_backup_directories(backup_root: Path, database: str) -> list[Path]:
             for child in sorted(db_dir.iterdir())
             if child.is_dir() and (child / MANIFEST_FILENAME).is_file()
         )
+    if require_complete_full:
+        return [path for path in found if is_complete_full_backup(path, database)]
     return found
 
 
@@ -72,15 +90,19 @@ def _sort_key(path: Path) -> tuple[float, float]:
     return (created_ts, mtime)
 
 
-def find_latest_backup_directory(backup_root: Path, database: str) -> Path | None:
+def find_latest_backup_directory(
+    backup_root: Path, database: str, *, require_complete_full: bool = False
+) -> Path | None:
     """Return the newest written backup directory (manifest created_at, then mtime).
 
-    This is ``latest_written`` only. It does **not** filter by artifact
+    ``require_complete_full`` filters declared scope. This does not check artifact
     verification, restore-check, package membership, or handoff eligibility.
     Prefer ``find_backup_by_id``, ``find_latest_artifact_verified_backup``, or
     ``find_latest_restore_checked_backup`` for migration and destination work.
     """
-    candidates = find_backup_directories(backup_root, database)
+    candidates = find_backup_directories(
+        backup_root, database, require_complete_full=require_complete_full
+    )
     if not candidates:
         return None
     return max(candidates, key=_sort_key)
@@ -123,20 +145,26 @@ def find_latest_artifact_verified_backup(
     database: str,
     *,
     allow_development_backup: bool = False,
+    require_complete_full: bool = False,
 ) -> Path | None:
-    """Newest backup directory that currently passes on-disk artifact integrity checks.
+    """Newest backup of the requested scope that passes artifact integrity checks.
 
     Candidates are checked newest-first and return on the first integrity pass so
     doctor/status paths do not checksum every historical dump.
     """
     from mercury.backup.verification import verify_backup_artifacts
 
-    candidates = sorted(find_backup_directories(backup_root, database), key=_sort_key, reverse=True)
+    candidates = sorted(
+        find_backup_directories(backup_root, database, require_complete_full=require_complete_full),
+        key=_sort_key,
+        reverse=True,
+    )
     for path in candidates:
         if verify_backup_artifacts(
             path,
             database=database,
             allow_development_backup=allow_development_backup,
+            require_complete_full=require_complete_full,
         ).verified:
             return path
     return None
@@ -147,6 +175,7 @@ def find_latest_restore_checked_backup(
     database: str,
     *,
     require_passed: bool = True,
+    require_complete_full: bool = False,
 ) -> Path | None:
     """Newest on-disk backup whose exact backup_id has a ledger restore-check result."""
     from mercury.backup.status import latest_restore_check_by_backup_id
@@ -155,9 +184,11 @@ def find_latest_restore_checked_backup(
     matches: list[Path] = []
     for path in find_backup_directories(backup_root, database):
         payload = _manifest_payload(path / MANIFEST_FILENAME)
+        if require_complete_full and not _matches_complete_full(payload, database):
+            continue
         backup_id = str(payload.get("backup_id") or "").strip()
         record = records.get(backup_id)
-        if record is None:
+        if record is None or record.database != database:
             continue
         if require_passed and record.status != "passed":
             continue
@@ -178,50 +209,72 @@ def resolve_backup_directory(
     backup_id: str | None = None,
     prefer: str = "artifact_verified",
     allow_unverified: bool = False,
+    allow_development_backup: bool = False,
+    require_complete_full: bool = False,
 ) -> Path:
     """Resolve a backup directory by exact ID or a documented preference.
+
+    Filter the required scope before choosing by recency, including for overrides.
 
     ``prefer`` values:
       - ``written``: newest on disk (inventory only)
       - ``artifact_verified``: newest that passes integrity checks
       - ``restore_checked``: newest with ledger restore-check passed
     """
+    scope = " complete full" if require_complete_full else ""
     if backup_id:
         path = find_backup_by_id(backup_root, backup_id, database=database)
         if path is None:
             raise BackupSelectionError(
                 f"No backup directory found for database '{database}' with backup_id '{backup_id}'."
             )
+        if require_complete_full and not is_complete_full_backup(path, database):
+            raise BackupSelectionError(
+                f"Backup '{backup_id}' for database '{database}' is not a complete full backup."
+            )
         return path
 
     if prefer == "restore_checked":
-        path = find_latest_restore_checked_backup(backup_root, database)
+        path = find_latest_restore_checked_backup(
+            backup_root, database, require_complete_full=require_complete_full
+        )
         if path is not None:
             return path
         raise BackupSelectionError(
-            f"No restore-checked backup found for '{database}'. Pass --backup-id explicitly."
+            f"No restore-checked{scope} backup found for '{database}'. Pass --backup-id explicitly."
         )
     if prefer == "written":
-        path = find_latest_backup_directory(backup_root, database)
+        path = find_latest_backup_directory(
+            backup_root, database, require_complete_full=require_complete_full
+        )
         if path is None:
-            raise BackupSelectionError(f"No on-disk backup found for '{database}'.")
+            raise BackupSelectionError(f"No on-disk{scope} backup found for '{database}'.")
         return path
 
     # Default: artifact_verified
-    path = find_latest_artifact_verified_backup(backup_root, database)
+    path = find_latest_artifact_verified_backup(
+        backup_root,
+        database,
+        allow_development_backup=allow_development_backup,
+        require_complete_full=require_complete_full,
+    )
     if path is not None:
         return path
     if allow_unverified:
-        path = find_latest_backup_directory(backup_root, database)
+        path = find_latest_backup_directory(
+            backup_root, database, require_complete_full=require_complete_full
+        )
         if path is not None:
             return path
     raise BackupSelectionError(
-        f"No artifact-verified backup found for '{database}'. "
+        f"No artifact-verified{scope} backup found for '{database}'. "
         "Pass --backup-id for an explicit selection, or create/verify a full backup first."
     )
 
 
-def list_backup_candidates(backup_root: Path, database: str) -> list[dict[str, str | bool | None]]:
+def list_backup_candidates(
+    backup_root: Path, database: str, *, require_complete_full: bool = False
+) -> list[dict[str, str | bool | None]]:
     """Return candidate backups for interactive selection (newest first).
 
     Uses manifest stamps and ledger status for listing; does not checksum dumps.
@@ -231,7 +284,10 @@ def list_backup_candidates(backup_root: Path, database: str) -> list[dict[str, s
 
     records = latest_restore_check_by_backup_id()
     rows: list[dict[str, str | bool | None]] = []
-    for path in sorted(find_backup_directories(backup_root, database), key=_sort_key, reverse=True):
+    directories = find_backup_directories(
+        backup_root, database, require_complete_full=require_complete_full
+    )
+    for path in sorted(directories, key=_sort_key, reverse=True):
         payload = _manifest_payload(path / MANIFEST_FILENAME)
         backup_id = str(payload.get("backup_id") or "").strip() or None
         stamp = manifest_verified_stamp(path / MANIFEST_FILENAME)
@@ -245,7 +301,7 @@ def list_backup_candidates(backup_root: Path, database: str) -> list[dict[str, s
                 "created_at": str(payload.get("created_at") or "") or None,
                 "artifact_integrity_verified": artifact_ok,
                 "manifest_verification_stamp": stamp,
-                "restore_check_status": rc.status if rc else None,
+                "restore_check_status": rc.status if rc and rc.database == database else None,
             }
         )
     return rows

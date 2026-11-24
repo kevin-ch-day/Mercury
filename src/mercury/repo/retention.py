@@ -6,12 +6,35 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 
-from mercury.repo.offline_clone import OFFLINE_SYNC_RECEIPT_NAME, _destination_integrity_error
+from mercury.repo.offline_clone import (
+    GENERATION_NAME, OFFLINE_SYNC_RECEIPT_NAME, _destination_integrity_error, repository_operation_lock,
+)
 
-GENERATION = re.compile(r'^\d{8}T\d{6}-[0-9a-f]{8}$')
+
+def _read_receipt(path: Path) -> tuple[dict, str]:
+    if path.is_symlink() or not path.is_file():
+        raise ValueError('receipt is not a regular file')
+    with path.open('rb') as stream:
+        raw = stream.read(8 * 1024 * 1024 + 1)
+    if len(raw) > 8 * 1024 * 1024:
+        raise ValueError('receipt exceeds limit')
+    data = json.loads(raw)
+    if not isinstance(data, dict) or not isinstance(data.get('repositories'), list) or not data['repositories']:
+        raise ValueError('invalid receipt shape')
+    for repo in data['repositories']:
+        if not isinstance(repo, dict):
+            raise ValueError('invalid repository record')
+        mirror = repo.get('mirror_path')
+        snapshot = repo.get('snapshot')
+        if mirror is not None and not isinstance(mirror, str):
+            raise ValueError('invalid mirror locator')
+        if snapshot is not None and (
+            not isinstance(snapshot, dict) or not isinstance(snapshot.get('path'), str)
+        ):
+            raise ValueError('invalid snapshot locator')
+    return data, hashlib.sha256(raw).hexdigest()
 
 
 def retention_plan(root: Path) -> dict:
@@ -24,22 +47,28 @@ def retention_plan(root: Path) -> dict:
     valid = {}
     keep = set()
     reasons = {}
+    parsed = {}
+    fingerprints = {}
+    unresolved_dependencies = False
     if not generations.is_dir() or generations.is_symlink():
         return {'keep': [], 'candidates': [], 'fingerprints': {}, 'reasons': {}}
     for path in sorted(generations.iterdir()):
-        if not path.is_dir() or path.is_symlink() or not GENERATION.fullmatch(path.name):
+        if not path.is_dir() or path.is_symlink() or not GENERATION_NAME.fullmatch(path.name):
             keep.add(path.name); reasons[path.name] = 'unknown entry; manual review'
             continue
         try:
             receipt = path / OFFLINE_SYNC_RECEIPT_NAME
-            if receipt.is_symlink(): raise ValueError('symlink')
-            data = json.loads(receipt.read_text())
+            data, digest = _read_receipt(receipt)
+            parsed[path.name] = data
+            fingerprints[path.name] = digest
             repos = data['repositories']
-            if not repos or any(not r.get('synced') or r.get('fsck') != 'PASS' for r in repos):
-                raise ValueError('incomplete')
-            valid[path.name] = data
+            if repos and all(r.get('synced') is True and r.get('fsck') == 'PASS' for r in repos):
+                valid[path.name] = data
+            else:
+                keep.add(path.name); reasons[path.name] = 'incomplete receipt; manual review'
         except (OSError, ValueError, KeyError, TypeError):
             keep.add(path.name); reasons[path.name] = 'incomplete receipt; manual review'
+            unresolved_dependencies = True
     days = {}
     months = {}
     for name in sorted(valid):
@@ -49,9 +78,11 @@ def retention_plan(root: Path) -> dict:
     keep.update(months.values())
     # The latest status receipt and retained receipts can reference older snapshots.
     try:
-        latest = json.loads((root / OFFLINE_SYNC_RECEIPT_NAME).read_text())
+        latest, _ = _read_receipt(root / OFFLINE_SYNC_RECEIPT_NAME)
     except (OSError, ValueError):
         keep.update(valid); latest = {}
+    if unresolved_dependencies:
+        keep.update(valid)
     def referenced(data):
         for repo in data.get('repositories', []):
             paths = [repo.get('mirror_path'), (repo.get('snapshot') or {}).get('path')]
@@ -60,25 +91,30 @@ def retention_plan(root: Path) -> dict:
                 try:
                     relative = Path(value).resolve().relative_to(generations.resolve())
                     if relative.parts: yield relative.parts[0]
-                except ValueError:
+                except (OSError, ValueError, RuntimeError):
                     continue
     keep.update(referenced(latest))
     while True:
         before = set(keep)
-        for name in list(keep): keep.update(referenced(valid.get(name, {})))
+        for name in list(keep): keep.update(referenced(parsed.get(name, {})))
         if before == keep: break
     candidates = sorted(set(valid) - keep)
     return {'keep': sorted(keep), 'candidates': candidates,
-            'fingerprints': {name: hashlib.sha256((generations / name / OFFLINE_SYNC_RECEIPT_NAME).read_bytes()).hexdigest() for name in valid},
+            'fingerprints': fingerprints,
             'reasons': reasons}
 
 
 def prune_generations(root: Path, *, execute: bool = False, enabled: bool = False) -> dict:
-    plan = retention_plan(root)
-    if not execute: return plan
+    if not execute: return retention_plan(root)
     if not enabled: raise ValueError('Repository pruning is disabled; preview only')
     from mercury.core.usb_mount import assert_operator_storage_path
     assert_operator_storage_path(root, action='explicit repository generation pruning')
+    with repository_operation_lock(root):
+        return _prune_locked(root)
+
+
+def _prune_locked(root: Path) -> dict:
+    plan = retention_plan(root)
     # Refuse deletion unless retained complete mirrors and snapshots still verify.
     for name in plan['keep']:
         receipt = root / 'generations' / name / OFFLINE_SYNC_RECEIPT_NAME

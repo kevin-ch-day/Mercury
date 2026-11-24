@@ -39,12 +39,13 @@ def env_bool(name: str) -> bool | None:
 
 def load_mercury_section() -> dict[str, object]:
     config_path = resolve_local_config()
-    if not config_path.exists():
-        return {}
     import tomllib
 
-    with config_path.open("rb") as handle:
-        data = tomllib.load(handle)
+    try:
+        with config_path.open("rb") as handle:
+            data = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
     section = data.get("mercury")
     if isinstance(section, dict):
         return section
@@ -60,29 +61,18 @@ def parse_level(value: str) -> int:
 
 
 def resolve_log_dir(*, override: Path | str | None = None) -> Path:
-    if override is not None and str(override).strip():
-        path = Path(str(override).strip()).expanduser()
-        return path.resolve() if path.is_absolute() else (REPO_ROOT / path).resolve()
-
-    env_dir = os.environ.get(ENV_LOG_DIR)
-    if env_dir and str(env_dir).strip():
-        path = Path(str(env_dir).strip()).expanduser()
-        return path.resolve() if path.is_absolute() else (REPO_ROOT / path).resolve()
-
-    section = load_mercury_section()
-    configured = section.get("log_dir")
-    if configured and str(configured).strip():
-        path = Path(str(configured).strip())
-        resolved = path.resolve() if path.is_absolute() else (REPO_ROOT / path).resolve()
-    else:
-        resolved = LOGS_DIR.resolve()
+    configured = str(override or "").strip() or os.environ.get(ENV_LOG_DIR, "").strip()
+    if not configured:
+        configured = str(load_mercury_section().get("log_dir") or "").strip()
+    path = Path(configured).expanduser() if configured else LOGS_DIR
+    resolved = (REPO_ROOT / path).resolve()
 
     # Detach / write-disabled: never open new log files on the Mercury HDD.
     try:
         from mercury.storage.detach_logging import default_detach_log_dir
         from mercury.storage.host_maintenance import path_is_under_primary_mount, writes_allowed
 
-        if not writes_allowed() and path_is_under_primary_mount(resolved):
+        if path_is_under_primary_mount(resolved) and not writes_allowed():
             return default_detach_log_dir().resolve()
     except Exception:
         pass

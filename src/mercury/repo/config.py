@@ -47,6 +47,10 @@ DEFAULT_LOCAL_REPO_CANDIDATES: list[tuple[str, str, str]] = [
     ("scytaledroid_web", "ScytaleDroid Web", "{home}/GitHub/ScytaleDroid-Web"),
     ("obsidiandroid", "ObsidianDroid", "{home}/GitHub/obsidiandroid"),
     ("fedora_linux_scripts", "Fedora Linux Scripts", "{home}/GitHub/fedora-linux-scripts"),
+    *((f'noctivar_{name.replace("-", "_")}', f'Noctivar {name}',
+       '{home}/Projects/Noctivar/' + name)
+      for name in ('android-device','android-static','android-dynamic','android-web',
+                   'noctivar-cli-database','noctivar-cli-utls')),
 ]
 
 # A workstation checkout is the portable default.  A web-server deployment is

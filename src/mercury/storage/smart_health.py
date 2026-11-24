@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -113,21 +114,27 @@ def record_smart_health(
         return SmartHealthResult(path, {}, False, False, "Could not resolve block device for primary mount")
 
     run = runner or subprocess.run
-    health = run(
-        ["sudo", "smartctl", "-H", "-i", device],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    # -A can be large; keep attributes optional if health+info succeeded.
-    attrs = run(
-        ["sudo", "smartctl", "-A", device],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        health = run(
+            ["sudo", "-n", "smartctl", "-H", "-i", device],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        attrs = run(
+            ["sudo", "-n", "smartctl", "-A", device],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return SmartHealthResult(path, {"capture_state": "unavailable", "error_kind": type(error).__name__}, True, False,
+            "SMART capture unavailable; prior receipt preserved.")
     combined = (health.stdout or "") + "\n" + (attrs.stdout or "")
-    passed = "PASSED" in (health.stdout or "") or "PASSED" in combined
+    passed = bool(re.search(r"\bPASSED\b", health.stdout or ""))
+    capture_complete = all(code >= 0 and not code & 7 for code in (health.returncode, attrs.returncode))
     # Return codes: 0 ok; non-zero may still include PASSED with warnings.
     payload: dict[str, Any] = {
         "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -137,14 +144,17 @@ def record_smart_health(
         "smartctl_path": plan["smartctl"],
         "health_exit_code": health.returncode,
         "attributes_exit_code": attrs.returncode,
-        "overall_health_passed": passed and not (
-            "FAILED" in (health.stdout or "") or "FAILED" in combined
-        ),
+        "capture_complete": capture_complete,
+        "overall_health_passed": capture_complete and passed and not re.search(r"\bFAILED\b", combined)
+            and not (health.returncode | attrs.returncode) & 8,
         "stdout_health": health.stdout or "",
         "stderr_health": health.stderr or "",
         "stdout_attributes": attrs.stdout or "",
         "stderr_attributes": attrs.stderr or "",
     }
+    if not capture_complete:
+        return SmartHealthResult(path, payload, True, False,
+            "SMART command failed or evidence incomplete; prior receipt preserved.")
     if health.returncode == 1 and "Permission denied" in (health.stderr or ""):
         return SmartHealthResult(
             path,
@@ -171,11 +181,11 @@ def record_smart_health(
             f"SMART evidence path is not under primary mount {mount}: {resolved}"
         ) from exc
     write_private_text(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    ok = bool(payload["overall_health_passed"])
+    ok = bool(payload["overall_health_passed"]) and health.returncode == attrs.returncode == 0
     return SmartHealthResult(
         path,
         payload,
         executed=True,
         success=ok,
-        message="SMART health PASSED and recorded." if ok else "SMART capture wrote evidence but health did not PASS.",
+        message="SMART health PASSED and recorded." if ok else "SMART evidence recorded with health failures or warnings; inspect exit codes.",
     )

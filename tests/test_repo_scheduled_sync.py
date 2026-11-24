@@ -31,7 +31,26 @@ def test_real_disk_requires_matching_uuid():
 
 
 def test_missing_disk_entrypoint_logs_clean_failure(monkeypatch, capsys):
+    monkeypatch.setattr('mercury.repo.scheduled_sync.activate_disk', lambda *args: None)
     monkeypatch.setattr('mercury.repo.scheduled_sync.require_disk',
                         lambda *args: (_ for _ in ()).throw(ValueError('disk absent; no writes')))
     assert main(['--mount', '/mnt/MERCURY_DATA', '--uuid', 'uuid']) == 1
-    assert 'disk absent; no writes' in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert 'disk absent; no writes' in output
+    assert 'status=failed stage=mount' in output
+
+
+def test_empty_scheduler_scope_fails_without_creating_a_generation(tmp_path, monkeypatch, capsys):
+    from mercury.repo import scheduled_sync
+
+    for name in ("activate_disk", "require_disk", "require_destination", "require_headroom"):
+        monkeypatch.setattr(scheduled_sync, name, lambda *_: None)
+    monkeypatch.setattr("mercury.repo.config.load_repo_definitions", list)
+    mirror_root = tmp_path / "mercury_repo_clones"
+    monkeypatch.setattr("mercury.repo.offline_clone.offline_clone_root", lambda: mirror_root)
+
+    assert main(["--mount", str(tmp_path), "--uuid", "synthetic"]) == 1
+    output = capsys.readouterr().out
+    assert "No repositories are configured" in output
+    assert "status=failed stage=plan" in output
+    assert not mirror_root.exists()

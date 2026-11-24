@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
+
+
+def safe_artifact_name(name: str) -> bool:
+    """Backup sidecars name direct children, never external or nested paths."""
+    return bool(name) and name not in {".", ".."} and not any(
+        character in name for character in "/\\:"
+    ) and not any(ord(character) < 32 or ord(character) == 127 for character in name)
 
 
 def sha256_file(path: Path) -> str:
@@ -44,19 +52,28 @@ def parse_checksum_file(path: Path) -> dict[str, str]:
     entries: dict[str, str] = {}
     if not path.exists():
         return entries
-    for line in path.read_text(encoding="utf-8").splitlines():
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > 1024 * 1024:
+        raise ValueError("checksum sidecar must be a bounded regular file")
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
-        parts = stripped.split()
-        if len(parts) < 2:
-            continue
-        hexdigest, filename = parts[0], parts[-1]
+        match = re.fullmatch(r"([0-9a-fA-F]{64}) [ *](.+)", line)
+        if match is None:
+            raise ValueError(f"Malformed checksum entry at line {number}")
+        hexdigest, filename = match.groups()
+        if not safe_artifact_name(filename) or filename in entries:
+            raise ValueError(f"Unsafe or duplicate checksum artifact at line {number}")
         entries[filename] = hexdigest.lower()
     return entries
 
 
-def verify_checksums(directory: Path, checksum_path: Path) -> tuple[bool, list[str]]:
+def verify_checksums(
+    directory: Path,
+    checksum_path: Path,
+    *,
+    required_files: dict[str, tuple[str | None, int | None]] | None = None,
+) -> tuple[bool, list[str]]:
     """
     Verify checksum.sha256 against files in directory.
 
@@ -66,22 +83,48 @@ def verify_checksums(directory: Path, checksum_path: Path) -> tuple[bool, list[s
     if not checksum_path.exists():
         return False, ["checksum.sha256 not found"]
 
-    expected = parse_checksum_file(checksum_path)
+    try:
+        expected = parse_checksum_file(checksum_path)
+    except (OSError, ValueError) as error:
+        return False, [f"Invalid checksum sidecar: {type(error).__name__}: {error}"]
     if not expected:
         return False, ["checksum.sha256 is empty or unreadable"]
 
     all_ok = True
+    for filename, (digest, _size) in (required_files or {}).items():
+        if filename not in expected:
+            all_ok = False
+            issues.append(f"Required artifact missing from checksum: {filename}")
+        if digest and (
+            re.fullmatch(r"[0-9a-fA-F]{64}", digest) is None
+            or expected.get(filename) != digest.lower()
+        ):
+            all_ok = False
+            issues.append(f"Manifest/checksum digest disagreement for {filename}")
     for filename, recorded in expected.items():
         artifact = directory / filename
-        if not artifact.exists():
+        if artifact.is_symlink() or not artifact.is_file():
             all_ok = False
             issues.append(f"Missing artifact referenced in checksum: {filename}")
             continue
-        if artifact.stat().st_size == 0:
+        try:
+            before = artifact.stat()
+            size = (required_files or {}).get(filename, (None, None))[1]
+            if before.st_size == 0 or (size is not None and before.st_size != size):
+                all_ok = False
+                issues.append(f"Artifact size is empty or disagrees with manifest: {filename}")
+                continue
+            actual = sha256_file(artifact)
+            after = artifact.stat()
+            if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
+                after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns
+            ):
+                all_ok = False
+                issues.append(f"Artifact changed during verification: {filename}")
+        except OSError:
             all_ok = False
-            issues.append(f"Artifact is empty: {filename}")
+            issues.append(f"Artifact unavailable during verification: {filename}")
             continue
-        actual = sha256_file(artifact)
         if actual != recorded:
             all_ok = False
             issues.append(f"Checksum mismatch for {filename}")

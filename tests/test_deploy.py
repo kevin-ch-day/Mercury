@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from mercury.backup.checksum import write_checksum_file
+from mercury.backup.checksum import sha256_file, write_checksum_file
 from mercury.core.execution_policy import ExecutionPolicy
 from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.database.mariadb.config import MariaDbConnectionConfig
@@ -48,7 +49,7 @@ def _write_verified_backup(
     backup_dir.mkdir(parents=True, exist_ok=True)
     dump_name = f"{database}_{backup_id}.sql.gz"
     dump_path = backup_dir / dump_name
-    dump_path.write_bytes(dump_bytes)
+    dump_path.write_bytes(gzip.compress(dump_bytes, mtime=0))
     manifest = {
         "backup_id": backup_id,
         "database": database,
@@ -56,8 +57,8 @@ def _write_verified_backup(
         "created_at": created_at,
         "dump_file": dump_name,
         "schema_file": None,
-        "sha256": "placeholder",
-        "size_bytes": len(dump_bytes),
+        "sha256": sha256_file(dump_path),
+        "size_bytes": dump_path.stat().st_size,
         "source_role": "production",
         "tool_used": "mariadb-dump",
         "verified": True,
@@ -396,6 +397,8 @@ def test_checksum_mismatch_blocks_deploy(tmp_path: Path) -> None:
         backup_id="bad",
         created_at="2026-06-09T12:00:00+00:00",
     )
+    from mercury.deploy.artifacts import pin_deployment_artifacts
+    pins = pin_deployment_artifacts(backup_dir, database="erebus_threat_intel_prod", backup_id="bad")
     (backup_dir / "checksum.sha256").write_text("deadbeef  wrong.sql.gz\n", encoding="utf-8")
     dump_name = "erebus_threat_intel_prod_bad.sql.gz"
     candidate = DeploymentCandidate(
@@ -407,6 +410,7 @@ def test_checksum_mismatch_blocks_deploy(tmp_path: Path) -> None:
         manifest_path=str(backup_dir / "manifest.json"),
         checksum_path=str(backup_dir / "checksum.sha256"),
         verified=False,
+        **pins,
     )
     result = execute_deployment_for_candidate(
         candidate=candidate,
@@ -582,7 +586,7 @@ def test_verification_fails_closed_when_manifest_trigger_is_missing(tmp_path: Pa
     ]
 
 
-def test_no_drop_database_unless_explicit_overwrite() -> None:
+def test_deployment_never_drops_existing_database_even_with_overwrite_options() -> None:
     commands, _ = planned_import_commands(
         target_database="erebus_threat_intel_prod",
         dump_path="/tmp/a.sql.gz",
@@ -590,7 +594,7 @@ def test_no_drop_database_unless_explicit_overwrite() -> None:
         exists_on_server=True,
     )
     assert commands == []
-    overwrite, _ = planned_import_commands(
+    overwrite, reason = planned_import_commands(
         target_database="erebus_threat_intel_prod",
         dump_path="/tmp/a.sql.gz",
         options=DeployOptions(
@@ -600,7 +604,8 @@ def test_no_drop_database_unless_explicit_overwrite() -> None:
         ),
         exists_on_server=True,
     )
-    assert any(command.startswith("DROP DATABASE") for command in overwrite)
+    assert overwrite == []
+    assert reason and "disabled" in reason
 
 
 def test_repo_local_backup_root_blocked_for_live_deploy_plan(tmp_path: Path) -> None:

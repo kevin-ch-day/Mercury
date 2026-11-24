@@ -70,6 +70,7 @@ class RetentionPolicy:
     governed_roots: tuple[str, ...] = DEFAULT_GOVERNED_ROOTS
     production_keep_latest_restore_checked: bool = True
     production_keep_latest_verified: bool = True
+    production_keep_latest_per_database: int = 2
     production_keep_daily_days: int = 7
     production_keep_weekly_weeks: int = 4
     production_keep_monthly_months: int = 3
@@ -207,6 +208,12 @@ def load_retention_policy(*, config_path: Path | None = None) -> RetentionPolicy
         ),
         production_keep_latest_verified=bool(
             production.get("keep_latest_verified", True)
+        ),
+        # Newest-N per database; never below the restore-checked floor. Absent
+        # from the config it equals the floor, so existing deployments keep
+        # their current preview; the example config sets 3.
+        production_keep_latest_per_database=max(
+            2, int(production.get("keep_latest_per_database", 2) or 2)
         ),
         production_keep_daily_days=max(
             0, int(production.get("keep_daily_days", 7) or 0)

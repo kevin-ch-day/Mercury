@@ -253,6 +253,10 @@ def execute_restore_into_database(
     require_restore_preflight: bool = False,
 ) -> RestoreExecutionResult:
     """Plan or run ``gunzip -c dump | mariadb target`` for verified backups."""
+    from mercury.core.safety import LIVE_RESTORE_PROHIBITED_DATABASES
+
+    if source_database in LIVE_RESTORE_PROHIBITED_DATABASES:
+        raise BackupExecutionError("Noctivar is backup-only; live restore is prohibited, including temporary targets and governed overrides.")
     if governed_production_cutover:
         assert_governed_production_cutover_target(target_database)
     elif governed_destination_recovery:

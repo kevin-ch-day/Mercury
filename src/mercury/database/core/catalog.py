@@ -9,6 +9,8 @@ class CatalogEntry(BaseModel):
 
 
 PLATFORM_CATALOG: list[CatalogEntry] = [
+    CatalogEntry(name='noctivar', project='Noctivar',
+                 description='Research catalog; explicit backup-only production source, no dev sync.'),
     CatalogEntry(
         name="erebus_provider_secrets_prod",
         project="Erebus",

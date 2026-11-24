@@ -5,7 +5,9 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -30,7 +32,8 @@ from mercury.backup.find_latest_backup import (
     resolve_backup_directory,
 )
 from mercury.backup.manifest import BackupManifest
-from mercury.backup.status import RestoreCheckLedgerRecord
+from mercury.backup.status import RestoreCheckLedgerRecord, build_backup_status_report
+from mercury.backup.verification import manifest_verified_stamp, verify_backup_artifacts
 from mercury.core.execution_policy import ExecutionPolicy
 from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.deploy.selection import resolve_deployment_candidates
@@ -213,6 +216,94 @@ def test_restore_check_requires_backup_id_noninteractive(
     plan = build_restore_check_plan(database, require_backup_id=True)
     assert not plan.allowed
     assert any("backup-id" in b.lower() or "backup_id" in b.lower() for b in plan.blockers)
+
+
+@pytest.mark.parametrize("partial", [{"backup_kind": "schema_only"}, {"object_scope": "tables_only"}])
+def test_partial_backup_cannot_shadow_full_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, partial: dict[str, str]
+) -> None:
+    from mercury.backup import health
+
+    database = "erebus_threat_intel_prod"
+    root = tmp_path / "mercury_backups"
+    now = datetime.now(UTC)
+    earlier = now - timedelta(hours=1)
+    older = _write_backup(
+        root, database=database, backup_id="older-full", stamp="older",
+        day=earlier.date().isoformat(), created_at=earlier.isoformat(),
+    )
+    newer = _write_backup(
+        root, database=database, backup_id="newer-partial", stamp="newer",
+        day=now.date().isoformat(), created_at=now.isoformat(), verified_manifest=True,
+    )
+    manifest_path = newer / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest_path.write_text(json.dumps({**manifest, **partial}))
+    policy = ExecutionPolicy(dry_run=True, live_actions_enabled=False, backup_root=root)
+    monkeypatch.setattr("mercury.restore.check_plan.load_execution_policy", lambda: policy)
+    monkeypatch.setattr("mercury.restore.check_plan.should_probe_database_status", lambda: False)
+    monkeypatch.setattr(health, "load_storage_config", lambda: SimpleNamespace(
+        active_write_root=SimpleNamespace(mount_path=tmp_path, filesystem_uuid="fixture")
+    ))
+    monkeypatch.setattr(health, "require_disk", lambda *_: None)
+    monkeypatch.setattr(health, "_unit_state", dict)
+    monkeypatch.setattr(health, "load_repo_definitions", list)
+    monkeypatch.setattr(health, "ACTIVE_BACKUP_SOURCE_DATABASES", [database])
+
+    assert find_latest_backup_directory(root, database) == newer
+    assert find_latest_artifact_verified_backup(root, database) == newer
+    assert not verify_backup_artifacts(newer, require_complete_full=True).verified
+    status = build_backup_status_report(policy=policy, sources_override=[database])
+    assert status.entries[0].backup_id == "older-full"
+    assert status.verified_count == 1
+    candidate, = resolve_deployment_candidates(policy=policy, databases=[database])
+    assert candidate.backup_id == "older-full"
+    assert resolve_deployment_candidates(
+        policy=policy, databases=[database], backup_ids={database: "newer-partial"}
+    ) == []
+    assert build_restore_check_plan(database).backup_id == "older-full"
+    override = build_restore_check_plan(
+        database, backup_directory_override=newer, allow_unverified=True
+    )
+    assert not override.allowed
+    assert any("complete full backup" in issue for issue in override.blockers)
+
+    health_report = health.build_health()
+    assert health_report["databases"][database]["backup_id"] == "older-full"
+    assert any("no passing verification stamp" in warning for warning in health_report["warnings"])
+
+    (older / "manifest.json").unlink()
+    assert build_backup_status_report(policy=policy, sources_override=[database]).missing_count == 1
+    health_report = health.build_health()
+    assert health_report["databases"][database]["backup_id"] is None
+    assert any("missing or stale full" in warning for warning in health_report["warnings"])
+
+
+def test_conflicting_manifest_policy_fails_verification_and_automatic_selection(tmp_path: Path) -> None:
+    database = "erebus_threat_intel_prod"
+    older = _write_backup(
+        tmp_path, database=database, backup_id="legacy-full", stamp="older",
+        day="2026-07-22", created_at="2026-07-22T10:00:00+00:00",
+    )
+    newer = _write_backup(
+        tmp_path, database=database, backup_id="conflicting-full", stamp="newer",
+        day="2026-07-22", created_at="2026-07-22T11:00:00+00:00",
+    )
+    legacy_path = older / "manifest.json"
+    legacy = json.loads(legacy_path.read_text())
+    del legacy["live_actions_enabled"]
+    legacy_path.write_text(json.dumps(legacy))
+    manifest_path = newer / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest_path.write_text(json.dumps({**manifest, "live_actions_enabled": False, "verified": True}))
+
+    assert verify_backup_artifacts(older, require_complete_full=True).verified
+    result = verify_backup_artifacts(newer, require_complete_full=True)
+    assert not result.verified
+    assert result.checksum_matches
+    assert any("live_actions_enabled=false" in issue for issue in result.issues)
+    assert manifest_verified_stamp(manifest_path) is None
+    assert resolve_backup_directory(tmp_path, database, require_complete_full=True) == older
 
 
 def test_receipt_refuses_inactive_mount(tmp_path: Path) -> None:

@@ -32,7 +32,7 @@ It is **not** an AI tool, web app, malware analyzer, or full workstation/OS boot
 
 Preserve these rules in every change. Do not weaken them.
 
-1. **Protect production first** — backup sources are `*_prod` and `android_permission_intel` only.
+1. **Protect production first** — backup sources are `*_prod`, `android_permission_intel`, and the explicitly reviewed backup-only `noctivar` catalog. No Noctivar dev sync or live restore is authorized.
 2. **Never back up `*_dev` by default** — dev DBs are disposable sync targets.
 3. **Never drop, overwrite, or restore into `*_prod`** by default.
 4. **Always backup and verify prod** before any prod→dev sync.
@@ -120,6 +120,7 @@ Use the project venv (`.venv/bin/python`), not system Python, when validating CL
 
 For the current Fedora milestone, Mercury actively protects only:
 
+- `noctivar` (explicit backup-only production catalog; no automatic sync)
 - `android_permission_intel`
 - `erebus_threat_intel_prod`
 - `erebus_provider_secrets_prod` (encrypted credentials; backup-only, external master key required)
