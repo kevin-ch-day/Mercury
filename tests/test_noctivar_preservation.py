@@ -255,7 +255,7 @@ def test_noctivar_is_exact_backup_only_source():
         assert_not_production_restore_target("noctivar")
 
 
-@pytest.mark.parametrize("fault", [None, "interrupt", "mutation"])
+@pytest.mark.parametrize("fault", [None, "interrupt", "mutation", "publication"])
 def test_protected_generation_publication_and_failure_retention(
     tmp_path, monkeypatch, fault
 ):
@@ -314,6 +314,17 @@ def test_protected_generation_publication_and_failure_retention(
         return execute_backup(*args, **kwargs, dump_runner=runner)
 
     monkeypatch.setattr(module, "execute_backup", staged)
+    if fault == "publication":
+        verify = module.verify_backup_artifacts
+
+        def corrupt_final_artifact(directory, **kwargs):
+            if kwargs.get("staged_manifest_path"):
+                assert not (directory / "manifest.json").exists()
+                assert not (directory / "COMPLETION.json").exists()
+                next(directory.glob("*.sql.gz")).write_bytes(b"tampered")
+            return verify(directory, **kwargs)
+
+        monkeypatch.setattr(module, "verify_backup_artifacts", corrupt_final_artifact)
     config = MariaDbConnectionConfig(
         host="localhost",
         user="synthetic",
@@ -327,10 +338,20 @@ def test_protected_generation_publication_and_failure_retention(
             module.execute_protected_backup("noctivar", policy=policy, config=config)
         assert not list(backup_root.glob("*/*/*/manifest.json"))
         states = list((tmp_path / "mercury_backup_incomplete").glob("*/STATE.json"))
-        assert (
-            len(states) == 1 and json.loads(states[0].read_text())["status"] == "failed"
-        )
-        assert list((tmp_path / "mercury_backup_incomplete").rglob("*.gz*"))
+        assert len(states) == 1
+        failure = json.loads(states[0].read_text())
+        assert failure["status"] == "failed"
+        assert failure["stage"] == {
+            "interrupt": "dump",
+            "mutation": "source_fingerprint_after",
+            "publication": "publish_generation",
+        }[fault]
+        if fault == "publication":
+            assert list(backup_root.glob("*/*/*/*.gz"))
+            assert not list(backup_root.glob("*/*/*/COMPLETION.json"))
+            assert list(states[0].parent.rglob("manifest.json"))
+        else:
+            assert list((tmp_path / "mercury_backup_incomplete").rglob("*.gz*"))
     else:
         result = module.execute_protected_backup(
             "noctivar", policy=policy, config=config
@@ -343,6 +364,17 @@ def test_protected_generation_publication_and_failure_retention(
             == "complete"
         )
         assert json.loads((published / "manifest.json").read_text())["verified"] is True
+
+
+def test_protected_generation_refuses_dev_before_disk_activation(monkeypatch):
+    from mercury.backup import protected_generation
+    from mercury.backup.backup_runner import BackupExecutionError
+
+    monkeypatch.setattr(
+        protected_generation, "load_storage_config", lambda: pytest.fail("must refuse before storage access")
+    )
+    with pytest.raises(BackupExecutionError, match="Refusing backup for"):
+        protected_generation.execute_protected_backup("erebus_threat_intel_dev")
 
 
 def test_bounded_metadata_copy_restore_tamper_and_payload_refusal(tmp_path):

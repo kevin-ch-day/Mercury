@@ -41,20 +41,24 @@ def _load_manifest_object_inventory(manifest_path: Path):
     before a disposable restore-check is marked successful.
     """
     if not manifest_path.is_file():
-        return None
+        raise ValueError("Verification manifest is missing")
     try:
         data = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("Verification manifest must be an object")
         contract = data.get("object_contract")
-        if not isinstance(contract, dict):
+        if contract is None:
             return None
+        if not isinstance(contract, dict):
+            raise ValueError("Recorded object contract is invalid")
         raw = contract.get("dump")
         if not isinstance(raw, dict):
-            return None
+            raise ValueError("Recorded object contract lacks its required dump inventory")
         from mercury.backup.content_contract import BackupObjectInventory
 
         return BackupObjectInventory.model_validate(raw)
-    except (json.JSONDecodeError, OSError, ValueError):
-        return None
+    except (json.JSONDecodeError, OSError) as exc:
+        raise ValueError(f"Verification manifest cannot be read: {exc}") from exc
 
 
 def verify_deployed_database(
@@ -97,7 +101,11 @@ def verify_deployed_database(
         elif table_count is None:
             issues.append("could not read table count for row-count comparison")
 
-    expected_inventory = _load_manifest_object_inventory(manifest_path)
+    try:
+        expected_inventory = _load_manifest_object_inventory(manifest_path)
+    except ValueError as exc:
+        issues.append(f"could not verify manifest object contract: {exc}")
+        expected_inventory = None
     if expected_inventory is not None:
         try:
             from mercury.backup.content_contract import (

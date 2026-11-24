@@ -228,7 +228,10 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
     if source_count:
         from mercury.backup.status import latest_restore_check_by_backup_id
 
-        rc_by_id = latest_restore_check_by_backup_id()
+        restore_status = {
+            (record.database, backup_id): record.status
+            for backup_id, record in latest_restore_check_by_backup_id().items()
+        }
         verified_entries = [
             entry
             for entry in bundle.database_entries
@@ -238,15 +241,12 @@ def _build_steps(bundle: TransferBundle, *, policy) -> list[HandoffStep]:
         restore_failed = [
             entry.database
             for entry in verified_entries
-            if entry.backup_id in rc_by_id
-            and rc_by_id[entry.backup_id].status in {"failed", "verification_failed"}
+            if restore_status.get((entry.database, entry.backup_id)) in {"failed", "verification_failed"}
         ]
         not_restore_checked = [
             entry.database
             for entry in verified_entries
-            if entry.backup_id not in rc_by_id
-            or rc_by_id[entry.backup_id].status
-            not in {"passed", "failed", "verification_failed"}
+            if restore_status.get((entry.database, entry.backup_id)) not in {"passed", "failed", "verification_failed"}
         ]
 
         if verified_count == 0:

@@ -9,6 +9,7 @@ import subprocess
 import tarfile
 from pathlib import Path
 
+from mercury.repo.offline_clone import snapshot_is_current
 from mercury.repo.snapshot import git_bytes
 
 
@@ -145,7 +146,11 @@ def main() -> None:
     entry = next(x for x in payload["repositories"] if x["key"] == args.key)
     if not entry["synced"] or entry["fsck"] != "PASS":
         raise ValueError("Receipt does not qualify this repository")
-    snapshot = entry.get("snapshot") if entry["source_dirty"] else None
+    snapshot = entry.get("snapshot")
+    if not entry["source_dirty"] or not snapshot_is_current(
+        snapshot, entry["mirror_path"], entry.get("snapshot_captured")
+    ):
+        snapshot = None
     result = recover_repository(
         Path(entry["mirror_path"]),
         args.destination,

@@ -41,6 +41,12 @@ def resolve_deploy_action(
     """Never return import commands unless CREATE_AND_IMPORT or explicit OVERWRITE_DROP."""
     exists = _exists_status(target_status)
 
+    if options.allow_overwrite_database or options.allow_drop_database:
+        return DeployActionPlan(
+            action="BLOCKED", commands=[],
+            reason="Overwrite/drop modes are disabled for deployment; existing targets are never replaced.",
+        )
+
     if not exists:
         commands, skip_reason = planned_import_commands(
             target_database=target_database,
@@ -51,30 +57,6 @@ def resolve_deploy_action(
         if skip_reason:
             return DeployActionPlan(action="BLOCKED", commands=[], reason=skip_reason)
         return DeployActionPlan(action="CREATE_AND_IMPORT", commands=commands)
-
-    if options.allow_overwrite_database:
-        if not options.allow_drop_database:
-            return DeployActionPlan(
-                action="BLOCKED",
-                commands=[],
-                reason=(
-                    f"Target database `{target_database}` exists; "
-                    "overwrite requires allow_drop_database"
-                ),
-            )
-        commands, skip_reason = planned_import_commands(
-            target_database=target_database,
-            dump_path=dump_path,
-            options=options,
-            exists_on_server=True,
-        )
-        if skip_reason:
-            return DeployActionPlan(action="BLOCKED", commands=[], reason=skip_reason)
-        return DeployActionPlan(
-            action="OVERWRITE_DROP",
-            commands=commands,
-            reason="explicit overwrite/drop enabled",
-        )
 
     if options.skip_existing:
         verification = {

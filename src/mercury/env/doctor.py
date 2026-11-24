@@ -637,7 +637,6 @@ def _count_verified_backups(policy) -> tuple[int, int]:
     from mercury.backup.batch_runner import resolve_batch_sources
     from mercury.backup.find_latest_backup import find_latest_backup_directory
     from mercury.backup.verification import verify_backup_artifacts
-    from mercury.core.safety import BACKUP_KIND_FULL
 
     if policy.config_path is None:
         return 0, 0
@@ -646,12 +645,14 @@ def _count_verified_backups(policy) -> tuple[int, int]:
     for name in sources:
         if policy.backup_root_is_within_repo() and not policy.allow_unsafe_backup_root:
             continue
-        # Count only the newest written backup (one integrity check per source).
-        backup_dir = find_latest_backup_directory(policy.backup_root, name)
+        # Count only the newest written complete full backup (one check per source).
+        backup_dir = find_latest_backup_directory(
+            policy.backup_root, name, require_complete_full=True
+        )
         if backup_dir is None:
             continue
-        result = verify_backup_artifacts(backup_dir, database=name)
-        if result.verified and result.backup_kind == BACKUP_KIND_FULL:
+        result = verify_backup_artifacts(backup_dir, database=name, require_complete_full=True)
+        if result.verified:
             verified += 1
     return verified, len(sources)
 

@@ -7,13 +7,15 @@ import os
 import stat
 import subprocess
 import uuid
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
-from mercury.backup.backup_runner import BackupExecutionError, execute_backup
+from mercury.backup.backup_runner import BackupExecutionError, assert_safe_backup_source, execute_backup
 from mercury.backup.durability import durable_replace_text, sync_directory, sync_tree
-from mercury.backup.verification import verify_backup_artifacts
+from mercury.backup.layout import MANIFEST_FILENAME
+from mercury.backup.verification import BackupVerificationResult, verify_backup_artifacts
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.storage_roots import load_storage_config
 from mercury.database.mariadb.config import MariaDbConnectionConfig
@@ -23,6 +25,53 @@ from mercury.storage.verified_volume import (
     require_destination,
     require_headroom,
 )
+
+
+def _publish_generation(
+    directory: Path,
+    final: Path,
+    *,
+    database: str,
+    require_complete_full: bool,
+    guard: Callable[[Path], None],
+) -> BackupVerificationResult:
+    """Reserve the final identity exclusively, publishing its manifest last.
+
+    Directory rename can replace a concurrently created *empty* directory on
+    POSIX. Exclusive mkdir avoids that race with the ordinary backup writer.
+    A failed publication retains both its reservation and remaining staging.
+    """
+    artifacts = list(directory.iterdir())
+    if any(p.is_symlink() or not p.is_file() for p in artifacts):
+        raise BackupExecutionError("Backup generation contains non-regular artifacts")
+    final.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        final.mkdir(mode=0o700, exist_ok=False)
+    except FileExistsError as exc:
+        raise BackupExecutionError("Refusing to overwrite an existing backup generation") from exc
+    manifest_path = directory / MANIFEST_FILENAME
+    completion_path = directory / "COMPLETION.json"
+    for artifact in artifacts:
+        if artifact in (manifest_path, completion_path):
+            continue
+        artifact.rename(final / artifact.name)
+    guard(final)
+    verification = verify_backup_artifacts(
+        final,
+        database=database,
+        require_complete_full=require_complete_full,
+        staged_manifest_path=manifest_path,
+    )
+    if not verification.verified:
+        raise BackupExecutionError("Backup failed final artifact verification before publication")
+    completion_path.rename(final / completion_path.name)
+    sync_tree(final)
+    guard(final)
+    published_manifest = final / MANIFEST_FILENAME
+    manifest_path.rename(published_manifest)
+    sync_directory(final)
+    sync_directory(final.parent)
+    return verification.model_copy(update={"manifest_path": str(published_manifest)})
 
 
 def scoped_credentials(path: Path, database: str) -> MariaDbConnectionConfig:
@@ -68,6 +117,9 @@ def execute_protected_backup(
     Source consistency is mariadb-dump --single-transaction; no concurrent DDL
     is permitted. Table/object metadata is checked separately by the dumper.
     """
+    assert_safe_backup_source(database)
+    if tables_only and database != "noctivar":
+        raise BackupExecutionError("Explicit table-only preservation is restricted to noctivar")
     policy = policy or load_execution_policy()
     storage = load_storage_config().active_write_root
     mount, disk_uuid = str(storage.mount_path), storage.filesystem_uuid
@@ -105,9 +157,11 @@ def execute_protected_backup(
         staging = state / "artifacts"
         staging.mkdir(mode=0o700)
         staged_policy = replace(policy, backup_root=staging)
+        stage = "source_fingerprint_before"
         try:
             guard(staging)
             before = fingerprint(config, database)
+            stage = "dump"
             result = execute_backup(
                 database,
                 "full",
@@ -134,16 +188,20 @@ def execute_protected_backup(
                 else policy.backup_root
             )
             final = publication_root / directory.relative_to(staging)
+            stage = "source_fingerprint_after"
             after = fingerprint(config, database)
             if before != after:
                 raise BackupExecutionError(
                     "Source changed during backup; retained for review, no semantic qualification"
                 )
+            stage = "verify_staged_generation"
             durable_replace_text(
                 directory / "SOURCE_FINGERPRINT.json",
                 json.dumps(before, indent=2) + "\n",
             )
-            verification = verify_backup_artifacts(directory, database=database)
+            verification = verify_backup_artifacts(
+                directory, database=database, require_complete_full=not tables_only
+            )
             if not verification.verified:
                 raise BackupExecutionError("New backup failed artifact verification")
             manifest_path = directory / "manifest.json"
@@ -168,20 +226,12 @@ def execute_protected_backup(
             durable_replace_text(
                 directory / "COMPLETION.json", json.dumps(receipt, indent=2) + "\n"
             )
+            stage = "publish_generation"
             sync_tree(directory)
             guard(final)
-            final.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            if final.exists():
-                raise BackupExecutionError(
-                    "Refusing to overwrite an existing backup generation"
-                )
-            directory.rename(final)
-            sync_directory(final.parent)
-            # Reverify the published bytes before the normal ledger sees success.
-            guard(final)
-            published = verify_backup_artifacts(final, database=database)
-            if not published.verified:
-                raise BackupExecutionError("Published generation failed verification")
+            published = _publish_generation(
+                directory, final, database=database, require_complete_full=not tables_only, guard=guard
+            )
             result = result.model_copy(
                 update={
                     "backup_directory_path": str(final),
@@ -193,6 +243,7 @@ def execute_protected_backup(
                 record_backup_verification,
             )
 
+            stage = "record_completion"
             if not tables_only:
                 record_backup_execution(result)
                 record_backup_verification(published)
@@ -220,6 +271,7 @@ def execute_protected_backup(
                             "status": "failed",
                             "database": database,
                             "run_id": run_id,
+                            "stage": stage,
                             "error_type": type(exc).__name__,
                         }
                     )

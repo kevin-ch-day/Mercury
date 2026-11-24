@@ -221,7 +221,12 @@ def test_restore_checks_separates_failed_from_missing(
                 backup_id="erebus-full-1",
                 status="failed",
                 timestamp="2026-07-22T06:00:00+00:00",
-            )
+            ),
+            "scytale-full-1": RestoreCheckLedgerRecord(
+                database="erebus_threat_intel_prod",
+                backup_id="scytale-full-1",
+                status="passed",
+            ),
         },
     )
     checklist = build_handoff_checklist(live=True)

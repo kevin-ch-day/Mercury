@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 from mercury import output
 from mercury.menu import prompts as menu_prompts
 from mercury.repo import inspect_repositories, load_repo_definitions
@@ -32,7 +34,17 @@ def run_offline_sync_now() -> None:
         snapshots = menu_prompts.ask_yes_no(
             "Also save filtered uncommitted patches and untracked files?", default=False
         ) is True
-    print_offline_clone_plan(execute_offline_clone_plan(plan, snapshots=snapshots), executed=True)
+    reuse_unchanged = False
+    if sys.platform == 'linux' and any(entry.action == 'current' for entry in plan.entries):
+        reuse_unchanged = menu_prompts.ask_yes_no(
+            "Reuse verified mirrors whose refs and HEAD are unchanged?", default=False
+        ) is True
+    try:
+        result = execute_offline_clone_plan(plan, snapshots=snapshots, reuse_unchanged=reuse_unchanged)
+    except (OSError, ValueError) as exc:
+        display_screen.write_status("error", str(exc))
+        return
+    print_offline_clone_plan(result, executed=True)
 
 
 def show_offline_sync_receipt() -> None:

@@ -10,9 +10,10 @@ from mercury.backup.find_latest_backup import (
 )
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
-from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.database.core import classify_database
 from mercury.deploy.models import DeploymentCandidate
+from mercury.deploy.safety import assert_deployment_target
+from mercury.backup.backup_runner import BackupExecutionError
 from mercury.backup.batch_runner import resolve_batch_sources, resolve_development_backup_sources
 
 
@@ -25,7 +26,7 @@ def resolve_deployment_candidates(
     existing_on_server: set[str] | None = None,
     allow_development_deploy: bool = False,
 ) -> list[DeploymentCandidate]:
-    """Resolve verified backups by exact ID when provided, else latest artifact-verified.
+    """Resolve complete full backups by exact ID, else latest artifact-verified.
 
     Destination rehearsal/packaging must pass ``backup_ids`` (or ``require_backup_ids=True``)
     so an unqualified “latest” cannot replace a pinned plan after creation.
@@ -42,6 +43,10 @@ def resolve_deployment_candidates(
     candidates: list[DeploymentCandidate] = []
 
     for name in source_names:
+        try:
+            assert_deployment_target(name, allow_development_deploy=allow_development_deploy)
+        except BackupExecutionError:
+            continue
         classification = classify_database(name)
         if not classification.backup_source and not (allow_development_deploy and name in development_sources):
             continue
@@ -54,14 +59,16 @@ def resolve_deployment_candidates(
                 name,
                 backup_id=requested_id,
                 prefer="artifact_verified",
+                allow_development_backup=allow_development_deploy,
+                require_complete_full=True,
             )
         except BackupSelectionError:
             continue
         verification = verify_backup_artifacts(
             backup_dir,
             database=name,
-            backup_kind=BACKUP_KIND_FULL,
             allow_development_backup=allow_development_deploy,
+            require_complete_full=True,
         )
         if not verification.verified:
             continue
@@ -76,6 +83,13 @@ def resolve_deployment_candidates(
                 manifest_data = {}
         dump_name = manifest_data.get("dump_file") or verification.backup_id
         dump_path = backup_dir / str(dump_name) if dump_name else backup_dir
+        from mercury.deploy.artifacts import pin_deployment_artifacts
+
+        try:
+            pins = pin_deployment_artifacts(backup_dir, database=name, backup_id=verification.backup_id,
+                allow_development_backup=allow_development_deploy)
+        except (OSError, ValueError):
+            continue
         candidates.append(
             DeploymentCandidate(
                 source_database=name,
@@ -85,6 +99,7 @@ def resolve_deployment_candidates(
                 dump_path=str(dump_path),
                 manifest_path=str(manifest_path),
                 checksum_path=str(backup_dir / "checksum.sha256"),
+                **pins,
                 size_bytes=int(manifest_data.get("size_bytes") or 0),
                 verified=True,
                 created_at=str(manifest_data.get("created_at") or ""),

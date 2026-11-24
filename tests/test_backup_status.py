@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+from mercury.backup.checksum import sha256_file
 
 from mercury.backup.batch_runner import BackupSourceSelectionError, select_batch_sources
 from mercury.backup.status import build_backup_status_report
@@ -28,8 +29,10 @@ def _write_verified_backup(backup_root: Path, database: str, backup_id: str) -> 
         "created_at": "2026-06-08T12:00:00+00:00",
         "dump_file": dump_name,
         "schema_file": schema_name,
-        "sha256": "unused",
-        "size_bytes": 22,
+        "sha256": sha256_file(backup_dir / dump_name),
+        "schema_sha256": sha256_file(backup_dir / schema_name),
+        "size_bytes": (backup_dir / dump_name).stat().st_size,
+        "schema_size_bytes": (backup_dir / schema_name).stat().st_size,
         "source_role": "production" if database.endswith("_prod") else "shared_authority",
         "tool_used": "mariadb-dump",
         "verified": False,
@@ -172,6 +175,55 @@ def test_build_backup_status_report_counts_verified_and_missing(tmp_path: Path) 
     assert report.failed_count == 0
     assert report.entries[0].protection_status == "verified"
     assert report.entries[1].protection_status == "missing"
+
+
+def test_status_and_candidate_require_restore_check_for_the_same_database(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mercury.backup.find_latest_backup import list_backup_candidates
+    from mercury.backup.status import RestoreCheckLedgerRecord
+
+    database = "android_permission_intel"
+    backup_id = "shared-id"
+    _write_verified_backup(tmp_path, database, backup_id)
+    records = {
+        backup_id: RestoreCheckLedgerRecord(
+            database="erebus_threat_intel_prod", backup_id=backup_id, status="passed",
+        ),
+    }
+    monkeypatch.setattr("mercury.backup.status.latest_restore_check_by_backup_id", lambda: records)
+    policy = ExecutionPolicy(dry_run=True, live_actions_enabled=False, backup_root=tmp_path)
+
+    report = build_backup_status_report(policy=policy, sources_override=[database])
+    assert report.entries[0].artifact_integrity_verified is True
+    assert report.entries[0].restore_check_status is None
+    assert list_backup_candidates(tmp_path, database)[0]["restore_check_status"] is None
+
+
+def test_status_keeps_metadata_from_the_manifest_it_verified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mercury.backup import verification
+
+    database = "android_permission_intel"
+    _write_verified_backup(tmp_path, database, "original")
+    manifest = tmp_path / "2026-06-08" / database / "manifest.json"
+    original = verification.verify_checksums
+
+    def verify_and_replace_manifest(*args, **kwargs):
+        result = original(*args, **kwargs)
+        payload = json.loads(manifest.read_text())
+        payload.update(backup_id="replacement", created_at="2026-07-08T12:00:00+00:00", verified=True)
+        manifest.write_text(json.dumps(payload))
+        return result
+
+    monkeypatch.setattr(verification, "verify_checksums", verify_and_replace_manifest)
+    policy = ExecutionPolicy(dry_run=True, live_actions_enabled=False, backup_root=tmp_path)
+    report = build_backup_status_report(policy=policy, sources_override=[database])
+    entry = report.entries[0]
+    assert entry.backup_id == "original"
+    assert entry.backup_created_at == "2026-06-08T12:00:00+00:00"
+    assert entry.manifest_verification_stamp is False
 
 
 def test_build_backup_status_report_marks_repo_local_root_untrusted(

@@ -60,6 +60,9 @@ class DeploymentCandidate(BaseModel):
     dump_path: str
     manifest_path: str
     checksum_path: str
+    manifest_sha256: str | None = None
+    checksum_sha256: str | None = None
+    dump_sha256: str | None = None
     size_bytes: int = 0
     verified: bool = False
     created_at: str | None = None
@@ -115,6 +118,15 @@ class DeploymentExecutionResult(BaseModel):
     message: str = ""
     commands: list[str] = Field(default_factory=list)
     verification: DeploymentVerification | None = None
+    target_created: bool = False
+    artifact_binding: dict[str, str] = Field(default_factory=dict)
+
+    @property
+    def succeeded(self) -> bool:
+        return bool(
+            self.executed and not self.refused and self.verification is not None
+            and self.verification.verified and not self.verification.issues
+        )
 
 
 class DeploymentBatchResult(BaseModel):
@@ -122,10 +134,11 @@ class DeploymentBatchResult(BaseModel):
     hostname: str
     results: list[DeploymentExecutionResult] = Field(default_factory=list)
     report_path: str | None = None
+    blockers: list[str] = Field(default_factory=list)
 
     @property
     def deployed_count(self) -> int:
-        return sum(1 for r in self.results if r.executed)
+        return sum(1 for r in self.results if r.succeeded)
 
     @property
     def skipped_count(self) -> int:
@@ -133,7 +146,11 @@ class DeploymentBatchResult(BaseModel):
 
     @property
     def failed_count(self) -> int:
-        return sum(1 for r in self.results if r.refused and not r.skipped)
+        failures = sum(
+            1 for r in self.results
+            if not r.skipped and (r.refused or (r.executed and not r.succeeded))
+        )
+        return failures or int(bool(self.blockers))
 
 
 @dataclass(frozen=True)

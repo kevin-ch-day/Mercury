@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 from pydantic import BaseModel, Field
 
 from mercury.backup.batch_runner import select_batch_sources
@@ -15,8 +12,7 @@ from mercury.backup.freshness import (
     assess_backup_freshness,
     parse_backup_timestamp,
 )
-from mercury.backup.layout import MANIFEST_FILENAME
-from mercury.backup.verification import manifest_verified_stamp, verify_backup_artifacts
+from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.execution_policy import ExecutionPolicy, load_execution_policy
 from mercury.database.core import classify_database
 from mercury.database.mariadb.inspect import inspect_database_on_server
@@ -154,18 +150,6 @@ def sealed_phase3b_package_note() -> str | None:
     return None
 
 
-def _load_backup_created_at(backup_dir: Path) -> str | None:
-    manifest_path = backup_dir / MANIFEST_FILENAME
-    if not manifest_path.is_file():
-        return None
-    try:
-        data = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-    created_at = data.get("created_at")
-    return str(created_at) if created_at else None
-
-
 def _live_server_database_names(*, live: bool) -> set[str] | None:
     """Return live server DB names when probing; None when offline/unavailable."""
     if not live:
@@ -197,6 +181,7 @@ def _source_is_empty_on_server(database: str, *, live: bool, present: bool) -> b
 
 
 def _restore_fields_for_backup_id(
+    database: str,
     backup_id: str | None,
     records: dict[str, RestoreCheckLedgerRecord],
 ) -> dict[str, str | None]:
@@ -208,7 +193,7 @@ def _restore_fields_for_backup_id(
             "restore_check_target_schema": None,
         }
     record = records.get(backup_id)
-    if record is None:
+    if record is None or record.database != database:
         return {
             "restore_check_status": None,
             "restore_check_backup_id": backup_id,
@@ -231,7 +216,7 @@ def build_backup_status_report(
     sources_override: list[str] | None = None,
     allow_development_backup: bool = False,
 ) -> BackupStatusReport:
-    """Inspect the latest **written** backup directory for each active source database.
+    """Inspect the latest written complete full backup for each active source.
 
     Restore-check labels are bound to the exact displayed ``backup_id`` only.
     Pass ``sources_override`` for recovery-scope dashboards that include
@@ -263,7 +248,9 @@ def build_backup_status_report(
     for database in sources:
         role = _role_label(database)
         allow_dev = allow_development_backup or is_active_dev_recovery_database(database)
-        backup_dir = find_latest_backup_directory(resolved_policy.backup_root, database)
+        backup_dir = find_latest_backup_directory(
+            resolved_policy.backup_root, database, require_complete_full=True
+        )
         absent_on_server = server_names is not None and database not in server_names
         source_is_empty = _source_is_empty_on_server(
             database, live=live, present=not absent_on_server,
@@ -298,28 +285,29 @@ def build_backup_status_report(
                             "to preserve the empty schema on the destination."
                         ]
                         if source_is_empty
-                        else []
+                        else ["No complete full database backup was found."]
                     ),
                 )
             )
             missing_count += 1
             continue
 
-        backup_created_at = _load_backup_created_at(backup_dir)
-        freshness = assess_backup_freshness(
-            database,
-            backup_at=parse_backup_timestamp(backup_created_at),
-            live=live and not absent_on_server,
-            source_is_empty=source_is_empty,
-        )
-
         verification = verify_backup_artifacts(
             backup_dir,
             database=database,
             allow_development_backup=allow_dev,
+            require_complete_full=True,
         )
-        stamp = manifest_verified_stamp(backup_dir / MANIFEST_FILENAME)
-        restore_fields = _restore_fields_for_backup_id(verification.backup_id, restore_by_id)
+        created_at = verification.manifest_created_at
+        freshness = assess_backup_freshness(
+            database,
+            backup_at=parse_backup_timestamp(created_at),
+            live=live and not absent_on_server,
+            source_is_empty=source_is_empty,
+        )
+
+        stamp = verification.manifest_verification_stamp
+        restore_fields = _restore_fields_for_backup_id(database, verification.backup_id, restore_by_id)
         status = "absent" if absent_on_server else ("verified" if verification.verified else "failed")
         issues = list(verification.issues)
         if warning:
@@ -364,7 +352,7 @@ def build_backup_status_report(
                 protection_status=status,
                 backup_id=verification.backup_id,
                 backup_directory=str(backup_dir),
-                backup_created_at=backup_created_at,
+                backup_created_at=created_at.isoformat() if created_at else None,
                 freshness=freshness.freshness,
                 latest_source_activity_at=(
                     freshness.latest_source_activity_at.isoformat()

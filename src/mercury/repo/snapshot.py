@@ -172,6 +172,7 @@ def snapshot_uncommitted(source: Path, destination: Path) -> dict:
     (destination / 'SHA256SUMS').write_text(''.join(f'{digest}  {name}\n' for name, digest in record['sha256'].items()))
     (destination / 'snapshot.json').write_text(json.dumps(record, indent=2) + '\n')
     for path in destination.iterdir(): path.chmod(0o600)
-    return {'path': str(destination), 'excluded_count': len(record['excluded_files']),
+    return {'path': str(destination), 'base_commit': base_commit,
+            'excluded_count': len(record['excluded_files']),
             'manifest_sha256': hashlib.sha256((destination / 'snapshot.json').read_bytes()).hexdigest(),
             'saved_files': len(safe_tracked) + len(files) + len(links), 'sha256': record['sha256']}

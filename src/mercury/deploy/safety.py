@@ -9,6 +9,16 @@ from mercury.database.core import DatabaseRole, classify_database
 from mercury.database.core.scope import is_active_dev_target
 from mercury.database.mariadb.identifiers import quote_ident
 from mercury.deploy.models import DeployOptions
+from mercury.core.safety import LIVE_RESTORE_PROHIBITED_DATABASES
+
+# Backup eligibility is deliberately broader than fresh-host deployment authority.
+# Noctivar and the provider-secret catalog remain backup-only.
+DEPLOYMENT_SOURCE_DATABASES = frozenset({
+    "android_permission_intel",
+    "erebus_threat_intel_prod",
+    "scytaledroid_core_prod",
+    "obsidiandroid_core_prod",
+})
 
 
 def _quoted_target(database: str) -> str:
@@ -26,12 +36,13 @@ def assert_deployment_target(database: str, *, allow_development_deploy: bool = 
         raise BackupExecutionError(
             f"Refusing deployment target '{database}': _restorecheck_* names are temporary only."
         )
-    if classification.backup_source:
+    if database in DEPLOYMENT_SOURCE_DATABASES:
         return
     if allow_development_deploy and is_active_dev_target(database):
         return
     raise BackupExecutionError(
-        f"Refusing deployment target '{database}': not an approved backup-source database."
+        f"Refusing deployment target '{database}': no deployment authorization "
+        "(backup eligibility does not authorize deployment; backup-only catalogs are prohibited)."
     )
 
 
@@ -44,26 +55,23 @@ def planned_import_commands(
 ) -> tuple[list[str], str | None]:
     """Return planned shell/SQL steps and optional skip reason."""
     quoted = _quoted_target(target_database)
+    if target_database in LIVE_RESTORE_PROHIBITED_DATABASES:
+        return [], "Backup-only catalog: live deployment is prohibited."
     quoted_dump = shlex.quote(dump_path)
     commands: list[str] = []
 
     if exists_on_server:
-        if options.skip_existing and not options.allow_overwrite_database:
+        if options.skip_existing and not (options.allow_overwrite_database or options.allow_drop_database):
             return [], f"Target database '{target_database}' already exists (skip-existing enabled)."
-        if options.allow_overwrite_database:
-            if options.allow_drop_database:
-                commands.append(f"DROP DATABASE IF EXISTS {quoted}")
-            else:
-                return [], (
-                    f"Target database '{target_database}' exists; overwrite requires allow_drop_database."
-                )
+        return [], "Existing database replacement is disabled for deployment."
+
+    if options.allow_overwrite_database or options.allow_drop_database:
+        return [], "Overwrite/drop modes are disabled for deployment."
 
     if options.allow_create_database:
-        if exists_on_server and options.allow_overwrite_database and options.allow_drop_database:
-            commands.append(f"CREATE DATABASE {quoted}")
-        else:
-            commands.append(f"CREATE DATABASE IF NOT EXISTS {quoted}")
-    elif not exists_on_server:
+        # Failure on an existing target is essential: a plan is only a snapshot.
+        commands.append(f"CREATE DATABASE {quoted}")
+    else:
         return [], "Target database missing and allow_create_database is disabled."
 
     if dump_path.endswith(".gz"):

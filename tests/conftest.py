@@ -136,6 +136,10 @@ def subprocess_env(extra: dict[str, str] | None = None) -> dict[str, str]:
         merged[ENV_STATE_ROOT] = _SUBPROCESS_TEMP_DIRS.enter_context(
             tempfile.TemporaryDirectory(prefix="mercury-pytest-state-")
         )
+    if "MERCURY_LOG_DIR" not in merged:
+        merged["MERCURY_LOG_DIR"] = _SUBPROCESS_TEMP_DIRS.enter_context(
+            tempfile.TemporaryDirectory(prefix="mercury-pytest-logs-")
+        )
     # Match GitHub Actions: no operator local.toml, stable help width, no color.
     if "MERCURY_LOCAL_CONFIG" not in merged:
         config_root = _SUBPROCESS_TEMP_DIRS.enter_context(
@@ -354,6 +358,8 @@ def _isolate_mercury_operator_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> Iterator[None]:
     """Hermetic operator paths — never touch live host share or Mercury HDD."""
+    from mercury.logging import reset_logging
+
     root = tmp_path_factory.mktemp("mercury_hermetic")
     host = root / "host_maintenance.json"
     ledger = root / "transition_ledger.jsonl"
@@ -374,7 +380,11 @@ def _isolate_mercury_operator_paths(
     monkeypatch.setenv("MERCURY_LOG_DIR", str(logs))
     monkeypatch.setenv("MERCURY_OPERATION_LOCK_DIR", str(locks))
     monkeypatch.delenv("MERCURY_ACTIVE_OPERATION", raising=False)
-    yield
+    reset_logging()
+    try:
+        yield
+    finally:
+        reset_logging()
 
 
 @pytest.fixture(autouse=True)

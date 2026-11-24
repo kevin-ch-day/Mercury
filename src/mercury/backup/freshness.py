@@ -427,7 +427,7 @@ def parse_db_timestamp(raw: str | None) -> datetime | None:
             if instant.tzinfo is None:
                 instant = instant.replace(tzinfo=UTC)
             return instant.astimezone(UTC)
-        except ValueError:
+        except (ValueError, OverflowError):
             continue
     return None
 

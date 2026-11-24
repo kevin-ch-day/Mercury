@@ -265,6 +265,20 @@ def test_unwritable_log_file_blocks_directory(
     assert "mercury-2026-06-09.log" in check.detail
     assert "owner: root" in check.detail
 
+
+def test_directory_permission_check_preserves_an_existing_probe_name(tmp_path: Path) -> None:
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    existing = logs / ".mercury_write_probe"
+    existing.write_text("existing operator file\n")
+
+    check = check_path_permission(logs, label="log directory")
+
+    assert not check.needs_repair
+    assert existing.read_text() == "existing operator file\n"
+    assert list(logs.iterdir()) == [existing]
+
+
 def test_fresh_rebuild_missing_dbs_are_warnings_not_blockers() -> None:
     from mercury.env.doctor import DoctorReport, _collect_blockers, _collect_warnings
 

@@ -198,10 +198,8 @@ def _production_backup_preview_entries(
             ):
                 passed_rows.append(row)
 
-        retained_ids = {
-            str(payload.get("backup_id") or "").strip()
-            for _path, payload, _created in passed_rows[:floor]
-        }
+        passed_order = list(dict.fromkeys(str(payload["backup_id"]) for _, payload, _ in passed_rows))
+        retained_ids = set(passed_order[:floor])
         # Newest-N per database counts every full generation, restore-checked or
         # not, so a run of unverified dumps cannot push verified ones out.
         newest_full = list(dict.fromkeys(
@@ -255,12 +253,12 @@ def _production_backup_preview_entries(
                 reason = "no exact verified restore-check PASS; automatic eligibility refused"
                 risk = "high"
             else:
-                newer_passed = sum(
-                    1
+                newer_passed = len({
+                    str(new_payload["backup_id"])
                     for _new_path, new_payload, new_created in passed_rows
                     if new_created > created
                     and str(new_payload.get("backup_id") or "").strip() != backup_id
-                )
+                })
                 if newer_passed < floor:
                     classification = CleanupClassification.RETAIN
                     reason = f"fewer than {floor} newer exact restore-checked generations"
@@ -289,6 +287,69 @@ def _production_backup_preview_entries(
                     risk=risk,
                 )
             )
+    return entries
+
+
+def _development_backup_preview_entries(
+    backup_root: Path,
+    *,
+    database: str,
+    policy: RetentionPolicy,
+    protected_tokens: set[str],
+) -> list[CleanupPreviewEntry]:
+    """Keep verified recovery generations; newer failed folders cannot replace them."""
+    from mercury.backup.find_latest_backup import find_backup_directories
+
+    rows = []
+    manual = []
+    for path in find_backup_directories(backup_root, database):
+        payload = _manifest_payload(path / "manifest.json")
+        created = _created_at(payload)
+        if (
+            path.parent.name != database
+            or not payload.get("backup_id")
+            or payload.get("database") != database
+            or payload.get("backup_kind") != "full"
+            or payload.get("verified") is not True
+            or created is None
+        ):
+            manual.append((path, payload))
+        else:
+            rows.append((path, payload, created))
+    rows.sort(key=lambda row: row[2], reverse=True)
+    keep = max(2, policy.development_keep_latest_verified)
+    retained = set(list(dict.fromkeys(str(payload["backup_id"]) for _, payload, _ in rows))[:keep])
+    entries = []
+    for path, payload, created in rows:
+        identity = str(payload["backup_id"])
+        newer_ids = {
+            str(new_payload["backup_id"])
+            for _, new_payload, new_created in rows
+            if new_created > created and str(new_payload["backup_id"]) != identity
+        }
+        if identity in protected_tokens:
+            classification = CleanupClassification.PROTECTED
+            reason = "referenced_by_sealed_evidence"
+        elif identity in retained or len(newer_ids) < keep:
+            classification = CleanupClassification.RETAIN
+            reason = f"keep at least {keep} distinct verified development full generations"
+        else:
+            classification = CleanupClassification.CLEANUP_CANDIDATE_AFTER_DESTINATION
+            reason = f"superseded development generation; {len(newer_ids)} newer verified IDs; fresh verification required before any future cleanup"
+        entries.append(CleanupPreviewEntry(
+            path=str(path), classification=classification, size_bytes=_tree_size_bytes(path),
+            reason=reason, references=(identity, database), risk="medium",
+        ))
+    for path, payload in manual:
+        identity = str(payload.get("backup_id") or "")
+        protected = bool(identity and identity in protected_tokens)
+        entries.append(CleanupPreviewEntry(
+            path=str(path),
+            classification=CleanupClassification.PROTECTED if protected else CleanupClassification.MANUAL_REVIEW_ONLY,
+            size_bytes=0,
+            reason="referenced_by_sealed_evidence" if protected else "unverified, schema-only or legacy development backup; cannot replace a verified recovery generation",
+            references=(identity,) if identity else (), risk="high",
+        ))
     return entries
 
 
@@ -573,43 +634,9 @@ def build_cleanup_preview(
             )
         )
         for database in ("erebus_threat_intel_dev", "scytaledroid_core_dev", "android_permission_intel_dev"):
-            from mercury.backup.find_latest_backup import find_backup_directories
-
-            paths = find_backup_directories(backups, database)
-            keep = max(1, policy.development_keep_latest_verified)
-            if len(paths) > keep and policy.destination_validation_pending:
-                for path in sorted(paths, key=lambda p: p.name)[:-keep]:
-                    backup_id = ""
-                    try:
-                        payload = _manifest_payload(path / "manifest.json")
-                        backup_id = str(payload.get("backup_id") or "")
-                    except OSError:
-                        backup_id = ""
-                    if backup_id and backup_id in tokens:
-                        entries.append(
-                            CleanupPreviewEntry(
-                                path=str(path),
-                                classification=CleanupClassification.PROTECTED,
-                                size_bytes=0,
-                                reason="referenced_by_sealed_evidence",
-                                references=(backup_id,),
-                                risk="high",
-                            )
-                        )
-                        continue
-                    entries.append(
-                        CleanupPreviewEntry(
-                            path=str(path),
-                            classification=CleanupClassification.CLEANUP_CANDIDATE_AFTER_DESTINATION,
-                            size_bytes=0,
-                            reason=(
-                                "Excess development generation beyond keep_"
-                                f"{keep}; execute refused until destination validation"
-                            ),
-                            canonical_replacement="keep newest verified generations",
-                            risk="medium",
-                        )
-                    )
+            entries.extend(_development_backup_preview_entries(
+                backups, database=database, policy=policy, protected_tokens=tokens,
+            ))
 
     # Always protect Phase 3B and historical captures.
     for run_id in policy.protected_run_ids:

@@ -36,16 +36,27 @@ def log_mariadb_probe(*, connected: bool, latency_ms: float | None = None, datab
         log.warning("mariadb probe failed error=%s", error or "unknown")
 
 
-def log_verification_result(*, database: str, verified: bool, issue_count: int, backup_id: str, updated_manifest: bool = False) -> None:
+def log_verification_result(
+    *,
+    database: str,
+    verified: bool,
+    issue_count: int,
+    backup_id: str,
+    updated_manifest: bool = False,
+    checksum_matches: bool | None = None,
+    elapsed_ms: float | None = None,
+) -> None:
     level = logging.INFO if verified else logging.WARNING
     get_logger("mercury.backup").log(
         level,
-        "verification database=%s verified=%s issues=%s backup_id=%s updated_manifest=%s",
+        "verification database=%s verified=%s issues=%s backup_id=%s updated_manifest=%s checksum_matches=%s elapsed_ms=%s",
         database,
         verified,
         issue_count,
         backup_id,
         updated_manifest,
+        checksum_matches,
+        elapsed_ms,
     )
 
 

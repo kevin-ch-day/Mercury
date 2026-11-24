@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -110,7 +111,7 @@ def test_verify_rejects_manifest_database_mismatch(tmp_path: Path) -> None:
         "created_at": "2026-05-30T12:00:00+00:00",
         "dump_file": dump_name,
         "schema_file": None,
-        "sha256": "abc",
+        "sha256": hashlib.sha256(b"backup-data\n").hexdigest(),
         "size_bytes": 12,
         "source_role": "production",
         "tool_used": "mariadb-dump",

@@ -72,7 +72,7 @@ def redirect_logging_off_hdd(
     except OSError:
         pass
 
-    reset_logging()
+    reset_logging(preserve_session=True)
     configure_logging(log_dir=dest)
 
     remaining = list_self_fds_under_mount(mount)

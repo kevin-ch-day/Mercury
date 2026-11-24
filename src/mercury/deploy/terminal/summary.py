@@ -18,8 +18,10 @@ def print_deployment_summary(batch: DeploymentBatchResult) -> None:
         }
     )
     for result in batch.results:
-        if result.executed:
+        if result.succeeded:
             tag = "ok"
+        elif result.refused or (result.executed and not result.succeeded):
+            tag = "fail"
         elif result.skipped:
             tag = "warn"
         elif result.dry_run:
@@ -32,6 +34,10 @@ def print_deployment_summary(batch: DeploymentBatchResult) -> None:
         )
         if result.verification is not None:
             display_screen.write_summary(f"  verification: {result.verification.detail}")
+            for issue in result.verification.issues:
+                display_screen.write_status("fail", f"  {issue}")
+    for blocker in batch.blockers:
+        display_screen.write_status("fail", blocker)
     if batch.report_path:
         display_screen.write_summary(f"Report: {batch.report_path}")
     display_screen.write_blank()

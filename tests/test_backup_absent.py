@@ -28,7 +28,7 @@ def test_absent_source_does_not_count_as_missing(monkeypatch, tmp_path: Path) ->
     )
     monkeypatch.setattr(
         "mercury.backup.status.find_latest_backup_directory",
-        lambda root, database: None,
+        lambda root, database, *, require_complete_full=False: None,
     )
     monkeypatch.setattr(
         "mercury.backup.status._live_server_database_names",

@@ -11,12 +11,12 @@ from pydantic import BaseModel, Field
 
 from mercury.backup.find_latest_backup import (
     BackupSelectionError,
+    is_complete_full_backup,
     list_backup_candidates,
     resolve_backup_directory,
 )
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.execution_policy import load_execution_policy
-from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.core.runtime import should_probe_database_status
 from mercury.database.core import classify_database
 from mercury.database.mariadb.identifiers import quote_ident
@@ -94,10 +94,16 @@ def build_restore_check_plan(
     selection_mode = "sealed_package_exact" if backup_directory_override else (
         "explicit" if backup_id else "artifact_verified_default"
     )
-    candidates = [] if backup_directory_override else list_backup_candidates(policy.backup_root, prod_database)
+    candidates = [] if backup_directory_override else list_backup_candidates(
+        policy.backup_root, prod_database, require_complete_full=True
+    )
 
     if not classification.backup_source:
         blockers.append(f"'{prod_database}' is not an approved production backup source.")
+    from mercury.core.safety import LIVE_RESTORE_PROHIBITED_DATABASES
+
+    if prod_database in LIVE_RESTORE_PROHIBITED_DATABASES:
+        blockers.append("Noctivar is backup-only; live restore-check is prohibited. Use its separate isolated rehearsal lane.")
     if (
         backup_directory_override is None
         and policy.backup_root_is_within_repo()
@@ -130,16 +136,20 @@ def build_restore_check_plan(
                 backup_id=backup_id,
                 prefer="artifact_verified",
                 allow_unverified=allow_unverified,
+                require_complete_full=True,
             )
         except BackupSelectionError as exc:
             blockers.append(str(exc))
             backup_dir = None
 
+    if backup_dir is not None and not is_complete_full_backup(backup_dir, prod_database):
+        blockers.append("Restore-check requires a complete full backup of the source database.")
+        backup_dir = None
     if backup_dir is not None:
         verify = verify_backup_artifacts(
             backup_dir,
             database=prod_database,
-            backup_kind=BACKUP_KIND_FULL,
+            require_complete_full=True,
         )
         backup_verified = verify.verified
         resolved_id = verify.backup_id

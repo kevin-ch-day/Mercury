@@ -25,6 +25,7 @@ from mercury.logging import (
     reset_logging,
     search_log_files,
 )
+from mercury.logging.analysis import parse_recent_sessions
 
 from tests.logging.helpers import flush_logs, read_log, read_main_log
 
@@ -49,6 +50,8 @@ def test_log_session_lifecycle(log_dir: Path) -> None:
     configure_logging(enabled=True, log_dir=log_dir)
     log_session_start(argv=["mercury", "db", "discover"])
     log_session_end(exit_code=0)
+    log_session_end(exit_code=9)
+    log_session_start(argv=["mercury", "backup", "status"])
     log_session_end(exit_code=1)
 
     main_text = read_main_log()
@@ -56,10 +59,59 @@ def test_log_session_lifecycle(log_dir: Path) -> None:
     assert "mercury db discover" in main_text
     assert "exit_code=0" in main_text
     assert "exit_code=1" in main_text
+    assert "exit_code=9" not in main_text
+    sessions = parse_recent_sessions(log_dir=log_dir)
+    assert len({session.session_id for session in sessions}) == 2
+    assert all(session.elapsed_ms is not None and session.elapsed_ms >= 0 for session in sessions)
 
     error_text = read_log(current_error_log_file)
     assert "exit_code=1" in error_text
     assert "exit_code=0" not in error_text
+
+
+def test_log_files_redact_arguments_and_domain_errors(log_dir: Path) -> None:
+    configure_logging(enabled=True, log_dir=log_dir)
+    log_session_start(argv=[
+        "mercury", "backup", "run", "--password", "synthetic multiword credential",
+        "--api_key=synthetic-api-key", "--credentials-json", "/private/credential fixture.json",
+    ])
+    get_logger("mercury.database").error(
+        "connection failed password=%r from %s", "synthetic named secret", "https://fixture:secret@example.invalid"
+    )
+    log_session_end(exit_code=2)
+
+    for path in log_dir.glob("*.log"):
+        text = path.read_text(encoding="utf-8")
+        assert "synthetic multiword credential" not in text
+        assert "synthetic-api-key" not in text
+        assert "/private/credential fixture.json" not in text
+        assert "synthetic named secret" not in text
+        assert "fixture:secret@" not in text
+    assert "connection failed" in read_log(current_database_log_file)
+    assert "exit_code=2" not in read_log(current_error_log_file)
+    assert "WARNING mercury session end" in read_main_log()
+
+
+def test_file_logging_failure_is_nonfatal(monkeypatch, tmp_path: Path, capsys) -> None:
+    def disk_full(*args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr("mercury.logging.engine.attach_file_handler", disk_full)
+    assert configure_logging(log_dir=tmp_path) is None
+    get_logger().error("backup could not start")
+    assert "No space left on device" in capsys.readouterr().err
+
+
+def test_explicit_hdd_log_directory_redirects_while_writes_are_disabled(monkeypatch, tmp_path: Path) -> None:
+    hdd = tmp_path / "hdd"
+    fallback = tmp_path / "host-local"
+    monkeypatch.setenv("MERCURY_DETACH_LOG_DIR", str(fallback))
+    monkeypatch.setattr("mercury.storage.host_maintenance.path_is_under_primary_mount", lambda p: p == hdd)
+    monkeypatch.setattr("mercury.storage.host_maintenance.writes_allowed", lambda: False)
+
+    main_log = configure_logging(enabled=True, log_dir=hdd)
+    assert main_log.parent == fallback
+    assert not hdd.exists()
 
 
 def test_list_and_tail_log_files(log_dir: Path) -> None:
