@@ -295,6 +295,14 @@ def test_protected_generation_publication_and_failure_retention(
     monkeypatch.setattr(module, "require_destination", lambda *a: None)
     monkeypatch.setattr(module, "require_headroom", lambda *a: None)
     monkeypatch.setattr(
+        "mercury.backup.backup_runner.select_dump_tool", lambda: "mariadb-dump"
+    )
+    monkeypatch.setattr(
+        module,
+        "subprocess",
+        SimpleNamespace(check_output=lambda *a, **k: "synthetic mariadb-dump version"),
+    )
+    monkeypatch.setattr(
         "mercury.database.mariadb.session.fetch_user_database_names",
         lambda *a: ["noctivar"],
     )
