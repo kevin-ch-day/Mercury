@@ -9,6 +9,7 @@ OBSIDIANDROID_PROD_DATABASE = "obsidiandroid_core_prod"
 
 ACTIVE_BACKUP_SOURCE_DATABASES: frozenset[str] = frozenset(
     {
+        "noctivar",
         "android_permission_intel",
         "erebus_threat_intel_prod",
         "erebus_provider_secrets_prod",

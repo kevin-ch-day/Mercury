@@ -186,7 +186,7 @@ def test_project_roots_outside_governance_are_manual_review() -> None:
 def test_dev_backup_candidate_only_after_retention_minimum(tmp_path: Path) -> None:
     policy = _policy(destination_validation_pending=True, development_keep_latest_verified=2)
     backups = tmp_path / "mercury_backups" / "2026-07-22" / "erebus_threat_intel_dev"
-    for stamp in ("a", "b", "c"):
+    for day, stamp in enumerate(("a", "b", "c"), 1):
         path = backups / stamp
         path.mkdir(parents=True)
         (path / "manifest.json").write_text(
@@ -194,7 +194,9 @@ def test_dev_backup_candidate_only_after_retention_minimum(tmp_path: Path) -> No
                 {
                     "backup_id": f"erebus_threat_intel_dev-full-{stamp}",
                     "database": "erebus_threat_intel_dev",
-                    "created_at": "2026-07-22T16:00:00+00:00",
+                    "created_at": f"2026-07-{day:02d}T16:00:00+00:00",
+                    "backup_kind": "full",
+                    "verified": True,
                 }
             ),
             encoding="utf-8",
@@ -206,7 +208,35 @@ def test_dev_backup_candidate_only_after_retention_minimum(tmp_path: Path) -> No
         if e.classification == CleanupClassification.CLEANUP_CANDIDATE_AFTER_DESTINATION
     ]
     assert candidates
-    assert all("execute refused" in e.reason for e in candidates)
+    assert all("newer verified IDs" in e.reason for e in candidates)
+
+
+def test_unverified_newer_folders_cannot_replace_only_verified_dev_backup(tmp_path):
+    database = "scytaledroid_core_dev"
+    for index in range(3):
+        _write_production_backup(tmp_path, database=database, stamp=str(index),
+            created_at=f"2026-09-27T12:00:0{index}+00:00", verified=index == 0)
+    preview = build_cleanup_preview(tmp_path, policy=_policy())
+    entries = [e for e in preview.entries if str(tmp_path / "mercury_backups") in e.path]
+    assert not any(e.classification == CleanupClassification.CLEANUP_CANDIDATE_AFTER_DESTINATION for e in entries)
+    assert next(e for e in entries if e.path.endswith("/0")).classification == CleanupClassification.RETAIN
+    assert next(e for e in entries if e.path.endswith("/2")).classification == CleanupClassification.MANUAL_REVIEW_ONLY
+
+
+@pytest.mark.parametrize("database", ["scytaledroid_core_prod", "scytaledroid_core_dev"])
+def test_duplicate_backup_ids_do_not_satisfy_two_generation_floor(tmp_path, monkeypatch, database):
+    rows = [_write_production_backup(tmp_path, database=database, stamp=str(index),
+        created_at=f"2026-09-27T12:00:0{index}+00:00") for index in range(3)]
+    duplicate = rows[2][1]
+    path = rows[1][0] / "manifest.json"
+    payload = json.loads(path.read_text()); payload["backup_id"] = duplicate
+    path.write_text(json.dumps(payload))
+    records = {identity: SimpleNamespace(database=database, status="passed") for identity in [rows[0][1], duplicate]}
+    monkeypatch.setattr("mercury.backup.status.latest_restore_check_by_backup_id", lambda: records)
+    preview = build_cleanup_preview(tmp_path, policy=_policy(production_keep_daily_days=0,
+        production_keep_weekly_weeks=0, production_keep_monthly_months=0))
+    entry = next(e for e in preview.entries if e.path == str(rows[0][0]))
+    assert entry.classification == CleanupClassification.RETAIN
 
 
 def _write_production_backup(
@@ -265,6 +295,7 @@ def test_production_preview_requires_two_newer_exact_restore_checked_sets(
         production_keep_weekly_weeks=0,
         production_keep_monthly_months=0,
         production_min_valid_generations=2,
+        production_keep_latest_per_database=2,
     )
 
     preview = build_cleanup_preview(tmp_path, policy=policy)
@@ -309,6 +340,7 @@ def test_production_preview_refuses_unchecked_set_as_cleanup_candidate(
         production_keep_daily_days=0,
         production_keep_weekly_weeks=0,
         production_keep_monthly_months=0,
+        production_keep_latest_per_database=2,
     )
 
     preview = build_cleanup_preview(tmp_path, policy=policy)
@@ -317,6 +349,53 @@ def test_production_preview_refuses_unchecked_set_as_cleanup_candidate(
     )
     assert oldest.classification == CleanupClassification.MANUAL_REVIEW_ONLY
     assert "restore-check PASS" in oldest.reason
+
+
+def test_production_preview_retains_newest_n_full_generations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """keep_latest_per_database counts every full generation, checked or not."""
+    database = "erebus_threat_intel_prod"
+    rows = [
+        _write_production_backup(
+            tmp_path,
+            database=database,
+            stamp=f"20260927_14000{index}_000",
+            created_at=f"2026-09-27T14:00:0{index}+00:00",
+        )
+        for index in range(4)
+    ]
+    records = {
+        backup_id: SimpleNamespace(database=database, status="passed")
+        for _path, backup_id in rows[:3]
+    }
+    monkeypatch.setattr(
+        "mercury.backup.status.latest_restore_check_by_backup_id",
+        lambda: records,
+    )
+    policy = _policy(
+        production_keep_daily_days=0,
+        production_keep_weekly_weeks=0,
+        production_keep_monthly_months=0,
+        production_min_valid_generations=2,
+        production_keep_latest_per_database=3,
+    )
+
+    preview = build_cleanup_preview(tmp_path, policy=policy)
+    production = {
+        entry.references[0]: entry
+        for entry in preview.entries
+        if len(entry.references) == 2 and entry.references[1] == database
+    }
+
+    assert production[rows[0][1]].classification == (
+        CleanupClassification.CLEANUP_CANDIDATE_AFTER_DESTINATION
+    )
+    assert "newest 3 full generations" in production[rows[0][1]].canonical_replacement
+    for _path, backup_id in rows[1:]:
+        assert production[backup_id].classification == CleanupClassification.RETAIN
+        assert "newest 3" in production[backup_id].reason
 
 
 def test_protected_production_backup_overrides_retention_candidate(

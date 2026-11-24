@@ -72,6 +72,8 @@ def _runner(mountpoint: str):
 def host_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     path = tmp_path / "host_maintenance.json"
     monkeypatch.setenv("MERCURY_HOST_MAINTENANCE_PATH", str(path))
+    # Exercise package selection independently of the host's running jobs.
+    monkeypatch.setattr("mercury.storage.detach_wizard.active_write_operations", lambda: [])
     return path
 
 

@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from time import perf_counter
 
 from pydantic import BaseModel, Field
 
 from mercury.backup.layout import CHECKSUM_FILENAME, MANIFEST_FILENAME
 from mercury.backup.manifest import BackupKind, BackupManifest
-from mercury.backup.checksum import verify_checksums
+from mercury.backup.checksum import safe_artifact_name, verify_checksums
 from mercury.database.core import DatabaseRole, classify_database
 from mercury.backup.manifest_preview import ManifestPreview, build_manifest_preview
 from mercury.core.execution_policy import load_execution_policy
@@ -48,6 +49,8 @@ class BackupVerificationResult(BaseModel):
     database: str
     backup_kind: BackupKind
     manifest_path: str
+    manifest_created_at: datetime | None = None
+    manifest_verification_stamp: bool | None = None
     requested_user: str | None = None
     authenticated_user: str | None = None
     server_hostname: str | None = None
@@ -64,6 +67,7 @@ class BackupVerificationResult(BaseModel):
     issues: list[str] = Field(default_factory=list)
     preview_only: bool = True
     live_actions_enabled: bool = False
+    verification_method: str = "not_run"
 
 
 class VerificationPlan(BaseModel):
@@ -169,22 +173,30 @@ def apply_verification_success(result: BackupVerificationResult) -> BackupVerifi
     )
 
 
+def _execution_policy_conflicts(manifest: BackupManifest) -> bool:
+    return (
+        "live_actions_enabled" in manifest.model_fields_set
+        and not manifest.live_actions_enabled
+        and not manifest.dry_run
+    )
+
+
 def manifest_verified_stamp(manifest_path: str | Path) -> bool | None:
-    """Return manifest.json verified stamp when readable; None if missing/invalid."""
+    """Return the recorded stamp when the manifest and its policy are consistent."""
     path = Path(manifest_path)
     manifest = _load_manifest(path)
-    if manifest is None:
+    if manifest is None or _execution_policy_conflicts(manifest):
         return None
     return manifest.verified
 
 
 def _load_manifest(path: Path) -> BackupManifest | None:
-    if not path.exists():
+    if not path.exists() or path.is_symlink() or not path.is_file():
         return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         return BackupManifest.model_validate(data)
-    except (json.JSONDecodeError, ValueError):
+    except (OSError, json.JSONDecodeError, ValueError):
         return None
 
 
@@ -204,18 +216,22 @@ def verify_backup_artifacts(
     database: str | None = None,
     backup_kind: BackupKind | None = None,
     allow_development_backup: bool = False,
+    require_complete_full: bool = False,
+    staged_manifest_path: Path | None = None,
 ) -> BackupVerificationResult:
     """
     Verify on-disk backup artifacts: manifest, dumps, checksums, role, and sizes.
 
     Used after live execution and in tests with synthetic artifacts.
+    Protected publication can verify final payloads against its still-private manifest.
     """
-    manifest_path = backup_dir / MANIFEST_FILENAME
+    manifest_path = staged_manifest_path or (backup_dir / MANIFEST_FILENAME)
     checksum_path = backup_dir / CHECKSUM_FILENAME
     manifest = _load_manifest(manifest_path)
 
     resolved_db = database or (manifest.database if manifest else backup_dir.name)
-    resolved_kind: BackupKind = backup_kind or (
+    expected_kind = BACKUP_KIND_FULL if require_complete_full else backup_kind
+    resolved_kind: BackupKind = expected_kind or (
         manifest.backup_kind if manifest else BACKUP_KIND_FULL
     )
 
@@ -244,7 +260,16 @@ def verify_backup_artifacts(
             )
         dump_name = manifest.dump_file
         schema_name = manifest.schema_file
-        if manifest.live_actions_enabled is False and manifest.dry_run is False:
+        if not safe_artifact_name(dump_name) or (
+            schema_name is not None and not safe_artifact_name(schema_name)
+        ):
+            issues.append("manifest artifact names must be direct safe filenames")
+            dump_name = schema_name = None
+        if expected_kind and expected_kind != manifest.backup_kind:
+            issues.append("manifest backup kind does not match requested kind")
+        if require_complete_full and manifest.object_scope != "complete_schema":
+            issues.append("manifest object scope does not cover a complete full backup")
+        if _execution_policy_conflicts(manifest):
             issues.append("manifest records live_actions_enabled=false for a non-dry-run backup")
 
     if resolved_kind == BACKUP_KIND_SCHEMA_ONLY:
@@ -279,7 +304,20 @@ def verify_backup_artifacts(
     if not checksum_exists:
         issues.append("checksum.sha256 not found")
     else:
-        checksum_matches, checksum_issues = verify_checksums(backup_dir, checksum_path)
+        required_files = {}
+        if manifest and dump_name:
+            required_files[dump_name] = (
+                manifest.sha256 or None,
+                manifest.size_bytes if "size_bytes" in manifest.model_fields_set else None,
+            )
+        if manifest and schema_name:
+            required_files[schema_name] = (
+                manifest.schema_sha256,
+                manifest.schema_size_bytes,
+            )
+        checksum_matches, checksum_issues = verify_checksums(
+            backup_dir, checksum_path, required_files=required_files
+        )
         issues.extend(checksum_issues)
 
     if resolved_kind not in (BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY):
@@ -304,7 +342,7 @@ def verify_backup_artifacts(
         and role_ok
         and resolved_kind in (BACKUP_KIND_FULL, BACKUP_KIND_SCHEMA_ONLY)
         and artifacts_ok
-        and not any("does not match requested" in issue for issue in issues)
+        and not issues
     )
 
     backup_id = manifest.backup_id if manifest else f"verify-{resolved_db}-{resolved_kind}"
@@ -314,6 +352,10 @@ def verify_backup_artifacts(
         database=resolved_db,
         backup_kind=resolved_kind,
         manifest_path=str(manifest_path),
+        manifest_created_at=manifest.created_at if manifest else None,
+        manifest_verification_stamp=(
+            manifest.verified if manifest and not _execution_policy_conflicts(manifest) else None
+        ),
         requested_user=manifest.requested_user if manifest else None,
         authenticated_user=manifest.authenticated_user if manifest else None,
         server_hostname=manifest.server_hostname if manifest else None,
@@ -332,6 +374,7 @@ def verify_backup_artifacts(
         verified=verified,
         issues=issues,
         preview_only=False,
+        verification_method="manifest-artifact-binding-v2",
         live_actions_enabled=(
             manifest.live_actions_enabled
             if manifest
@@ -350,6 +393,7 @@ def verify_backup_directory(
     """
     Verify a backup directory on disk; optionally mark manifest verified=true when passing.
     """
+    started = perf_counter()
     result = verify_backup_artifacts(
         backup_dir, database=database, allow_development_backup=allow_development_backup
     )
@@ -377,6 +421,8 @@ def verify_backup_directory(
         issue_count=len(result.issues),
         backup_id=result.backup_id,
         updated_manifest=updated_manifest,
+        checksum_matches=result.checksum_matches,
+        elapsed_ms=round((perf_counter() - started) * 1000, 1),
     )
     from mercury.state.ledger import record_backup_verification
 

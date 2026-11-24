@@ -152,7 +152,8 @@ def test_missing_target_plans_create_and_import(
     assert all(c.deploy_action == "CREATE_AND_IMPORT" for c in plan.candidates)
     assert all(c.target_status == "missing" for c in plan.candidates)
     assert any("gunzip -c" in command for command in plan.planned_commands)
-    assert any("CREATE DATABASE IF NOT EXISTS" in command for command in plan.planned_commands)
+    assert any(command.startswith("CREATE DATABASE `") for command in plan.planned_commands)
+    assert not any("IF NOT EXISTS" in command for command in plan.planned_commands)
 
 
 def test_mixed_missing_and_existing_imports_only_missing(

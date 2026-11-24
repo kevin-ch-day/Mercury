@@ -156,6 +156,8 @@ def _runner_for(
 def host_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     path = tmp_path / "host_maintenance.json"
     monkeypatch.setenv("MERCURY_HOST_MAINTENANCE_PATH", str(path))
+    # Tests that exercise an active-operation blocker supply their own result.
+    monkeypatch.setattr("mercury.storage.detach_wizard.active_write_operations", lambda: [])
     save_host_maintenance(
         HostMaintenanceState(
             storage_availability="detaching",

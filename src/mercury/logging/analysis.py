@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from collections import deque
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,12 +13,16 @@ from mercury.logging.config import (
     DATABASE_LOG_FILENAME,
     ERROR_LOG_FILENAME,
     logging_enabled,
-    resolve_log_dir,
 )
+from mercury.logging.engine import active_log_directory, current_log_file, is_configured
 from mercury.logging.utils import list_log_files
 
-SESSION_START_RE = re.compile(r"session start id=(\S+)")
-SESSION_END_RE = re.compile(r"session end id=(\S+) exit_code=(\d+)")
+_LOG_RECORD = re.compile(
+    r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}Z? "
+    r"\[(?P<id>[^\]]+)\] (?P<level>[A-Z]+) (?P<logger>\S+) (?P<message>.*)$"
+)
+SESSION_START_RE = re.compile(r"^session start id=(\S+)")
+SESSION_END_RE = re.compile(r"^session end id=(\S+) exit_code=(-?\d+)(?: elapsed_ms=(\d+(?:\.\d+)?))?")
 
 
 @dataclass(frozen=True)
@@ -38,6 +43,8 @@ class LogSession:
     end_line: str | None = None
     exit_code: int | None = None
     command: str | None = None
+    elapsed_ms: float | None = None
+    ambiguous: bool = False
 
 
 @dataclass
@@ -50,26 +57,29 @@ class LogStatusReport:
     total_warnings: int = 0
 
 
-def _count_levels(lines: list[str]) -> tuple[int, int]:
-    errors = sum(1 for line in lines if " ERROR " in line or line.endswith(" ERROR"))
-    warnings = sum(1 for line in lines if " WARNING " in line)
-    return errors, warnings
-
-
 def analyze_log_file(path: Path) -> LogFileInfo:
-    text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
-    lines = text.splitlines()
-    errors, warnings = _count_levels(lines)
-    modified = (
-        datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
-        if path.is_file()
-        else ""
-    )
+    lines = errors = warnings = 0
+    size_bytes = 0
+    modified = ""
+    try:
+        info = path.stat()
+        size_bytes = info.st_size
+        modified = datetime.fromtimestamp(info.st_mtime, tz=timezone.utc).isoformat()
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                lines += 1
+                record = _LOG_RECORD.match(line)
+                if record:
+                    level = record["level"]
+                    errors += level in ("ERROR", "CRITICAL")
+                    warnings += level == "WARNING"
+    except OSError:
+        pass
     return LogFileInfo(
         name=path.name,
         path=path,
-        size_bytes=path.stat().st_size if path.is_file() else 0,
-        lines=len(lines),
+        size_bytes=size_bytes,
+        lines=lines,
         errors=errors,
         warnings=warnings,
         modified_at=modified,
@@ -78,43 +88,56 @@ def analyze_log_file(path: Path) -> LogFileInfo:
 
 def parse_recent_sessions(*, log_dir: Path | None = None, max_sessions: int = 10) -> list[LogSession]:
     """Extract recent session start/end pairs from main daily logs."""
-    directory = log_dir or resolve_log_dir()
-    open_sessions: dict[str, LogSession] = {}
-    ordered: list[LogSession] = []
+    if max_sessions <= 0:
+        return []
+    directory = log_dir or active_log_directory()
+    pending: dict[str, deque[int]] = {}
+    sessions: list[LogSession] = []
 
-    for path in list_log_files(log_dir=directory):
-        if not path.is_file():
+    for path in reversed(list_log_files(log_dir=directory)):
+        try:
+            with path.open(encoding="utf-8", errors="replace") as handle:
+                for line in handle:
+                    record = _LOG_RECORD.match(line)
+                    if not record or record["logger"] != "mercury":
+                        continue
+                    sid = record["id"]
+                    message = record["message"]
+                    start = SESSION_START_RE.match(message)
+                    if start and start[1] == sid:
+                        indexes = pending.setdefault(sid, deque())
+                        for index in indexes:
+                            sessions[index] = replace(sessions[index], ambiguous=True)
+                        sessions.append(LogSession(
+                            sid, line.strip(), command=_extract_command(message), ambiguous=bool(indexes)
+                        ))
+                        indexes.append(len(sessions) - 1)
+                        continue
+                    end = SESSION_END_RE.match(message)
+                    if not end or end[1] != sid:
+                        continue
+                    elapsed = float(end[3]) if end[3] is not None else None
+                    indexes = pending.get(sid)
+                    if indexes:
+                        index = indexes.popleft()
+                        if not indexes:
+                            del pending[sid]
+                        session = sessions[index]
+                        if not session.ambiguous:
+                            sessions[index] = replace(
+                                session, end_line=line.strip(), exit_code=int(end[2]), elapsed_ms=elapsed
+                            )
+                            continue
+                        sessions.append(LogSession(
+                            sid, "", end_line=line.strip(), exit_code=int(end[2]),
+                            elapsed_ms=elapsed, ambiguous=True,
+                        ))
+                    else:
+                        sessions.append(LogSession(sid, "", line.strip(), int(end[2]), elapsed_ms=elapsed))
+        except OSError:
             continue
-        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            start_match = SESSION_START_RE.search(line)
-            if start_match:
-                sid = start_match.group(1)
-                command = _extract_command(line)
-                session = LogSession(session_id=sid, start_line=line.strip(), command=command)
-                open_sessions[sid] = session
-                ordered.append(session)
-                continue
-            end_match = SESSION_END_RE.search(line)
-            if end_match:
-                sid = end_match.group(1)
-                exit_code = int(end_match.group(2))
-                session = open_sessions.get(sid)
-                if session is None:
-                    session = LogSession(session_id=sid, start_line="")
-                    ordered.append(session)
-                open_sessions[sid] = LogSession(
-                    session_id=sid,
-                    start_line=session.start_line,
-                    end_line=line.strip(),
-                    exit_code=exit_code,
-                    command=session.command,
-                )
 
-    merged: dict[str, LogSession] = {}
-    for session in ordered:
-        merged[session.session_id] = open_sessions.get(session.session_id, session)
-
-    sessions = list(merged.values())
+    sessions.reverse()
     sessions.sort(key=lambda item: item.session_id, reverse=True)
     return sessions[:max_sessions]
 
@@ -131,8 +154,9 @@ def _extract_command(line: str) -> str | None:
 
 
 def build_log_status(*, log_dir: Path | None = None) -> LogStatusReport:
-    directory = log_dir or resolve_log_dir()
-    report = LogStatusReport(log_dir=directory, logging_enabled=logging_enabled())
+    directory = log_dir or active_log_directory()
+    enabled = current_log_file() is not None if is_configured() else logging_enabled()
+    report = LogStatusReport(log_dir=directory, logging_enabled=enabled)
 
     if not directory.is_dir():
         return report
@@ -144,8 +168,6 @@ def build_log_status(*, log_dir: Path | None = None) -> LogStatusReport:
         if path.is_file():
             info = analyze_log_file(path)
             report.files.append(info)
-            report.total_errors += info.errors
-            report.total_warnings += info.warnings
             seen.add(path.resolve())
 
     for path in list_log_files(log_dir=directory):
@@ -153,6 +175,7 @@ def build_log_status(*, log_dir: Path | None = None) -> LogStatusReport:
             continue
         info = analyze_log_file(path)
         report.files.append(info)
+        # The dedicated logs mirror daily records. Totals count the daily stream.
         report.total_errors += info.errors
         report.total_warnings += info.warnings
 
@@ -162,7 +185,7 @@ def build_log_status(*, log_dir: Path | None = None) -> LogStatusReport:
 
 def resolve_named_log_file(name: str, *, log_dir: Path | None = None) -> Path | None:
     """Resolve shorthand log names: errors, database, backup, main."""
-    directory = log_dir or resolve_log_dir()
+    directory = log_dir or active_log_directory()
     normalized = name.strip().lower()
     mapping = {
         "error": ERROR_LOG_FILENAME,
@@ -173,12 +196,8 @@ def resolve_named_log_file(name: str, *, log_dir: Path | None = None) -> Path | 
         "backups": BACKUP_LOG_FILENAME,
     }
     if normalized in mapping:
-        path = directory / mapping[normalized]
-        return path if path.is_file() else path
+        return directory / mapping[normalized]
     if normalized == "main":
         files = list_log_files(log_dir=directory)
         return files[0] if files else None
-    candidate = Path(name)
-    if candidate.is_absolute():
-        return candidate if candidate.is_file() else candidate
     return directory / name

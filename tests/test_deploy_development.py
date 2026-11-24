@@ -14,13 +14,13 @@ from mercury.deploy.selection import resolve_deployment_candidates
 
 
 def test_development_target_remains_refused_without_explicit_lane() -> None:
-    with pytest.raises(Exception, match="not an approved backup-source"):
+    with pytest.raises(Exception, match="no deployment authorization"):
         assert_deployment_target("erebus_threat_intel_dev")
 
 
 def test_configured_development_target_is_permitted_only_in_explicit_lane() -> None:
     assert_deployment_target("erebus_threat_intel_dev", allow_development_deploy=True)
-    with pytest.raises(Exception, match="not an approved backup-source"):
+    with pytest.raises(Exception, match="no deployment authorization"):
         assert_deployment_target("random_dev", allow_development_deploy=True)
 
 
@@ -33,8 +33,10 @@ def test_development_selection_verifies_with_explicit_development_policy(
         backup_root=tmp_path,
         allow_unsafe_backup_root=True,
     )
-    backup_dir = tmp_path / "erebus_threat_intel_dev" / "backup"
-    backup_dir.mkdir(parents=True)
+    from tests.test_phase1_safety import seed_candidate
+
+    seeded = seed_candidate(policy, database="erebus_threat_intel_dev")
+    backup_dir = Path(seeded.backup_directory)
     monkeypatch.setattr(
         "mercury.deploy.selection.resolve_development_backup_sources",
         lambda *, live=False: ["erebus_threat_intel_dev"],
@@ -45,7 +47,7 @@ def test_development_selection_verifies_with_explicit_development_policy(
 
     class Verification:
         verified = True
-        backup_id = "dev.sql.gz"
+        backup_id = seeded.backup_id
 
     def fake_verify(*_args, **kwargs):
         seen["allow"] = kwargs["allow_development_backup"]

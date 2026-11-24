@@ -25,7 +25,6 @@ from mercury.backup.content_contract import (
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.execution_policy import load_execution_policy
 from mercury.core.runtime import should_probe_database_status
-from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.database.core.scope import is_in_scope
 from mercury.database.discovery import discover_for_planning
 from mercury.database.prod_dev_pairs import build_prod_dev_pairs
@@ -177,6 +176,7 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
                 policy.backup_root,
                 pair.prod,
                 prefer="artifact_verified",
+                require_complete_full=True,
             )
         except BackupSelectionError as exc:
             blockers.append(str(exc))
@@ -191,7 +191,9 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
                 blockers.append("No artifact-verified on-disk backup found for production source.")
         else:
             latest_dir = str(backup_dir)
-            verify = verify_backup_artifacts(backup_dir, database=pair.prod, backup_kind=BACKUP_KIND_FULL)
+            verify = verify_backup_artifacts(
+                backup_dir, database=pair.prod, require_complete_full=True
+            )
             backup_verified = verify.verified
             backup_id = verify.backup_id
             created_at = _load_backup_created_at(backup_dir)
@@ -207,9 +209,7 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
                 contract_issue = _restore_requirements_issue(backup_dir)
                 if contract_issue:
                     blockers.append(contract_issue)
-            if verify.backup_kind != BACKUP_KIND_FULL:
-                blockers.append(f"Pinned backup '{backup_id}' is not a verified full backup.")
-            elif backup_verified and live and should_probe_database_status():
+            if backup_verified and live and should_probe_database_status():
                 freshness = assess_backup_freshness(
                     pair.prod,
                     backup_at=parse_backup_timestamp(_load_backup_created_at(backup_dir)),

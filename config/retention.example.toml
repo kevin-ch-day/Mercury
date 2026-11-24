@@ -69,9 +69,14 @@ names = [
 [production_backups]
 keep_latest_restore_checked = true
 keep_latest_verified = true
-keep_daily_days = 7
-keep_weekly_weeks = 4
-keep_monthly_months = 3
+# Newest-N floor per database. Every full generation beyond the newest N
+# (by manifest created_at) becomes a cleanup candidate once a newer exact
+# restore-checked generation exists; calendar windows are disabled (0) so
+# this is the only retention rule. Operator decision 2026-11-19: 3.
+keep_latest_per_database = 3
+keep_daily_days = 0
+keep_weekly_weeks = 0
+keep_monthly_months = 0
 min_valid_generations = 2
 
 [development_backups]

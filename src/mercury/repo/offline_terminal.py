@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from mercury import output
-from mercury.repo.offline_clone import OfflineClonePlan, load_offline_sync_receipt
+from mercury.repo.offline_clone import OfflineClonePlan, load_offline_sync_receipt, snapshot_is_current
 from mercury.terminal.format import format_human_datetime
 from mercury.terminal import screen as display_screen
 from mercury.terminal.table import Table, TableStyle
@@ -13,6 +15,14 @@ from mercury.terminal.theme import hint_text
 def _write_dense(lines: list[str]) -> None:
     for line in lines:
         output.write(hint_text(line))
+
+
+def _source_detail(dirty: bool, snapshot: object, mirror: str | Path | None, captured: object) -> str:
+    if not dirty:
+        return "clean source"
+    if snapshot_is_current(snapshot, mirror, captured):
+        return "dirty snapshot recorded"
+    return "source dirty (committed only)"
 
 
 def print_offline_clone_plan(
@@ -25,6 +35,7 @@ def print_offline_clone_plan(
     if with_title:
         display_screen.open_screen(title)
     synced = sum(1 for entry in plan.entries if entry.executed)
+    reused = sum(1 for entry in plan.entries if entry.executed and entry.mirror_reused)
     current = sum(1 for entry in plan.entries if entry.action == "current" and not entry.executed)
     blocked = sum(1 for entry in plan.entries if entry.action == "blocked")
     pending = sum(1 for entry in plan.entries if entry.action in {"clone", "update"})
@@ -38,6 +49,8 @@ def print_offline_clone_plan(
         "Repositories": len(plan.entries),
         "Status": status,
     }
+    if reused:
+        fields["Mirrors reused"] = reused
     receipt = load_offline_sync_receipt(plan.root)
     if receipt:
         recorded = str(receipt.get("recorded_at_utc", "recorded"))
@@ -46,13 +59,11 @@ def print_offline_clone_plan(
 
     rows = []
     for entry in plan.entries:
-        action = "synced" if entry.executed else entry.action
-        if entry.error:
-            detail = entry.error
-        elif entry.source_dirty:
-            detail = "source dirty (committed only)"
-        else:
-            detail = "clean source"
+        action = ("reused" if entry.mirror_reused else "synced") if entry.executed else entry.action
+        detail = entry.error or _source_detail(
+            entry.source_dirty, entry.snapshot, entry.destination_path if entry.executed else None,
+            entry.snapshot_captured,
+        )
         rows.append([entry.display_name, entry.commit[:12], action, detail])
     display_screen.write_structured_table(
         Table.from_headers(
@@ -101,11 +112,15 @@ def print_offline_sync_receipt(plan: OfflineClonePlan) -> None:
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        state = "synced" if entry.get("synced") else str(entry.get("action", "unknown"))
-        detail = str(
-            entry.get("error")
-            or ("source dirty (committed only)" if entry.get("source_dirty") else "clean source")
-        )
+        state = str(entry.get("action", "unknown"))
+        if entry.get("synced"):
+            state = "reused" if entry.get("mirror_reused") is True else "synced"
+        mirror = entry.get("mirror_path")
+        detail = str(entry.get("error") or _source_detail(
+            bool(entry.get("source_dirty")), entry.get("snapshot"),
+            mirror if isinstance(mirror, str) and entry.get("synced") else None,
+            entry.get("snapshot_captured"),
+        ))
         rows.append(
             [str(entry.get("display_name", "unknown")), str(entry.get("commit", ""))[:12], state, detail]
         )

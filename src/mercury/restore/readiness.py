@@ -19,7 +19,6 @@ from mercury.backup.find_latest_backup import (
 from mercury.backup.layout import MANIFEST_FILENAME
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.execution_policy import load_execution_policy
-from mercury.core.safety import BACKUP_KIND_FULL
 from mercury.core.runtime import should_probe_database_status
 from mercury.database.core import classify_database
 from mercury.database.mariadb.config import MariaDbConnectionConfig
@@ -96,8 +95,12 @@ def _backup_id_for_path(backup_dir: Path | None) -> str | None:
 
 def _summarize_backup_identities(backup_root: Path, database: str) -> dict[str, str | None]:
     written = find_latest_backup_directory(backup_root, database)
-    verified = find_latest_artifact_verified_backup(backup_root, database)
-    restore_checked = find_latest_restore_checked_backup(backup_root, database)
+    verified = find_latest_artifact_verified_backup(
+        backup_root, database, require_complete_full=True
+    )
+    restore_checked = find_latest_restore_checked_backup(
+        backup_root, database, require_complete_full=True
+    )
     return {
         "latest_written_backup_id": _backup_id_for_path(written),
         "latest_artifact_verified_backup_id": _backup_id_for_path(verified),
@@ -246,6 +249,7 @@ def build_target_completeness_entry_against_backup(
             source_database,
             backup_id=backup_id,
             prefer="artifact_verified",
+            require_complete_full=True,
         )
     except BackupSelectionError as exc:
         entry.completeness_status = "backup_unavailable"
@@ -255,7 +259,7 @@ def build_target_completeness_entry_against_backup(
     verify = verify_backup_artifacts(
         backup_dir,
         database=source_database,
-        backup_kind=BACKUP_KIND_FULL,
+        require_complete_full=True,
     )
     entry.backup_directory = str(backup_dir)
     entry.backup_id = verify.backup_id

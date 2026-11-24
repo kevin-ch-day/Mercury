@@ -1679,6 +1679,7 @@ def repo_bundle_cmd(
 def repo_offline_sync_cmd(
     execute: bool = typer.Option(False, "--execute", help="Create verified all-ref repository mirrors on backup storage."),
     snapshots: bool = typer.Option(False, "--snapshots", help="Also save filtered uncommitted patches and untracked files."),
+    reuse_unchanged: bool = typer.Option(False, "--reuse-unchanged", help="Linux: reuse verified all-ref mirrors when refs and HEAD still match."),
     confirm: str = typer.Option("", "--confirm", help="Required with --execute: SYNC OFFLINE REPOS"),
 ) -> None:
     """Preview or synchronize independent offline Git worktrees on operator storage."""
@@ -1693,7 +1694,11 @@ def repo_offline_sync_cmd(
     if confirm != OFFLINE_SYNC_CONFIRMATION:
         typer.echo(f"Refusing execution: pass --confirm '{OFFLINE_SYNC_CONFIRMATION}'.")
         raise typer.Exit(2)
-    result = execute_offline_clone_plan(plan, snapshots=snapshots)
+    try:
+        result = execute_offline_clone_plan(plan, snapshots=snapshots, reuse_unchanged=reuse_unchanged)
+    except (OSError, ValueError) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
     print_offline_clone_plan(result, executed=True)
     if any(entry.error for entry in result.entries):
         raise typer.Exit(1)
@@ -1988,6 +1993,23 @@ def backup_verify_cmd(
         raise typer.Exit(1)
 
 
+@backup_app.command('health')
+def backup_health_cmd(
+    json_output: bool = typer.Option(False, '--json', help='Machine-readable read-only health observations.'),
+) -> None:
+    """Observe physical disk, coverage, freshness, incomplete runs and recovery receipts."""
+    import json
+    from mercury.backup.health import build_health
+    report = build_health()
+    if json_output:
+        typer.echo(json.dumps(report, indent=2))
+    else:
+        typer.echo(f"Mercury physical mount: {report['physical_mount']}")
+        typer.echo(f"Latest repository success: {report.get('latest_successful_repository_receipt') or 'unavailable'}")
+        for warning in report['warnings']:
+            typer.echo(f'Attention: {warning}')
+
+
 @backup_app.command("run")
 def backup_run_cmd(
     db: str = typer.Option(..., "--db", help="Database name (backup source only)."),
@@ -2001,6 +2023,9 @@ def backup_run_cmd(
         "--execute/--dry-run",
         help="Execute backup (default). Use --dry-run to preview only.",
     ),
+    protected: bool = typer.Option(False, '--protected', help='Linux: verified staged generation, retained failures and single writer.'),
+    credentials_json: Path | None = typer.Option(None, '--credentials-json', help='Protected scoped socket credentials; never printed.'),
+    tables_only: bool = typer.Option(False, '--tables-only', help='Explicit partial Noctivar preservation outside managed full backups; excludes triggers/routines/events.'),
 ) -> None:
     """Execute a logical backup (use --dry-run to preview only)."""
     from mercury.backup.backup_runner import BackupExecutionError, execute_backup
@@ -2023,11 +2048,21 @@ def backup_run_cmd(
             raise typer.Exit(2)
 
     try:
-        result = execute_backup(db, normalized, execute=execute, live=True)  # type: ignore[arg-type]
-    except BackupExecutionError as exc:
+        if protected:
+            if not execute or normalized != 'full':
+                raise BackupExecutionError('--protected requires an explicit full execution')
+            from mercury.backup.protected_generation import execute_protected_backup
+            result = execute_protected_backup(db, credentials=credentials_json, tables_only=tables_only)
+        else:
+            if credentials_json or tables_only:
+                raise BackupExecutionError('--credentials-json and --tables-only require --protected')
+            result = execute_backup(db, normalized, execute=execute, live=True)  # type: ignore[arg-type]
+    except (BackupExecutionError, ValueError, OSError) as exc:
         typer.echo(str(exc))
         raise typer.Exit(1) from exc
 
+    if tables_only:
+        typer.echo('TABLE-ONLY PARTIAL PRESERVATION: triggers, routines and events excluded; not a complete database backup.')
     print_backup_execution(result)
     if result.refused and execute:
         raise typer.Exit(1)
@@ -2947,6 +2982,9 @@ def deploy_db_cmd(
         "--execute",
         help="Execute deployment (requires live actions enabled).",
     ),
+    confirm: str | None = typer.Option(
+        None, "--confirm", help="Required for live deployment: DEPLOY VERIFIED BACKUPS.",
+    ),
     allow_create: bool = typer.Option(
         True,
         "--allow-create/--no-allow-create",
@@ -2970,6 +3008,9 @@ def deploy_db_cmd(
         execute = False
     if execute:
         dry_run = False
+
+    if not dry_run and confirm != "DEPLOY VERIFIED BACKUPS":
+        raise typer.BadParameter("Live deployment requires --confirm 'DEPLOY VERIFIED BACKUPS'")
 
     selected: list[str] | None = list(database) if database else None
     if all_sources:
@@ -3043,8 +3084,8 @@ def deploy_dev_cmd(
             + (", ".join(sorted(allowed)) or "none")
         )
         raise typer.Exit(1)
-    if execute and confirm != "DEPLOY DEV BACKUPS":
-        raise typer.BadParameter("--execute requires --confirm 'DEPLOY DEV BACKUPS'")
+    if (execute or not dry_run) and confirm != "DEPLOY DEV BACKUPS":
+        raise typer.BadParameter("Live development deployment requires --confirm 'DEPLOY DEV BACKUPS'")
     if execute:
         dry_run = False
 
@@ -4143,15 +4184,15 @@ def logs_path_cmd() -> None:
         current_database_log_file,
         current_error_log_file,
         current_log_file,
-        resolve_log_dir,
     )
     from mercury.core.paths import LOGS_DIR
+    from mercury.logging.engine import active_log_directory
     from mercury.terminal import screen as display_screen
 
     configure_logging()
     display_screen.write_fields(
         {
-            "log_dir": resolve_log_dir(),
+            "log_dir": active_log_directory(),
             "default_log_dir": LOGS_DIR,
             "main_log": current_log_file() or "(logging disabled)",
             "error_log": current_error_log_file() or "(logging disabled)",
@@ -4178,23 +4219,17 @@ def logs_sessions_cmd(
 ) -> None:
     """List recent Mercury CLI/menu sessions from log files."""
     from mercury.logging.analysis import parse_recent_sessions
-    from mercury.logging import configure_logging, resolve_log_dir
+    from mercury.logging.engine import active_log_directory
+    from mercury.logging.terminal.status import print_session_table
     from mercury.terminal import screen as display_screen
 
-    configure_logging()
     sessions = parse_recent_sessions(max_sessions=limit)
     display_screen.write_section("Recent sessions")
-    display_screen.write_fields({"log_dir": resolve_log_dir(), "count": len(sessions)})
+    display_screen.write_fields({"log_dir": active_log_directory(), "count": len(sessions)})
     if not sessions:
         display_screen.write_status("warn", "No sessions found yet.")
         return
-    rows = []
-    for session in sessions:
-        command = session.command or "(unknown)"
-        if len(command) > 52:
-            command = f"…{command[-51:]}"
-        rows.append([session.session_id, command, "" if session.exit_code is None else str(session.exit_code)])
-    display_screen.write_table(["SESSION", "COMMAND", "EXIT"], rows)
+    print_session_table(sessions)
 
 
 @logs_app.command("errors")
@@ -4203,18 +4238,18 @@ def logs_errors_cmd(
 ) -> None:
     """Show recent errors from error.log."""
     from mercury.logging.analysis import analyze_log_file
-    from mercury.logging import configure_logging, current_error_log_file, read_log_tail, resolve_log_dir
+    from mercury.logging import current_error_log_file, read_log_tail
+    from mercury.logging.engine import active_log_directory
     from mercury.terminal import screen as display_screen
 
-    configure_logging()
-    error_file = current_error_log_file() or resolve_log_dir() / "error.log"
+    error_file = current_error_log_file() or active_log_directory() / "error.log"
     display_screen.write_section("Recent errors")
     if error_file.is_file():
         info = analyze_log_file(error_file)
         display_screen.write_fields({"file": error_file, "errors": info.errors, "lines": info.lines})
     else:
         display_screen.write_fields({"file": error_file})
-    tail = read_log_tail(lines=lines, log_file=error_file if error_file.is_file() else None)
+    tail = read_log_tail(lines=lines, log_file=error_file)
     if not tail:
         display_screen.write_status("ok", "No errors logged.")
         return
@@ -4226,13 +4261,14 @@ def logs_errors_cmd(
 def logs_list_cmd() -> None:
     """List Mercury log files newest first."""
     from mercury.logging.analysis import analyze_log_file
-    from mercury.logging import list_all_log_files, resolve_log_dir
+    from mercury.logging import list_all_log_files
+    from mercury.logging.engine import active_log_directory
     from mercury.terminal import format as display_format
     from mercury.terminal import screen as display_screen
 
     files = list_all_log_files()
     display_screen.write_section("Mercury logs")
-    display_screen.write_fields({"log_dir": resolve_log_dir(), "count": len(files)})
+    display_screen.write_fields({"log_dir": active_log_directory(), "count": len(files)})
     if not files:
         display_screen.write_status("warn", "No log files yet — run any mercury command.")
         return
@@ -4254,10 +4290,9 @@ def logs_tail_cmd(
 ) -> None:
     """Show the tail of a log file."""
     from mercury.logging.analysis import resolve_named_log_file
-    from mercury.logging import list_all_log_files, read_log_tail
+    from mercury.logging import current_log_file, read_log_tail
     from mercury.terminal import screen as display_screen
 
-    log_file: Path | None = None
     if errors:
         log_file = resolve_named_log_file("errors")
     elif database:
@@ -4268,13 +4303,13 @@ def logs_tail_cmd(
         log_file = resolve_named_log_file("main")
     elif file:
         log_file = resolve_named_log_file(file)
+    else:
+        log_file = current_log_file() or resolve_named_log_file("main")
 
-    tail = read_log_tail(lines=lines, log_file=log_file)
+    tail = read_log_tail(lines=lines, log_file=log_file) if log_file is not None else []
     display_screen.write_section("Log tail")
     if log_file:
         display_screen.write_fields({"file": log_file})
-    elif list_all_log_files():
-        display_screen.write_fields({"file": list_all_log_files()[0]})
     if not tail:
         display_screen.write_status("warn", "No log content available.")
         return
@@ -4295,29 +4330,13 @@ def logs_search_cmd(
 ) -> None:
     """Search Mercury log files for a pattern."""
     from mercury.logging.analysis import resolve_named_log_file
-    from mercury.logging import resolve_log_dir, search_log_files
+    from mercury.logging import search_log_files
     from mercury.terminal import screen as display_screen
 
-    log_dir = resolve_log_dir()
-    if in_file:
-        target = resolve_named_log_file(in_file, log_dir=log_dir)
-        paths = [target] if target and target.is_file() else []
-        matches = []
-        import re
-
-        flags = re.IGNORECASE if ignore_case else 0
-        regex = re.compile(re.escape(pattern), flags)
-        for path in paths:
-            for line_number, line in enumerate(
-                path.read_text(encoding="utf-8", errors="replace").splitlines(),
-                start=1,
-            ):
-                if regex.search(line):
-                    matches.append((path, line_number, line))
-                    if len(matches) >= max_matches:
-                        break
-    else:
-        matches = search_log_files(pattern, max_matches=max_matches, ignore_case=ignore_case, log_dir=log_dir)
+    target = resolve_named_log_file(in_file) if in_file else None
+    matches = [] if in_file and target is None else search_log_files(
+        pattern, log_file=target, max_matches=max_matches, ignore_case=ignore_case
+    )
 
     display_screen.write_section("Log search")
     display_screen.write_fields({"pattern": pattern, "matches": len(matches)})

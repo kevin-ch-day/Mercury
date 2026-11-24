@@ -26,21 +26,25 @@ def register_commands(app: typer.Typer) -> None:
             probe_mariadb_server,
         )
         from mercury.database.terminal.ping import print_server_probe
+        from mercury.logging.events import log_mariadb_probe
 
         try:
-            print_server_probe(probe_mariadb_server(), compact=not verbose)
-        except MariaDbConfigError as exc:
-            typer.echo(str(exc))
-            typer.echo("Run: mercury config init")
-            typer.echo(
-                "For local Fedora socket auth, set use_client=true and unix_socket in local.toml."
+            probe = probe_mariadb_server()
+            log_mariadb_probe(
+                connected=probe.connected,
+                latency_ms=probe.latency_ms,
+                database_count=probe.user_database_count,
+                error=probe.error,
             )
-            raise typer.Exit(1) from exc
-        except MariaDbDriverMissingError as exc:
+            print_server_probe(probe, compact=not verbose)
+        except (MariaDbConfigError, MariaDbDriverMissingError, MariaDbLiveError) as exc:
+            log_mariadb_probe(connected=False, error=type(exc).__name__)
             typer.echo(str(exc))
-            raise typer.Exit(1) from exc
-        except MariaDbLiveError as exc:
-            typer.echo(str(exc))
+            if isinstance(exc, MariaDbConfigError):
+                typer.echo("Run: mercury config init")
+                typer.echo(
+                    "For local Fedora socket auth, set use_client=true and unix_socket in local.toml."
+                )
             raise typer.Exit(1) from exc
 
     @app.command("inspect")
