@@ -9,6 +9,7 @@ from typing import Literal
 from mercury.database.mariadb.config import MariaDbConnectionConfig
 from mercury.database.mariadb.inspect import inspect_database_on_server
 from mercury.deploy.verification import verify_deployed_database
+from mercury.deploy.verification import _load_manifest_row_counts
 
 TargetStatus = Literal[
     "missing",
@@ -97,26 +98,33 @@ def classify_target_database(
             config=config,
             row_fn=row_fn,
         )
-        if post.verified:
+        try:
+            row_counts = _load_manifest_row_counts(manifest_path)
+        except ValueError:
+            row_counts = None
+        if post.verified and row_counts:
             return TargetDatabaseState(
                 status="exists_verified",
                 exists_on_server=True,
-                detail="appears healthy/verified",
+                detail="object names and declared row counts match the backup",
                 table_count=table_count,
                 total_bytes=total_bytes,
             )
         return TargetDatabaseState(
             status="exists_unverified",
             exists_on_server=True,
-            detail=post.detail or "has tables; verification not confirmed",
+            detail=(
+                "object names match, but backup has no row-count inventory"
+                if post.verified else post.detail or "has tables; verification not confirmed"
+            ),
             table_count=table_count,
             total_bytes=total_bytes,
         )
 
     return TargetDatabaseState(
-        status="exists_verified",
+        status="exists_unverified",
         exists_on_server=True,
-        detail="basic verified (has tables)",
+        detail="present with tables; no backup manifest supplied for verification",
         table_count=table_count,
         total_bytes=total_bytes,
     )

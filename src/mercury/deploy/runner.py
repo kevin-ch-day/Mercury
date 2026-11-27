@@ -83,6 +83,7 @@ def execute_deployment_for_candidate(
     import_runner: ImportRunner | None = None,
     sql_runner: SqlRunner | None = None,
     inspect_row_fn=None,
+    inspect_inventory_fn=None,
     allow_development_deploy: bool = False,
 ) -> DeploymentExecutionResult:
     candidate = candidate.model_copy(deep=True)
@@ -195,6 +196,7 @@ def execute_deployment_for_candidate(
                 post = verify_deployed_database(
                     candidate.target_database, manifest_path=manifest_path,
                     config=cfg, row_fn=inspect_row_fn,
+                    inventory_fn=inspect_inventory_fn,
                 )
             except Exception as exc:  # Verification availability is required for success.
                 post = DeploymentVerification(database=candidate.target_database,
@@ -236,6 +238,7 @@ def execute_deployment_batch(
     import_runner: ImportRunner | None = None,
     sql_runner: SqlRunner | None = None,
     inspect_row_fn=None,
+    inspect_inventory_fn=None,
     allow_development_deploy: bool = False,
     deployment_plan: DeploymentPlan | None = None,
 ) -> DeploymentBatchResult:
@@ -295,6 +298,7 @@ def execute_deployment_batch(
                 import_runner=import_runner,
                 sql_runner=sql_runner,
                 inspect_row_fn=inspect_row_fn,
+                inspect_inventory_fn=inspect_inventory_fn,
                 allow_development_deploy=allow_development_deploy,
             )
         )
@@ -303,7 +307,14 @@ def execute_deployment_batch(
             break
 
     if execute and batch.results and resolved.live_execution_allowed():
-        _write_deployment_report(batch, resolved)
+        try:
+            _write_deployment_report(batch, resolved)
+        except Exception as exc:
+            batch.report_path = None
+            batch.blockers.append(
+                f"Deployment report could not be written ({type(exc).__name__}: {exc}); "
+                "inspect every target before further deployment."
+            )
     return batch
 
 

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from mercury.core.execution_policy import ExecutionPolicy
+from mercury.database.mariadb.config import MariaDbConnectionConfig
 from mercury.deploy.actions import resolve_deploy_action
 from mercury.deploy.models import DeployOptions
 from mercury.deploy.plan import build_deployment_plan
@@ -331,3 +332,37 @@ def test_classify_missing_when_not_on_server() -> None:
     )
     assert state.status == "missing"
     assert state.exists_on_server is False
+
+
+def test_existing_target_without_manifest_is_not_verified() -> None:
+    state = classify_target_database(
+        "erebus_threat_intel_prod",
+        config=MariaDbConnectionConfig(host="localhost", user="reader"),
+        server_databases={"erebus_threat_intel_prod"},
+        row_fn=lambda *_: (1, 2, 0, 4096),
+    )
+    assert state.status == "exists_unverified"
+    assert "no backup manifest" in state.detail
+
+
+def test_existing_target_with_object_match_but_no_row_counts_is_unverified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mercury.deploy.models import DeploymentVerification
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}")
+    monkeypatch.setattr(
+        "mercury.deploy.target_status.verify_deployed_database",
+        lambda *_a, **_k: DeploymentVerification(
+            database="erebus_threat_intel_prod", exists_on_server=True, verified=True,
+        ),
+    )
+    state = classify_target_database(
+        "erebus_threat_intel_prod",
+        config=MariaDbConnectionConfig(host="localhost", user="reader"),
+        server_databases={"erebus_threat_intel_prod"}, manifest_path=manifest,
+        row_fn=lambda *_: (1, 2, 0, 4096),
+    )
+    assert state.status == "exists_unverified"
+    assert "no row-count inventory" in state.detail

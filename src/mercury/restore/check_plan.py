@@ -171,7 +171,9 @@ def build_restore_check_plan(
             data = json.loads(manifest_path.read_text(encoding="utf-8"))
             dump_file = data.get("dump_file")
             backup_created_at = data.get("created_at")
-        if backup_verified and should_probe_database_status() and backup_directory_override is None:
+        # An exact historical artifact can be rehearsed in an isolated target even
+        # when the live source has changed since the backup was written.
+        if backup_verified and not backup_id and should_probe_database_status() and backup_directory_override is None:
             from mercury.backup.freshness import backup_stale_handoff_blocker, parse_backup_timestamp
 
             stale_detail = backup_stale_handoff_blocker(
@@ -179,10 +181,16 @@ def build_restore_check_plan(
                 backup_at=parse_backup_timestamp(
                     str(backup_created_at) if backup_created_at else None
                 ),
+                backup_dir=backup_dir,
                 live=True,
             )
             if stale_detail:
                 blockers.append(stale_detail)
+        elif backup_verified and backup_id:
+            safety.append(
+                "An exact historical backup restore-check proves this artifact can be restored; "
+                "it does not establish that the current source is protected."
+            )
 
     if target_schema is not None and not allow_existing_target and should_probe_database_status():
         from mercury.database.mariadb.session import fetch_user_database_names, try_load_mariadb_config

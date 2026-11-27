@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
+from mercury.backup.content_contract import BackupObjectInventory
 from mercury.backup.freshness import (
     FRESHNESS_EMPTY,
     FRESHNESS_FRESH,
@@ -70,6 +72,43 @@ def test_assess_backup_freshness_marks_fresh_when_activity_before_backup() -> No
     )
     assert assessment.freshness == FRESHNESS_FRESH
     assert assessment.recommend_full_backup is False
+
+
+def test_source_object_drift_marks_backup_stale_even_when_activity_is_old(tmp_path: Path) -> None:
+    (tmp_path / "manifest.json").write_text(json.dumps({
+        "object_contract": {
+            "live": {"tables": ["old_table"]},
+            "dump": {"tables": ["old_table"]},
+            "verified": True,
+        },
+    }))
+    assessment = assess_backup_freshness(
+        "android_permission_intel",
+        backup_at=parse_backup_timestamp("2026-11-19T15:43:57Z"),
+        live=True,
+        config=object(),  # type: ignore[arg-type]
+        scalar_fn=lambda *_: "2026-11-18 00:00:00",
+        backup_dir=tmp_path,
+        inventory_fn=lambda *_: BackupObjectInventory(tables=["old_table", "new_table"]),
+    )
+    assert assessment.freshness == FRESHNESS_STALE
+    assert assessment.recommend_full_backup
+    assert "object names differ" in assessment.notes[0]
+
+
+def test_missing_source_object_baseline_cannot_be_fresh(tmp_path: Path) -> None:
+    (tmp_path / "manifest.json").write_text("{}")
+    assessment = assess_backup_freshness(
+        "android_permission_intel",
+        backup_at=parse_backup_timestamp("2026-11-19T15:43:57Z"),
+        live=True,
+        config=object(),  # type: ignore[arg-type]
+        scalar_fn=lambda *_: "2026-11-18 00:00:00",
+        backup_dir=tmp_path,
+        inventory_fn=lambda *_: BackupObjectInventory(),
+    )
+    assert assessment.freshness == FRESHNESS_UNKNOWN
+    assert assessment.recommend_full_backup
 
 
 def test_assess_backup_freshness_unknown_without_activity_signal(

@@ -13,6 +13,7 @@ can pass and the dump can still fail.
 from __future__ import annotations
 
 import re
+import subprocess
 from collections.abc import Callable, Sequence
 
 from pydantic import BaseModel, Field
@@ -88,7 +89,11 @@ class DatabaseDumpability(BaseModel):
                 f"dumpability inspect failed: {_compact_detail(self.error)}. "
                 f"{repair_hint(self.database)}"
             )
-        hint = repair_hint(self.database)
+        hint = (
+            "Review scoped backup privileges and source object definitions; require a complete dump."
+            if any(issue.startswith("mariadb-dump metadata probe failed") for issue in self.issues)
+            else repair_hint(self.database)
+        )
         if len(self.issues) == 1:
             return f"{self.issues[0]}. {hint}"
         return (
@@ -129,6 +134,11 @@ class SourcesDumpability(BaseModel):
         blocked = self.blocked
         if not blocked:
             return _REPAIR_HINT
+        if any(
+            issue.startswith("mariadb-dump metadata probe failed")
+            for entry in blocked for issue in entry.issues
+        ):
+            return "Review scoped backup privileges and source object definitions; require a complete dump."
         projects = {owning_project(entry.database) for entry in blocked}
         projects.discard(None)
         if len(projects) == 1:
@@ -225,6 +235,35 @@ def _default_show_create(config: MariaDbConnectionConfig, sql: str) -> None:
     from mercury.database.mariadb.client import run_client_query
 
     run_client_query(config, sql)
+
+
+def probe_no_data_dump(config: MariaDbConnectionConfig, database: str) -> str | None:
+    """Use the actual dump client to probe view, routine, and event access."""
+    from mercury.backup.dump_planner import build_dump_argv_for_config, select_dump_tool
+    from mercury.database.mariadb.client import (
+        client_process_credentials,
+        prepend_client_defaults,
+    )
+
+    try:
+        argv = build_dump_argv_for_config(database, "full", config, tool=select_dump_tool())
+        argv[-2:-2] = ["--no-data", "--skip-lock-tables"]
+        with client_process_credentials(config) as (env, extra):
+            result = subprocess.run(
+                prepend_client_defaults(argv, extra),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env,
+                timeout=max(int(config.connect_timeout or 10), 120),
+                check=False,
+            )
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+        return f"mariadb-dump metadata probe failed: {_compact_detail(str(exc))}"
+    if result.returncode:
+        detail = _compact_detail(result.stderr or f"exit status {result.returncode}")
+        return f"mariadb-dump metadata probe failed: {detail}"
+    return None
 
 
 def parse_force_show_create_errors(stderr: str) -> dict[str, str]:
@@ -467,6 +506,10 @@ def _assess_sources_with_one_force_script(
             key = (database, view)
             if key in parsed:
                 issues.append(describe_view_dump_failure(view, parsed[key]))
+        if not issues:
+            probe_issue = probe_no_data_dump(config, database)
+            if probe_issue:
+                issues.append(probe_issue)
         by_name[database] = DatabaseDumpability(
             database=database,
             view_count=len(views_by_db.get(database, [])),
@@ -494,6 +537,10 @@ def assess_database_dumpability(
     issues = view_dumpability_issues(
         config, database, views, show_create=show_create
     )
+    if show_create is None and not issues:
+        probe_issue = probe_no_data_dump(config, database)
+        if probe_issue:
+            issues.append(probe_issue)
     return DatabaseDumpability(
         database=database, view_count=len(views), issues=issues
     )

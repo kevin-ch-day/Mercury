@@ -73,6 +73,11 @@ def _write_backup(
         "size_bytes": dump_path.stat().st_size,
         "schema_size_bytes": schema_path.stat().st_size,
         "source_role": "production",
+        "object_contract": BackupContentContract(
+            live=BackupObjectInventory(tables=["t1"]),
+            dump=BackupObjectInventory(tables=["t1"]),
+            verified=True,
+        ).model_dump(),
         "tool_used": "mariadb-dump",
         "verified": verified_manifest,
         "live_actions_enabled": True,

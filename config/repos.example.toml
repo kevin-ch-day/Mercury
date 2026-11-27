@@ -40,10 +40,3 @@ default_branch = "main"
 display_name = "ObsidianDroid"
 path = "~/GitHub/obsidiandroid"
 default_branch = "main"
-
-[repos.fedora_linux_scripts]
-display_name = "Fedora Linux Scripts"
-path = "~/GitHub/fedora-linux-scripts"
-default_branch = "main"
-# Set false when this checkout is deliberately outside the workstation-migration scope.
-# migration_scope = false

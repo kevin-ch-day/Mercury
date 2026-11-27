@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 
@@ -132,7 +134,8 @@ SOURCE_ACTIVITY_PROBES: dict[str, list[tuple[str, str]]] = {
 
 OPERATOR_FRESHNESS_GUIDANCE = (
     "Artifact verified means backup files pass checksum/manifest checks. "
-    "Freshness compares the backup timestamp to latest read-only source DB activity. "
+    "Freshness compares the backup's source objects and timestamp to live object names "
+    "and selected read-only source DB activity signals. "
     "Run full backup when freshness is stale or unknown."
 )
 
@@ -497,16 +500,21 @@ def backup_stale_handoff_blocker(
     database: str,
     *,
     backup_at: datetime | None,
+    backup_dir: Path | None = None,
     live: bool = True,
 ) -> str | None:
     """Return a blocker message when a verified backup is stale for live operations."""
     if not live:
         return None
-    assessment = assess_backup_freshness(database, backup_at=backup_at, live=live)
+    assessment = assess_backup_freshness(
+        database, backup_at=backup_at, backup_dir=backup_dir, live=live,
+    )
     if assessment.freshness == FRESHNESS_STALE:
         return (
-            f"Latest verified backup for '{database}' is stale relative to live source activity."
+            f"Latest verified backup for '{database}' is stale relative to live source activity or objects."
         )
+    if assessment.freshness == FRESHNESS_UNKNOWN and backup_dir is not None:
+        return f"Cannot confirm current source objects for '{database}'; refresh or inspect the full backup."
     return None
 
 
@@ -557,6 +565,39 @@ def fetch_latest_source_activity_at(
     return latest, ", ".join(signals)
 
 
+def _source_object_freshness(
+    database: str,
+    backup_dir: Path,
+    config: MariaDbConnectionConfig,
+    *,
+    inventory_fn=None,
+) -> tuple[str | None, str | None]:
+    """Compare named live objects with the verified backup's source baseline."""
+    from mercury.backup.content_contract import (
+        BackupContentContract,
+        fetch_live_object_inventory,
+    )
+
+    try:
+        data = json.loads((backup_dir / "manifest.json").read_text(encoding="utf-8"))
+        contract = BackupContentContract.model_validate(data.get("object_contract"))
+        if not contract.verified or contract.issues:
+            raise ValueError("object contract is not verified")
+    except Exception as exc:  # noqa: BLE001 - unreadable baseline cannot be fresh.
+        return FRESHNESS_UNKNOWN, f"Backup source object baseline unavailable: {exc}"
+    try:
+        current = (inventory_fn or fetch_live_object_inventory)(config, database)
+    except Exception as exc:  # noqa: BLE001 - unavailable live inventory cannot be fresh.
+        return FRESHNESS_UNKNOWN, f"Live source objects could not be inspected: {exc}"
+    if current != contract.live:
+        return (
+            FRESHNESS_STALE,
+            (f"Live source object names differ from backup "
+             f"(backup={contract.live.counts()}, live={current.counts()})."),
+        )
+    return None, None
+
+
 
 def source_change_reasons(
     database: str, config: MariaDbConnectionConfig, backup_at: datetime,
@@ -597,6 +638,8 @@ def assess_backup_freshness(
     scalar_fn: ScalarFn | None = None,
     now: datetime | None = None,
     source_is_empty: bool = False,
+    backup_dir: Path | None = None,
+    inventory_fn=None,
 ) -> BackupFreshnessAssessment:
     """
     Compare backup timestamp against latest read-only source DB activity.
@@ -650,6 +693,17 @@ def assess_backup_freshness(
         assessment.notes.append("MariaDB not configured; freshness unknown.")
         assessment.recommend_full_backup = True
         return assessment
+
+    if backup_dir is not None:
+        object_state, object_note = _source_object_freshness(
+            database, backup_dir, cfg, inventory_fn=inventory_fn,
+        )
+        if object_state is not None:
+            assessment.freshness = object_state
+            assessment.recommend_full_backup = True
+            if object_note:
+                assessment.notes.append(object_note)
+            return assessment
 
     activity_at, signal = fetch_latest_source_activity_at(database, cfg, scalar_fn=scalar_fn)
     assessment.latest_source_activity_at = activity_at

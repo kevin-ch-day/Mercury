@@ -42,6 +42,7 @@ sudo ./scripts/repair-mercury-host.sh
 ./run.sh deploy db --dry-run              # plan latest verified set
 ./run.sh deploy db --plan-only            # same as dry-run
 ./run.sh deploy db --database erebus_threat_intel_prod --dry-run
+./run.sh deploy db --database erebus_threat_intel_prod --backup-id <exact-full-backup-id> --dry-run
 ./run.sh deploy db --all --dry-run
 ./run.sh deploy db --execute              # gated live import (requires config)
 ```
@@ -58,7 +59,7 @@ backup_root = "/mnt/MERCURY_DATA/mercury_backups"
 ## Workflow phases
 
 1. **Preflight** — config, operator-storage root, MariaDB connectivity/privileges, verified backups, disk space, existing DB overlap.
-2. **Backup selection** — latest verified full backup per protected source (v1).
+2. **Backup selection** — latest verified full backup per protected source, or an exact verified full backup ID for one database.
 3. **Plan** — shows target host, user, candidates, and shell/SQL steps.
 4. **Confirmation** — dry-run: none; live menu: `y/n`.
 5. **Execution** — checksum verify → `CREATE DATABASE IF NOT EXISTS` → `gunzip -c dump | mariadb db`.
@@ -71,7 +72,7 @@ Mercury deploys only approved backup-source names from the catalog (`*_prod`, `a
 
 ## Limitations (v1)
 
-- Latest verified set only (no per-date picker in menu yet).
+- The menu has no per-date picker; use `--backup-id` with one `--database` to select a historical generation.
 - Row-count verification is basic unless backup manifests capture `row_counts`.
 - Overwrite requires both `allow_overwrite_database` and `allow_drop_database` (CLI flags planned).
 

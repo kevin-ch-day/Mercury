@@ -82,6 +82,13 @@ def pin_deployment_artifacts(
         raise ValueError("Selected backup identity does not match the manifest")
     if manifest.object_scope != "complete_schema":
         raise ValueError("Partial database artifacts cannot authorize deployment")
+    from mercury.backup.content_contract import BackupContentContract
+
+    if manifest.object_contract is None:
+        raise ValueError("Deployment requires a verified object contract; refresh the full backup")
+    contract = BackupContentContract.model_validate(manifest.object_contract)
+    if not contract.verified or contract.issues:
+        raise ValueError("Deployment requires a verified object contract")
     from mercury.backup.checksum import safe_artifact_name
 
     if not safe_artifact_name(manifest.dump_file):
@@ -149,4 +156,11 @@ def bound_deployment_artifacts(candidate: DeploymentCandidate, *, backup_root: P
             backup_kind="full", allow_development_backup=allow_development_backup)
         if not verification.verified:
             raise ValueError("Pinned backup verification failed: " + "; ".join(verification.issues))
+        from mercury.backup.content_contract import BackupContentContract
+
+        if manifest.object_contract is None:
+            raise ValueError("Deployment requires a verified object contract; refresh the full backup")
+        contract = BackupContentContract.model_validate(manifest.object_contract)
+        if not contract.verified or contract.issues:
+            raise ValueError("Deployment requires a verified object contract")
         yield snapshot / manifest.dump_file, snapshot / "manifest.json"

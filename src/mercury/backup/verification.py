@@ -258,6 +258,16 @@ def verify_backup_artifacts(
             issues.append(
                 f"manifest database '{manifest.database}' does not match requested '{database}'"
             )
+        if manifest.source_role != classification.role.value:
+            issues.append(
+                f"manifest source role '{manifest.source_role}' does not match classified "
+                f"role '{classification.role.value}'"
+            )
+        if (
+            manifest.requested_user and manifest.authenticated_user
+            and manifest.authenticated_user.rsplit("@", 1)[0] != manifest.requested_user
+        ):
+            issues.append("manifest requested and authenticated MariaDB users differ")
         dump_name = manifest.dump_file
         schema_name = manifest.schema_file
         if not safe_artifact_name(dump_name) or (
@@ -400,6 +410,7 @@ def verify_backup_directory(
     updated_manifest = False
     if update_manifest and result.verified:
         from mercury.storage.host_maintenance import refuse_if_hdd_writes_disabled
+        from mercury.backup.durability import durable_replace_text
 
         refuse_if_hdd_writes_disabled("backup manifest verification stamp")
         manifest_path = Path(result.manifest_path)
@@ -407,10 +418,7 @@ def verify_backup_directory(
         if manifest is not None:
             updated = json.loads(manifest_path.read_text(encoding="utf-8"))
             updated["verified"] = True
-            manifest_path.write_text(
-                json.dumps(updated, indent=2, default=str) + "\n",
-                encoding="utf-8",
-            )
+            durable_replace_text(manifest_path, json.dumps(updated, indent=2, default=str) + "\n")
             updated_manifest = True
 
     from mercury.logging.events import log_verification_result

@@ -351,6 +351,14 @@ def test_restore_check_plan_blocks_stale_backup(
     assert plan.allowed is False
     assert any("stale" in blocker.lower() for blocker in plan.blockers)
 
+    exact = build_restore_check_plan(
+        "erebus_threat_intel_prod",
+        backup_id="erebus_threat_intel_prod-full-20260609_030000_000",
+    )
+    assert exact.allowed is True
+    assert exact.backup_verified is True
+    assert any("historical" in note.lower() for note in exact.safety_notes)
+
 
 def test_cli_restore_check_readiness_fails_when_live_backup_missing(tmp_path: Path) -> None:
     env = {

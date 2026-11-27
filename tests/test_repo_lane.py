@@ -594,6 +594,19 @@ def test_write_local_repo_config_writes_existing_known_paths(
     assert "missing_repo" not in text
 
 
+def test_auto_discovery_omits_retired_repository_names(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    github = tmp_path / "GitHub"
+    for name in ("Mercury", "fedora-linux-scripts", "aureus-market-engine"):
+        (github / name / ".git").mkdir(parents=True)
+    monkeypatch.setattr(repo_config.Path, "home", lambda: tmp_path)
+
+    found = repo_config._home_github_candidates()
+    assert [key for key, _display, _path in found] == ["mercury"]
+
+
 def test_repo_discovery_uses_existing_web_deployment_fallback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

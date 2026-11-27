@@ -493,6 +493,12 @@ def execute_backup(
         dumpability = view_dumpability_error(config, database, live_inventory.views)
         if dumpability:
             raise BackupExecutionError(dumpability)
+        if dump_runner is None and not tables_only:
+            from mercury.backup.dump_preflight import probe_no_data_dump
+
+            probe_issue = probe_no_data_dump(config, database)
+            if probe_issue:
+                raise BackupExecutionError(probe_issue)
         if tables_only:
             live_inventory = live_inventory.model_copy(update={'triggers': [], 'procedures': [], 'functions': [], 'events': []})
 

@@ -2962,6 +2962,11 @@ def deploy_db_cmd(
         "--all",
         help="Deploy all protected databases with verified backups.",
     ),
+    backup_id: str | None = typer.Option(
+        None,
+        "--backup-id",
+        help="Use this exact verified full backup ID with one --database.",
+    ),
     latest: bool = typer.Option(
         True,
         "--latest/--no-latest",
@@ -3013,6 +3018,9 @@ def deploy_db_cmd(
         raise typer.BadParameter("Live deployment requires --confirm 'DEPLOY VERIFIED BACKUPS'")
 
     selected: list[str] | None = list(database) if database else None
+    if backup_id and (all_sources or not selected or len(selected) != 1):
+        raise typer.BadParameter("--backup-id requires exactly one --database and cannot use --all")
+    backup_ids = {selected[0]: backup_id} if backup_id and selected else None
     if all_sources:
         selected = None
     elif not selected and not latest:
@@ -3024,13 +3032,23 @@ def deploy_db_cmd(
         skip_existing=skip_existing,
     )
     if dry_run and not execute:
-        plan = build_deployment_plan(databases=selected, options=options, execute=False)
+        plan = build_deployment_plan(
+            databases=selected, backup_ids=backup_ids, options=options, execute=False,
+        )
         print_deployment_plan(plan)
         if not plan.candidates and plan.blockers:
             raise typer.Exit(1)
         return
 
-    batch = execute_deployment_batch(databases=selected, options=options, execute=True)
+    execution_plan = (
+        build_deployment_plan(
+            databases=selected, backup_ids=backup_ids, options=options, execute=True,
+        )
+        if backup_ids else None
+    )
+    batch = execute_deployment_batch(
+        databases=selected, options=options, execute=True, deployment_plan=execution_plan,
+    )
     print_deployment_summary(batch)
     if batch.failed_count:
         raise typer.Exit(1)

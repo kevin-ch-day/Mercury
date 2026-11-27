@@ -44,6 +44,24 @@ def test_exact_artifact_binding_and_legacy_optional_metadata(tmp_path):
     assert verify_backup_artifacts(tmp_path).verified  # checksums still cover both files
 
 
+def test_manifest_source_role_must_match_database_classification(tmp_path):
+    manifest = seed(tmp_path)
+    manifest["source_role"] = "development"
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest))
+    result = verify_backup_artifacts(tmp_path, database="scytaledroid_core_prod")
+    assert not result.verified
+    assert any("source role" in issue for issue in result.issues)
+
+
+def test_manifest_requested_and_authenticated_users_must_match(tmp_path):
+    manifest = seed(tmp_path)
+    manifest.update(requested_user="backup_reader", authenticated_user="other@localhost")
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest))
+    result = verify_backup_artifacts(tmp_path, database="scytaledroid_core_prod")
+    assert not result.verified
+    assert any("authenticated MariaDB users differ" in issue for issue in result.issues)
+
+
 @pytest.mark.parametrize("defect", [
     "omitted_dump", "omitted_schema", "manifest_digest", "manifest_size",
     "schema_digest", "schema_size", "duplicate_checksum", "malformed_checksum",

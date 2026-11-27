@@ -56,6 +56,7 @@ def build_deployment_plan(
     *,
     policy: ExecutionPolicy | None = None,
     databases: list[str] | None = None,
+    backup_ids: dict[str, str] | None = None,
     options: DeployOptions | None = None,
     execute: bool = False,
     row_fn=None,
@@ -70,12 +71,29 @@ def build_deployment_plan(
     candidates = resolve_deployment_candidates(
         policy=resolved,
         databases=databases,
+        backup_ids=backup_ids,
         existing_on_server=server_databases,
         allow_development_deploy=allow_development_deploy,
     )
 
     blockers = list(preflight.planning_blockers if not execute else preflight.blockers)
     warnings = list(preflight.warnings)
+    if databases:
+        requested = set(databases)
+    elif allow_development_deploy:
+        from mercury.backup.batch_runner import resolve_development_backup_sources
+
+        requested = set(resolve_development_backup_sources(live=False))
+    else:
+        from mercury.deploy.safety import DEPLOYMENT_SOURCE_DATABASES
+
+        requested = set(DEPLOYMENT_SOURCE_DATABASES)
+    unresolved = sorted(requested - {item.source_database for item in candidates})
+    if unresolved:
+        blockers.append(
+            "No deployable verified full backup for requested database(s): "
+            + ", ".join(unresolved)
+        )
     if databases:
         from mercury.backup.backup_runner import BackupExecutionError
         from mercury.deploy.safety import assert_deployment_target
@@ -141,26 +159,6 @@ def build_deployment_plan(
                 warnings.append(message)
             continue
 
-        from mercury.core.runtime import should_probe_database_status
-
-        if should_probe_database_status():
-            from mercury.backup.freshness import backup_stale_handoff_blocker, parse_backup_timestamp
-
-            backup_at = parse_backup_timestamp(candidate.created_at)
-            stale_detail = backup_stale_handoff_blocker(
-                candidate.source_database,
-                backup_at=backup_at,
-                live=True,
-            )
-            if stale_detail:
-                if execute:
-                    block_count += 1
-                    candidate.deploy_action = "BLOCKED"
-                    candidate.skip_reason = stale_detail
-                    blockers.append(stale_detail)
-                    continue
-                warnings.append(stale_detail)
-
         import_count += 1
         planned_commands.extend(action_plan.commands)
 
@@ -182,8 +180,8 @@ def build_deployment_plan(
     elif import_count == 0 and skip_count == len(candidates) and candidates:
         deployment_needed = False
         summary_message = (
-            "Deployment not needed. All selected databases already exist on this system "
-            "(skip-existing policy)."
+            "No import planned. All selected databases already exist and were skipped; "
+            "verify their data separately before calling them recovered."
         )
     elif blocked_existing and import_count == 0 and execute:
         summary_message = "Live deployment blocked by existing target databases."

@@ -176,3 +176,93 @@ def test_sync_readiness_blocks_undumpable_production_source(
     assert any("not dumpable" in blocker for blocker in entry.blockers)
     assert any("ScytaleDroid" in blocker for blocker in entry.blockers)
     assert report.ready_count == 0
+
+
+def test_live_source_object_contract_detects_names_added_after_backup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mercury.backup.content_contract import (
+        BackupContentContract,
+        BackupObjectInventory,
+    )
+    from mercury.database.mariadb.config import MariaDbConnectionConfig
+    from mercury.sync.readiness import _live_source_object_issue
+
+    contract = BackupContentContract(
+        live=BackupObjectInventory(tables=["original"]),
+        dump=BackupObjectInventory(tables=["original"]),
+        verified=True,
+    )
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"object_contract": contract.model_dump()}), encoding="utf-8"
+    )
+    config = MariaDbConnectionConfig(host="localhost", user="reader")
+    monkeypatch.setattr(
+        "mercury.database.mariadb.session.try_load_mariadb_config", lambda: config
+    )
+    monkeypatch.setattr(
+        "mercury.sync.readiness.fetch_live_object_inventory",
+        lambda *_a: BackupObjectInventory(tables=["original", "new_table"]),
+    )
+    issue = _live_source_object_issue(tmp_path, "android_permission_intel")
+    assert issue and "differ" in issue and "refresh" in issue
+
+
+def test_sync_verification_does_not_call_historical_target_match_current(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mercury.restore.readiness import TargetCompletenessEntry
+    from mercury.sync.readiness import SyncReadinessEntry, SyncReadinessReport
+    from mercury.sync.verification import build_sync_verification_report
+
+    readiness = SyncReadinessReport(
+        mode="live", backup_root="/tmp/backups",
+        entries=[SyncReadinessEntry(
+            prod="android_permission_intel",
+            expected_dev="android_permission_intel_dev",
+            dev_listed=True,
+            blockers=["Live source object names differ from verified backup"],
+        )],
+    )
+    monkeypatch.setattr(
+        "mercury.sync.verification.build_sync_readiness_report", lambda live: readiness
+    )
+    monkeypatch.setattr(
+        "mercury.sync.verification.should_probe_database_status", lambda: True
+    )
+    monkeypatch.setattr(
+        "mercury.sync.verification.build_target_completeness_entry_against_backup",
+        lambda **_kwargs: TargetCompletenessEntry(
+            database="android_permission_intel",
+            target_database="android_permission_intel_dev",
+            completeness_status="complete",
+        ),
+    )
+    report = build_sync_verification_report(live=True)
+    assert report.complete_count == 0
+    assert report.entries[0].status == "source_unready"
+    assert report.entries[0].ready is False
+
+
+def test_unready_permission_intel_blocks_dependent_sync_pairs() -> None:
+    from mercury.sync.readiness import SyncReadinessEntry, _block_unready_dependencies
+
+    entries = [
+        SyncReadinessEntry(
+            prod="android_permission_intel", expected_dev="android_permission_intel_dev",
+            dev_listed=True, sync_order=1, ready_for_sync_planning=False,
+        ),
+        SyncReadinessEntry(
+            prod="erebus_threat_intel_prod", expected_dev="erebus_threat_intel_dev",
+            dev_listed=True, sync_order=2, ready_for_sync_planning=True,
+            depends_on_sources=["android_permission_intel"],
+        ),
+        SyncReadinessEntry(
+            prod="scytaledroid_core_prod", expected_dev="scytaledroid_core_dev",
+            dev_listed=True, sync_order=3, ready_for_sync_planning=True,
+            depends_on_sources=["android_permission_intel"],
+        ),
+    ]
+    _block_unready_dependencies(entries)
+    assert [entry.ready_for_sync_planning for entry in entries] == [False, False, False]
+    assert all("upstream" in entry.blockers[-1] for entry in entries[1:])

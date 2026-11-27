@@ -12,6 +12,7 @@ import pytest
 from mercury.backup.checksum import sha256_file, write_checksum_file
 from mercury.core.execution_policy import ExecutionPolicy
 from mercury.core.safety import BACKUP_KIND_FULL
+from mercury.database.core import classify_database
 from mercury.database.mariadb.config import MariaDbConnectionConfig
 from mercury.deploy.models import DeployOptions
 from mercury.deploy.plan import build_deployment_plan
@@ -59,7 +60,12 @@ def _write_verified_backup(
         "schema_file": None,
         "sha256": sha256_file(dump_path),
         "size_bytes": dump_path.stat().st_size,
-        "source_role": "production",
+        "source_role": classify_database(database).role.value,
+        "object_contract": {
+            "live": {"tables": ["t"]},
+            "dump": {"tables": ["t"]},
+            "verified": True,
+        },
         "tool_used": "mariadb-dump",
         "verified": True,
         "live_actions_enabled": True,
@@ -279,6 +285,63 @@ def test_latest_verified_backup_set_chooses_newest_per_db(tmp_path: Path) -> Non
     assert candidates[0].backup_directory == str(newer)
 
 
+def test_deploy_plan_pins_exact_historical_backup(tmp_path: Path) -> None:
+    policy = _usb_policy(tmp_path)
+    old = _write_verified_backup(
+        policy.backup_root, "erebus_threat_intel_prod",
+        backup_id="old", created_at="2026-06-08T10:00:00+00:00",
+    )
+    _write_verified_backup(
+        policy.backup_root, "erebus_threat_intel_prod",
+        backup_id="new", created_at="2026-06-09T18:00:00+00:00",
+    )
+    plan = build_deployment_plan(
+        policy=policy, databases=["erebus_threat_intel_prod"],
+        backup_ids={"erebus_threat_intel_prod": "old"},
+    )
+    assert len(plan.candidates) == 1
+    assert plan.candidates[0].backup_id == "old"
+    assert plan.candidates[0].backup_directory == str(old)
+
+    missing = build_deployment_plan(
+        policy=policy, databases=["erebus_threat_intel_prod"],
+        backup_ids={"erebus_threat_intel_prod": "does-not-exist"},
+    )
+    assert not missing.candidates
+    assert any("No deployable verified full backup" in issue for issue in missing.blockers)
+
+
+def test_explicit_deploy_plan_blocks_legacy_backup_without_object_contract(
+    tmp_path: Path,
+) -> None:
+    policy = _usb_policy(tmp_path)
+    backup = _write_verified_backup(
+        policy.backup_root, "erebus_threat_intel_prod",
+        backup_id="legacy", created_at="2026-06-09T12:00:00+00:00",
+    )
+    manifest = backup / "manifest.json"
+    payload = json.loads(manifest.read_text())
+    payload.pop("object_contract")
+    manifest.write_text(json.dumps(payload))
+    plan = build_deployment_plan(
+        policy=policy, databases=["erebus_threat_intel_prod"], execute=False,
+    )
+    assert not plan.candidates
+    assert any("No deployable verified full backup" in issue for issue in plan.blockers)
+
+
+def test_all_source_plan_blocks_partial_backup_set(tmp_path: Path) -> None:
+    policy = _usb_policy(tmp_path)
+    _write_verified_backup(
+        policy.backup_root, "erebus_threat_intel_prod",
+        backup_id="only-one", created_at="2026-06-09T12:00:00+00:00",
+    )
+    plan = build_deployment_plan(policy=policy, execute=False)
+    assert len(plan.candidates) == 1
+    assert any("android_permission_intel" in issue for issue in plan.blockers)
+    assert not plan.allowed
+
+
 def test_missing_source_dbs_do_not_block_deploy_planning(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -482,13 +545,16 @@ def test_deployment_report_written_after_successful_mock_deploy(
         sql_runner=fake_sql,
         import_runner=fake_runner,
         inspect_row_fn=fake_row,
+        inspect_inventory_fn=lambda *_: __import__(
+            "mercury.backup.content_contract", fromlist=["BackupObjectInventory"]
+        ).BackupObjectInventory(tables=["t"]),
     )
     assert batch.deployed_count == 1
     assert batch.report_path is not None
     assert Path(batch.report_path).is_file()
 
 
-def test_verification_basic_only_without_row_counts(tmp_path: Path) -> None:
+def test_verification_without_object_contract_is_not_qualified(tmp_path: Path) -> None:
     manifest = tmp_path / "manifest.json"
     manifest.write_text(json.dumps({"database": "erebus_threat_intel_prod"}), encoding="utf-8")
     config = MariaDbConnectionConfig(
@@ -506,7 +572,8 @@ def test_verification_basic_only_without_row_counts(tmp_path: Path) -> None:
         row_fn=lambda _cfg, _sql: (1, 3, 0, 4096),
     )
     assert "basic verification only" in result.detail
-    assert result.verified is True
+    assert result.verified is False
+    assert any("lacks a verified object contract" in issue for issue in result.issues)
 
 
 def test_verification_compares_row_counts_when_manifest_has_them(tmp_path: Path) -> None:
@@ -516,6 +583,11 @@ def test_verification_compares_row_counts_when_manifest_has_them(tmp_path: Path)
             {
                 "database": "erebus_threat_intel_prod",
                 "row_counts": {"t1": 1, "t2": 2, "t3": 3},
+                "object_contract": {
+                    "live": {"tables": ["t1", "t2", "t3"]},
+                    "dump": {"tables": ["t1", "t2", "t3"]},
+                    "verified": True,
+                },
             }
         ),
         encoding="utf-8",
@@ -533,6 +605,8 @@ def test_verification_compares_row_counts_when_manifest_has_them(tmp_path: Path)
         manifest_path=manifest,
         config=config,
         row_fn=lambda _cfg, _sql: (1, 3, 0, 4096),
+        count_fn=lambda _cfg, sql: {"t1": "1", "t2": "2", "t3": "3"}[sql.split("`")[-2]],
+        inventory_fn=lambda *_: __import__("mercury.backup.content_contract", fromlist=["BackupObjectInventory"]).BackupObjectInventory(tables=["t1", "t2", "t3"]),
     )
     assert "row-count inventory" in ok.detail
     assert ok.verified is True
@@ -542,8 +616,34 @@ def test_verification_compares_row_counts_when_manifest_has_them(tmp_path: Path)
         manifest_path=manifest,
         config=config,
         row_fn=lambda _cfg, _sql: (1, 1, 0, 4096),
+        count_fn=lambda _cfg, sql: {"t1": "1", "t2": "2", "t3": "3"}[sql.split("`")[-2]],
+        inventory_fn=lambda *_: __import__("mercury.backup.content_contract", fromlist=["BackupObjectInventory"]).BackupObjectInventory(tables=["t1", "t2", "t3"]),
     )
     assert not bad.verified
+
+    wrong_rows = verify_deployed_database(
+        "erebus_threat_intel_prod",
+        manifest_path=manifest,
+        config=config,
+        row_fn=lambda _cfg, _sql: (1, 3, 0, 4096),
+        count_fn=lambda _cfg, sql: "9" if "`t2`" in sql else ("1" if "`t1`" in sql else "3"),
+        inventory_fn=lambda *_: __import__("mercury.backup.content_contract", fromlist=["BackupObjectInventory"]).BackupObjectInventory(tables=["t1", "t2", "t3"]),
+    )
+    assert not wrong_rows.verified
+    assert any("row count differs for t2" in issue for issue in wrong_rows.issues)
+
+
+@pytest.mark.parametrize("bad_counts", [{"t1": "5"}, {"t1": -1}, {"bad.name": 3}, {}])
+def test_verification_rejects_invalid_row_count_inventory(tmp_path: Path, bad_counts) -> None:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"row_counts": bad_counts}), encoding="utf-8")
+    config = MariaDbConnectionConfig(host="localhost", user="reader")
+    result = verify_deployed_database(
+        "erebus_threat_intel_prod", manifest_path=manifest, config=config,
+        row_fn=lambda *_: (1, 1, 0, 4096),
+        count_fn=lambda *_: pytest.fail("Invalid inventory must not query rows"),
+    )
+    assert not result.verified and result.issues
 
 
 def test_verification_fails_closed_when_manifest_trigger_is_missing(tmp_path: Path) -> None:
@@ -555,12 +655,18 @@ def test_verification_fails_closed_when_manifest_trigger_is_missing(tmp_path: Pa
             {
                 "database": "erebus_threat_intel_prod",
                 "object_contract": {
+                    "live": {
+                        "tables": ["malware_processing_admission_identity"],
+                        "views": ["v_malware_processing_admission_effective"],
+                        "triggers": ["processing_identity_no_update"],
+                    },
                     "dump": {
                         "tables": ["malware_processing_admission_identity"],
                         "views": ["v_malware_processing_admission_effective"],
                         "triggers": ["processing_identity_no_update"],
                         "procedures": [], "functions": [], "events": [],
-                    }
+                    },
+                    "verified": True,
                 },
             }
         ),
@@ -734,7 +840,7 @@ def test_doctor_grant_repair_sql_for_fresh_rebuild(monkeypatch: pytest.MonkeyPat
     assert deployment_grant_repair_sql("linuxadmin")[1].startswith("GRANT CREATE")
 
 
-def test_deploy_plan_blocks_stale_backup_on_live_execute(
+def test_deploy_plan_can_recover_missing_source_from_verified_backup(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -752,9 +858,12 @@ def test_deploy_plan_blocks_stale_backup_on_live_execute(
         created_at="2026-06-09T12:00:00+00:00",
     )
     monkeypatch.setattr("mercury.core.runtime.should_probe_database_status", lambda: True)
+    def fail_if_source_probed(database: str, **kwargs: object) -> None:
+        pytest.fail(f"Fresh-host recovery probed absent source {database}")
+
     monkeypatch.setattr(
         "mercury.backup.freshness.backup_stale_handoff_blocker",
-        lambda database, **kwargs: f"Latest verified backup for '{database}' is stale relative to live source activity.",
+        fail_if_source_probed,
     )
     monkeypatch.setattr(
         "mercury.deploy.plan.fetch_user_database_names",
@@ -776,8 +885,8 @@ def test_deploy_plan_blocks_stale_backup_on_live_execute(
         execute=True,
         databases=["erebus_threat_intel_prod"],
     )
-    assert plan.import_count == 0
-    assert any("stale" in blocker.lower() for blocker in plan.blockers)
+    assert plan.import_count == 1
+    assert not any("stale" in blocker.lower() for blocker in plan.blockers)
 
 
 @pytest.mark.usefixtures("mounted_mercury_storage")

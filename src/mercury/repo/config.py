@@ -34,6 +34,8 @@ def _home_github_candidates() -> list[tuple[str, str, str]]:
         if not child.is_dir() or not (child / ".git").is_dir():
             continue
         slug = child.name.lower().replace("-", "_").replace(" ", "_")
+        if slug in {"aureus_market_engine", "fedora_linux_scripts"}:
+            continue
         found.append((slug, child.name, str(child.resolve())))
     return found
 
@@ -46,7 +48,6 @@ DEFAULT_LOCAL_REPO_CANDIDATES: list[tuple[str, str, str]] = [
     ("scytaledroid", "ScytaleDroid", "{home}/GitHub/ScytaleDroid"),
     ("scytaledroid_web", "ScytaleDroid Web", "{home}/GitHub/ScytaleDroid-Web"),
     ("obsidiandroid", "ObsidianDroid", "{home}/GitHub/obsidiandroid"),
-    ("fedora_linux_scripts", "Fedora Linux Scripts", "{home}/GitHub/fedora-linux-scripts"),
     *((f'noctivar_{name.replace("-", "_")}', f'Noctivar {name}',
        '{home}/Projects/Noctivar/' + name)
       for name in ('android-device','android-static','android-dynamic','android-web',

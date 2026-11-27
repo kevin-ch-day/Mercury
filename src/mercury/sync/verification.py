@@ -58,14 +58,19 @@ def build_sync_verification_report(*, live: bool = True) -> SyncVerificationRepo
             target_database=pair.expected_dev,
             live=probe,
         )
-        entries.append(
-            _entry_from_target(
-                target,
-                source=pair.prod,
-                target=pair.expected_dev,
-                project=pair.project,
-            )
+        entry = _entry_from_target(
+            target,
+            source=pair.prod,
+            target=pair.expected_dev,
+            project=pair.project,
         )
+        if probe and not pair.ready_for_sync_planning:
+            entry = entry.model_copy(update={
+                "status": "source_unready" if entry.status == "complete" else entry.status,
+                "ready": False,
+                "blockers": list(pair.blockers) + entry.blockers,
+            })
+        entries.append(entry)
     complete = sum(1 for entry in entries if entry.status == "complete")
     incomplete = sum(1 for entry in entries if entry.status == "incomplete")
     unknown = len(entries) - complete - incomplete

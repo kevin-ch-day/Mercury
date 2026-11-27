@@ -323,6 +323,9 @@ def test_try_assess_uses_one_force_script(monkeypatch: pytest.MonkeyPatch) -> No
         "mercury.backup.dump_preflight._client_force_script",
         lambda *_a, **_k: (0, "", FORCE_STDERR),
     )
+    monkeypatch.setattr(
+        "mercury.backup.dump_preflight.probe_no_data_dump", lambda *_a: None
+    )
     report = try_assess_sources_dumpability(
         ["erebus_threat_intel_prod", "scytaledroid_core_prod"],
         config=config,
@@ -330,6 +333,49 @@ def test_try_assess_uses_one_force_script(monkeypatch: pytest.MonkeyPatch) -> No
     assert report.dumpable_count == 1
     assert report.blocked_names() == {"scytaledroid_core_prod"}
     assert "`v_masvs_matrix`" in report.issue_lines()[0]
+
+
+def test_no_data_dump_probe_catches_view_routine_permission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from mercury.backup import dump_preflight as module
+
+    config = MariaDbConnectionConfig(host="localhost", user="reader", unix_socket="/tmp/mysql.sock")
+    monkeypatch.setattr("mercury.backup.dump_planner.select_dump_tool", lambda: "mariadb-dump")
+
+    def fake_run(argv, **kwargs):
+        assert argv[0] == "mariadb-dump"
+        assert "--no-data" in argv and "--events" in argv
+        assert "--routines" in argv and "--skip-lock-tables" in argv
+        assert kwargs["stdout"] is module.subprocess.DEVNULL
+        return SimpleNamespace(
+            returncode=2,
+            stderr="SHOW FIELDS denied for routine android_permission_intel.marker (1370)",
+        )
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    issue = module.probe_no_data_dump(config, "android_permission_intel")
+    assert issue and "SHOW FIELDS denied" in issue
+
+
+def test_source_dumpability_blocks_no_data_probe_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = MariaDbConnectionConfig(host="localhost", user="reader")
+    monkeypatch.setattr(
+        "mercury.backup.dump_preflight.fetch_live_view_names_by_database",
+        lambda *_a, **_k: {"noctivar": []},
+    )
+    monkeypatch.setattr(
+        "mercury.backup.dump_preflight.probe_no_data_dump",
+        lambda *_a: "mariadb-dump metadata probe failed: SHOW EVENTS denied",
+    )
+    report = try_assess_sources_dumpability(["noctivar"], config=config)
+    assert report.blocked_names() == {"noctivar"}
+    assert "SHOW EVENTS denied" in report.issue_lines()[0]
+    assert "privileges" in report.entries[0].refusal_text()
 
 
 def test_parse_force_show_create_errors_qualified() -> None:

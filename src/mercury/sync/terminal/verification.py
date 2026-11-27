@@ -18,6 +18,8 @@ def _status_label(status: str) -> str:
         return "backup missing"
     if status == "backup_unverified":
         return "backup unverified"
+    if status == "source_unready":
+        return "source blocked"
     return "unknown"
 
 

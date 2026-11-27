@@ -53,7 +53,8 @@ def seed_candidate(policy, *, database=DB, sql=SQL):
     backup_id = f"{database}-full-20261108_120000_000"
     manifest = dict(database=database, backup_id=backup_id, backup_kind="full", created_at=NOW.isoformat(),
         dump_file=dump.name, sha256=sha256_file(dump), size_bytes=dump.stat().st_size,
-        source_role="production", verified=True, live_actions_enabled=True, dry_run=False)
+        source_role="production", verified=True, live_actions_enabled=True, dry_run=False,
+        object_contract={"live": {"tables": ["t"]}, "dump": {"tables": ["t"]}, "verified": True})
     (directory / "manifest.json").write_text(json.dumps(manifest))
     write_checksum_file(directory, [dump.name])
     pins = pin_deployment_artifacts(directory, database=database, backup_id=backup_id,
@@ -64,9 +65,12 @@ def seed_candidate(policy, *, database=DB, sql=SQL):
 
 
 def mocked_deploy(candidate, policy, config, *, sql_runner=None, import_runner=None):
+    from mercury.backup.content_contract import BackupObjectInventory
+
     return execute_deployment_for_candidate(candidate=candidate, execute=True, policy=policy,
         config=config, sql_runner=sql_runner or (lambda *_: None),
-        import_runner=import_runner or (lambda *_: None), inspect_row_fn=lambda *_: (1, 1, 0, 16384))
+        import_runner=import_runner or (lambda *_: None), inspect_row_fn=lambda *_: (1, 1, 0, 16384),
+        inspect_inventory_fn=lambda *_: BackupObjectInventory(tables=["t"]))
 
 
 def fake_dump(argv, env, output, config):
@@ -273,6 +277,25 @@ def test_failed_post_verification_stops_batch_and_writes_failure_evidence(safety
     assert "verification failed" in batch.results[0].message
 
 
+def test_report_write_failure_returns_deployment_state(safety_policy, fake_config, monkeypatch):
+    candidate = seed_candidate(safety_policy)
+    plan = DeploymentPlan(mode="live", hostname="synthetic", mariadb_user="synthetic",
+        candidates=[candidate])
+    monkeypatch.setattr("mercury.deploy.runner.try_load_mariadb_config", lambda: fake_config)
+    monkeypatch.setattr("mercury.deploy.runner._write_deployment_report",
+        lambda *_: (_ for _ in ()).throw(OSError("disk full")))
+    from mercury.backup.content_contract import BackupObjectInventory
+
+    batch = execute_deployment_batch(policy=safety_policy, execute=True, deployment_plan=plan,
+        sql_runner=lambda *_: None, import_runner=lambda *_: None,
+        inspect_row_fn=lambda *_: (1, 1, 0, 16384),
+        inspect_inventory_fn=lambda *_: BackupObjectInventory(tables=["t"]))
+    assert batch.deployed_count == 1 and batch.failed_count == 1
+    assert batch.results[0].target_created and batch.results[0].succeeded
+    assert batch.report_path is None
+    assert "report could not be written" in batch.blockers[0]
+
+
 def test_unavailable_verification_cannot_report_success(safety_policy, fake_config, monkeypatch):
     candidate = seed_candidate(safety_policy)
     def unavailable(*_, **__):
@@ -283,6 +306,23 @@ def test_unavailable_verification_cannot_report_success(safety_policy, fake_conf
     assert result.executed and result.refused and not result.succeeded
     assert batch.deployed_count == 0 and batch.failed_count == 1
     assert "disconnected" in result.verification.issues[0]
+
+
+def test_legacy_manifest_without_object_contract_refuses_before_ddl(safety_policy, fake_config):
+    candidate = seed_candidate(safety_policy)
+    manifest_path = Path(candidate.manifest_path)
+    payload = json.loads(manifest_path.read_text())
+    payload.pop("object_contract")
+    manifest_path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="verified object contract"):
+        pin_deployment_artifacts(Path(candidate.backup_directory), database=DB,
+            backup_id=candidate.backup_id)
+    candidate = candidate.model_copy(update={"manifest_sha256": sha256_file(manifest_path)})
+    calls = []
+    result = mocked_deploy(candidate, safety_policy, fake_config,
+        sql_runner=lambda *_: calls.append("DDL"))
+    assert result.refused and not result.target_created and not calls
+    assert "verified object contract" in result.message
 
 
 @pytest.mark.parametrize("contract", [{"source": {}}, {"dump": "invalid"}, {"dump": {"tables": 4}}])
@@ -324,7 +364,8 @@ def test_approved_plan_is_not_reselected_after_confirmation(safety_policy, fake_
     monkeypatch.setattr("mercury.deploy.runner.build_deployment_plan", lambda **_: pytest.fail("Approved inputs must not be reselected"))
     monkeypatch.setattr("mercury.deploy.runner.try_load_mariadb_config", lambda: fake_config)
     result = execute_deployment_batch(policy=safety_policy, execute=True, deployment_plan=plan,
-        sql_runner=lambda *_: None, import_runner=lambda *_: None, inspect_row_fn=lambda *_: (1, 1, 0, 16384))
+        sql_runner=lambda *_: None, import_runner=lambda *_: None, inspect_row_fn=lambda *_: (1, 1, 0, 16384),
+        inspect_inventory_fn=lambda *_: __import__("mercury.backup.content_contract", fromlist=["BackupObjectInventory"]).BackupObjectInventory(tables=["t"]))
     assert result.deployed_count == 1 and result.failed_count == 0
     assert result.mode == "live" and Path(result.report_path).is_file()
     assert plan.mode == "dry-run"  # Approval input is preserved, not mutated.

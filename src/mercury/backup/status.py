@@ -304,6 +304,7 @@ def build_backup_status_report(
             backup_at=parse_backup_timestamp(created_at),
             live=live and not absent_on_server,
             source_is_empty=source_is_empty,
+            backup_dir=backup_dir if live and not absent_on_server else None,
         )
 
         stamp = verification.manifest_verification_stamp

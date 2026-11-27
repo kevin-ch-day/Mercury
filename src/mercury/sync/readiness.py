@@ -17,10 +17,12 @@ from mercury.backup.freshness import (
 )
 from mercury.backup.layout import MANIFEST_FILENAME
 from mercury.backup.content_contract import (
+    BackupContentContract,
     IMPORT_TRANSFORM_VERSION,
     RESTORE_REQUIREMENTS_CONTRACT_VERSION,
     RESTORE_REQUIREMENTS_SCANNER_VERSION,
     RestoreRequirementsContract,
+    fetch_live_object_inventory,
 )
 from mercury.backup.verification import verify_backup_artifacts
 from mercury.core.execution_policy import load_execution_policy
@@ -122,6 +124,36 @@ def _restore_requirements_issue(backup_dir) -> str | None:
     return None
 
 
+def _live_source_object_issue(backup_dir, database: str) -> str | None:
+    """Reject a historical backup when the source's named objects have changed."""
+    from mercury.database.mariadb.session import try_load_mariadb_config
+
+    try:
+        data = json.loads((backup_dir / MANIFEST_FILENAME).read_text(encoding="utf-8"))
+        contract = BackupContentContract.model_validate(data.get("object_contract"))
+    except Exception:  # noqa: BLE001 - malformed historical evidence blocks sync
+        return "Verified backup lacks a valid source object contract; refresh the full backup."
+    if not contract.verified or contract.issues:
+        return "Verified backup has an incomplete source object contract; refresh the full backup."
+    try:
+        config = try_load_mariadb_config()
+    except Exception as exc:  # noqa: BLE001 - readiness must fail closed
+        return f"Cannot load live source credentials: {exc}"
+    if config is None:
+        return "Cannot inspect live source objects; sync readiness is blocked."
+    try:
+        current = fetch_live_object_inventory(config, database)
+    except Exception as exc:  # noqa: BLE001 - inspection failure blocks sync
+        return f"Cannot inspect live source objects: {exc}"
+    if current != contract.live:
+        return (
+            "Live source object names differ from the verified backup baseline "
+            f"(backup={contract.live.counts()}, live={current.counts()}); "
+            "refresh the full backup."
+        )
+    return None
+
+
 class SyncReadinessReport(BaseModel):
     mode: str
     backup_root: str
@@ -129,6 +161,18 @@ class SyncReadinessReport(BaseModel):
     ready_count: int = 0
     blocked_count: int = 0
     restore_credentials: RestoreCredentialStatus = Field(default_factory=RestoreCredentialStatus)
+
+
+def _block_unready_dependencies(entries: list[SyncReadinessEntry]) -> None:
+    by_source = {entry.prod: entry for entry in entries}
+    for entry in sorted(entries, key=lambda item: item.sync_order):
+        for dependency in entry.depends_on_sources:
+            upstream = by_source.get(dependency)
+            if upstream is None or not upstream.ready_for_sync_planning:
+                entry.blockers.append(
+                    f"Required upstream source is not sync-ready: {dependency}."
+                )
+                entry.ready_for_sync_planning = False
 
 
 def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
@@ -141,18 +185,16 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
     pairs = build_prod_dev_pairs(names, projects=projects)
 
     entries: list[SyncReadinessEntry] = []
-    ready_count = 0
-    blocked_count = 0
     dumpability_blocked: dict[str, str] = {}
     if live and should_probe_database_status():
-        from mercury.backup.dump_preflight import repair_hint, try_assess_sources_dumpability
+        from mercury.backup.dump_preflight import try_assess_sources_dumpability
 
         prod_names = [
             pair.prod for pair in pairs if is_in_scope(pair.expected_dev)
         ]
         dumpability = try_assess_sources_dumpability(prod_names)
         for entry in dumpability.blocked:
-            dumpability_blocked[entry.database] = repair_hint(entry.database)
+            dumpability_blocked[entry.database] = entry.refusal_text() or "dumpability check failed"
 
     for pair in pairs:
         if not is_in_scope(pair.expected_dev):
@@ -209,6 +251,10 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
                 contract_issue = _restore_requirements_issue(backup_dir)
                 if contract_issue:
                     blockers.append(contract_issue)
+                if live and should_probe_database_status():
+                    source_issue = _live_source_object_issue(backup_dir, pair.prod)
+                    if source_issue:
+                        blockers.append(source_issue)
             if backup_verified and live and should_probe_database_status():
                 freshness = assess_backup_freshness(
                     pair.prod,
@@ -228,11 +274,6 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
                     )
 
         ready = pair.dev_listed and backup_verified and not blockers
-        if ready:
-            ready_count += 1
-        else:
-            blocked_count += 1
-
         entries.append(
             SyncReadinessEntry(
                 prod=pair.prod,
@@ -250,6 +291,10 @@ def build_sync_readiness_report(*, live: bool = False) -> SyncReadinessReport:
                 depends_on_sources=list(pair.depends_on_sources),
             )
         )
+
+    _block_unready_dependencies(entries)
+    ready_count = sum(entry.ready_for_sync_planning for entry in entries)
+    blocked_count = len(entries) - ready_count
 
     report = SyncReadinessReport(
         mode=mode,
